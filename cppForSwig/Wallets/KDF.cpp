@@ -62,7 +62,7 @@ void KdfRomix::computeKdfParams(
    const std::chrono::milliseconds& targetCompute,
    uint32_t maxMemReqts, bool verbose)
 {
-   // Create a random salt, even though this is probably unnecessary:
+   // Create a random salt, even though this is probably unnecessary;
    // the variation in numIter and memReqts is probably effective enough
    salt_ = CryptoPRNG::generateRandom(32);
 
@@ -84,48 +84,51 @@ void KdfRomix::computeKdfParams(
 
    // Start the search for a memory value at 1kB
    memoryReqtBytes_ = 1024;
-   std::chrono::milliseconds approxMSec{0};
-   while (approxMSec <= targetCompute / 4 && memoryReqtBytes_ < maxMemReqts) {
+   std::chrono::milliseconds approx{0};
+   while (approx <= targetCompute / 4 && memoryReqtBytes_ < maxMemReqts) {
       memoryReqtBytes_ *= 2;
       sequenceCount_ = memoryReqtBytes_ / hashOutputBytes;
-      lookupTable_.resize(memoryReqtBytes_);
 
       auto start = std::chrono::system_clock::now();
       testKey = DeriveKey_OneIter(testKey);
       auto end = std::chrono::system_clock::now();
-      approxMSec = std::chrono::duration_cast<std::chrono::milliseconds>(end-start);
+      approx = std::chrono::duration_cast<std::chrono::milliseconds>(end-start);
    }
 
    // Recompute here, in case we didn't enter the search above
    sequenceCount_ = memoryReqtBytes_ / hashOutputBytes;
-   lookupTable_.resize(memoryReqtBytes_);
 
    // Depending on the search above (or if a low max memory was chosen,
    // we may need to do multiple iterations to achieve the desired compute
    // time on this system.
-   std::chrono::milliseconds allItersMSec{0};
+   std::chrono::milliseconds allIters{0};
    uint32_t numTest = 1;
-   while (allItersMSec < 100ms) {
-      numTest *= 2;
+   while (true) {
+      auto _testKey = testKey;
       auto start = std::chrono::system_clock::now();
       for (uint32_t i = 0; i < numTest; i++) {
-         auto&& _testKey = testKey;
          _testKey = DeriveKey_OneIter(_testKey);
       }
-
       auto end = std::chrono::system_clock::now();
-      allItersMSec = std::chrono::duration_cast<std::chrono::milliseconds>(end-start);
+      allIters = std::chrono::duration_cast<std::chrono::milliseconds>(end-start);
+
+      if (allIters >= 100ms) {
+         break;
+      }
+      numTest *= 2;
    }
 
-   uint64_t perIterMSec = allItersMSec.count() / numTest;
+
+   uint64_t perIterMSec = allIters.count() / numTest;
    numIterations_ = (uint32_t)(targetCompute.count() / (perIterMSec + 1));
    numIterations_ = (numIterations_ < 1 ? 1 : numIterations_ + 1);
    if (verbose) {
       std::cout << "System speed test results    : " << std::endl;
-      std::cout << "   Total test of the KDF took: " << allItersMSec.count() << " ms" << std::endl;
+      std::cout << "   Total test of the KDF took: " << allIters.count() << " ms" << std::endl;
       std::cout << "                   to execute: " << numTest << " iterations" << std::endl;
       std::cout << "   Target computation time is: " << targetCompute.count() << " ms" << std::endl;
-      std::cout << "   Setting numIterations to  : " << numIterations_ << std::endl;
+      std::cout << "    Lookup tabke mem usage is: " << memoryReqtBytes_ << " bytes" << std::endl;
+      std::cout << "   Setting numIterations to  : " << numIterations_ << std::endl << std::endl;
    }
 }
 
@@ -193,9 +196,9 @@ SecureBinaryData KdfRomix::DeriveKey_OneIter(SecureBinaryData const & password)
 
    // Pure ROMix would use sequenceCount_ for the number of lookups.
    // We divide by 2 to reduce computation time RELATIVE to the memory usage
-   // This still provides suffient LUT operations, but allows us to use more
+   // This still provides sufficient LUT operations, but allows us to use more
    // memory in the same amount of time (and this is the justification for
-   // the scrypt algorithm -- it is basically ROMix, modified for more 
+   // the scrypt algorithm -- it is basically ROMix, modified for more
    // flexibility in controlling compute-time vs memory-usage).
    uint32_t const nLookups = sequenceCount_ / 2;
    for (uint32_t nSeq = 0; nSeq < nLookups; nSeq++) {
@@ -221,9 +224,9 @@ SecureBinaryData KdfRomix::DeriveKey_OneIter(SecureBinaryData const & password)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-SecureBinaryData KdfRomix::DeriveKey(SecureBinaryData const & password)
+SecureBinaryData KdfRomix::DeriveKey(const SecureBinaryData& password)
 {
-   SecureBinaryData masterKey(password);
+   SecureBinaryData masterKey = password;
    for (uint32_t i = 0; i < numIterations_; i++) {
       masterKey = DeriveKey_OneIter(masterKey);
    }

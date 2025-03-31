@@ -355,19 +355,16 @@ MasterKeyStruct WalletDBInterface::initWalletHeaderObject(
      encrypted and unencrypted wallets.
    */
 
-   MasterKeyStruct mks;
-
-   /*
-   generate master encryption key, do not apply a kdf
-   */
+   //generate master encryption key, do not apply a kdf
    auto passthroughKdf = std::make_shared<KeyDerivationFunction_Passthrough>();
    auto masterKeySBD = CryptoPRNG::generateRandom(32);
+   MasterKeyStruct mks;
    mks.decryptedMasterKey_ = std::make_shared<ClearTextEncryptionKey>(masterKeySBD);
    mks.decryptedMasterKey_->deriveKey(passthroughKdf);
    auto masterEncryptionKeyId = mks.decryptedMasterKey_->getId(passthroughKdf->getId());
 
    /*
-   setup master key kdf even if end up not using it, user may
+   setup master key kdf even if we end up not using it, user may
    add a passphrase later
    */
    mks.kdf_ = std::make_shared<KeyDerivationFunction_Romix>(unlockTime);

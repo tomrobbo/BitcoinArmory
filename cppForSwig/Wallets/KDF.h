@@ -22,7 +22,7 @@
 // on how much memory the KDF can use -- 32 MB is good
 // If a KDF uses 32 MB of memory, it is undeniably easier
 // to compute on a CPU than a GPU.
-#define DEFAULT_KDF_MAX_MEMORY 32*1024*1024
+#define DEFAULT_KDF_MAX_MEMORY 128*1024*1024
 
 namespace Armory
 {
@@ -84,9 +84,9 @@ namespace Armory
             virtual ~KeyDerivationFunction(void) = 0;
 
             virtual SecureBinaryData deriveKey(
-               const SecureBinaryData& rawKey) const = 0;
+               const SecureBinaryData&) const = 0;
             virtual bool isSame(const KeyDerivationFunction*) const = 0;
-            bool operator<(const KeyDerivationFunction& rhs);
+            bool operator<(const KeyDerivationFunction&);
 
             virtual const KdfId& getId(void) const = 0;
             virtual BinaryData serialize(void) const = 0;
