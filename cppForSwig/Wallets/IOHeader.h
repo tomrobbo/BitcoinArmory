@@ -44,6 +44,7 @@ namespace Armory
             const size_t lookup{100};
             const Progress::Func progressFunc=nullptr;
 
+            ////////
             OpenFileParams getOpenFileParams(const std::string& masterId,
                const std::string& suffix={"wallet"}) const
             {

@@ -3187,7 +3187,7 @@ TEST_F(WalletInterfaceTest, Passphrase_Test)
       end = std::chrono::system_clock::now();
 
       //it should take 600ms since even though the kdf isn't used, it has to be setup
-      EXPECT_GE(end-start, 600ms);
+      EXPECT_GE(end-start, 600ms) << (end-start).count();
       EXPECT_LE(end-start, 650ms) << (end-start).count();
 
       //close iface
@@ -3900,15 +3900,109 @@ TEST_F(WalletsTest, CreateCloseOpen_Test)
    std::map<std::string, std::vector<BinaryData>> addrMap;
    std::map<std::string, std::filesystem::path> filenames;
 
-   IO::CreationParams params{
-      homedir_,
-      SecureBinaryData::fromString("passphrase"), 1ms,
-      controlPass_, 1ms,
-      4
+   std::shared_ptr<Progress::State> progState;
+   unsigned count=0;
+   auto progressFunc = [&progState, &count, this](std::unique_ptr<Progress::State> notif)
+   {
+      ++count;
+      switch (notif->type())
+      {
+         case Progress::StateEnum::CreateFile:
+         {
+            //there should be no prev state
+            ASSERT_EQ(progState, nullptr);
+
+            //save notif
+            progState = std::shared_ptr<Progress::State>(notif.release());
+            auto cfState = std::dynamic_pointer_cast<Progress::CreateFile>(progState);
+            ASSERT_NE(cfState, nullptr);
+
+            //validate wallet path
+            ASSERT_EQ(homedir_, cfState->path().parent_path());
+            break;
+         }
+
+         case Progress::StateEnum::InitFile:
+         {
+            //prev state should be CreateFile
+            ASSERT_NE(progState, nullptr);
+            ASSERT_EQ(progState->type(), Progress::StateEnum::CreateFile);
+
+            //save notif
+            progState = std::shared_ptr<Progress::State>(notif.release());
+            auto initState = std::dynamic_pointer_cast<Progress::InitFile>(progState);
+            ASSERT_NE(initState, nullptr);
+
+            //validate master id
+            ASSERT_FALSE(initState->masterId().empty());
+            break;
+         }
+
+         case Progress::StateEnum::ReadFile:
+         {
+            //prev state should be InitFile
+            ASSERT_NE(progState, nullptr);
+            ASSERT_EQ(progState->type(), Progress::StateEnum::InitFile);
+
+            //save notif
+            progState = std::shared_ptr<Progress::State>(notif.release());
+            auto readState = std::dynamic_pointer_cast<Progress::ReadFile>(progState);
+            ASSERT_NE(readState, nullptr);
+
+            //validate master id
+            ASSERT_FALSE(readState->masterId().empty());
+            break;
+         }
+
+         case Progress::StateEnum::CreateAccount:
+         {
+            //prev state should be ReadFile
+            ASSERT_NE(progState, nullptr);
+            ASSERT_EQ(progState->type(), Progress::StateEnum::ReadFile);
+
+            //save notif
+            progState = std::shared_ptr<Progress::State>(notif.release());
+            auto createState = std::dynamic_pointer_cast<Progress::CreateAccount>(progState);
+            ASSERT_NE(createState, nullptr);
+
+            //validate account metadata
+            ASSERT_NE(createState->accPtr(), nullptr);
+            break;
+         }
+
+         case Progress::StateEnum::ExtendChain:
+         {
+            //prev state should be ReadFile
+            ASSERT_NE(progState, nullptr);
+            ASSERT_EQ(progState->type(), Progress::StateEnum::CreateAccount);
+
+            //save notif
+            progState = std::shared_ptr<Progress::State>(notif.release());
+            auto extendState = std::dynamic_pointer_cast<Progress::ExtendChain>(progState);
+            ASSERT_NE(extendState, nullptr);
+
+            //validate account metadata
+            ASSERT_EQ(extendState->lookup(), 4);
+
+            //clear progState cuse that's the last state
+            progState.reset();
+            break;
+         }
+
+         default:
+            ASSERT_TRUE(false);
+      }
    };
 
    //create 3 wallets
-   for (unsigned i = 0; i < 1; i++) {
+   for (unsigned i = 0; i < 3; i++) {
+      IO::CreationParams params{
+         homedir_,
+         SecureBinaryData::fromString("passphrase"), 1ms,
+         controlPass_, 1ms,
+         4, progressFunc
+      };
+   
       std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
          new Armory::Seeds::ClearTextSeed_Armory135());
       auto assetWlt = AssetWallet_Single::createFromSeed(
@@ -3916,10 +4010,8 @@ TEST_F(WalletsTest, CreateCloseOpen_Test)
 
       //get AddrVec
       auto hashSet = assetWlt->getAddrHashSet();
-
       auto id = assetWlt->getID();
       auto& vec = addrMap[id];
-
       vec.insert(vec.end(), hashSet.begin(), hashSet.end());
 
       //get filename
@@ -3928,6 +4020,7 @@ TEST_F(WalletsTest, CreateCloseOpen_Test)
       //close wallet
       assetWlt.reset();
    }
+   EXPECT_EQ(count, 15);
 
    for (auto& addrVecPair : addrMap) {
       auto fnameIter = filenames.find(addrVecPair.first);
