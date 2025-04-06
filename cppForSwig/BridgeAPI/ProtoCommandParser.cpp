@@ -78,13 +78,6 @@ namespace
             break;
          }
 
-         case BlockchainServiceRequest::LOAD_WALLETS:
-         {
-            auto callbackId = request.getLoadWallets();
-            bridge->loadWallets(callbackId, referenceId);
-            break;
-         }
-
          case BlockchainServiceRequest::SETUP_DB:
          {
             bridge->setupDB();
@@ -206,6 +199,67 @@ namespace
          bridge->writeToClient(response);
       }
 
+      return true;
+   }
+
+   bool processWalletManagerCommands(
+      std::shared_ptr<CppBridge> bridge, MessageId referenceId,
+      WalletManagerRequest::Reader& request)
+   {
+      BinaryData response;
+      switch (request.which())
+      {
+         case WalletManagerRequest::LIST_WALLETS:
+         {
+            response = bridge->listWallets(referenceId);
+            break;
+         }
+
+         case WalletManagerRequest::UNLOCK_CONTROL_HEADER:
+         {
+            auto unlockReq = request.getUnlockControlHeader();
+            std::string path = unlockReq.getWalletPath();
+            std::string callbackId = unlockReq.getCallbackId();
+            bridge->unlockControlHeader(path, callbackId, referenceId);
+            break;
+         }
+
+         case WalletManagerRequest::STAGE_WALLET:
+         {
+            auto stageRequest = request.getStageWallet();
+            auto success = bridge->stageWallet(
+               stageRequest.getWalletId(), stageRequest.getStage());
+
+            capnp::MallocMessageBuilder message;
+            auto fromBridge = message.initRoot<FromBridge>();
+            auto reply = fromBridge.initReply();
+            reply.setSuccess(success);
+            reply.setReferenceId(referenceId);
+
+            response = serializeCapnp(message);
+            break;
+         }
+
+         case WalletManagerRequest::LOAD_WALLETS:
+         {
+            response = bridge->loadWallets(referenceId);
+            break;
+         }
+
+         default:
+            capnp::MallocMessageBuilder message;
+            auto fromBridge = message.initRoot<FromBridge>();
+            auto reply = fromBridge.initReply();
+            auto walletReply = reply.initWalletManager();
+            reply.setSuccess(false);
+            reply.setReferenceId(referenceId);
+            reply.setError("invalid WalletManager request");
+      }
+
+      if (!response.empty()) {
+         //write response to socket
+         bridge->writeToClient(response);
+      }
       return true;
    }
 
@@ -1213,6 +1267,13 @@ bool ProtoCommandParser::processData(
             bridge, referenceId, service);
       }
 
+      case Codec::Bridge::ToBridge::WALLET_MANAGER:
+      {
+         auto mgr = toBridge.getWalletManager();
+         return processWalletManagerCommands(
+            bridge, referenceId, mgr);
+      }
+
       case Codec::Bridge::ToBridge::WALLET:
       {
          auto wallet = toBridge.getWallet();
@@ -1267,7 +1328,8 @@ bool ProtoCommandParser::processData(
          auto fromBridge = message.initRoot<FromBridge>();
          auto reply = fromBridge.initReply();
          reply.setReferenceId(referenceId);
-         reply.setSuccess(true);
+         reply.setSuccess(false);
+         reply.setError("invalid request");
 
          auto serialized = serializeCapnp(message);
          bridge->writeToClient(serialized);

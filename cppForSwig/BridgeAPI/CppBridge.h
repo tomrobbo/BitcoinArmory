@@ -151,9 +151,15 @@ namespace Armory
          void reset(void);
 
       public:
+         //wallet manager init methods
+         BinaryData listWallets(MessageId);
+         void unlockControlHeader(const std::string&, const std::string&,
+            MessageId);
+         bool stageWallet(const std::string&, bool);
+         BinaryData loadWallets(MessageId);
+
          //wallet setup
          const std::filesystem::path& getDataDir(void) const;
-         void loadWallets(const std::string&, MessageId);
          BinaryData createWalletsPacket(MessageId);
          bool deleteWallet(const std::string&);
          BinaryData getWalletPacket(const std::string&,
@@ -164,7 +170,6 @@ namespace Armory
          void registerWallets(void);
          void registerWallet(const std::string&,
             const Wallets::AddressAccountId&, bool isNew);
-
          BinaryData getNodeStatus(MessageId);
 
          //balance and counts
@@ -262,14 +267,11 @@ namespace Armory
          bool isOffline(void) const;
 
       public:
-         CppBridge(const std::filesystem::path&, const std::string&,
-            const std::string&, bool, bool);
+         CppBridge(void);
 
          void writeToClient(BinaryData&) const;
-         void setWriteLambda(std::function<void(std::unique_ptr<WritePayload_Bridge>)> lbd)
-         {
-            writeLambda_ = lbd;
-         }
+         void setWriteLambda(
+            const std::function<void(std::unique_ptr<WritePayload_Bridge>)>&);
       };
    }; //namespace Bridge
 }; //namespace Armory

@@ -70,7 +70,6 @@ INCLUDE_FILES = -I$(srcdir)/lmdbpp \
 KEYMANAGER_SOURCE_FILES = KeyManager.cpp
 
 CPPBRIDGE_SOURCE_FILES = BridgeAPI/CppBridge.cpp \
-	BridgeAPI/BridgeMain.cpp \
 	BridgeAPI/BridgeSocket.cpp \
 	BridgeAPI/WalletManager.cpp \
 	BridgeAPI/ProtoCommandParser.cpp \
@@ -330,7 +329,8 @@ BIP150KeyManager_LDFLAGS = $(LWSLDFLAGS) $(LDFLAGS) -static
 
 if BUILD_CLIENT
 bin_PROGRAMS += CppBridge
-CppBridge_SOURCES = $(CPPBRIDGE_SOURCE_FILES)
+CppBridge_SOURCES = BridgeAPI/BridgeMain.cpp \
+	$(CPPBRIDGE_SOURCE_FILES)
 CppBridge_CXXFLAGS = $(AM_CXXFLAGS) $(LIBBTC_FLAGS) $(UNIT_TEST_CXXFLAGS) \
 		-D__STDC_LIMIT_MACROS
 CppBridge_CPPFLAGS = $(AM_CPPFLAGS) $(INCLUDE_FILES)

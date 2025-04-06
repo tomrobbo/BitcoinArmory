@@ -67,7 +67,7 @@ std::shared_ptr<IO::WalletDBInterface> AssetWallet::getIfaceFromFile(
       auto prg = std::make_unique<Progress::CreateFile>(params.filePath);
       prog(std::move(prg));
    }
-   auto iface = make_shared<IO::WalletDBInterface>();
+   auto iface = std::make_shared<IO::WalletDBInterface>();
    iface->setupEnv(params);
    return iface;
 }
@@ -687,7 +687,7 @@ shared_ptr<AssetEntry> AssetWallet::getAssetForID(const AssetId& id) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-string AssetWallet::getID(void) const
+const std::string& AssetWallet::getID() const
 {
    return walletID_;
 }

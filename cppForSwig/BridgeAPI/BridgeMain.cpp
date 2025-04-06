@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2019-2024, goatpig                                          //
+//  Copyright (C) 2019-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -63,16 +63,8 @@ int main(int argc, char* argv[])
       "\n - db port: " << Armory::Config::NetworkSettings::dbPort() <<
       "\n - bridge port: " << bridgePortStr;
 
-   //setup the bridge
-   auto bridge = std::make_shared<Armory::Bridge::CppBridge>(
-      Armory::Config::getDataDir(),
-      Armory::Config::NetworkSettings::dbIP(),
-      Armory::Config::NetworkSettings::dbPort(),
-      Armory::Config::NetworkSettings::oneWayAuth(),
-      Armory::Config::NetworkSettings::isOffline()
-   );
-
-   //setup the socket
+   //setup the bridge & socket
+   auto bridge = std::make_shared<Armory::Bridge::CppBridge>();
    auto sockPtr = std::make_shared<Armory::Bridge::CppBridgeSocket>(
       "127.0.0.1", bridgePortStr, bridge);
 
@@ -80,7 +72,7 @@ int main(int argc, char* argv[])
    auto pushPayloadLbd = [sockPtr](
       std::unique_ptr<Armory::Bridge::WritePayload_Bridge> payload)->void
    {
-      sockPtr->pushPayload(move(payload), nullptr);
+      sockPtr->pushPayload(std::move(payload), nullptr);
    };
    bridge->setWriteLambda(pushPayloadLbd);
 

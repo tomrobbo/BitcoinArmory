@@ -776,8 +776,7 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
    def networkReadyCallback(self):
       #this ServerPush obj should be a child class implementing the handling
       #of the bridge server requests
-      pushObj = ServerPush()
-      TheBridge.service.loadWallets(self.loadWallets, pushObj)
+      self.loadWallets()
 
    #############################################################################
    def changeWltFilter(self):
@@ -1816,10 +1815,14 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
       self.promptMap = {}
 
    #############################################################################
-   def loadWallets(self, proto):
-      self.wallets.setupFromProto(proto)
-      self.setupBlockchainService_step1()
-      TheSignalExecution.executeMethod(self.finalizeLoadWallets)
+   def loadWallets(self):
+      def loadWltsLbd():
+         wltList = TheBridge.wltManager.listWallets()
+         wltsProto = TheBridge.wltManager.loadWallets()
+         self.wallets.setupFromProto(wltsProto)
+         self.setupBlockchainService_step1()
+         TheSignalExecution.executeMethod(self.finalizeLoadWallets)
+      TheSignalExecution.executeMethod(loadWltsLbd)
 
    #############################################################################
    def finalizeLoadWallets(self):
@@ -4813,7 +4816,7 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
             continue
 
          if pywlt:
-            wname = self.wallets[moneyID].labelName
+            wname = pywlt.labelName
             if len(wname)>20:
                wname = wname[:17] + '...'
             wltName = self.tr('Wallet "%s" (%s)' % (wname, moneyID))
@@ -4828,8 +4831,8 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
             #             'Wallet "%s" (%s) just sent %s BTC to itself!' % \
             #         (wlt.labelName, moneyID, coin2str(amt,maxZeros=1).strip()),
             self.showTrayMsg(self.tr('Your bitcoins just did a lap!'), \
-                             self.tr('%s just sent some BTC to itself!' % wltName), \
-                             QtWidgets.QSystemTrayIcon.Information, 10000)
+               self.tr('%s just sent some BTC to itself!' % wltName), \
+               QtWidgets.QSystemTrayIcon.Information, 10000)
             return
 
          # If coins were either received or sent from the loaded wlt/lbox
@@ -4846,8 +4849,8 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
                for addr in le.scrAddrs:
                   if pywlt.hasAddrString(addr):
                      continue
-                  if len(recipStr)==0:
-                     recipStr = TheBridge.scriptUtils.getScrAddrForAddrStr(addr)
+                  if not recipStr:
+                     recipStr = TheBridge.scriptUtils.getAddrStrForScrAddr(addr)
                   else:
                      recipStr = self.tr('<Multiple Recipients>')
 
@@ -4859,7 +4862,6 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
                #TODO: fix this
                LOGERROR('tx broadcast systray display failed with error: %s' % e)
                traceback.print_tb(e.__traceback__)
-
 
          if title:
             self.showTrayMsg(title, "\n".join(dispLines), \
@@ -5018,7 +5020,6 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
       if CLI_OPTIONS.offline:
          self.setDashboardDetails()
          return
-
       TheBridge.service.setupDB()
 
    #############################################################################

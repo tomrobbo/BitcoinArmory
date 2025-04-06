@@ -322,11 +322,21 @@ namespace
 ////  CppBridge
 ////
 ////////////////////////////////////////////////////////////////////////////////
-CppBridge::CppBridge(const std::filesystem::path& path, const std::string& dbAddr,
-   const std::string& dbPort, bool oneWayAuth, bool offline) :
-   path_(path), dbAddr_(dbAddr), dbPort_(dbPort),
-   dbOneWayAuth_(oneWayAuth), dbOffline_(offline)
-{}
+CppBridge::CppBridge() :
+   path_(Config::getDataDir()),
+   dbAddr_(Config::NetworkSettings::dbIP()),
+   dbPort_(Config::NetworkSettings::dbPort()),
+   dbOneWayAuth_(Config::NetworkSettings::oneWayAuth()),
+   dbOffline_(Config::NetworkSettings::isOffline())
+{
+   wltManager_ = std::make_shared<WalletManager>(path_);
+}
+
+void CppBridge::setWriteLambda(
+   const std::function<void(std::unique_ptr<WritePayload_Bridge>)>& lbd)
+{
+   writeLambda_ = lbd;
+}
 
 std::shared_ptr<AsyncClient::BlockDataViewer> CppBridge::bdvPtr() const
 {
@@ -375,28 +385,91 @@ void CppBridge::callbackWriter(ServerPushWrapper& wrapper)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void CppBridge::loadWallets(const std::string& callbackId, MessageId msgId)
+// WalletManager init methods
+////////////////////////////////////////////////////////////////////////////////
+BinaryData CppBridge::listWallets(MessageId msgId)
 {
-   if (wltManager_ != nullptr) {
-      return;
+   auto wltList = wltManager_->listWallets();
+
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   auto mgrReply = reply.initWalletManager();
+   auto capnWltList = mgrReply.initListWallets(wltList.size());
+
+   unsigned i=0;
+   for (const auto& wltObj : wltList) {
+      auto capnWltObj = capnWltList[i++];
+      capnWltObj.setState(WalletManagerReply::WalletLoadState(
+         (int)wltObj.second.loadState));
+
+      if (!wltObj.second.walletId.empty()) {
+         capnWltObj.setWalletId(wltObj.second.walletId);
+      }
+      capnWltObj.setPath(wltObj.first);
+      capnWltObj.setStaged(wltObj.second.staged);
    }
 
-   auto thrLbd = [this, callbackId, msgId](void)->void
+   reply.setReferenceId(msgId);
+   reply.setSuccess(true);
+   return serializeCapnp(message);
+}
+
+////////
+void CppBridge::unlockControlHeader(const std::string& path,
+   const std::string& callbackId, MessageId refId)
+{
+   auto thrLbd = [this, callbackId, path, refId](void)->void
    {
       auto passPromptObj = std::make_shared<BridgePassphrasePrompt>(
          callbackId, [this](ServerPushWrapper wrapper) {
             this->callbackWriter(wrapper);
       });
       auto lbd = passPromptObj->getLambda();
-      wltManager_ = std::make_shared<WalletManager>(path_, lbd);
-      auto response = createWalletsPacket(msgId);
-      writeToClient(response);
+
+      auto notifySuccess = [refId, this](bool success, const std::string& error)
+      {
+         capnp::MallocMessageBuilder message;
+         auto fromBridge = message.initRoot<FromBridge>();
+         auto reply = fromBridge.initReply();
+         reply.setReferenceId(refId);
+         reply.setSuccess(success);
+         if (!success) {
+            reply.setError(error);
+         }
+
+         auto response = serializeCapnp(message);
+         this->writeToClient(response);
+      };
+
+      try {
+         wltManager_->unlockControlHeader(path, lbd);
+         notifySuccess(true, {});
+      } catch (const std::exception& e) {
+         notifySuccess(false, e.what());
+      }
+
+      //call lbd with empty id set to cleanup passphrase prompt
+      lbd({});
    };
 
    std::thread thr(thrLbd);
    if (thr.joinable()) {
       thr.detach();
    }
+}
+
+////////
+bool CppBridge::stageWallet(const std::string& walletId, bool stage)
+{
+   return wltManager_->stageWallet(walletId, stage);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+BinaryData CppBridge::loadWallets(MessageId msgId)
+{
+   wltManager_->loadWallets();
+   return createWalletsPacket(msgId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -412,7 +485,7 @@ BinaryData CppBridge::createWalletsPacket(MessageId msgId)
    capnp::MallocMessageBuilder message;
    auto fromBridge = message.initRoot<FromBridge>();
    auto reply = fromBridge.initReply();
-   auto serviceReply = reply.initService();
+   auto mgrReply = reply.initWalletManager();
 
    //grab wallet map
    auto accountIdMap = wltManager_->getAccountIdMap();
@@ -423,7 +496,7 @@ BinaryData CppBridge::createWalletsPacket(MessageId msgId)
       }
       count += idIt.second.size();
    }
-   auto wltPackets = serviceReply.initLoadWallets(count);
+   auto wltPackets = mgrReply.initLoadWallets(count);
 
    unsigned i=0;
    for (const auto& idIt : accountIdMap) {
@@ -521,7 +594,9 @@ void CppBridge::setupDB()
 
       //TODO: set gui prompt to accept server pubkeys
       bdvPtr_->setCheckServerKeyPromptLambda(
-         [](const BinaryData&, const std::string&)->bool{return true;});
+         [](const BinaryData&, const std::string&)->bool
+         { return true; }
+      );
 
       //set bdvPtr in wallet manager
       wltManager_->setBdvPtr(bdvPtr_);
@@ -1562,7 +1637,6 @@ BinaryData CppBridge::getAddrStrForScrAddr(
 
    try {
       auto addrStr = BtcUtils::getAddressStrFromScrAddr(script);
-
       auto utilsReply = reply.initScriptUtils();
       utilsReply.setGetAddrStrForScrAddr(addrStr);
       reply.setSuccess(true);

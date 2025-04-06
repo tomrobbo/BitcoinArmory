@@ -70,12 +70,12 @@ class PyPromFut(object):
       self.cv.release()
 
    #############################################################################
-   def getVal(self):
+   def getVal(self, nothrow=False):
       self.cv.acquire()
       while self.has is False:
          self.cv.wait()
       self.cv.release()
-      if self.data.success == False:
+      if self.data.success == False and not nothrow:
          raise Exception(self.data.error)
       return self.data
 
@@ -255,7 +255,6 @@ class BridgeSocket(object):
             else:
                LOGERROR("Socket error: %s" % str(e))
                break
-
       return payload
 
    ####
@@ -287,13 +286,12 @@ class BridgeSocket(object):
 
             #grab the payload
             payload = response
-            payload += self.pollRecv(\
+            payload += self.pollRecv(
                payloadSize + self.bip15xConnection.getMacLen())
 
             #decrypt it
             response = self.bip15xConnection.decrypt(\
                payload, payloadSize)
-
 
          #check header
          header = unpack('<B', response[:1])[0]
@@ -334,8 +332,6 @@ class BridgeSocket(object):
                   LOGWARN(f"unknown reply referenceId: {referenceId}")
                   self.rwLock.release()
                   continue
-
-               #TODO: general error handling on reply.success == False
 
                #grab the future, delete it from dict
                replyHandler = self.responseDict[referenceId]
@@ -391,13 +387,6 @@ class BlockchainService(ProtoWrapper):
 
    #############################################################################
    ## commands ##
-   def loadWallets(self, callbackFunc, pushObj):
-      packet = Bridge.ToBridge.new_message()
-      packet.init("service").loadWallets = pushObj.callbackId
-
-      self.send(packet, callback=callbackFunc)
-
-   ####
    def shutdown(self):
       packet = Bridge.ToBridge.new_message()
       packet.init("service").shutdown = None
@@ -580,11 +569,48 @@ class BlockchainUtils(ProtoWrapper):
          method.extraEntropy = extraEntropy
 
       fut = self.send(packet)
-      reply = fut.getVal()
+      reply = fut.getVal(nothrow=True)
       if reply.success == False:
          raise BridgeError(
             f"[createWallet] failed with error: {reply.error}")
       return reply.utils.createWallet
+
+################################################################################
+class WalletManagerWrapper(ProtoWrapper):
+   #############################################################################
+   ## setup ##
+   def __init__(self, bridgeSocket):
+      super().__init__(bridgeSocket)
+
+   #############################################################################
+   ## commands ##
+   def listWallets(self):
+      packet = Bridge.ToBridge.new_message()
+      packet.init("walletManager").listWallets = None
+
+      fut = self.send(packet)
+      reply = fut.getVal()
+      return reply.walletManager.listWallets
+
+   ####
+   def stageWallet(self, walletId: str, stage: bool):
+      packet = Bridge.ToBridge.new_message()
+      request = packet.init("walletManager").init("stageWallet")
+      request.walletId = walletId
+      request.stage = stage
+
+      fut = self.send(packet)
+      reply = fut.getVal(nothrow=True)
+      return reply.success
+
+   ####
+   def loadWallets(self):
+      packet = Bridge.ToBridge.new_message()
+      packet.init("walletManager").loadWallets = None
+
+      fut = self.send(packet)
+      reply = fut.getVal(nothrow=True)
+      return reply
 
 ################################################################################
 class BridgeWalletWrapper(ProtoWrapper):
@@ -807,7 +833,7 @@ class BridgeCoinSelectionWrapper(ProtoWrapper):
       method.id = recId
 
       fut = self.send(packet)
-      reply = fut.getVal()
+      reply = fut.getVal(nothrow=True)
       if reply.success == False:
          raise BridgeError(
             f"[setCoinSelectionRecipient] failed with error: {reply.error}")
@@ -830,7 +856,7 @@ class BridgeCoinSelectionWrapper(ProtoWrapper):
          method.feeByte = feePerByte
 
       fut = self.send(packet)
-      reply = fut.getVal()
+      reply = fut.getVal(nothrow=True)
       if reply.success == False:
          raise BridgeError(f"[selectUTXOs] failed with error: {reply.error}")
 
@@ -886,7 +912,7 @@ class BridgeCoinSelectionWrapper(ProtoWrapper):
          request.feeByte = feePerByte
 
       fut = self.send(packet)
-      reply = fut.getVal()
+      reply = fut.getVal(nothrow=True)
       if reply.success == False:
          raise BridgeError("ProcessCustomUtxoList failed")
 
@@ -960,7 +986,7 @@ class ScriptUtils(ProtoWrapper):
    ####
    def getTxOutScriptForScrAddr(self, script: bytes):
       packet = self.getPacket(script)
-      packet.scriptUtils.getTxOutScriptForScrAddr = script
+      packet.scriptUtils.getTxOutScriptForScrAddr = None
 
       fut = self.send(packet)
       reply = fut.getVal()
@@ -981,7 +1007,7 @@ class ScriptUtils(ProtoWrapper):
       packet.scriptUtils.getAddrStrForScrAddr = None
 
       fut = self.send(packet)
-      reply = fut.getVal()
+      reply = fut.getVal(nothrow=True)
 
       if reply.success == False:
          raise BridgeError(f"error in getAddrStrForScrAddr: {reply.error}")
@@ -994,7 +1020,7 @@ class ScriptUtils(ProtoWrapper):
       request.getScrAddrForAddrStr = addrStr
 
       fut = self.send(packet)
-      reply = fut.getVal()
+      reply = fut.getVal(nothrow=True)
 
       if reply.success == False:
          raise BridgeError(f"error in getAddrStrForScrAddr: {reply.error}")
@@ -1220,6 +1246,7 @@ class ArmoryBridge(object):
       self.service      = BlockchainService(self.bridgeSocket)
       self.utils        = BlockchainUtils(self.bridgeSocket)
       self.scriptUtils  = ScriptUtils(self.bridgeSocket)
+      self.wltManager   = WalletManagerWrapper(self.bridgeSocket)
 
    #############################################################################
    def start(self, stringArgs, notifyReadyLbd):
@@ -1260,7 +1287,6 @@ class ArmoryBridge(object):
       response.ParseFromString(socketResponse)
 
       blockTime = response.ints[0]
-
       if blockTime == 2**32 - 1:
          raise BridgeError("invalid block time")
 

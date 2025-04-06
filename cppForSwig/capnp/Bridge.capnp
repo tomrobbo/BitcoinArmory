@@ -142,18 +142,17 @@ struct BlockchainServiceRequest {
       setupDb                       @2 : Void;
       goOnline                      @3 : Void;
       getNodeStatus                 @4 : Void;
-      loadWallets                   @5 : Text;
-      registerWallets               @6 : Void;
+      registerWallets               @5 : Void;
 
-      registerWallet                @7 : RegisterWallet;
-      broadcastTx                   @8 : List(Data);
-      getTxsByHash                  @9 : List(Types.Hash);
-      getHeadersByHeight            @10: List(Types.Height);
-      getBlockTimeByHeight          @11: UInt32;
-      getFeeSchedule                @12: Text;
+      registerWallet                @6 : RegisterWallet;
+      broadcastTx                   @7 : List(Data);
+      getTxsByHash                  @8 : List(Types.Hash);
+      getHeadersByHeight            @9: List(Types.Height);
+      getBlockTimeByHeight          @10: UInt32;
+      getFeeSchedule                @11: Text;
 
-      getLedgerDelegateId           @13: Void;
-      updateWalletsLedgerFilter     @14: List(Types.WalletId);
+      getLedgerDelegateId           @12: Void;
+      updateWalletsLedgerFilter     @13: List(Types.WalletId);
    }
 }
 
@@ -172,12 +171,71 @@ struct BlockchainServiceReply {
       unset                         @0 : Void;
 
       getNodeStatus                 @1 : Types.NodeStatus;
-      loadWallets                   @2 : List(WalletData);
-      getTxsByHash                  @3 : List(TxData);
-      getHeadersByHeight            @4 : List(Types.Header);
-      getBlockTimeByHeight          @5 : UInt32;
-      getFeeSchedule                @6 : List(Types.FeeSchedule);
-      getLedgerDelegateId           @7 : Types.DelegateId;
+      getTxsByHash                  @2 : List(TxData);
+      getHeadersByHeight            @3 : List(Types.Header);
+      getBlockTimeByHeight          @4 : UInt32;
+      getFeeSchedule                @5 : List(Types.FeeSchedule);
+      getLedgerDelegateId           @6 : Types.DelegateId;
+   }
+}
+
+###############################
+# WalletManager
+###############################
+struct WalletManagerRequest {
+   struct StageWalletStruct {
+      walletId @0 : Types.WalletId;
+      stage    @1 : Bool;
+   }
+
+   struct UnlockRequest {
+      walletPath @0 : Text;
+      callbackId @1 : Text;
+   }
+
+   union {
+      unset                   @0 : Void;
+
+      #list wallets in datadir
+      listWallets             @1 : Void;
+
+      #migrate a legacy armory .wallet file to the new format
+      migrateLegacyWallet     @2 : Types.WalletId;
+
+      #public data in wallets with an encrypted control header cannot
+      #be read, it needs unlocked first
+      unlockControlHeader     @3 : UnlockRequest;
+
+      #flag wallet to be loaded or not
+      stageWallet             @4 : StageWalletStruct;
+
+      #load staged wallets
+      loadWallets             @5 : Void;
+   }
+}
+
+struct WalletManagerReply {
+   enum WalletLoadState {
+      unknown     @0;
+      legacy      @1;
+      migrated    @2;
+      encrypted   @3;
+      ready       @4;
+      loaded      @5;
+   }
+
+   struct WalletFileData {
+      state    @0 : WalletLoadState;
+      path     @1 : Text;
+      walletId @2 : Text;
+      staged   @3 : Bool;
+   }
+
+   union {
+      unset                @0 : Void;
+      listWallets          @1 : List(WalletFileData);
+      migrateLegacyWallet  @2 : Bool;
+      loadWallets          @3 : List(WalletData);
    }
 }
 
@@ -510,7 +568,7 @@ struct ScriptUtilsRequest {
       getTxOutScriptType         @3 : Void;
       getScrAddrForScript        @4 : Void;
       getLastPushDataInScript    @5 : Void;
-      getTxOutScriptForScrAddr   @6 : Types.ScrAddr;
+      getTxOutScriptForScrAddr   @6 : Void;
       getAddrStrForScrAddr       @7 : Void;
       getScrAddrForAddrStr       @8 : Text;
    }
@@ -558,20 +616,21 @@ struct LedgerDelegateReply {
 ###############################
 
 struct ToBridge {
-   referenceId @0 : UInt64;
+   referenceId       @0 : UInt64;
 
    # method
    union {
       unset          @1 : Void;
 
       service        @2 : BlockchainServiceRequest;
-      wallet         @3 : WalletRequest;
-      coinSelection  @4 : CoinSelectionRequest;
-      signer         @5 : SignerRequest;
-      utils          @6 : UtilsRequest;
-      scriptUtils    @7 : ScriptUtilsRequest;
-      delegate       @8 : LedgerDelegateRequest;
-      notification   @9 : NotificationReply;
+      walletManager  @3 : WalletManagerRequest;
+      wallet         @4 : WalletRequest;
+      coinSelection  @5 : CoinSelectionRequest;
+      signer         @6 : SignerRequest;
+      utils          @7 : UtilsRequest;
+      scriptUtils    @8 : ScriptUtilsRequest;
+      delegate       @9 : LedgerDelegateRequest;
+      notification   @10: NotificationReply;
    }
 }
 
@@ -585,12 +644,13 @@ struct RpcReply {
       unset          @3 : Void;
 
       service        @4 : BlockchainServiceReply;
-      wallet         @5 : WalletReply;
-      coinSelection  @6 : CoinSelectionReply;
-      signer         @7 : SignerReply;
-      utils          @8 : UtilsReply;
-      scriptUtils    @9 : ScriptUtilsReply;
-      delegate       @10: LedgerDelegateReply;
+      walletManager  @5 : WalletManagerReply;
+      wallet         @6 : WalletReply;
+      coinSelection  @7 : CoinSelectionReply;
+      signer         @8 : SignerReply;
+      utils          @9 : UtilsReply;
+      scriptUtils    @10: ScriptUtilsReply;
+      delegate       @11: LedgerDelegateReply;
    }
 }
 

@@ -224,7 +224,6 @@ void CppBridgeSocket::pushPayload(
    bip151Connection_->assemblePacket(
       &data[0], data.size() - POLY1305MACLEN,
       &data[0], data.size());
-
    queuePayloadForWrite(data);
 }
 

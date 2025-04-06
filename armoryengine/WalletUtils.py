@@ -121,13 +121,13 @@ class WalletMap(object):
                del self._dbIdList[i]
                break
 
-   def setupFromProto(self, proto):
+   def setupFromProto(self, protoPacket):
       LOGINFO('Loading wallets...')
-      if not proto.success:
-         LOGERROR(f"failed to load wallets wit error: {proto.error}")
+      if not protoPacket.success:
+         LOGERROR(f"failed to load wallets wit error: {protoPacket.error}")
          raise Exception("failed to load wallets")
 
-      for wltProto in proto.service.loadWallets:
+      for wltProto in protoPacket.walletManager.loadWallets:
          wltLoad = PyBtcWallet(proto=wltProto)
          dbId = wltLoad.dbId
 

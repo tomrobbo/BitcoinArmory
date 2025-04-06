@@ -1237,7 +1237,7 @@ class PyBtcWallet(object):
       print(indent + '   useEncrypt:', self.useEncryption)
       print(indent + '   watchOnly :', self.watchingOnly)
       print(indent + '   isLocked  :', self.isLocked)
-      print(indent + '   ShortLabel:', self.labelName) 
+      print(indent + '   ShortLabel:', self.labelName)
       print(indent + '   LongLabel :', self.labelDescr)
       print('')
       print(indent + 'Root key:', self.addrMap['ROOT'].getAddrStr(), end=' ')

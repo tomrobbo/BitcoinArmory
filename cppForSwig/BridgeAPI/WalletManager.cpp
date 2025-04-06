@@ -27,11 +27,21 @@ using namespace std::chrono_literals;
 //// WalletManager
 ////
 ////////////////////////////////////////////////////////////////////////////////
-WalletManager::WalletManager(const std::filesystem::path& path,
-   const PassphraseLambda& passLbd) :
+WalletManager::WalletManager(const std::filesystem::path& path) :
    path_(path)
 {
-   loadWallets(passLbd);
+   if (!FileUtils::isDir(path_)) {
+      std::stringstream ss;
+      ss << path_ << "is not a valid datadir";
+      LOGERR << ss.str();
+      throw std::runtime_error(ss.str());
+   }
+}
+
+////
+const std::filesystem::path& WalletManager::getWalletDir() const
+{
+   return path_;
 }
 
 ////
@@ -233,38 +243,28 @@ void WalletManager::deleteWallet(const std::string& wltId)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void WalletManager::loadWallet(const std::filesystem::path& path,
-   const PassphraseLambda& passLbd)
+std::shared_ptr<Wallets::AssetWallet> WalletManager::loadWallet(
+   const std::filesystem::path& path, const PassphraseLambda& passLbd)
 {
-   try {
-      auto wltPtr = Wallets::AssetWallet::loadMainWalletFromFile(
-         Wallets::IO::OpenFileParams{path, passLbd});
-      const auto& accIds = wltPtr->getAccountIDs();
-      for (const auto& accId : accIds) {
-         addWallet(wltPtr, accId);
-      }
-   } catch (const std::exception& e) {
-      LOGERR << "Failed to open wallet at " << path.string() <<
-         " with error:\n" << e.what();
-   }
+   return Wallets::AssetWallet::loadMainWalletFromFile(
+      Wallets::IO::OpenFileParams{path, passLbd});
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void WalletManager::loadWallets(const PassphraseLambda& passLbd)
+std::map<std::string, WalletFileInfo> WalletManager::listWallets()
 {
-   //list .lmdb files in folder
-   if (!FileUtils::isDir(path_)) {
-      std::stringstream ss;
-      ss << path_ << "is not a valid datadir";
-      LOGERR << ss.str();
-      throw std::runtime_error(ss.str());
-   }
-
-   std::vector<std::filesystem::path> walletPaths;
-   std::vector<std::filesystem::path> a135Paths;
+   //iterate over files in datadir
+   std::vector<std::filesystem::path> walletPaths, a135Paths;
    for (const auto& dirEntry : std::filesystem::directory_iterator{path_} ) {
       const auto& path = dirEntry.path();
       const auto& extension = path.extension();
+
+      //ignore this file if we've parsed it before
+      auto iter = knownWalletFiles_.find(path.stem().string());
+      if (iter != knownWalletFiles_.end()) {
+         continue;
+      }
+
       if (extension == ".lmdb") {
          walletPaths.emplace_back(path);
       } else if (extension == ".wallet") {
@@ -272,11 +272,25 @@ void WalletManager::loadWallets(const PassphraseLambda& passLbd)
       }
    }
 
+   //read the potential wallet files
    ReentrantLock lock(this);
-
-   //read the files
    for (const auto& wltPath : walletPaths) {
-      loadWallet(wltPath, passLbd);
+      try {
+         auto wltPtr = loadWallet(wltPath, nullptr);
+         knownWalletFiles_.emplace(wltPath.stem().string(),
+            WalletFileInfo{ wltPath,
+               wltPtr->getID(), wltPtr->getLabel(),
+               WalletLoadState::Ready, true, wltPtr
+            });
+      } catch (const Wallets::Encryption::DecryptedDataContainerException& e) {
+         //could not decrypt wallet control header, track as encrypted wallet
+         LOGDEBUG << "could not open wallet with decryption error: " << e.what();
+         knownWalletFiles_.emplace(wltPath.stem().string(),
+            WalletFileInfo{ wltPath,
+               {}, {},
+               WalletLoadState::Encrypted, false
+            });
+      }
    }
 
    //parse the potential armory 1.35 wallet files
@@ -294,9 +308,78 @@ void WalletManager::loadWallets(const PassphraseLambda& passLbd)
          continue;
       }
 
-      //no equivalent v3.x wallet loaded, let's migrate it
-      auto wltPtr = a135.migrate(passLbd);
-      addWallet(wltPtr, wltPtr->getMainAccountID());
+      //no equivalent v3.x wallet loaded, add it to the list
+      knownWalletFiles_.emplace(wltPath.stem().string(),
+         WalletFileInfo{ wltPath,
+            a135.getID(), a135.getLabel(),
+            WalletLoadState::Legacy, false
+         });
+   }
+
+   std::map<std::string, WalletFileInfo> result;
+   for (const auto& entry : knownWalletFiles_) {
+      switch (entry.second.loadState)
+      {
+         case WalletLoadState::Migrated:
+         case WalletLoadState::Loaded:
+            break;
+
+         default:
+            result.emplace(entry);
+      }
+   }
+   return result;
+}
+
+/////////
+void WalletManager::unlockControlHeader(const std::string& path,
+   const PassphraseLambda& lbd)
+{
+   //sanity checks
+   if (path.empty() || lbd == nullptr) {
+      throw std::runtime_error("tried to unlock control header with empty id/lambda");
+   }
+
+   auto iter = knownWalletFiles_.find(path);
+   if (iter == knownWalletFiles_.end()) {
+      throw std::runtime_error("this file is not a known wallet: " + path);
+   }
+
+   auto wltPtr = loadWallet(iter->second.path, lbd);
+   iter->second.wltPtr = wltPtr;
+   iter->second.loadState = WalletLoadState::Ready;
+   iter->second.staged = true;
+   iter->second.walletId = wltPtr->getID();
+   iter->second.name = wltPtr->getLabel();
+}
+
+/////////
+bool WalletManager::stageWallet(const std::string& walletId, bool stage)
+{
+   for (auto& knownFile : knownWalletFiles_) {
+      if (knownFile.second.walletId == walletId) {
+         knownFile.second.staged = stage;
+         return true;
+      }
+   }
+   return false;
+}
+
+/////////
+void WalletManager::loadWallets()
+{
+   ReentrantLock lock(this);
+   listWallets();
+   for (auto& entry : knownWalletFiles_) {
+      auto& wltFile = entry.second;
+      if (wltFile.loadState == WalletLoadState::Ready && wltFile.staged) {
+         auto wltPtr = wltFile.wltPtr;
+         const auto& accIds = wltPtr->getAccountIDs();
+         for (const auto& accId : accIds) {
+            addWallet(wltPtr, accId);
+         }
+         wltFile.loadState = WalletLoadState::Loaded;
+      }
    }
 }
 

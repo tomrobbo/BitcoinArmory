@@ -153,7 +153,7 @@ namespace Armory
          void updateAddressEntryType(const AssetId&,
             AddressEntryType);
 
-         std::string getID(void) const;
+         const std::string& getID(void) const;
          virtual ReentrantLock lockDecryptedContainer(void);
          bool isDecryptedContainerLocked(void) const;
 
