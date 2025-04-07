@@ -10,8 +10,6 @@
 #include "SocketWritePayload.h"
 #include <cstring>
 #include <stdexcept>
-#include <string>
-#include <vector>
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
