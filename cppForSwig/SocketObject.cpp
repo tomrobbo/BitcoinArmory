@@ -85,7 +85,7 @@ void SocketPrototype::init()
 
 #ifdef _WIN32
    //somehow getaddrinfo doesnt handle localhost on Windows
-   string addrstr = addr_;
+   std::string addrstr = addr_;
    if(addr_ == "localhost") {
       addrstr = "127.0.0.1";
    }
@@ -539,7 +539,7 @@ void PersistentSocket::socketService_win()
       if (networkevents.lNetworkEvents & FD_READ)
       {
          //read socket
-         vector<uint8_t> readdata;
+         std::vector<uint8_t> readdata;
          readdata.resize(readIncrement);
 
          size_t totalread = 0;
