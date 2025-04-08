@@ -1296,29 +1296,28 @@ class ArmoryBridge(object):
    #############################################################################
    def restoreWallet(self, root: list[str], chaincode: list[str],
       spPass: str, callbackId: str):
-      restorePayload = Bridge.RestoreWalletPayload.new_message()
+      restoreStruct = Bridge.RestoreWalletStruct.new_message()
+      restoreStruct.callbackId = callbackId
 
       #root
       if len(root) > 0:
-         payloadRoot = restorePayload.init("root", len(root))
+         payloadRoot = restoreStruct.init("root", len(root))
          for i, r in enumerate(root):
             payloadRoot[i] = r
 
       #chaincode
       if len(chaincode) > 0:
-         payloadChaincode = restorePayload.init("chaincode", len(chaincode))
+         payloadChaincode = restoreStruct.init("chaincode", len(chaincode))
          for i, c in enumerate(chaincode):
             payloadChaincode[i] = c
 
       #passphrase
       if spPass:
-         restorePayload.spPass = spPass
+         restoreStruct.spPass = spPass
 
       packet = Bridge.ToBridge.new_message()
       utilsRequest = packet.init("utils")
-      restoreStruct = utilsRequest.init("restoreWallet")
-      restoreStruct.payload = restorePayload
-      restoreStruct.callbackId = callbackId
+      utilsRequest.restoreWallet = restoreStruct
       self.send(packet, False)
 
    #############################################################################

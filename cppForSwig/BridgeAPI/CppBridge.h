@@ -180,17 +180,18 @@ namespace Armory
          BinaryData getHighestUsedIndex(const std::string&,
             const Wallets::AddressAccountId&, MessageId);
 
-         //wallet & addresses
+         //create/generate wallet & addresses
          void extendAddressPool(const std::string&,
             const Wallets::AddressAccountId&, unsigned,
             const std::string&, MessageId);
          BinaryData getAddress(const std::string&,
             const Wallets::AddressAccountId&, uint32_t,
             uint32_t, MessageId);
-         std::string createWallet(
-            const std::string&, const std::string&, //label, descr
-            const SecureBinaryData&, //extra entropy
-            const Wallets::IO::CreationParams&);
+         void createWallet(
+            SecureBinaryData, //extra entropy
+            Wallets::IO::CreationParams,
+            const std::string&, //callbackId
+            MessageId);
          void createBackupStringForWallet(const std::string&,
             const std::string&, MessageId);
          void restoreWallet(

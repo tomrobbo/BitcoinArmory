@@ -85,7 +85,6 @@ class PyBtcAddress(object):
       self.precursorScript       = []
       self.isInitialized         = False
       self.chainIndex            = 0
-      self.useEncryption         = False
       self.hasPrivKey            = False
       self.addrType              = AddressEntryType_Default
       self.parentWallet          = parentWallet
@@ -157,7 +156,6 @@ class PyBtcAddress(object):
       self.addrType = payload.addrType
       self.addressString = payload.addressString
       self.hasPrivKey = payload.hasPrivKey
-      self.use_encryption = payload.usesEncryption
 
       self.precursorScript = payload.precursorScript
       self.isUsed = payload.isUsed

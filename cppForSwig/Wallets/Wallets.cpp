@@ -318,8 +318,8 @@ void AssetWallet_Single::readFromFile()
       bwKey.put_uint32_t(WALLET_DESCR_KEY);
       try
       {
-         auto labelRef = getDataRefForKey(sharedTx.get(), bwKey.getData());
-         description_ = string(labelRef.toCharPtr(), labelRef.getSize());
+         auto descrRef = getDataRefForKey(sharedTx.get(), bwKey.getData());
+         description_ = string(descrRef.toCharPtr(), descrRef.getSize());
       }
       catch(IO::NoEntryInWalletException& )
       {}
@@ -692,6 +692,12 @@ const std::string& AssetWallet::getID() const
    return walletID_;
 }
 
+////
+const std::string& AssetWallet::getMasterID() const
+{
+   return masterID_;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 ReentrantLock AssetWallet::lockDecryptedContainer(void)
 {
@@ -1055,7 +1061,7 @@ map<BinaryData, string> AssetWallet::getCommentMap() const
 void AssetWallet::setLabel(const string& str)
 {
    label_ = str;
-   
+
    BinaryWriter bwKey;
    bwKey.put_uint32_t(WALLET_LABEL_KEY);
    BinaryWriter bwData;
@@ -1179,7 +1185,7 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::createFromSeed(
    }
 
    //set the seed
-   result->setSeed(std::move(seed), params.passphrase);
+   result->setSeed(std::move(seed), params.privatePassphrase);
    return result;
 }
 
@@ -1224,12 +1230,12 @@ shared_ptr<AssetWallet_Single> AssetWallet_Single::createFromSeed(
    auto account135 = std::make_shared<AccountType_ArmoryLegacy>();
    account135->setMain(true);
 
-   if (!params.passphrase.empty()) {
+   if (!params.privatePassphrase.empty()) {
       //custom passphrase, set prompt lambda for the chain extention
       auto passphraseLambda =
          [&params](const std::set<EncryptionKeyId>&)->SecureBinaryData
       {
-         return params.passphrase;
+         return params.privatePassphrase;
       };
       walletPtr->decryptedData_->setPassphrasePromptLambda(passphraseLambda);
    }
@@ -1347,8 +1353,8 @@ shared_ptr<AssetWallet_Single> AssetWallet_Single::createFromSeed(
          " BIP32 seeds cannot lead to WO wallets");
    }
 
-   auto controlPassLbd =
-      [&params](const std::set<EncryptionKeyId>&)->SecureBinaryData
+   auto controlPassLbd = [&params](
+      const std::set<EncryptionKeyId>&)->SecureBinaryData
    {
       return params.controlPassphrase;
    };
@@ -1371,10 +1377,10 @@ shared_ptr<AssetWallet_Single> AssetWallet_Single::createFromSeed(
    setMainWallet(iface, walletId);
 
    //add accounts
-   auto passLbd =[&params](
+   auto passLbd = [&params](
       const std::set<EncryptionKeyId>&)->SecureBinaryData
    {
-      return params.passphrase;
+      return params.privatePassphrase;
    };
    walletPtr->setPassphrasePromptLambda(passLbd);
 
@@ -1496,7 +1502,7 @@ shared_ptr<AssetWallet_Single> AssetWallet_Single::initWalletDb(
 
    //init headerPtr object
    auto masterKeyStruct = IO::WalletDBInterface::initWalletHeaderObject(
-      headerPtr, params.passphrase, params.privateUnlock);
+      headerPtr, params.privatePassphrase, params.privateUnlock);
 
    //copy cipher to cycle the IV then encrypt the private root
    auto rootCipher = masterKeyStruct.cipher_->getCopy(
@@ -1570,6 +1576,13 @@ shared_ptr<AssetWallet_Single> AssetWallet_Single::initWalletDb(
          walletPtr->addMetaAccount(
             MetaAccountType::MetaAccount_Comments);
       }
+
+      if (!params.label.empty()) {
+         walletPtr->setLabel(params.label);
+      }
+      if (!params.description.empty()) {
+         walletPtr->setDescription(params.description);
+      }
    }
 
    //init walletptr from file
@@ -1604,7 +1617,7 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::initWalletDbWithPubRoot(
    headerPtr->walletID_ = walletID;
 
    IO::WalletDBInterface::initWalletHeaderObject(headerPtr,
-      params.controlPassphrase, params.publicUnlock);
+      params.controlPassphrase, params.controlUnlock);
    auto walletPtr = std::make_shared<AssetWallet_Single>(
       iface, headerPtr, masterID);
 
@@ -1637,6 +1650,13 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::initWalletDbWithPubRoot(
          walletPtr->addMetaAccount(
             MetaAccountType::MetaAccount_Comments);
       }
+
+      if (!params.label.empty()) {
+         walletPtr->setLabel(params.label);
+      }
+      if (!params.description.empty()) {
+         walletPtr->setDescription(params.description);
+      }   
    }
 
    //init walletptr from file

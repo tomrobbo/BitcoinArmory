@@ -1,3 +1,4 @@
+////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
 //  Copyright (C) 2025, goatpig                                               //
 //  Distributed under the MIT license                                         //
@@ -24,7 +25,7 @@ namespace Armory
          {
             const std::filesystem::path filePath;
             const PassphraseLambda controlPassFunc=nullptr;
-            const std::chrono::milliseconds unlock=250ms;
+            const std::chrono::milliseconds controlUnlock=250ms;
             const bool fileExists=true;
          };
 
@@ -34,15 +35,22 @@ namespace Armory
 
             //encrypts/unlocks private keys
             //2sec default unlock duration for private keys
-            const SecureBinaryData passphrase;
+            const SecureBinaryData privatePassphrase;
             const std::chrono::milliseconds privateUnlock=2000ms;
+            //const uint32_t maxPrivateUnlockMemUsage = 128 * 1024 * 1024;
 
             //encrypts/unlocks all data in the wallet
             const SecureBinaryData controlPassphrase;
-            const std::chrono::milliseconds publicUnlock=250ms;
+            const std::chrono::milliseconds controlUnlock=250ms;
+            //const uint32_t maxControlUnlockMemUsage = 128 * 1024 * 1024;
 
+            //to report on creation progress
+            Progress::Func progressFunc=nullptr;
+
+            //misc
             const size_t lookup{100};
-            const Progress::Func progressFunc=nullptr;
+            const std::string label{};
+            const std::string description{};
 
             ////////
             OpenFileParams getOpenFileParams(const std::string& masterId,
@@ -54,7 +62,7 @@ namespace Armory
                   (const std::set<EncryptionKeyId>&)->SecureBinaryData
                { return pass; };
 
-               return OpenFileParams{path, passLbd, publicUnlock, false};
+               return OpenFileParams{path, passLbd, controlUnlock, false};
             }
          };
       };

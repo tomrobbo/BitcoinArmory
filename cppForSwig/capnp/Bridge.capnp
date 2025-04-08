@@ -17,13 +17,12 @@ struct WalletData {
       isChange          @3 : Bool;
       assetId           @4 : Data;
       hasPrivKey        @5 : Bool;
-      usesEncryption    @6 : Bool;
 
-      prefixedHash      @7 : Types.Hash;
-      publicKey         @8 : Data;
-      precursorScript   @9 : Data;
+      prefixedHash      @6 : Types.Hash;
+      publicKey         @7 : Data;
+      precursorScript   @8 : Data;
 
-      addressString     @10: Text;
+      addressString     @9 : Text;
    }
 
    struct Comment {
@@ -34,6 +33,7 @@ struct WalletData {
    ##
    walletId             @0 : Types.WalletId;
    accountId            @1 : Types.AccountId;
+   masterId             @15: Text;
    dbId                 @2 : Text;
    useCount             @3 : Int64;
    lookupCount          @4 : Int64;
@@ -42,6 +42,7 @@ struct WalletData {
    defaultAddressType   @7 : UInt32;
    usesEncryption       @8 : Bool;
    kdfMemReq            @9 : UInt32;
+   path                 @14: Text;
 
    label                @10: Text;
    desc                 @11: Text;
@@ -50,41 +51,52 @@ struct WalletData {
    comments             @13: List(Comment);
 }
 
-## RestoreWallet messages
-struct RestorePrompt {
-   struct WalletMeta {
-      walletId          @0 : Text;
-      backupType        @1 : UInt32;
-   }
-
-   struct ChecksumResult {
-      lineId            @0 : UInt32;
-      value             @1 : Int32;
-   }
-
-   union {
-      checkWalletId     @0 : WalletMeta;
-      getPassphrases    @1 : Void;
-      decryptError      @2 : Void;
-      failure           @3 : Text; #error verbose
-      success           @4 : Void;
-      typeError         @5 : Text;
-      checksumError     @6 : List(ChecksumResult);
-      checksumMismatch  @7 : List(ChecksumResult);
-   }
-}
-
-struct RestoreWalletPayload {
-   root        @0 : List(Text);
-   chaincode   @1 : List(Text);
-   spPass      @2 : Text;
-}
-
 ###############################
 # Notifications
 ###############################
 
 struct Notification {
+   ## Wallet creation progress notifs
+   struct WalletProgress {
+      union {
+         unset          @0 : Void;
+
+         createFile     @1 : Text;
+         initFile       @2 : Types.WalletId;
+         readFile       @3 : Types.WalletId;
+         createAccount  @4 : Text;
+
+         extendChain : group {
+            total       @5 : UInt32;
+            current     @6 : UInt32;
+         }
+      }
+   }
+
+   ## RestoreWallet notifs
+   struct RestorePrompt {
+      struct WalletMeta {
+         walletId          @0 : Text;
+         backupType        @1 : UInt32;
+      }
+
+      struct ChecksumResult {
+         lineId            @0 : UInt32;
+         value             @1 : Int32;
+      }
+
+      union {
+         checkWalletId     @0 : WalletMeta;
+         getPassphrases    @1 : Void;
+         decryptError      @2 : Void;
+         failure           @3 : Text; #error verbose
+         success           @4 : Void;
+         typeError         @5 : Text;
+         checksumError     @6 : List(ChecksumResult);
+         checksumMismatch  @7 : List(ChecksumResult);
+      }
+   }
+
    #callbackId is set if this notification is the result
    #of a RPC request that provided said id
    callbackId        @0 : Text;
@@ -98,13 +110,14 @@ struct Notification {
       refresh        @6 : List(Text);
       newBlock       @7 : Types.Height;
       disconnected   @8 : Void;
-      progress       @9 : Types.ScanProgress;
+      scanProgress   @9 : Types.ScanProgress;
       nodeStatus     @10: Types.NodeStatus;
       zeroConfs      @11: Types.TxLedger;
       error          @12: Text;
       cleanup        @13: Void;
       unlockRequest  @14: List(Text);
-      restore        @15: RestorePrompt;
+      walletProgress @15: WalletProgress;
+      restore        @16: RestorePrompt;
    }
 }
 
@@ -423,7 +436,6 @@ struct CoinSelectionReply {
    }
 }
 
-
 ###############################
 # Signer
 ###############################
@@ -517,19 +529,28 @@ struct SignerReply {
 struct UtilsRequest {
    struct CreateWalletStruct
    {
-      lookup            @0 : UInt32;
-      passphrase        @1 : Text;
-      controlPassphrase @2 : Text;
-      extraEntropy      @3 : Data;
+      callbackId        @0 : Text;
+      lookup            @1 : UInt32;
+      extraEntropy      @2 : Data;
 
-      label             @4 : Text;
-      description       @5 : Text;
+      label             @3 : Text;
+      description       @4 : Text;
+
+      passphrase        @5 : Text;
+      privKdfTargetMs   @6 : UInt32;
+      privKdfTargetMem  @7 : UInt32;
+
+      controlPassphrase @8 : Text;
+      ctrlKdfTargetMs   @9 : UInt32;
+      ctrlKdfTargetMem  @10: UInt32;
    }
 
    struct RestoreWalletStruct
    {
-      payload     @0 : RestoreWalletPayload;
-      callbackId  @1 : Text;
+      root        @0 : List(Text);
+      chaincode   @1 : List(Text);
+      spPass      @2 : Text;
+      callbackId  @3 : Text;
    }
 
    union {

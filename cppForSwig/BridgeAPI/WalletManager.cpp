@@ -1066,7 +1066,7 @@ std::shared_ptr<Wallets::AssetWallet_Single> Armory135Header::migrate(
       path_.parent_path(),
       privKeyPass, 2000ms,
       {}, 250ms,
-      (size_t)highestIndex, nullptr
+      nullptr, (size_t)highestIndex
    };
 
    std::shared_ptr<Wallets::AssetWallet_Single> wallet;

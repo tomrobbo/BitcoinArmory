@@ -40,8 +40,8 @@ WLT_DATATYPE_TXCOMMENT   = 2
 WLT_DATATYPE_OPEVAL      = 3
 WLT_DATATYPE_DELETED     = 4
 
-DEFAULT_COMPUTE_TIME_TARGET = 0.25
-DEFAULT_MAXMEM_LIMIT        = 32*1024*1024
+DEFAULT_COMPUTE_TIME_TARGET = 2
+DEFAULT_MAXMEM_LIMIT        = 128*1024*1024
 
 PYROOTPKCCVER = 1 # Current version of root pub key/chain code backup format
 PYROOTPKCCVERMASK = 0x7F
@@ -492,16 +492,14 @@ class PyBtcWallet(object):
 
       DO NOT CALL THIS FROM BDM METHOD.  IT MAY DEADLOCK.
       """
-
       LOGINFO('***Creating new deterministic wallet')
 
-      addrPoolSize = 10 if USE_TESTNET or USE_REGTEST else CLI_OPTIONS.keypool
-
       #create cpp wallet
+      addrPoolSize = 10 if USE_TESTNET or USE_REGTEST else CLI_OPTIONS.keypool
       walletId = TheBridge.utils.createWallet(
          addrPoolSize,
          passphrase, "",
-         #kdfTargSec, kdfMaxMem,
+         kdfTargSec, kdfMaxMem,
          shortLabel, longLabel,
          extraEntropy)
       return PyBtcWallet().loadFromBridge(walletId)

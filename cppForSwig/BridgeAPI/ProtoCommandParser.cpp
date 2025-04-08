@@ -267,8 +267,8 @@ namespace
       std::shared_ptr<CppBridge> bridge, MessageId referenceId,
       WalletRequest::Reader& request)
    {
-      auto walletId = request.getWalletId();
-      auto accountIdStr = request.getAccountId();
+      const std::string walletId = request.getWalletId();
+      const std::string accountIdStr = request.getAccountId();
       Wallets::AddressAccountId accountId;
       try {
          accountId = Wallets::AddressAccountId::fromHex(accountIdStr);
@@ -982,6 +982,7 @@ namespace
          case UtilsRequest::CREATE_WALLET:
          {
             auto args = request.getCreateWallet();
+            std::string callbackId = args.getCallbackId();
 
             auto capnPassphrase = args.getPassphrase();
             SecureBinaryData sbdPass(
@@ -990,48 +991,37 @@ namespace
             );
 
             auto capnControlPass = args.getControlPassphrase();
-            SecureBinaryData sbdControl(
+            SecureBinaryData sbdControl{
                (uint8_t*)capnControlPass.begin(),
                (uint8_t*)capnControlPass.end()
-            );
+            };
 
             auto capnEntropy = args.getExtraEntropy();
-            SecureBinaryData sbdEntropy(
+            SecureBinaryData sbdEntropy{
                (uint8_t*)capnEntropy.begin(),
                (uint8_t*)capnEntropy.end()
-            );
+            };
 
-            auto wltId = bridge->createWallet(
-               args.getLabel(), args.getDescription(),
-               sbdEntropy, Wallets::IO::CreationParams {
+            bridge->createWallet(
+               std::move(sbdEntropy),
+               Wallets::IO::CreationParams {
                   bridge->getDataDir(),
-                  sbdPass, 2000ms,
-                  sbdControl, 250ms,
+                  std::move(sbdPass), std::chrono::milliseconds(args.getPrivKdfTargetMs()),
+                  std::move(sbdControl), 250ms,
+                  nullptr,
                   args.getLookup(),
-                  nullptr
-               }
+                  args.getLabel(), args.getDescription()},
+               callbackId, referenceId
             );
-
-            capnp::MallocMessageBuilder message;
-            auto fromBridge = message.initRoot<FromBridge>();
-            auto reply = fromBridge.initReply();
-            reply.setReferenceId(referenceId);
-            reply.setSuccess(true);
-
-            auto utilsReply = reply.initUtils();
-            utilsReply.setCreateWallet(wltId);
-
-            response = serializeCapnp(message);
             break;
          }
 
          case UtilsRequest::RESTORE_WALLET:
          {
             auto walletRequest = request.getRestoreWallet();
-            auto payload = walletRequest.getPayload();
 
-            auto roots = payload.getRoot();
-            auto chaincodes = payload.getChaincode();
+            auto roots = walletRequest.getRoot();
+            auto chaincodes = walletRequest.getChaincode();
             std::vector<std::string_view> lines;
             lines.reserve(roots.size() + chaincodes.size());
             for (const auto& root : roots) {
@@ -1039,11 +1029,12 @@ namespace
                   std::string_view{root.begin(), root.size()});
             }
             for (const auto& chaincode : chaincodes) {
-               lines.emplace_back(
-                  std::string_view{chaincode.begin(), chaincode.size()});
+               lines.emplace_back(std::string_view{
+                  chaincode.begin(), chaincode.size()
+               });
             }
 
-            auto spPassCapnp = payload.getSpPass();
+            auto spPassCapnp = walletRequest.getSpPass();
             std::string_view spPass{spPassCapnp.begin(), spPassCapnp.size()};
 
             auto callbackIdCapnp = walletRequest.getCallbackId();

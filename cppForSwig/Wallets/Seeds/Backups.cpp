@@ -1099,7 +1099,7 @@ RestoreResult Helpers::restoreFromBackup(
    }
 
    //prompt for passwords
-   BinaryDataRef pass = params.passphrase.getRef();
+   BinaryDataRef pass = params.privatePassphrase.getRef();
    BinaryDataRef control = params.controlPassphrase.getRef();
    if (pass.empty()) {
       auto reply = callback(RestorePrompt{RestorePromptType::Passphrases});
@@ -1113,8 +1113,8 @@ RestoreResult Helpers::restoreFromBackup(
 
    IO::CreationParams paramsCopy{ params.folder,
       pass, params.privateUnlock,
-      control, params.publicUnlock,
-      params.lookup, params.progressFunc
+      control, params.controlUnlock,
+      params.progressFunc, params.lookup
    };
 
    //return wallet

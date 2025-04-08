@@ -469,7 +469,7 @@ shared_ptr<WalletHeader_Control> WalletDBInterface::setupControlDB(
       controlPass = params.controlPassFunc({});
    }
    auto keyStruct = initWalletHeaderObject(headerPtr,
-      std::move(controlPass), params.unlock);
+      std::move(controlPass), params.controlUnlock);
 
    //setup controlDB decrypted data container
    auto decryptedData = std::make_shared<DecryptedDataContainer>(

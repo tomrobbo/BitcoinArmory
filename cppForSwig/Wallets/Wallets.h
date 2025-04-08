@@ -154,6 +154,7 @@ namespace Armory
             AddressEntryType);
 
          const std::string& getID(void) const;
+         const std::string& getMasterID(void) const;
          virtual ReentrantLock lockDecryptedContainer(void);
          bool isDecryptedContainerLocked(void) const;
 

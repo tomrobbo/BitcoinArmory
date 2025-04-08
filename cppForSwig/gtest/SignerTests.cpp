@@ -383,7 +383,7 @@ TEST_F(SignerTest, SpendTest_SizeEstimates)
       homedir_,
       {}, 1ms,
       {}, 1ms,
-      5
+      nullptr, 5
    };
 
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
@@ -772,7 +772,7 @@ TEST_F(SignerTest, SpendTest_P2WPKH)
    //// create assetWlt ////
    IO::CreationParams params {
       homedir_,
-      {}, 1ms, {}, 1ms, 5
+      {}, 1ms, {}, 1ms, nullptr, 5
    };
 
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
@@ -1018,7 +1018,7 @@ TEST_F(SignerTest, SpendTest_MixedInputTypes)
 
    //// create assetWlt ////
    IO::CreationParams params {
-      homedir_, {}, 1ms, {}, 1ms, 5
+      homedir_, {}, 1ms, {}, 1ms, nullptr, 5
    };
 
    auto rawEntropy = CryptoPRNG::generateRandom(32);
@@ -1278,7 +1278,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_1of3)
    };
 
    IO::CreationParams params {
-      homedir_, {}, 1ms, {}, 1ms, 3
+      homedir_, {}, 1ms, {}, 1ms, nullptr, 3
    };
 
    //// create 3 assetWlt ////
@@ -1561,7 +1561,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_2of3_NativeP2WSH)
    };
 
    IO::CreationParams params {
-      homedir_, {}, 1ms, {}, 1ms, 3
+      homedir_, {}, 1ms, {}, 1ms, nullptr, 3
    };
 
    //// create 3 assetWlt ////
@@ -1942,7 +1942,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs)
       TestChain::scrAddrE
    };
    IO::CreationParams params {
-      homedir_, {}, 1ms, {}, 1ms, 3
+      homedir_, {}, 1ms, {}, 1ms, nullptr, 3
    };
 
    //// create 2 assetWlt ////
@@ -2230,7 +2230,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs_Strings)
       TestChain::scrAddrE
    };
    IO::CreationParams params {
-      homedir_, {}, 1ms, {}, 1ms, 3
+      homedir_, {}, 1ms, {}, 1ms, nullptr, 3
    };
 
    //// create 2 assetWlt ////
@@ -2517,7 +2517,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs_StringsLegacy)
       TestChain::scrAddrE
    };
    IO::CreationParams params {
-      homedir_, {}, 1ms, {}, 1ms, 3
+      homedir_, {}, 1ms, {}, 1ms, nullptr, 3
    };
 
    //// create 2 assetWlt ////
@@ -2821,7 +2821,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning)
       TestChain::scrAddrE
    };
    IO::CreationParams params {
-      homedir_, {}, 1ms, {}, 1ms, 3
+      homedir_, {}, 1ms, {}, 1ms, nullptr, 3
    };
 
    //// create 2 assetWlt ////
@@ -3141,7 +3141,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning_GetUnsignedTx)
       TestChain::scrAddrE
    };
    IO::CreationParams params {
-      homedir_, {}, 1ms, {}, 1ms, 3
+      homedir_, {}, 1ms, {}, 1ms, nullptr, 3
    };
 
    //// create 2 assetWlt ////
@@ -3501,7 +3501,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning_GetUnsignedTx_Neste
       TestChain::scrAddrE
    };
    IO::CreationParams params{
-      homedir_, {}, 1ms, {}, 1ms, 3
+      homedir_, {}, 1ms, {}, 1ms, nullptr, 3
    };
 
    //// create 2 assetWlt ////
@@ -3914,7 +3914,7 @@ TEST_F(SignerTest, GetUnsignedTxId)
       TestChain::scrAddrE
    };
    IO::CreationParams params{
-      homedir_, {}, 1ms, {}, 1ms, 3
+      homedir_, {}, 1ms, {}, 1ms, nullptr, 3
    };
 
    //// create 2 assetWlt ////
@@ -4275,7 +4275,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2WPKH)
 
    //// create assetWlt ////
    IO::CreationParams params{
-      homedir_, {}, 1ms, {}, 1ms, 0
+      homedir_, {}, 1ms, {}, 1ms, nullptr, 0
    };
 
    //create empty bip32 wallet
@@ -4533,7 +4533,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2WPKH_WOResolution_fromWOCopy)
    std::filesystem::path woPath, wltPath;
 
    IO::CreationParams params{
-      homedir_, {}, 1ms, {}, 1ms, 0
+      homedir_, {}, 1ms, {}, 1ms, nullptr, 0
    };
 
    Signer signer3;
@@ -4819,7 +4819,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2WPKH_WOResolution_fromXPub)
 
    //create empty bip32 wallet
    IO::CreationParams params{
-      homedir_, {}, 1ms, {}, 1ms, 0
+      homedir_, {}, 1ms, {}, 1ms, nullptr, 0
    };
 
    auto rawEntropy = CryptoPRNG::generateRandom(32);
@@ -5088,7 +5088,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2PK)
 
    //// create assetWlt ////
    IO::CreationParams params{
-      homedir_, {}, 1ms, {}, 1ms, 3
+      homedir_, {}, 1ms, {}, 1ms, nullptr, 3
    };
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
       new Armory::Seeds::ClearTextSeed_Armory135());
@@ -5316,7 +5316,7 @@ TEST_F(SignerTest, SpendTest_FromAccount_Reload)
 
    //// create assetWlt ////
    IO::CreationParams params{
-      homedir_, {}, 1ms, {}, 1ms, 0
+      homedir_, {}, 1ms, {}, 1ms, nullptr, 0
    };
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
       new Armory::Seeds::ClearTextSeed_BIP32(
@@ -5705,7 +5705,7 @@ TEST_F(SignerTest, SpendTest_BIP32_Accounts)
 
    auto passphrase = SecureBinaryData::fromString("test");
    IO::CreationParams params{
-      homedir_, passphrase, 1ms, {}, 1ms, 0
+      homedir_, passphrase, 1ms, {}, 1ms, nullptr, 0
    };
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
       new Armory::Seeds::ClearTextSeed_BIP32(
@@ -5985,7 +5985,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Armory135)
       homedir_,
       passphrase, 1ms,
       SecureBinaryData::fromString("control"), 1ms,
-      5
+      nullptr, 5
    };
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
       new Armory::Seeds::ClearTextSeed_Armory135());
@@ -6232,7 +6232,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_BIP32)
       homedir_,
       passphrase, 1ms,
       SecureBinaryData::fromString("control"), 1ms,
-      5
+      nullptr, 5
    };
 
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
@@ -6481,7 +6481,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Salted)
       homedir_,
       passphrase, 1ms,
       SecureBinaryData::fromString("control"), 1ms,
-      0
+      nullptr, 0
    };
 
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
@@ -6761,7 +6761,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_ECDH)
       homedir_,
       passphrase, 1ms,
       SecureBinaryData::fromString("control"), 1ms,
-      0
+      nullptr, 0
    };
 
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
@@ -7028,7 +7028,7 @@ TEST_F(SignerTest, SpendTest_InjectSignature)
    };
 
    IO::CreationParams params{
-      homedir_, {}, 1ms, {}, 1ms, 5
+      homedir_, {}, 1ms, {}, 1ms, nullptr, 5
    };
 
    //// create assetWlt ////
@@ -7388,7 +7388,7 @@ TEST_F(SignerTest, SpendTest_InjectSignature_Multisig)
 
    //// create 3 assetWlt ////
    IO::CreationParams params{
-      homedir_, {}, 1ms, {}, 1ms, 3
+      homedir_, {}, 1ms, {}, 1ms, nullptr, 3
    };
 
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed1(
@@ -9113,7 +9113,7 @@ TEST_F(ExtrasTest, PSBT)
 
    //create a wallet from that seed to test bip32 on the fly derivation
    IO::CreationParams params{
-      homedir_, {}, 1ms, {}, 1ms, 0
+      homedir_, {}, 1ms, {}, 1ms, nullptr, 0
    };
    auto wallet = AssetWallet_Single::createFromSeed(
       Armory::Seeds::ClearTextSeed_BIP32::fromBase58(b58seed),
@@ -9583,7 +9583,7 @@ TEST_F(ExtrasTest_Mainnet, Bip32PathDiscovery)
 
    std::filesystem::path wltPath;
    {
-      IO::CreationParams params{homedir_, {}, 1ms, {}, 1ms, 10};
+      IO::CreationParams params{homedir_, {}, 1ms, {}, 1ms, nullptr, 10};
       std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
          new Armory::Seeds::ClearTextSeed_BIP32(
             rawEntropy, Armory::Seeds::SeedType::BIP32_Structured));
