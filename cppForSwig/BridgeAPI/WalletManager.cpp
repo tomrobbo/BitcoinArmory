@@ -142,7 +142,7 @@ const std::string& WalletManager::registerWallet(const std::string& wltId,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::shared_ptr<WalletContainer> WalletManager::addWallet(
+std::shared_ptr<WalletContainer> WalletManager::addAccount(
    std::shared_ptr<Wallets::AssetWallet> wltPtr,
    const Wallets::AddressAccountId& accId)
 {
@@ -179,6 +179,15 @@ std::shared_ptr<WalletContainer> WalletManager::addWallet(
    return wltCont;
 }
 
+////
+void WalletManager::addAllAccounts(std::shared_ptr<Wallets::AssetWallet> wltPtr)
+{
+   const auto& accIds = wltPtr->getAccountIDs();
+   for (const auto& accId : accIds) {
+      addAccount(wltPtr, accId);
+   }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<WalletContainer> WalletManager::createNewWallet(
    const SecureBinaryData& extraEntropy,
@@ -194,7 +203,7 @@ std::shared_ptr<WalletContainer> WalletManager::createNewWallet(
       root, Seeds::ClearTextSeed_Armory135::LegacyType::Armory200);
    auto wallet = Wallets::AssetWallet_Single::createFromSeed(
       std::move(seed), params);
-   return addWallet(wallet, wallet->getMainAccountID());
+   return addAccount(wallet, wallet->getMainAccountID());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -243,11 +252,10 @@ void WalletManager::deleteWallet(const std::string& wltId)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::shared_ptr<Wallets::AssetWallet> WalletManager::loadWallet(
-   const std::filesystem::path& path, const PassphraseLambda& passLbd)
+void WalletManager::loadWallet(const Wallets::IO::OpenFileParams& params)
 {
-   return Wallets::AssetWallet::loadMainWalletFromFile(
-      Wallets::IO::OpenFileParams{path, passLbd});
+   auto wltPtr = Wallets::AssetWallet::loadMainWalletFromFile(params);
+   addAllAccounts(wltPtr);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -276,9 +284,11 @@ std::map<std::string, WalletFileInfo> WalletManager::listWallets()
    ReentrantLock lock(this);
    for (const auto& wltPath : walletPaths) {
       try {
-         auto wltPtr = loadWallet(wltPath, nullptr);
+         auto wltPtr = Wallets::AssetWallet::loadMainWalletFromFile(
+            Wallets::IO::OpenFileParams{wltPath, nullptr});
+
          knownWalletFiles_.emplace(wltPath.stem().string(),
-            WalletFileInfo{ wltPath,
+            WalletFileInfo{wltPath,
                wltPtr->getID(), wltPtr->getLabel(),
                WalletLoadState::Ready, true, wltPtr
             });
@@ -345,7 +355,8 @@ void WalletManager::unlockControlHeader(const std::string& path,
       throw std::runtime_error("this file is not a known wallet: " + path);
    }
 
-   auto wltPtr = loadWallet(iter->second.path, lbd);
+   auto wltPtr = Wallets::AssetWallet::loadMainWalletFromFile(
+      Wallets::IO::OpenFileParams{iter->second.path, lbd});
    iter->second.wltPtr = wltPtr;
    iter->second.loadState = WalletLoadState::Ready;
    iter->second.staged = true;
@@ -374,10 +385,7 @@ void WalletManager::loadWallets()
       auto& wltFile = entry.second;
       if (wltFile.loadState == WalletLoadState::Ready && wltFile.staged) {
          auto wltPtr = wltFile.wltPtr;
-         const auto& accIds = wltPtr->getAccountIDs();
-         for (const auto& accId : accIds) {
-            addWallet(wltPtr, accId);
-         }
+         addAllAccounts(wltPtr);
          wltFile.loadState = WalletLoadState::Loaded;
       }
    }

@@ -1029,9 +1029,8 @@ namespace
                   std::string_view{root.begin(), root.size()});
             }
             for (const auto& chaincode : chaincodes) {
-               lines.emplace_back(std::string_view{
-                  chaincode.begin(), chaincode.size()
-               });
+               lines.emplace_back(
+                  std::string_view{chaincode.begin(), chaincode.size()});
             }
 
             auto spPassCapnp = walletRequest.getSpPass();
@@ -1040,7 +1039,14 @@ namespace
             auto callbackIdCapnp = walletRequest.getCallbackId();
             std::string_view callbackId{callbackIdCapnp.begin(), callbackIdCapnp.size()};
 
-            bridge->restoreWallet(lines, spPass, callbackId);
+            std::chrono::milliseconds privUnlockTarget{
+               walletRequest.getPrivKdfTargetMs()};
+            std::chrono::milliseconds ctrlUnlockTarget{
+               walletRequest.getCtrlKdfTargetMs()};
+
+            bridge->restoreWallet(lines, spPass,
+               privUnlockTarget, ctrlUnlockTarget,
+               callbackId, referenceId);
             break;
          }
 

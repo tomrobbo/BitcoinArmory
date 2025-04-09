@@ -86,11 +86,11 @@ struct Notification {
       }
 
       union {
-         checkWalletId     @0 : WalletMeta;
-         getPassphrases    @1 : Void;
-         decryptError      @2 : Void;
-         failure           @3 : Text; #error verbose
-         success           @4 : Void;
+         unset             @0 : Void;
+         checkWalletId     @1 : WalletMeta;
+         getPassphrases    @2 : Void;
+         decryptError      @3 : Void;
+         failure           @4 : Text; #error verbose
          typeError         @5 : Text;
          checksumError     @6 : List(ChecksumResult);
          checksumMismatch  @7 : List(ChecksumResult);
@@ -547,10 +547,16 @@ struct UtilsRequest {
 
    struct RestoreWalletStruct
    {
-      root        @0 : List(Text);
-      chaincode   @1 : List(Text);
-      spPass      @2 : Text;
-      callbackId  @3 : Text;
+      root              @0 : List(Text);
+      chaincode         @1 : List(Text);
+      spPass            @2 : Text;
+      callbackId        @3 : Text;
+
+      privKdfTargetMs   @4 : UInt32;
+      privKdfTargetMem  @5 : UInt32;
+
+      ctrlKdfTargetMs   @6 : UInt32;
+      ctrlKdfTargetMem  @7 : UInt32;
    }
 
    union {

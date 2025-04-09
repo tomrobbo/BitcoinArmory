@@ -282,6 +282,10 @@ private:
 private:
    void initAfterLock(void) override {}
    void cleanUpBeforeUnlock(void) override {}
+   std::shared_ptr<WalletContainer> addAccount(
+      std::shared_ptr<Armory::Wallets::AssetWallet>,
+      const Armory::Wallets::AddressAccountId&);
+   void addAllAccounts(std::shared_ptr<Armory::Wallets::AssetWallet>);
 
 public:
    WalletManager(const std::filesystem::path&);
@@ -289,8 +293,6 @@ public:
    /* pre wallets loading calls */
    std::map<std::string, WalletFileInfo> listWallets(void);
    void unlockControlHeader(const std::string&, const PassphraseLambda&);
-   std::shared_ptr<Armory::Wallets::AssetWallet> loadWallet(
-      const std::filesystem::path&, const PassphraseLambda&);
    bool stageWallet(const std::string&, bool);
    void loadWallets(void);
 
@@ -314,9 +316,7 @@ public:
       getAccountIdMap(void) const;
 
    /* wallet add/create/delete */
-   std::shared_ptr<WalletContainer> addWallet(
-      std::shared_ptr<Armory::Wallets::AssetWallet>,
-      const Armory::Wallets::AddressAccountId&);
+   void loadWallet(const Armory::Wallets::IO::OpenFileParams&);
    std::shared_ptr<WalletContainer> createNewWallet(
       const SecureBinaryData&, //extra entropy
       const Armory::Wallets::IO::CreationParams&);

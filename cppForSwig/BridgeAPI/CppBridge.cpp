@@ -318,6 +318,97 @@ namespace
          ));
       }
    }
+
+   std::function<void(std::unique_ptr<Wallets::Progress::State>)>
+   getWalletProgressLbd (CppBridge* bridgePtr, const std::string& callbackId)
+   {
+      return [bridgePtr, callbackId](
+         std::unique_ptr<Wallets::Progress::State> statePtr)
+      {
+         capnp::MallocMessageBuilder notifMessage;
+         auto fromBridge = notifMessage.initRoot<FromBridge>();
+         auto notif = fromBridge.initNotification();
+         notif.setCallbackId(callbackId);
+         auto prog = notif.initWalletProgress();
+
+         switch (statePtr->type())
+         {
+            case Wallets::Progress::StateEnum::CreateFile:
+            {
+               auto stateCf = dynamic_cast<Wallets::Progress::CreateFile*>(
+                  statePtr.get());
+               if (stateCf != nullptr) {
+                  prog.setCreateFile(stateCf->path().stem().string());
+               }
+               break;
+            }
+
+            case Wallets::Progress::StateEnum::InitFile:
+            {
+               auto stateInit = dynamic_cast<Wallets::Progress::InitFile*>(
+                  statePtr.get());
+               if (stateInit != nullptr) {
+                  prog.setInitFile(stateInit->masterId());
+               }
+               break;
+            }
+
+            case Wallets::Progress::StateEnum::ReadFile:
+            {
+               auto stateRead = dynamic_cast<Wallets::Progress::ReadFile*>(
+                  statePtr.get());
+               if (stateRead != nullptr) {
+                  prog.setReadFile(stateRead->masterId());
+               }
+               break;
+            }
+
+            case Wallets::Progress::StateEnum::CreateAccount:
+            {
+               auto stateAcc = dynamic_cast<Wallets::Progress::CreateAccount*>(
+                  statePtr.get());
+               if (stateAcc != nullptr) {
+                  prog.setCreateAccount(stateAcc->accPtr()->name());
+               }
+               break;
+            }
+
+            case Wallets::Progress::StateEnum::ExtendChain:
+            {
+               auto stateExt = dynamic_cast<Wallets::Progress::ExtendChain*>(
+                  statePtr.get());
+               if (stateExt != nullptr) {
+                  auto extNotif = prog.initExtendChain();
+                  extNotif.setTotal(stateExt->lookup());
+               }
+               break;
+            }
+         }
+
+         auto notifSerialized = serializeCapnp(notifMessage);
+         bridgePtr->writeToClient(notifSerialized);
+      };
+   }
+
+   void sendSuccess(CppBridge* bridgePtr, MessageId refId)
+   {
+      capnp::MallocMessageBuilder message;
+      auto reply = message.initRoot<FromBridge>().initReply();
+      reply.setReferenceId(refId);
+      reply.setSuccess(true);
+      auto serialized = serializeCapnp(message);
+      bridgePtr->writeToClient(serialized);
+   }
+
+   void sendCleanup(CppBridge* bridgePtr, const std::string& callbackId)
+   {
+      capnp::MallocMessageBuilder message;
+      auto notif = message.initRoot<FromBridge>().initNotification();
+      notif.setCallbackId(callbackId);
+      notif.setCleanup();
+      auto serialized = serializeCapnp(message);
+      bridgePtr->writeToClient(serialized);
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -762,7 +853,9 @@ void CppBridge::createBackupStringForWallet(const std::string& wltId,
 void CppBridge::restoreWallet(
    const std::vector<std::string_view>& lines_sv,
    const std::string_view& spPass_sv,
-   const std::string_view& callbackId)
+   std::chrono::milliseconds privUnlockTarget,
+   std::chrono::milliseconds ctrlUnlockTarget,
+   const std::string_view& callbackId, MessageId refId)
 {
    //NOTE: easy16 only for now, will need a dedicated call for BIP39
 
@@ -776,11 +869,19 @@ void CppBridge::restoreWallet(
    */
 
    auto backup = Seeds::Backup_Easy16::fromLines(lines_sv, spPass_sv);
+   if (privUnlockTarget == 0ms) {
+      privUnlockTarget = 2000ms;
+   }
+   if (ctrlUnlockTarget == 0ms) {
+      ctrlUnlockTarget = 250ms;
+   }
 
    //
-   auto restoreLbd = [this](
-      std::unique_ptr<Seeds::Backup_Easy16> backup,
-      const std::string callbackId)
+   auto restoreLbd = [
+      this, refId,
+      callbackId=std::string{callbackId},
+      privUnlockTarget, ctrlUnlockTarget](
+      std::unique_ptr<Seeds::Backup_Easy16> backup)
    {
       auto createCallbackMessage = [callbackId](
          const Seeds::RestorePrompt& prompt, uint32_t notifCounter)->BinaryData
@@ -855,12 +956,6 @@ void CppBridge::restoreWallet(
                break;
             }
 
-            case Seeds::RestorePromptType::Success:
-            {
-               restore.setSuccess();
-               break;
-            }
-
             default:
                throw std::runtime_error("invalid prompt type");
          }
@@ -900,17 +995,17 @@ void CppBridge::restoreWallet(
 
       auto tempDir = wltManager_->getWalletDir() / "temp";
       try {
-         //create a a temp folder where the wallet will be generated
+         //create a temp folder where the wallet will be generated
          FileUtils::createDirectory(tempDir);
 
          //create wallet from backup
          Wallets::IO::CreationParams params{
             tempDir,
             //passphrase + default unlock time, leave empty to prompt the user
-            {}, 2000ms,
+            {}, privUnlockTarget,
             //control passphrase + default unlock time, same treatment
-            {}, 250ms,
-            nullptr, //progress callback
+            {}, ctrlUnlockTarget,
+            getWalletProgressLbd(this, callbackId),
             100 //address lookup
          };
 
@@ -963,15 +1058,25 @@ void CppBridge::restoreWallet(
          std::filesystem::rename(newWltPath, newPath);
 
          //reload new wallet
-         wltManager_->loadWallet(newPath, passLbd);
+         wltManager_->loadWallet(Wallets::IO::OpenFileParams{
+            newPath, passLbd});
 
          //delete old wallet if there's one
          if (!oldWltPath.empty() && std::filesystem::exists(oldWltPath)) {
             std::filesystem::remove(oldWltPath);
          }
 
-         //signal caller of success
-         callback(Seeds::RestorePrompt{Seeds::RestorePromptType::Success});
+         //put first address in use, or the GUI will have nothing to display
+         {
+            auto wltContainer = wltManager_->getWalletContainer(newWltID);
+            auto wltPtr = wltContainer->getWalletPtr();
+            auto accPtr = wltContainer->getAddressAccount();
+            accPtr->getNewAddress(wltPtr->getIface());
+         }
+
+         //cleanup & success
+         sendCleanup(this, callbackId);
+         sendSuccess(this, refId);
       } catch (const Armory::Seeds::RestoreUserException& e) {
          /*
          These type of errors are the result of user actions. They should have
@@ -995,8 +1100,7 @@ void CppBridge::restoreWallet(
       FileUtils::removeDirectory(tempDir);
    };
 
-   auto worker = std::thread(restoreLbd,
-      std::move(backup), std::string{callbackId});
+   auto worker = std::thread(restoreLbd, std::move(backup));
    if (worker.joinable()) {
       worker.detach();
    }
@@ -1337,74 +1441,10 @@ void CppBridge::createWallet(SecureBinaryData extraEntropy,
    Wallets::IO::CreationParams params, const std::string& callbackId,
    MessageId refId)
 {
-   //pass progress notifs to caller
-   params.progressFunc = [this, callbackId](
-      std::unique_ptr<Wallets::Progress::State> statePtr)
-   {
-      capnp::MallocMessageBuilder notifMessage;
-      auto fromBridge = notifMessage.initRoot<FromBridge>();
-      auto notif = fromBridge.initNotification();
-      notif.setCallbackId(callbackId);
-      auto prog = notif.initWalletProgress();
+   //setup progress notif
+   params.progressFunc = getWalletProgressLbd(this, callbackId);
 
-      switch (statePtr->type())
-      {
-         case Wallets::Progress::StateEnum::CreateFile:
-         {
-            auto stateCf = dynamic_cast<Wallets::Progress::CreateFile*>(
-               statePtr.get());
-            if (stateCf != nullptr) {
-               prog.setCreateFile(stateCf->path().stem().string());
-            }
-            break;
-         }
-
-         case Wallets::Progress::StateEnum::InitFile:
-         {
-            auto stateInit = dynamic_cast<Wallets::Progress::InitFile*>(
-               statePtr.get());
-            if (stateInit != nullptr) {
-               prog.setInitFile(stateInit->masterId());
-            }
-            break;
-         }
-
-         case Wallets::Progress::StateEnum::ReadFile:
-         {
-            auto stateRead = dynamic_cast<Wallets::Progress::ReadFile*>(
-               statePtr.get());
-            if (stateRead != nullptr) {
-               prog.setReadFile(stateRead->masterId());
-            }
-            break;
-         }
-
-         case Wallets::Progress::StateEnum::CreateAccount:
-         {
-            auto stateAcc = dynamic_cast<Wallets::Progress::CreateAccount*>(
-               statePtr.get());
-            if (stateAcc != nullptr) {
-               prog.setCreateAccount(stateAcc->accPtr()->name());
-            }
-            break;
-         }
-
-         case Wallets::Progress::StateEnum::ExtendChain:
-         {
-            auto stateExt = dynamic_cast<Wallets::Progress::ExtendChain*>(
-               statePtr.get());
-            if (stateExt != nullptr) {
-               auto extNotif = prog.initExtendChain();
-               extNotif.setTotal(stateExt->lookup());
-            }
-            break;
-         }
-      }
-
-      auto notifSerialized = serializeCapnp(notifMessage);
-      this->writeToClient(notifSerialized);
-   };
-
+   //this is a long process (several seconds), run in its own thread
    auto createWltFunc = [this, callbackId,
       extraEntropy=std::move(extraEntropy),
       params=std::move(params),
@@ -1413,12 +1453,7 @@ void CppBridge::createWallet(SecureBinaryData extraEntropy,
       auto wltContainer = wltManager_->createNewWallet(extraEntropy, params);
 
       //callback cleanup
-      capnp::MallocMessageBuilder notifMessage;
-      auto notif = notifMessage.initRoot<FromBridge>().initNotification();
-      notif.setCallbackId(callbackId);
-      notif.setCleanup();
-      auto notifSerialized = serializeCapnp(notifMessage);
-      this->writeToClient(notifSerialized);
+      sendCleanup(this, callbackId);
 
       //put first address in use, or the GUI will have nothing to display
       auto wltPtr = wltContainer->getWalletPtr();

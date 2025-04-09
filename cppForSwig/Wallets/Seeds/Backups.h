@@ -43,18 +43,14 @@ namespace Armory
       class RestoreUserException : public std::runtime_error
       {
       public:
-         RestoreUserException(const std::string& errMsg) :
-            std::runtime_error(errMsg)
-         {}
+         RestoreUserException(const std::string&);
       };
 
       ////
       class Easy16RepairError : public std::runtime_error
       {
       public:
-         Easy16RepairError(const std::string& errMsg) :
-            std::runtime_error(errMsg)
-         {}
+         Easy16RepairError(const std::string&);
       };
 
       ////
@@ -119,7 +115,6 @@ namespace Armory
          The indexes for each line in a multiple line easy16 code need to match
          one another.
          ***/
-
          static const std::set<BackupType> eligibleIndexes_;
 
       private:
@@ -154,8 +149,7 @@ namespace Armory
             BinaryDataRef, BinaryDataRef);
          SecureBinaryData decrypt(
             const SecureBinaryData&, const BinaryDataRef) const;
-
-         const SecureBinaryData& getPassphrase(void) const { return passphrase_; }
+         const SecureBinaryData& getPassphrase(void) const;
       };
 
       //////////////////////////////////////////////////////////////////////////
@@ -267,8 +261,6 @@ namespace Armory
 
          //unknown wallet type
          TypeError = 8,
-
-         Success = 9
       };
 
       struct RestorePrompt

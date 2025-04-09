@@ -87,7 +87,6 @@ namespace Armory
          static AddressAccountId deserializeValue(BinaryRefReader&);
          static AddressAccountId deserializeValue(const BinaryData&);
          static AddressAccountId deserializeKey(const BinaryData&, uint8_t);
-         static AccountKeyType getRootKey(void) { return rootAccountId; }
       };
 
       ////////////////////////////////////////////////////////////////////////
@@ -125,7 +124,6 @@ namespace Armory
          static AssetAccountId deserializeValueOld(
             const AddressAccountId&, BinaryRefReader&);
          static AssetAccountId deserializeKey(const BinaryData&, uint8_t);
-         static AccountKeyType getRootKey(void) { return rootAccountId; }
       };
 
       ////////////////////////////////////////////////////////////////////////
@@ -163,7 +161,7 @@ namespace Armory
          static AssetId deserializeValue(BinaryRefReader&);
          static AssetId deserializeKey(const BinaryData&, uint8_t);
          static AssetId deserializeKey(BinaryDataRef, uint8_t);
-         static AssetKeyType getRootKey(void) { return rootAssetId; }
+         static AssetKeyType getRootKey(void);
          static AssetId getRootAssetId(void);
          static AssetId getNextDummyId(void);
       };
