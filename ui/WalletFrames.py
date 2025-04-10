@@ -1,44 +1,42 @@
-##############################################################################
-#                                                                            #
-# Copyright (C) 2011-2015, Armory Technologies, Inc.                         #
-# Distributed under the GNU Affero General Public License (AGPL v3)          #
-# See LICENSE or http://www.gnu.org/licenses/agpl.html                       #
-#                                                                            #
-# Copyright (C) 2016-2024, goatpig                                           #
-#  Distributed under the MIT license                                         #
-#  See LICENSE-MIT or https://opensource.org/licenses/MIT                    #
-#                                                                            #
-##############################################################################
+################################################################################
+#                                                                              #
+# Copyright (C) 2011-2015, Armory Technologies, Inc.                           #
+# Distributed under the GNU Affero General Public License (AGPL v3)            #
+# See LICENSE or http://www.gnu.org/licenses/agpl.html                         #
+#                                                                              #
+# Copyright (C) 2016-2025, goatpig                                             #
+#  Distributed under the MIT license                                           #
+#  See LICENSE-MIT or https://opensource.org/licenses/MIT                      #
+#                                                                              #
+################################################################################
 
 import sys
 import math
 
 from armoryengine.BDM import TheBDM, BDM_BLOCKCHAIN_READY
 from armoryengine.WalletUtils import determineWalletType
-from qtpy import QtCore, QtGui, QtWidgets
-from qtdialogs.qtdefines import AdvancedOptionsFrame, ArmoryFrame, VERTICAL, HORIZONTAL, \
-   tightSizeNChar, makeHorizFrame, makeVertFrame, QRichLabel, \
-   QPixMapButton, GETFONT, STYLE_SUNKEN, HLINE, \
-   QMoneyLabel, makeLayoutFrame, createToolTipWidget
-
-from armorycolors import htmlColor
 from armoryengine.ArmoryUtils import enum, isASCII, coin2str
 from armoryengine.CppBridge import TheBridge
 
-
-if sys.version_info < (3,0):
-   import qrc_img_resources
-
-WALLET_DATA_ENTRY_FIELD_WIDTH = 60
+from qtpy import QtCore, QtGui, QtWidgets
+from armorycolors import htmlColor
+from ui.QtExecuteSignal import TheSignalExecution
+from ui.CoinControlUI import CoinControlDlg, RBFDlg
 
 from qtdialogs.DlgUnlockWallet   import DlgUnlockWallet
 from qtdialogs.DlgShowKeyList    import DlgShowKeyList
 from qtdialogs.DlgRestore        import OpenPaperBackupDialog
-from qtdialogs.qtdefines         import QRadioButtonBackupCtr, STRETCH, \
-   MIN_PASSWD_WIDTH
+from qtdialogs.qtdefines         import AdvancedOptionsFrame, ArmoryFrame, \
+   VERTICAL, HORIZONTAL, STRETCH, MIN_PASSWD_WIDTH, \
+   tightSizeNChar, makeHorizFrame, makeVertFrame, \
+   QRichLabel, QPixMapButton, GETFONT, STYLE_SUNKEN, HLINE, \
+   QMoneyLabel, makeLayoutFrame, createToolTipWidget, QRadioButtonBackupCtr
 
-from ui.CoinControlUI import CoinControlDlg, RBFDlg
+if sys.version_info < (3,0):
+   import qrc_img_resources
+WALLET_DATA_ENTRY_FIELD_WIDTH = 60
 
+################################################################################
 class LockboxSelectFrame(ArmoryFrame):
    def __init__(self, parent, main, layoutDir=VERTICAL, spendFromLBID=None):
       super(LockboxSelectFrame, self).__init__(parent, main)
@@ -54,7 +52,8 @@ class LockboxSelectFrame(ArmoryFrame):
          return
 
       lblSpendFromLB = QRichLabel(self.tr('<font color="%s" size=4><b><u>Lockbox '
-         '%s (%d-of-%d)</u></b></font>' % (htmlColor('TextBlue'), self.lbox.uniqueIDB58, self.lbox.M, self.lbox.N)))
+         '%s (%d-of-%d)</u></b></font>' %
+         (htmlColor('TextBlue'), self.lbox.uniqueIDB58, self.lbox.M, self.lbox.N)))
       lblSpendFromLB.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter)
 
       lbls = []
@@ -421,16 +420,16 @@ class NewWalletFrame(ArmoryFrame):
    def __init__(self, parent, main, initLabel=''):
       super(NewWalletFrame, self).__init__(parent, main)
       self.editName = QtWidgets.QLineEdit()
-      self.editName.setMinimumWidth(tightSizeNChar(self.editName,\
-                                 WALLET_DATA_ENTRY_FIELD_WIDTH)[0])
+      self.editName.setMinimumWidth(tightSizeNChar(
+         self.editName, WALLET_DATA_ENTRY_FIELD_WIDTH)[0])
       self.editName.setText(initLabel)
       lblName = QtWidgets.QLabel(self.tr("Wallet &name:"))
       lblName.setBuddy(self.editName)
 
       self.editDescription = QtWidgets.QTextEdit()
       self.editDescription.setMaximumHeight(75)
-      self.editDescription.setMinimumWidth(tightSizeNChar(self.editDescription,\
-                                 WALLET_DATA_ENTRY_FIELD_WIDTH)[0])
+      self.editDescription.setMinimumWidth(tightSizeNChar(
+         self.editDescription, WALLET_DATA_ENTRY_FIELD_WIDTH)[0])
       lblDescription = QtWidgets.QLabel(self.tr("Wallet &description:"))
       lblDescription.setAlignment(QtCore.Qt.AlignVCenter)
       lblDescription.setBuddy(self.editDescription)
@@ -471,7 +470,7 @@ class NewWalletFrame(ArmoryFrame):
    def getKdfBytes(self):
       return self.advancedOptionsTab.getKdfBytes()
 
-   def getManualEncryption(self):
+   def getManualEntropy(self):
       return self.useManualEntropy.isChecked()
 
    def getName(self):
@@ -480,6 +479,7 @@ class NewWalletFrame(ArmoryFrame):
    def getDescription(self):
       return str(self.editDescription.toPlainText())
 
+################################################################################
 class CardDeckFrame(ArmoryFrame):
    def __init__(self, parent, main, initLabel=''):
       super(CardDeckFrame, self).__init__(parent, main)
@@ -529,6 +529,7 @@ class CardDeckFrame(ArmoryFrame):
       # 52!/13! > 2**192
       return self.cardCount >= 39
 
+################################################################################
 class SetPassphraseFrame(ArmoryFrame):
    def __init__(self, parent, main, initLabel='', passphraseCallback=None):
       super(SetPassphraseFrame, self).__init__(parent, main)
@@ -595,7 +596,8 @@ class SetPassphraseFrame(ArmoryFrame):
 
    def getPassphrase(self):
       return str(self.editPasswd1.text())
-   
+
+################################################################################
 class VerifyPassphraseFrame(ArmoryFrame):
    def __init__(self, parent, main, initLabel=''):
       super(VerifyPassphraseFrame, self).__init__(parent, main)
@@ -620,7 +622,6 @@ class VerifyPassphraseFrame(ArmoryFrame):
          'Please enter your passphrase a third time to indicate that you '
          'are aware of the risks of losing your passphrase!</b>'), doWrap=True)
 
-
       self.edtPasswd3 = QtWidgets.QLineEdit()
       self.edtPasswd3.setEchoMode(QtWidgets.QLineEdit.Password)
       self.edtPasswd3.setMinimumWidth(MIN_PASSWD_WIDTH(self))
@@ -636,11 +637,38 @@ class VerifyPassphraseFrame(ArmoryFrame):
       # to be used for wallet creation
       self.main.registerWidgetActivateTime(self)
 
-      
+################################################################################
+class WalletProgressFrame(ArmoryFrame):
+   def __init__(self, parent, main, initLabel=''):
+      super(WalletProgressFrame, self).__init__(parent, main)
+
+      self.isDone = False
+      self.progressTxt = "Progressing...<br><br>"
+      self.lblProg = QRichLabel(self.progressTxt)
+
+      layout = QtWidgets.QGridLayout()
+      layout.addWidget(self.lblProg, 0, 0, 4, 1)
+      self.setLayout(layout)
+
+   def updateProgress(self, line):
+      self.progressTxt += f" - {line}<br>"
+      self.updateText()
+
+   def setDone(self):
+      self.isDone = True
+      self.progressTxt += f" - done!<br>"
+      self.updateText()
+
+   def updateText(self):
+      def update():
+         self.lblProg.setText(self.progressTxt)
+      TheSignalExecution.executeMethod(update)
+
+################################################################################
 class WalletBackupFrame(ArmoryFrame):
    # Some static enums, and a QtWidgets.QRadioButton with mouse-enter/mouse-leave events
    FEATURES = enum('ProtGen', 'ProtImport', 'LostPass', 'Durable', \
-                   'Visual', 'Physical', 'Count')
+      'Visual', 'Physical', 'Count')
    OPTIONS = enum('Paper1', 'PaperN', 'DigPlain', 'DigCrypt', 'Export', 'Count')
    def __init__(self, parent, main, initLabel=''):
       super(WalletBackupFrame, self).__init__(parent, main)
@@ -654,24 +682,21 @@ class WalletBackupFrame(ArmoryFrame):
          'The backup is good no matter how many addresses you use. '))
       lblTitleDescr.setOpenExternalLinks(True)
 
+      self.optPaperBackupTop = QRadioButtonBackupCtr(self,
+         self.tr('Printable Paper Backup'), self.OPTIONS.Paper1)
+      self.optPaperBackupOne = QRadioButtonBackupCtr(self,
+         self.tr('Single-Sheet (Recommended)'), self.OPTIONS.Paper1)
+      self.optPaperBackupFrag = QRadioButtonBackupCtr(self,
+         self.tr('Fragmented Backup (M-of-N)'), self.OPTIONS.PaperN)
 
-      self.optPaperBackupTop = QRadioButtonBackupCtr(self, \
-                                    self.tr('Printable Paper Backup'), self.OPTIONS.Paper1)
-      self.optPaperBackupOne = QRadioButtonBackupCtr(self, \
-                                    self.tr('Single-Sheet (Recommended)'), self.OPTIONS.Paper1)
-      self.optPaperBackupFrag = QRadioButtonBackupCtr(self, \
-                                    self.tr('Fragmented Backup (M-of-N)'), self.OPTIONS.PaperN)
-
-      self.optDigitalBackupTop = QRadioButtonBackupCtr(self, \
-                                    self.tr('Digital Backup'), self.OPTIONS.DigPlain)
-      self.optDigitalBackupPlain = QRadioButtonBackupCtr(self, \
-                                    self.tr('Unencrypted'), self.OPTIONS.DigPlain)
-      self.optDigitalBackupCrypt = QRadioButtonBackupCtr(self, \
-                                    self.tr('Encrypted'), self.OPTIONS.DigCrypt)
-
-      self.optIndivKeyListTop = QRadioButtonBackupCtr(self, \
-                                    self.tr('Export Key Lists'), self.OPTIONS.Export)
-
+      self.optDigitalBackupTop = QRadioButtonBackupCtr(self,
+         self.tr('Digital Backup'), self.OPTIONS.DigPlain)
+      self.optDigitalBackupPlain = QRadioButtonBackupCtr(self,
+         self.tr('Unencrypted'), self.OPTIONS.DigPlain)
+      self.optDigitalBackupCrypt = QRadioButtonBackupCtr(self,
+         self.tr('Encrypted'), self.OPTIONS.DigCrypt)
+      self.optIndivKeyListTop = QRadioButtonBackupCtr(self,
+         self.tr('Export Key Lists'), self.OPTIONS.Export)
 
       self.optPaperBackupTop.setFont(GETFONT('Var', bold=True))
       self.optDigitalBackupTop.setFont(GETFONT('Var', bold=True))
@@ -707,8 +732,8 @@ class WalletBackupFrame(ArmoryFrame):
       self.optDigitalBackupCrypt.clicked.connect(self.optionClicked)
       self.optIndivKeyListTop.clicked.connect(self.optionClicked)
 
-
-      spacer = lambda: QtWidgets.QSpacerItem(20, 1, QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Expanding)
+      spacer = lambda: QtWidgets.QSpacerItem(20, 1,
+         QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Expanding)
       layoutOpts = QtWidgets.QGridLayout()
       layoutOpts.addWidget(self.optPaperBackupTop, 0, 0, 1, 2)
       layoutOpts.addItem(spacer(), 1, 0)
@@ -729,11 +754,9 @@ class WalletBackupFrame(ArmoryFrame):
       frmOpts.setLayout(layoutOpts)
       frmOpts.setFrameStyle(STYLE_SUNKEN)
 
-
       self.featuresTips = [None] * self.FEATURES.Count
       self.featuresLbls = [None] * self.FEATURES.Count
       self.featuresImgs = [None] * self.FEATURES.Count
-
 
       F = self.FEATURES
       self.featuresTips[F.ProtGen] = createToolTipWidget(self.tr(
@@ -775,7 +798,6 @@ class WalletBackupFrame(ArmoryFrame):
          '<b>and</b> the passphrase.  This feature is only needed for those '
          'concerned about physical security, not just online security.'))
 
-
       MkFeatLabel = lambda x: QRichLabel(x, doWrap=False)
       self.featuresLbls[F.ProtGen] = MkFeatLabel(self.tr('Protects All Future Addresses'))
       self.featuresLbls[F.ProtImport] = MkFeatLabel(self.tr('Protects Imported Addresses'))
@@ -786,7 +808,6 @@ class WalletBackupFrame(ArmoryFrame):
 
       if not self.hasImportedAddr:
          self.featuresLbls[F.ProtImport].setEnabled(False)
-
       self.lblSelFeat = QRichLabel('', doWrap=False, hAlign=QtCore.Qt.AlignHCenter)
 
       layoutFeat = QtWidgets.QGridLayout()
@@ -804,7 +825,6 @@ class WalletBackupFrame(ArmoryFrame):
       frmFeat = QtWidgets.QFrame()
       frmFeat.setLayout(layoutFeat)
       frmFeat.setFrameStyle(STYLE_SUNKEN)
-
 
       self.lblDescrSelected = QRichLabel('')
       frmFeatDescr = makeVertFrame([self.lblDescrSelected])
@@ -832,11 +852,11 @@ class WalletBackupFrame(ArmoryFrame):
       self.optPaperBackupOne.setChecked(True)
       self.setDispFrame(-1)
       self.optionClicked()
-      
+
    #############################################################################
    def setWallet(self, wlt):
       self.wlt = wlt
-      wltID = wlt.getDisplayStr()
+      wltId = wlt.getDisplayStr()
       wltName = wlt.labelName
       self.hasImportedAddr = self.wlt.hasAnyImported()
       # Highlight imported-addr feature if their wallet contains them
@@ -851,7 +871,8 @@ class WalletBackupFrame(ArmoryFrame):
             'backup if you import more addresses! '
             '<i>Your wallet <u>does</u> contain imported addresses</i>.'))
 
-      self.lblTitle.setText(self.tr('<b>Backup Options for Wallet "%s" (%s)</b>' % (wltName, wltID)))
+      self.lblTitle.setText(self.tr(
+         f'<b>Backup Options for Wallet "{wltName}" ({wltId})</b>'))
 
    #############################################################################
    def setDispFrame(self, index):
@@ -864,42 +885,41 @@ class WalletBackupFrame(ArmoryFrame):
             'Protects Imported Addresses'), color=pcolor)
 
          txtPaper = self.tr(
-               'Paper backups protect every address ever generated by your '
-               'wallet. It is unencrypted, which means it needs to be stored '
-               'in a secure place, but it will help you recover your wallet '
-               'if you forget your encryption passphrase! '
-               '<br><br>'
-               '<b>You don\'t need a printer to make a paper backup! '
-               'The data can be copied by hand with pen and paper.</b> '
-               'Paper backups are preferred to digital backups, because you '
-               'know the paper backup will work no matter how many years (or '
-               'decades) it sits in storage.')
+            'Paper backups protect every address ever generated by your '
+            'wallet. It is unencrypted, which means it needs to be stored '
+            'in a secure place, but it will help you recover your wallet '
+            'if you forget your encryption passphrase! '
+            '<br><br>'
+            '<b>You don\'t need a printer to make a paper backup! '
+            'The data can be copied by hand with pen and paper.</b> '
+            'Paper backups are preferred to digital backups, because you '
+            'know the paper backup will work no matter how many years (or '
+            'decades) it sits in storage.')
          txtDigital = self.tr(
-               'Digital backups can be saved to an external hard-drive or '
-               'USB removable media.  It is recommended you make a few '
-               'copies to protect against "bit rot" (degradation). <br><br>')
+            'Digital backups can be saved to an external hard-drive or '
+            'USB removable media.  It is recommended you make a few '
+            'copies to protect against "bit rot" (degradation). <br><br>')
          txtDigPlain = self.tr(
-               '<b><u>IMPORTANT:</u> Do not save an unencrypted digital '
-               'backup to your primary hard drive!</b> '
-               'Please save it <i>directly</i> to the backup device. '
-               'Deleting the file does not guarantee the data is actually '
-               'gone!')
+            '<b><u>IMPORTANT:</u> Do not save an unencrypted digital '
+            'backup to your primary hard drive!</b> '
+            'Please save it <i>directly</i> to the backup device. '
+            'Deleting the file does not guarantee the data is actually '
+            'gone!')
          txtDigCrypt = self.tr(
-               '<b><u>IMPORTANT:</u> It is critical that you have at least '
-               'one unencrypted backup!</b>  Without it, your bitcoins will '
-               'be lost forever if you forget your passphrase!  This is <b> '
-               'by far</b> the most common reason users lose coins!  Having '
-               'at least one paper backup is recommended.')
+            '<b><u>IMPORTANT:</u> It is critical that you have at least '
+            'one unencrypted backup!</b>  Without it, your bitcoins will '
+            'be lost forever if you forget your passphrase!  This is <b> '
+            'by far</b> the most common reason users lose coins!  Having '
+            'at least one paper backup is recommended.')
          txtIndivKeys = self.tr(
-               'View and export invidivual addresses strings, '
-               'public keys and/or private keys contained in your wallet. '
-               'This is useful for exporting your private keys to be imported into '
-               'another wallet app or service. '
-               '<br><br>'
-               'You can view/backup imported keys, as well as unused keys in your '
-               'keypool (pregenerated addresses protected by your backup that '
-               'have not yet been used).')
-
+            'View and export invidivual addresses strings, '
+            'public keys and/or private keys contained in your wallet. '
+            'This is useful for exporting your private keys to be imported into '
+            'another wallet app or service. '
+            '<br><br>'
+            'You can view/backup imported keys, as well as unused keys in your '
+            'keypool (pregenerated addresses protected by your backup that '
+            'have not yet been used).')
 
          chk = lambda: QtGui.QPixmap('img/checkmark32.png').scaled(20, 20)
          _X_ = lambda: QtGui.QPixmap('img/red_X.png').scaled(16, 16)
@@ -950,7 +970,7 @@ class WalletBackupFrame(ArmoryFrame):
             self.lblDescrSelected.setText(txtIndivKeys)
          else:
             LOGERROR('What index was sent to setDispFrame? %d', index)
-            
+
    #############################################################################
    def getIndexChecked(self):
       if self.optPaperBackupOne.isChecked():
@@ -1006,19 +1026,9 @@ class WalletBackupFrame(ArmoryFrame):
 
    def setPassphrase(self, passphrase):
       self.passphrase = passphrase
-      
+
    def clickedDoIt(self):
       isBackupCreated = False
-      
-      if self.passphrase:
-         from qtdialogs import DlgProgress
-         unlockProgress = DlgProgress(self, self.main, HBar=1,
-                                      Title=self.tr("Unlocking Wallet"))
-         unlockProgress.exec_(self.wlt.unlock, 
-                              securePassphrase=SecureBinaryData( \
-                              self.passphrase),
-                              Progress=unlockProgress.UpdateHBar)
-         
       if self.optPaperBackupOne.isChecked():
          isBackupCreated = OpenPaperBackupDialog('Single', self.parent(), self.main, self.wlt)
       elif self.optPaperBackupFrag.isChecked():
@@ -1049,32 +1059,30 @@ class WalletBackupFrame(ArmoryFrame):
       if isBackupCreated:
          self.isBackupCreated = True
 
-
+################################################################################
 class WizardCreateWatchingOnlyWalletFrame(ArmoryFrame):
-
    def __init__(self, parent, main, initLabel='', backupCreatedCallback=None):
       super(WizardCreateWatchingOnlyWalletFrame, self).__init__(parent, main)
 
-
       summaryText = QRichLabel(self.tr(
-               'Your wallet has been created and is ready to be used.  It will '
-               'appear in the "<i>Available Wallets</i>" list in the main window. ' 
-               'You may click "<i>Finish</i>" if you do not plan to use this '
-               'wallet on any other computer.'
-               '<br><br>'
-               'A <b>watching-only wallet</b> behaves exactly like a a regular '
-               'wallet, but does not contain any signing keys.  You can generate '
-               'addresses and confirm receipt of payments, but not spend or move '
-               'the funds in the wallet.  To move the funds, '
-               'use the "<i>Offline Transactions</i>" button on the main '
-               'window for directions (which involves bringing the transaction '
-               'to this computer for a signature).  Or you can give the '
-               'watching-only wallet to someone who needs to monitor the wallet '
-               'but should not be able to move the money. '
-               '<br><br>'
-               'Click the button to save a watching-only copy of this wallet. '
-               'Use the "<i>Import or Restore Wallet</i>" button in the '
-               'upper-right corner'))
+         'Your wallet has been created and is ready to be used.  It will '
+         'appear in the "<i>Available Wallets</i>" list in the main window. '
+         'You may click "<i>Finish</i>" if you do not plan to use this '
+         'wallet on any other computer.'
+         '<br><br>'
+         'A <b>watching-only wallet</b> behaves exactly like a a regular '
+         'wallet, but does not contain any signing keys.  You can generate '
+         'addresses and confirm receipt of payments, but not spend or move '
+         'the funds in the wallet.  To move the funds, '
+         'use the "<i>Offline Transactions</i>" button on the main '
+         'window for directions (which involves bringing the transaction '
+         'to this computer for a signature).  Or you can give the '
+         'watching-only wallet to someone who needs to monitor the wallet '
+         'but should not be able to move the money. '
+         '<br><br>'
+         'Click the button to save a watching-only copy of this wallet. '
+         'Use the "<i>Import or Restore Wallet</i>" button in the '
+         'upper-right corner'))
       lbtnForkWlt = QtWidgets.QPushButton('Create Watching-Only Copy')
       lbtnForkWlt.clicked.connect(self.forkOnlineWallet)
       layout = QtWidgets.QVBoxLayout()
@@ -1082,18 +1090,17 @@ class WizardCreateWatchingOnlyWalletFrame(ArmoryFrame):
       layout.addWidget(lbtnForkWlt)
       self.setLayout(layout)
 
-
    def forkOnlineWallet(self):
       currPath = self.wlt.walletPath
       pieces = os.path.splitext(currPath)
       currPath = pieces[0] + '_WatchOnly' + pieces[1]
 
-      saveLoc = self.main.getFileSave('Save Watching-Only Copy', \
-                                      defaultFilename=currPath)
+      saveLoc = self.main.getFileSave('Save Watching-Only Copy',
+         defaultFilename=currPath)
       if not saveLoc.endswith('.wallet'):
          saveLoc += '.wallet'
-      self.wlt.forkOnlineWallet(saveLoc, self.wlt.labelName, \
-                             '(Watching-Only) ' + self.wlt.labelDescr)   
-   
+      self.wlt.forkOnlineWallet(saveLoc, self.wlt.labelName,
+         '(Watching-Only) ' + self.wlt.labelDescr)
+
    def setWallet(self, wlt):
       self.wlt = wlt

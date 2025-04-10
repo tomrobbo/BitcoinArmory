@@ -72,6 +72,7 @@ def computeSettingsId(wltId, accId):
    b58Str = binary_to_base58(hmacStr)
    return b58Str[0:7]
 
+################################################################################
 class PyBtcWallet(object):
    """
    This class encapsulates all the concepts and variables in a "wallet",
@@ -463,8 +464,8 @@ class PyBtcWallet(object):
 
    #############################################################################
    @staticmethod
-   def createNewWallet(passphrase=None, \
-      kdfTargSec=DEFAULT_COMPUTE_TIME_TARGET, kdfMaxMem=DEFAULT_MAXMEM_LIMIT, \
+   def createNewWallet(replyCallback: callable, callbackId: str, passphrase=None,
+      kdfTargSec=DEFAULT_COMPUTE_TIME_TARGET, kdfMaxMem=DEFAULT_MAXMEM_LIMIT,
       shortLabel: str='', longLabel: str='', extraEntropy: bytes=None):
 
       """
@@ -494,15 +495,17 @@ class PyBtcWallet(object):
       """
       LOGINFO('***Creating new deterministic wallet')
 
-      #create cpp wallet
+      kdfMs = int(kdfTargSec * 1000)
+      kdfMem = int(kdfMaxMem / (1024**2))
       addrPoolSize = 10 if USE_TESTNET or USE_REGTEST else CLI_OPTIONS.keypool
+
       walletId = TheBridge.utils.createWallet(
          addrPoolSize,
-         passphrase, "",
-         kdfTargSec, kdfMaxMem,
-         shortLabel, longLabel,
-         extraEntropy)
-      return PyBtcWallet().loadFromBridge(walletId)
+         passphrase, kdfMs, kdfMem,
+         "", 250, 16,
+         shortLabel, longLabel, extraEntropy,
+         callbackId, replyCallback
+      )
 
    #############################################################################
    @staticmethod

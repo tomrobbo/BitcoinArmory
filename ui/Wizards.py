@@ -1,25 +1,27 @@
-##############################################################################
-#                                                                            #
-# Copyright (C) 2011-2015, Armory Technologies, Inc.                         #
-# Distributed under the GNU Affero General Public License (AGPL v3)          #
-# See LICENSE or http://www.gnu.org/licenses/agpl.html                       #
-#                                                                            #
-# Copyright (C) 2016-2024, goatpig                                           #
-#  Distributed under the MIT license                                         #
-#  See LICENSE-MIT or https://opensource.org/licenses/MIT                    #
-#                                                                            #
-##############################################################################
+################################################################################
+#                                                                              #
+# Copyright (C) 2011-2015, Armory Technologies, Inc.                           #
+# Distributed under the GNU Affero General Public License (AGPL v3)            #
+# See LICENSE or http://www.gnu.org/licenses/agpl.html                         #
+#                                                                              #
+# Copyright (C) 2016-2025, goatpig                                             #
+#  Distributed under the MIT license                                           #
+#  See LICENSE-MIT or https://opensource.org/licenses/MIT                      #
+#                                                                              #
+################################################################################
 
 from qtpy import QtCore, QtGui, QtWidgets
 
 from armoryengine.ArmoryUtils import USE_TESTNET, USE_REGTEST, int_to_binary
 from ui.WalletFrames import NewWalletFrame, SetPassphraseFrame, \
-   VerifyPassphraseFrame,WalletBackupFrame, \
+   VerifyPassphraseFrame, WalletBackupFrame, WalletProgressFrame, \
    WizardCreateWatchingOnlyWalletFrame, CardDeckFrame
 from ui.TxFrames import SendBitcoinsFrame
 from ui.TxFramesOffline import SignBroadcastOfflineTxFrame
+from ui.QtExecuteSignal import TheSignalExecution
 from armoryengine.PyBtcWallet import PyBtcWallet
 from armoryengine.BDM import TheBDM, BDM_OFFLINE, BDM_UNINITIALIZED
+from armoryengine.CppBridge import ServerPush
 
 from qtdialogs.qtdefines import AddToRunningDialogsList, \
    USERMODE, GETFONT, MSGBOX
@@ -73,7 +75,34 @@ class ArmoryWizardPage(QtWidgets.QWizardPage):
    def validatePage(self):
       return True
 
-################################ Wallet Wizard ################################
+################################################################################
+class CreateWalletNotifHandler(ServerPush):
+   def __init__(self, walletCreateFrame):
+      ServerPush.__init__(self)
+      self.frame = walletCreateFrame
+
+   def parseProtoPacket(self, payload):
+      if payload.which() == 'cleanup':
+         TheBDM.unregisterPrompt(self.callbackId)
+         self.frame.setDone()
+
+      elif payload.which() == 'walletProgress':
+         notif = payload.walletProgress
+         if notif.which() == 'createFile':
+            self.frame.updateProgress(f"creating file: {notif.createFile}")
+         elif notif.which() == 'initFile':
+            self.frame.updateProgress(
+               f"setting up master record (id: {notif.initFile})")
+         elif notif.which() == 'readFile':
+            self.frame.updateProgress("populating master record")
+         elif notif.which() == 'createAccount':
+            self.frame.updateProgress(f"adding account: {notif.createAccount}")
+         elif notif.which() == 'extendChain':
+            chainProg = notif.extendChain
+            self.frame.updateProgress("extending address chain: "
+               f"{chainProg.current}/{chainProg.total}")
+
+################################ Wallet Wizard #################################
 # Wallet Wizard has these pages:
 #     1. Create Wallet
 #     2. Set Passphrase
@@ -89,7 +118,13 @@ class WalletWizard(ArmoryWizard):
       self.setOption(QtWidgets.QWizard.HaveFinishButtonOnEarlyPages, on=True)
       self.setOption(QtWidgets.QWizard.IgnoreSubTitles, on=True)
 
-      self.walletCreationId, self.manualEntropyId, self.setPassphraseId, self.verifyPassphraseId, self.walletBackupId, self.WOWId = range(6)
+      self.walletCreationId, \
+         self.manualEntropyId, \
+         self.setPassphraseId, \
+         self.verifyPassphraseId, \
+         self.walletProgressId, \
+         self.walletBackupId, \
+         self.WOWId = range(7)
 
         # Page 1: Create Wallet
       self.walletCreationPage = WalletCreationPage(self)
@@ -107,11 +142,15 @@ class WalletWizard(ArmoryWizard):
       self.verifyPassphrasePage = VerifyPassphrasePage(self)
       self.setPage(self.verifyPassphraseId, self.verifyPassphrasePage)
 
-      # Page 4: Create Paper Backup
+      # Page 4: Wallet creation progress
+      self.walletProgressPage = WalletProgressPage(self)
+      self.setPage(self.walletProgressId, self.walletProgressPage)
+
+      # Page 5: Create Paper Backup
       self.walletBackupPage = WalletBackupPage(self)
       self.setPage(self.walletBackupId, self.walletBackupPage)
 
-      # Page 5: Create Watching Only Wallet -- but only if expert, or offline
+      # Page 6: Create Watching Only Wallet -- but only if expert, or offline
       self.hasCWOWPage = False
       if self.main.usermode==USERMODE.Expert or TheBDM.getState() == BDM_OFFLINE:
          self.hasCWOWPage = True
@@ -126,25 +165,31 @@ class WalletWizard(ArmoryWizard):
       ])
 
    def initializePage(self, *args, **kwargs):
-
       if self.currentPage() == self.verifyPassphrasePage:
          self.verifyPassphrasePage.setPassphrase(
             self.setPassphrasePage.pageFrame.getPassphrase())
       elif self.hasCWOWPage and self.currentPage() == self.createWOWPage:
          self.createWOWPage.pageFrame.setWallet(self.newWallet)
 
-      if self.currentPage() == self.walletBackupPage:
-         self.createNewWalletFromWizard()
-         self.walletBackupPage.pageFrame.setPassphrase(
-            self.setPassphrasePage.pageFrame.getPassphrase())
-         self.walletBackupPage.pageFrame.setWallet(self.newWallet)
-
-         # Hide the back button on wallet backup page
+      if self.currentPage() == self.walletProgressPage:
+         # Hide the back button starting the wallet progress page
          self.setButtonLayout([
             QtWidgets.QWizard.Stretch,
             QtWidgets.QWizard.NextButton,
             QtWidgets.QWizard.FinishButton
          ])
+
+         # Disable Next button until wallet is created
+         self.button(QtWidgets.QWizard.NextButton).setEnabled(False)
+
+         # Create the wallet
+         self.createNewWalletFromWizard()
+
+      elif self.currentPage() == self.walletBackupPage:
+         self.walletBackupPage.pageFrame.setPassphrase(
+            self.setPassphrasePage.pageFrame.getPassphrase())
+         self.walletBackupPage.pageFrame.setWallet(self.newWallet)
+
       elif self.currentPage() == self.walletCreationPage:
          # Hide the back button on the first page
          self.setButtonLayout([
@@ -182,21 +227,32 @@ class WalletWizard(ArmoryWizard):
 
    def createNewWalletFromWizard(self):
       entropy = None
-      if self.walletCreationPage.isManualEncryption():
+      if self.walletCreationPage.isManualEntropy():
          entropy = self.manualEntropyPage.pageFrame.getEntropy()
       else:
          entropy = self.main.getExtraEntropyForKeyGen()
-      self.newWallet = PyBtcWallet().createNewWallet(
+
+      def finalizeInner(reply):
+         if reply.success == False:
+            LOGDEBUG(f"create wallet failed with error: {reply.error}")
+            self.reject()
+         else:
+            wltId = reply.utils.createWallet
+            self.newWallet = PyBtcWallet().loadFromBridge(wltId)
+            self.main.addWalletToApplication(self.newWallet, walletIsNew=True)
+
+      def finalizeCb(reply):
+         TheSignalExecution.executeMethod(finalizeInner, reply)
+
+      handler = CreateWalletNotifHandler(self.walletProgressPage.pageFrame)
+      PyBtcWallet().createNewWallet(
+         replyCallback=finalizeCb, callbackId=handler.callbackId,
          passphrase=self.setPassphrasePage.pageFrame.getPassphrase(),
          kdfTargSec=self.walletCreationPage.pageFrame.getKdfSec(),
          kdfMaxMem=self.walletCreationPage.pageFrame.getKdfBytes(),
          shortLabel=self.walletCreationPage.pageFrame.getName(),
          longLabel=self.walletCreationPage.pageFrame.getDescription(),
          extraEntropy=entropy)
-
-      # Reopening from file helps make sure everything is correct -- don't
-      # let the user use a wallet that triggers errors on reading it
-      self.main.addWalletToApplication(self.newWallet, walletIsNew=True)
 
    def cleanupPage(self, *args, **kwargs):
       if self.hasCWOWPage and self.currentPage() == self.createWOWPage:
@@ -222,6 +278,7 @@ class WalletWizard(ArmoryWizard):
             QtWidgets.QWizard.FinishButton
          ])
 
+################################################################################
 class ManualEntropyPage(ArmoryWizardPage):
    def __init__(self, wizard):
       super(ManualEntropyPage, self).__init__(wizard,
@@ -242,6 +299,7 @@ class ManualEntropyPage(ArmoryWizardPage):
    def nextId(self):
       return self.wizard.setPassphraseId
 
+########
 class WalletCreationPage(ArmoryWizardPage):
    def __init__(self, wizard):
       super(WalletCreationPage, self).__init__(wizard,
@@ -252,7 +310,6 @@ class WalletCreationPage(ArmoryWizardPage):
          'Create a new wallet for managing your funds. '
          'The name and description can be changed at any time.'))
 
-   # override this method to implement validators
    def validatePage(self):
       result = True
       if self.pageFrame.getKdfSec() == -1:
@@ -265,15 +322,16 @@ class WalletCreationPage(ArmoryWizardPage):
          result = False
       return result
 
-   def isManualEncryption(self):
-      return self.pageFrame.getManualEncryption()
+   def isManualEntropy(self):
+      return self.pageFrame.getManualEntropy()
 
    def nextId(self):
-      if self.isManualEncryption():
+      if self.isManualEntropy():
          return self.wizard.manualEntropyId
       else:
          return self.wizard.setPassphraseId
 
+########
 class SetPassphrasePage(ArmoryWizardPage):
    def __init__(self, wizard):
       super(SetPassphrasePage, self).__init__(wizard,
@@ -291,10 +349,11 @@ class SetPassphrasePage(ArmoryWizardPage):
    def nextId(self):
       return self.wizard.verifyPassphraseId
 
+########
 class VerifyPassphrasePage(ArmoryWizardPage):
    def __init__(self, wizard):
       super(VerifyPassphrasePage, self).__init__(wizard,
-            VerifyPassphraseFrame(wizard, wizard.main, wizard.tr("Verify Passphrase")))
+         VerifyPassphraseFrame(wizard, wizard.main, wizard.tr("Verify Passphrase")))
       self.wizard = wizard
       self.passphrase = None
       self.setTitle(wizard.tr("Step 3: Verify Passphrase"))
@@ -310,15 +369,30 @@ class VerifyPassphrasePage(ArmoryWizardPage):
       return result
 
    def nextId(self):
+      return self.wizard.walletProgressId
+
+########
+class WalletProgressPage(ArmoryWizardPage):
+   def __init__(self, wizard):
+      super(WalletProgressPage, self).__init__(wizard,
+         WalletProgressFrame(wizard, wizard.main, wizard.tr("Wallet Creation Process")))
+      self.wizard = wizard
+      self.setTitle(wizard.tr("Step 4: Creating Wallet"))
+
+   def validatePage(self):
+      return self.pageFrame.isDone
+
+   def nextId(self):
       return self.wizard.walletBackupId
 
+########
 class WalletBackupPage(ArmoryWizardPage):
    def __init__(self, wizard):
       super(WalletBackupPage, self).__init__(wizard,
          WalletBackupFrame(wizard, wizard.main, wizard.tr("Backup Wallet")))
       self.wizard = wizard
       self.myWizard = wizard
-      self.setTitle(wizard.tr("Step 4: Backup Wallet"))
+      self.setTitle(wizard.tr("Step 5: Backup Wallet"))
       self.setFinalPage(True)
 
    def nextId(self):
@@ -327,12 +401,13 @@ class WalletBackupPage(ArmoryWizardPage):
       else:
          return -1
 
+########
 class CreateWatchingOnlyWalletPage(ArmoryWizardPage):
    def __init__(self, wizard):
       super(CreateWatchingOnlyWalletPage, self).__init__(wizard,
          WizardCreateWatchingOnlyWalletFrame(wizard, wizard.main, wizard.tr("Create Watching-Only Wallet")))
       self.wizard = wizard
-      self.setTitle(wizard.tr("Step 5: Create Watching-Only Wallet"))
+      self.setTitle(wizard.tr("Step 6: Create Watching-Only Wallet"))
 
    def nextId(self):
       return -1
@@ -372,8 +447,6 @@ class TxWizard(ArmoryWizard):
          QtWidgets.QWizard.NextButton,
          QtWidgets.QWizard.CustomButton1
       ])
-
-
 
    def initializePage(self, *args, **kwargs):
       if self.currentPage() == self.createTxPage:

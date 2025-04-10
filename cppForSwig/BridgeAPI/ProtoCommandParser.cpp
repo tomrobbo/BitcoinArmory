@@ -984,13 +984,13 @@ namespace
             auto args = request.getCreateWallet();
             std::string callbackId = args.getCallbackId();
 
-            auto capnPassphrase = args.getPassphrase();
+            auto capnPassphrase = args.getPrivPassphrase();
             SecureBinaryData sbdPass(
                (uint8_t*)capnPassphrase.begin(),
                (uint8_t*)capnPassphrase.end()
             );
 
-            auto capnControlPass = args.getControlPassphrase();
+            auto capnControlPass = args.getCtrlPassphrase();
             SecureBinaryData sbdControl{
                (uint8_t*)capnControlPass.begin(),
                (uint8_t*)capnControlPass.end()

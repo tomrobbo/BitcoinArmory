@@ -774,8 +774,6 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
 
    #############################################################################
    def networkReadyCallback(self):
-      #this ServerPush obj should be a child class implementing the handling
-      #of the bridge server requests
       self.loadWallets()
 
    #############################################################################

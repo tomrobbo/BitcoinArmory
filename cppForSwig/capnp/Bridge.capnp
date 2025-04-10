@@ -536,13 +536,13 @@ struct UtilsRequest {
       label             @3 : Text;
       description       @4 : Text;
 
-      passphrase        @5 : Text;
+      privPassphrase    @5 : Text;
       privKdfTargetMs   @6 : UInt32;
-      privKdfTargetMem  @7 : UInt32;
+      privKdfTargetMB   @7 : UInt32;
 
-      controlPassphrase @8 : Text;
+      ctrlPassphrase    @8 : Text;
       ctrlKdfTargetMs   @9 : UInt32;
-      ctrlKdfTargetMem  @10: UInt32;
+      ctrlKdfTargetMB   @10: UInt32;
    }
 
    struct RestoreWalletStruct
@@ -553,10 +553,10 @@ struct UtilsRequest {
       callbackId        @3 : Text;
 
       privKdfTargetMs   @4 : UInt32;
-      privKdfTargetMem  @5 : UInt32;
+      privKdfTargetMB   @5 : UInt32;
 
       ctrlKdfTargetMs   @6 : UInt32;
-      ctrlKdfTargetMem  @7 : UInt32;
+      ctrlKdfTargetMB   @7 : UInt32;
    }
 
    union {

@@ -79,7 +79,6 @@ class PyPromFut(object):
          raise Exception(self.data.error)
       return self.data
 
-
 ################################################################################
 ##
 #### bridge socket
@@ -176,8 +175,7 @@ class BridgeSocket(object):
 
    ####
    def sendToBridgeProto(self, msg, needsReply: bool,
-      callbackFunc, callbackArgs, msgType):
-
+      callbackFunc: callable, callbackArgs: list, msgType):
       msg.referenceId = self.idCounter
       self.idCounter = self.idCounter + 1
 
@@ -190,7 +188,7 @@ class BridgeSocket(object):
 
    ####
    def sendToBridgeBinary(self, payload, payloadId,
-      needsReply=True, callback=None, cbArgs=[],
+      needsReply=True, callback: callable=None, cbArgs: list=[],
       msgType = BRIDGE_CLIENT_HEADER):
 
       #grab id from msg counter
@@ -553,27 +551,67 @@ class BlockchainUtils(ProtoWrapper):
       reply = fut.getVal()
       return reply.utils.generateRandomHex
 
-   ####
-   def createWallet(self, addrPoolSize: int, passphrase: str, controlPassphrase: str,
-      shortLabel: str, longLabel: str, extraEntropy: bytes):
+   #############################################################################
+   def createWallet(self, addrPoolSize: int,
+      privPass: str, privKdfMs: int, privKdfMem: int,
+      ctrlPass: str, ctrlKdfMs: int, ctrlKdfMem: int,
+      shortLabel: str, longLabel: str, extraEntropy: bytes,
+      callbackId: str, successCb: callable):
       packet = Bridge.ToBridge.new_message()
       method = packet.init("utils").init("createWallet")
 
+      method.callbackId = callbackId
       method.lookup = addrPoolSize
-      method.passphrase = passphrase
-      method.controlPassphrase = controlPassphrase
+
+      method.privPassphrase = privPass
+      method.privKdfTargetMs = privKdfMs
+      method.privKdfTargetMB = privKdfMem
+
+      method.ctrlPassphrase = ctrlPass
+      method.ctrlKdfTargetMs = ctrlKdfMs
+      method.ctrlKdfTargetMB = ctrlKdfMem
+
       method.label = shortLabel
       method.description = longLabel
-
       if extraEntropy is not None:
          method.extraEntropy = extraEntropy
 
-      fut = self.send(packet)
-      reply = fut.getVal(nothrow=True)
-      if reply.success == False:
-         raise BridgeError(
-            f"[createWallet] failed with error: {reply.error}")
-      return reply.utils.createWallet
+      self.send(packet, callback=successCb)
+
+   #############################################################################
+   def restoreWallet(self, root: list[str], chaincode: list[str], spPass: str,
+      privKdfTargetMs: int, privKdfTargetMem: int,
+      ctrlKdfTargetMs: int, ctrlKdftargetMem: int,
+      callbackId: str, successCb: callable):
+      restoreStruct = Bridge.UtilsRequest.RestoreWalletStruct.new_message()
+      restoreStruct.callbackId = callbackId
+
+      #root
+      if len(root) > 0:
+         payloadRoot = restoreStruct.init("root", len(root))
+         for i, r in enumerate(root):
+            payloadRoot[i] = r
+
+      #chaincode
+      if len(chaincode) > 0:
+         payloadChaincode = restoreStruct.init("chaincode", len(chaincode))
+         for i, c in enumerate(chaincode):
+            payloadChaincode[i] = c
+
+      #passphrase
+      if spPass:
+         restoreStruct.spPass = spPass
+
+      #kdf params
+      restoreStruct.privKdfTargetMs = privKdfTargetMs
+      restoreStruct.privKdfTargetMB = privKdfTargetMem
+      restoreStruct.ctrlKdfTargetMs = ctrlKdfTargetMs
+      restoreStruct.ctrlKdfTargetMB = ctrlKdftargetMem
+
+      packet = Bridge.ToBridge.new_message()
+      utilsRequest = packet.init("utils")
+      utilsRequest.restoreWallet = restoreStruct
+      self.send(packet, callback=successCb)
 
 ################################################################################
 class WalletManagerWrapper(ProtoWrapper):
@@ -1292,33 +1330,6 @@ class ArmoryBridge(object):
 
       self.blockTimeByHeightCache[height] = blockTime
       return blockTime
-
-   #############################################################################
-   def restoreWallet(self, root: list[str], chaincode: list[str],
-      spPass: str, callbackId: str):
-      restoreStruct = Bridge.RestoreWalletStruct.new_message()
-      restoreStruct.callbackId = callbackId
-
-      #root
-      if len(root) > 0:
-         payloadRoot = restoreStruct.init("root", len(root))
-         for i, r in enumerate(root):
-            payloadRoot[i] = r
-
-      #chaincode
-      if len(chaincode) > 0:
-         payloadChaincode = restoreStruct.init("chaincode", len(chaincode))
-         for i, c in enumerate(chaincode):
-            payloadChaincode[i] = c
-
-      #passphrase
-      if spPass:
-         restoreStruct.spPass = spPass
-
-      packet = Bridge.ToBridge.new_message()
-      utilsRequest = packet.init("utils")
-      utilsRequest.restoreWallet = restoreStruct
-      self.send(packet, False)
 
    #############################################################################
    def getHistoryForWalletSelection(self, wltIDList, order):

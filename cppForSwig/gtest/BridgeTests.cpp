@@ -869,9 +869,9 @@ TEST_F(BridgeTests, CreateWallet)
    createWltReq.setLabel("labl");
    createWltReq.setDescription("desc");
 
-   createWltReq.setPassphrase("pass1");
+   createWltReq.setPrivPassphrase("pass1");
    createWltReq.setPrivKdfTargetMs(500);
-   createWltReq.setPrivKdfTargetMem(128 * 1024 * 1024);
+   createWltReq.setPrivKdfTargetMB(128 * 1024 * 1024);
 
    auto rawReq = serializeCapnp(message);
    pushRequest(rawReq);

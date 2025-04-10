@@ -209,10 +209,10 @@ def initialColResize(tblViewObj, sizeList):
 
 #############################################################################
 class QRichLabel(QtWidgets.QLabel):
-   def __init__(self, txt, doWrap=True, \
-                           hAlign=QtCore.Qt.AlignLeft, \
-                           vAlign=QtCore.Qt.AlignVCenter, \
-                           **kwargs):
+   def __init__(self, txt, doWrap=True,
+      hAlign=QtCore.Qt.AlignLeft,
+      vAlign=QtCore.Qt.AlignVCenter,
+      **kwargs):
       super(QRichLabel, self).__init__(txt)
       self.setTextFormat(QtCore.Qt.RichText)
       self.setWordWrap(doWrap)
@@ -245,14 +245,14 @@ class QRichLabel(QtWidgets.QLabel):
    def setItalic(self):
       self.setText('<i>' + self.text() + '</i>')
 
+#############################################################################
 class QRichLabel_AutoToolTip(QRichLabel):
-   def __init__(self, txt, doWrap=True, \
-                           hAlign=QtCore.Qt.AlignLeft, \
-                           vAlign=QtCore.Qt.AlignVCenter, \
-                           **kwargs):
-      super(QRichLabel_AutoToolTip, self).__init__(txt, \
-            doWrap, hAlign, vAlign, **kwargs)
-
+   def __init__(self, txt, doWrap=True,
+      hAlign=QtCore.Qt.AlignLeft,
+      vAlign=QtCore.Qt.AlignVCenter,
+      **kwargs):
+      super(QRichLabel_AutoToolTip, self).__init__(txt,
+         doWrap, hAlign, vAlign, **kwargs)
       self.toolTipMethod = None
 
    def setToolTipLambda(self, toolTipMethod):
@@ -264,21 +264,19 @@ class QRichLabel_AutoToolTip(QRichLabel):
          if self.toolTipMethod != None:
             txt = self.toolTipMethod()
             self.setToolTip(txt)
-
       return QtWidgets.QLabel.event(self,event)
 
-
+#############################################################################
 class QMoneyLabel(QRichLabel):
    def __init__(self, nSatoshi, ndec=8, maxZeros=2, wColor=True,
-                              wBold=False, txtSize=10):
+      wBold=False, txtSize=10):
       QtWidgets.QLabel.__init__(self, coin2str(nSatoshi))
 
       self.nSatoshi = nSatoshi
       self.setValueText(nSatoshi, ndec, maxZeros, wColor, wBold, txtSize)
 
-
    def setValueText(self, nSatoshi, ndec=None, maxZeros=None, wColor=None,
-                                             wBold=None, txtSize=10):
+      wBold=None, txtSize=10):
       """
       When we set the text of the QMoneyLabel, remember previous values unless
       explicitly respecified
@@ -313,7 +311,7 @@ class QMoneyLabel(QRichLabel):
          self.setText('%s' % valStr)
       self.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
 
-
+#############################################################################
 def setLayoutStretchRows(layout, *args):
    for i,st in enumerate(args):
       layout.setRowStretch(i, st)
@@ -522,9 +520,6 @@ class ArmoryFrame(QtWidgets.QFrame):
       # when done, accept, next, or final button should be enabled.
       self.isComplete = None
 
-
-
-
 # Pure-python BMP creator taken from:
 #
 #     http://pseentertainmentcorp.com/smf/index.php?topic=2034.0
@@ -731,7 +726,7 @@ def createToolTipWidget(tiptext, iconSz=2):
 
    def setAllText(wself, txt):
       def pressEv(ev):
-         QtWidgets.QWhatsThis.showText(ev.globalPos(), txt, self)
+         QtWidgets.QWhatsThis.showText(ev.globalPos(), txt)
       wself.mousePressEvent = pressEv
       wself.setToolTip('<u></u>' + txt)
 
