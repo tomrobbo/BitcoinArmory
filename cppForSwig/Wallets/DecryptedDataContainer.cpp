@@ -88,7 +88,7 @@ void DecryptedDataContainer::addKdf(
    kdfMap_.emplace(kdfPtr->getId(), kdfPtr);
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////
 std::shared_ptr<KeyDerivationFunction> DecryptedDataContainer::getKdf(
    const KdfId& kdfId) const
 {
@@ -97,6 +97,66 @@ std::shared_ptr<KeyDerivationFunction> DecryptedDataContainer::getKdf(
       return nullptr;
    }
    return iter->second;
+}
+
+////
+std::shared_ptr<KeyDerivationFunction> DecryptedDataContainer::getMasterKdf() const
+{
+   //look for the master encryption key
+   auto keyIter = encryptedKeys_.find(masterEncryptionKeyId_);
+   if (keyIter == encryptedKeys_.end()) {
+      return nullptr;
+   }
+
+   /*
+   This key is encrypted by at least one outer key, look for the kdf
+   of this outer key and return it
+   */
+   const auto& cipherDataMap = keyIter->second->cipherDataMap_;
+   for (const auto& cipherDataPair : cipherDataMap) {
+      auto kdfId = cipherDataPair.second->cipher_->getKdfId();
+      if (kdfId == passthroughKdfId) {
+         /*
+         Passthrough kdf means the outer key isnt derived. This is
+         specific to the default encryption key and means the wallet
+         is not encrypted
+         */
+         throw std::runtime_error("key is not encrypted!");
+      }
+      return getKdf(kdfId);
+   }
+   return nullptr;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+const EncryptionKeyId& DecryptedDataContainer::getMasterEncryptionKeyId() const
+{
+   return masterEncryptionKeyId_;
+}
+
+////
+const EncryptionKeyId& DecryptedDataContainer::getDefaultEncryptionKeyId() const
+{
+   return defaultEncryptionKeyId_;
+}
+
+////
+const KdfId& DecryptedDataContainer::getDefaultKdfId() const
+{
+   return defaultKdfId_;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void DecryptedDataContainer::setPassphrasePromptLambda(
+   const PassphraseLambda& lambda)
+{
+   getPassphraseLambda_ = lambda;
+}
+
+////
+void DecryptedDataContainer::resetPassphraseLambda()
+{
+   getPassphraseLambda_ = nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

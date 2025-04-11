@@ -156,7 +156,11 @@ namespace Armory
          const std::string& getID(void) const;
          const std::string& getMasterID(void) const;
          virtual ReentrantLock lockDecryptedContainer(void);
+         std::shared_ptr<Encryption::KeyDerivationFunction> getPrimaryKdf(void) const;
+
          bool isDecryptedContainerLocked(void) const;
+         void setPassphrasePromptLambda(PassphraseLambda);
+         void resetPassphrasePromptLambda(void);
 
          std::shared_ptr<Assets::AssetEntry> getAssetForID(
             const AssetId&) const;
@@ -179,16 +183,6 @@ namespace Armory
          AddressEntryType getAddrTypeForID(const AssetId&) const;
          std::shared_ptr<AddressEntry> getAddressEntryForID(
             const AssetId&) const;
-
-         void setPassphrasePromptLambda(PassphraseLambda lambda)
-         {
-            decryptedData_->setPassphrasePromptLambda(lambda);
-         }
-
-         void resetPassphrasePromptLambda(void)
-         {
-            decryptedData_->resetPassphraseLambda();
-         }
 
          void addMetaAccount(Accounts::MetaAccountType);
          std::shared_ptr<Accounts::MetaDataAccount> getMetaAccount(

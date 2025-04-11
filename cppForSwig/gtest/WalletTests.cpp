@@ -13,6 +13,7 @@
 #include "../Wallets/Seeds/Backups.h"
 #include "../Wallets/Seeds/Seeds.h"
 #include "../Wallets/WalletFileInterface.h"
+#include "../Wallets/KDF.h"
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
@@ -2360,18 +2361,18 @@ TEST_F(WalletInterfaceTest, EncryptionTest)
    //convert to IES packets
    std::vector<IESPacket> packets;
    for (auto& keyVal : keyValMap) {
-      auto&& iesPacket = getIESData(keyVal);
-      packets.push_back(iesPacket);
+      auto iesPacket = getIESData(keyVal);
+      packets.emplace_back(iesPacket);
    }
 
    //check cryptographic material
-   for(unsigned i=0; i<packets.size(); i++) {
+   for (unsigned i=0; i<packets.size(); i++) {
       auto& packet = packets[i];
 
       ASSERT_TRUE(CryptoECDSA().VerifyPublicKeyValid(packet.pubKey_));
       ASSERT_NE(packet.iv_, allZeroes16_);
 
-      for(unsigned y=0; y<packets.size(); y++) {
+      for (unsigned y=0; y<packets.size(); y++) {
          if (y==i) {
             continue;
          }
@@ -3585,7 +3586,7 @@ TEST_F(WalletInterfaceTest, WipeEntries_Test)
          controlHeader->getDefaultEncryptionKeyId(),
          controlHeader->defaultKdfId_, controlHeader->masterEncryptionKeyId_);
       {
-         auto txInner =std::make_shared<IO::RawIfaceTransaction>(
+         auto txInner = std::make_shared<IO::RawIfaceTransaction>(
             dbEnv.get(), &dbCtrl, true);
          decryptedData->readFromDisk(txInner);
       }
@@ -4452,6 +4453,15 @@ TEST_F(WalletsTest, SeedEncryption)
    //check clear text seed does not exist on disk
    auto filename = wlt->getDbFilename();
    ASSERT_FALSE(TestUtils::searchFile(filename, rawEntropy));
+
+   {
+      auto kdfPtr = wlt->getPrimaryKdf();
+      auto start = std::chrono::system_clock::now();
+      kdfPtr->deriveKey(SecureBinaryData::fromString("test key"));
+      auto end = std::chrono::system_clock::now();
+      ASSERT_GE(end-start, 350ms);
+      ASSERT_LE(end-start, 500ms);
+   }
 
    //grab without passphrase lbd, should fail
    try {

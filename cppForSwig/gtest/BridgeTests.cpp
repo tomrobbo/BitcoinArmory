@@ -662,6 +662,32 @@ protected:
       return capnToWalletData(replyMgr.getGetData());
    }
 
+   std::chrono::milliseconds testKDFUnlock(const std::string& walletId)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto request = toBridge.initWallet();
+      request.setWalletId(walletId);
+      request.setGetUnlockTime();
+
+      auto rawReq = serializeCapnp(message);
+      pushRequest(rawReq);
+
+      auto result = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+         result->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+      auto fromBridge = reader.getRoot<Bridge::FromBridge>();
+      auto reply = fromBridge.getReply();
+      if (!reply.getSuccess() || reply.getReferenceId() != refId) {
+         return {};
+      }
+      return std::chrono::milliseconds(reply.getWallet().getGetUnlockTime());
+   }
+
 public:
    std::filesystem::path homedir;
 
@@ -974,6 +1000,18 @@ TEST_F(BridgeTests, CreateWallet)
    EXPECT_TRUE(wltData.encrypted);
    EXPECT_FALSE(wltData.watchingOnly);
    EXPECT_EQ(wltData.addresses.size(), 1);
+
+   /* extras
+      1. KDF unlock time
+      2. change passphrase
+      3. change KDF
+      4. remove passphrase
+   */
+
+   //1. request KDF unlock time
+   auto unlockTime = testKDFUnlock(wltId);
+   EXPECT_GE(unlockTime, 500ms) << unlockTime.count();
+   EXPECT_LE(unlockTime, 650ms) << unlockTime.count();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

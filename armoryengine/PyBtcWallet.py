@@ -774,18 +774,20 @@ class PyBtcWallet(object):
       return onlineWallet
 
    #############################################################################
-   def testKdfComputeTime(self):
+   def testKdfComputeTime(self, callback):
       """
       Experimentally determines the compute time required by this computer
       to execute with the current key-derivation parameters.  This may be
       useful for when you transfer a wallet to a new computer that has
       different speed/memory characteristic.
       """
-      testPassphrase = SecureBinaryData('This is a simple passphrase')
-      start = RightNow()
-      self.kdf.DeriveKey(testPassphrase)
-      self.testedComputeTime = (RightNow()-start)
-      return self.testedComputeTime
+      def handleReply(reply):
+         if reply.success == False:
+            LOGERROR("failed to test KDF")
+         else:
+            self.testedComputeTime = reply.wallet.getUnlockTime
+         callback(reply.success, self.testedComputeTime)
+      self.bridgeWalletObj.getUnlockTime(handleReply)
 
    #############################################################################
    def verifyPassphrase(self, securePassphrase):

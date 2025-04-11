@@ -319,6 +319,8 @@ struct WalletRequest {
       createAddressBook             @16: Void;
       setComment                    @17: SetComment;
       setLabels                     @18: SetLabels;
+
+      getUnlockTime                 @19: Void;
    }
 }
 
@@ -368,6 +370,7 @@ struct WalletReply {
       setupNewCoinSelectionInstance @11: Text;
       getUtxos                      @12: List(UTXO);
       createAddressBook             @13: Types.AddressBook;
+      getUnlockTime                 @14: UInt32; #unlock time in ms
    }
 }
 

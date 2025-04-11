@@ -268,6 +268,9 @@ namespace Armory
          //sanity checks
          bool isOffline(void) const;
 
+         //wallet misc
+         void getUnlockTime(const std::string&, MessageId);
+
       public:
          CppBridge(void);
 

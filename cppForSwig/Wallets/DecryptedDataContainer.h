@@ -83,7 +83,6 @@ namespace Armory
                   lock_ = std::make_unique<ReentrantLock>(obj.get());
                }
             };
-
             std::vector<OtherLockedContainer> otherLocks_ = {};
 
          public:
@@ -123,12 +122,6 @@ namespace Armory
 
             void initAfterLock(void);
             void cleanUpBeforeUnlock(void);
-
-         public:
-            const EncryptionKeyId& getDefaultEncryptionKeyId(void) const
-            {
-               return defaultEncryptionKeyId_;
-            }
 
          public:
             DecryptedDataContainer(
@@ -171,12 +164,8 @@ namespace Armory
             void deleteFromDisk(std::shared_ptr<IO::DBIfaceTransaction>,
                const BinaryData&);
 
-            void setPassphrasePromptLambda(const PassphraseLambda& lambda)
-            {
-               getPassphraseLambda_ = lambda;
-            }
-
-            void resetPassphraseLambda(void) { getPassphraseLambda_ = nullptr; }
+            void setPassphrasePromptLambda(const PassphraseLambda&);
+            void resetPassphraseLambda(void);
 
             void encryptEncryptionKey(
                const EncryptionKeyId&,
@@ -185,11 +174,10 @@ namespace Armory
             void eraseEncryptionKey(const EncryptionKeyId&, const KdfId&);
 
             void lockOther(std::shared_ptr<DecryptedDataContainer> other);
-            const KdfId& getDefaultKdfId(void) const { return defaultKdfId_; }
-            const EncryptionKeyId& getMasterEncryptionKeyId(void) const
-            {
-               return masterEncryptionKeyId_;
-            }
+            const KdfId& getDefaultKdfId(void) const;
+            std::shared_ptr<KeyDerivationFunction> getMasterKdf(void) const;
+            const EncryptionKeyId& getMasterEncryptionKeyId(void) const;
+            const EncryptionKeyId& getDefaultEncryptionKeyId(void) const;
          };
       }; //namespace Encryption
    }; //namespace Wallets

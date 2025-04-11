@@ -474,6 +474,12 @@ namespace
                args.getType(), args.which(), referenceId);
             break;
          }
+
+         case WalletRequest::GET_UNLOCK_TIME:
+         {
+            bridge->getUnlockTime(walletId, referenceId);
+            break;
+         }
       }
 
       if (!response.empty()) {

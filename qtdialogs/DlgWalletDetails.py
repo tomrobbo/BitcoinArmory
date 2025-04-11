@@ -20,6 +20,7 @@ from armoryengine.Settings import TheSettings
 from armoryengine.WalletUtils import WalletTypes, determineWalletType
 from armorycolors import htmlColor
 from ui.TreeViewGUI import AddressTreeModel
+from ui.QtExecuteSignal import TheSignalExecution
 
 from qtdialogs.qtdefines import USERMODE, \
    relaxedSizeNChar, relaxedSizeStr, QLabelButton, STYLE_SUNKEN, STYLE_NONE, \
@@ -40,7 +41,7 @@ from qtdialogs.DlgSendBitcoins import DlgSendBitcoins
 from qtdialogs.DlgBackupCenter import DlgBackupCenter
 from qtdialogs.DlgAddressInfo import DlgAddressInfo
 from qtdialogs.DlgRestore import OpenPaperBackupDialog
-
+from qtdialogs.DlgChangePassphrase import DlgChangePassphrase
 
 ################################################################################
 class DlgWalletDetails(ArmoryDialog):
@@ -844,20 +845,20 @@ class DlgWalletDetails(ArmoryDialog):
 
       layout = QtWidgets.QGridLayout()
 
-      layout.addWidget(tooltips[WLTFIELDS.WltID], 0, 0);
-      layout.addWidget(labelNames[WLTFIELDS.WltID], 0, 1);
+      layout.addWidget(tooltips[WLTFIELDS.WltID], 0, 0)
+      layout.addWidget(labelNames[WLTFIELDS.WltID], 0, 1)
       layout.addWidget(self.labelValues[WLTFIELDS.WltID], 0, 2)
 
-      layout.addWidget(tooltips[WLTFIELDS.Name], 1, 0);
-      layout.addWidget(labelNames[WLTFIELDS.Name], 1, 1);
+      layout.addWidget(tooltips[WLTFIELDS.Name], 1, 0)
+      layout.addWidget(labelNames[WLTFIELDS.Name], 1, 1)
       layout.addWidget(self.labelValues[WLTFIELDS.Name], 1, 2)
 
-      layout.addWidget(tooltips[WLTFIELDS.Descr], 2, 0);
-      layout.addWidget(labelNames[WLTFIELDS.Descr], 2, 1);
+      layout.addWidget(tooltips[WLTFIELDS.Descr], 2, 0)
+      layout.addWidget(labelNames[WLTFIELDS.Descr], 2, 1)
       layout.addWidget(self.labelValues[WLTFIELDS.Descr], 2, 2, 4, 1)
 
-      layout.addWidget(tooltips[WLTFIELDS.Version], 0, 3);
-      layout.addWidget(labelNames[WLTFIELDS.Version], 0, 4);
+      layout.addWidget(tooltips[WLTFIELDS.Version], 0, 3)
+      layout.addWidget(labelNames[WLTFIELDS.Version], 0, 4)
       layout.addWidget(self.labelValues[WLTFIELDS.Version], 0, 5)
 
       i = 0
@@ -868,27 +869,27 @@ class DlgWalletDetails(ArmoryDialog):
          layout.addWidget(self.labelValues[WLTFIELDS.NumAddr], i, 5)
 
       i += 1
-      layout.addWidget(tooltips[WLTFIELDS.Secure], i, 3);
-      layout.addWidget(labelNames[WLTFIELDS.Secure], i, 4);
+      layout.addWidget(tooltips[WLTFIELDS.Secure], i, 3)
+      layout.addWidget(labelNames[WLTFIELDS.Secure], i, 4)
       layout.addWidget(self.labelValues[WLTFIELDS.Secure], i, 5)
 
 
       if self.wlt.watchingOnly:
          i += 1
-         layout.addWidget(tooltips[WLTFIELDS.BelongsTo], i, 3);
-         layout.addWidget(labelNames[WLTFIELDS.BelongsTo], i, 4);
+         layout.addWidget(tooltips[WLTFIELDS.BelongsTo], i, 3)
+         layout.addWidget(labelNames[WLTFIELDS.BelongsTo], i, 4)
          layout.addWidget(self.labelValues[WLTFIELDS.BelongsTo], i, 5)
 
 
       if dispCrypto:
          i += 1
-         layout.addWidget(tooltips[WLTFIELDS.Time], i, 3);
-         layout.addWidget(labelNames[WLTFIELDS.Time], i, 4);
+         layout.addWidget(tooltips[WLTFIELDS.Time], i, 3)
+         layout.addWidget(labelNames[WLTFIELDS.Time], i, 4)
          layout.addWidget(self.labelValues[WLTFIELDS.Time], i, 5)
 
          i += 1
-         layout.addWidget(tooltips[WLTFIELDS.Mem], i, 3);
-         layout.addWidget(labelNames[WLTFIELDS.Mem], i, 4);
+         layout.addWidget(tooltips[WLTFIELDS.Mem], i, 3)
+         layout.addWidget(labelNames[WLTFIELDS.Mem], i, 4)
          layout.addWidget(self.labelValues[WLTFIELDS.Mem], i, 5)
 
 
@@ -897,8 +898,19 @@ class DlgWalletDetails(ArmoryDialog):
       self.frm.setLayout(layout)
 
    def testKdfTime(self):
-      kdftimestr = "%0.3f sec" % self.wlt.testKdfComputeTime()
-      self.labelValues[WLTFIELDS.Time].setText(kdftimestr)
+      def callbackInner(success, unlockTime):
+         # this has to run in the Qt GUI thread
+         if success == False:
+            QtWidgets.QMessageBox.error(self, self.tr('Unlock Failed'),
+               self.tr("Failed to test KDF unlock time =("),
+               QtWidgets.QMessageBox.Ok)
+         kdftimestr = "%0.3f sec" % (unlockTime / 1000.)
+         self.labelValues[WLTFIELDS.Time].setText(kdftimestr)
+
+      def callback(success, unlockTime):
+         # makes sure the callback is triggered from Qt thread
+         TheSignalExecution.executeMethod(callbackInner, success, unlockTime)
+      self.wlt.testKdfComputeTime(callback)
 
    def execSetOwner(self):
       dlg = self.dlgChangeOwner(self.wlt, self, self.main)
@@ -906,9 +918,12 @@ class DlgWalletDetails(ArmoryDialog):
          if dlg.chkIsMine.isChecked():
             self.wlt.setSetting('IsMine', True)
             self.wlt.setSetting('BelongsTo', '')
-            self.labelValues[WLTFIELDS.BelongsTo].setText(self.tr('You own this wallet'))
-            self.labelValues[WLTFIELDS.BelongsTo].setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
-            self.labelValues[WLTFIELDS.Secure].setText(self.tr('<i>Offline</i>'))
+            self.labelValues[WLTFIELDS.BelongsTo].setText(
+               self.tr('You own this wallet'))
+            self.labelValues[WLTFIELDS.BelongsTo].setAlignment(
+               QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+            self.labelValues[WLTFIELDS.Secure].setText(
+               self.tr('<i>Offline</i>'))
          else:
             owner = unicode(dlg.edtOwnerString.text())
             self.wlt.setSetting('IsMine', False)
@@ -917,11 +932,14 @@ class DlgWalletDetails(ArmoryDialog):
             if len(owner) > 0:
                self.labelValues[WLTFIELDS.BelongsTo].setText(owner)
             else:
-               self.labelValues[WLTFIELDS.BelongsTo].setText(self.tr('Someone else'))
-            self.labelValues[WLTFIELDS.Secure].setText(self.tr('<i>Watching-Only</i>'))
-            self.labelValues[WLTFIELDS.BelongsTo].setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
-            self.labelValues[WLTFIELDS.Secure].setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
-
+               self.labelValues[WLTFIELDS.BelongsTo].setText(
+                  self.tr('Someone else'))
+            self.labelValues[WLTFIELDS.Secure].setText(
+               self.tr('<i>Watching-Only</i>'))
+            self.labelValues[WLTFIELDS.BelongsTo].setAlignment(
+               QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+            self.labelValues[WLTFIELDS.Secure].setAlignment(
+               QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
          self.main.changeWltFilter()
 
    #############################################################################

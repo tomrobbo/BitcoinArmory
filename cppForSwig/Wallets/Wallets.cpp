@@ -701,28 +701,43 @@ const std::string& AssetWallet::getMasterID() const
 ////////////////////////////////////////////////////////////////////////////////
 ReentrantLock AssetWallet::lockDecryptedContainer(void)
 {
-   return move(ReentrantLock(decryptedData_.get()));
+   return std::move(ReentrantLock(decryptedData_.get()));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 bool AssetWallet::isDecryptedContainerLocked() const
 {
-   try
-   {
+   try {
       auto lock = SingleLock(decryptedData_.get());
       return false;
+   } catch (const AlreadyLocked&) {
+      return true;
    }
-   catch (AlreadyLocked&)
-   {}
+}
 
-   return true;
+////
+void AssetWallet::setPassphrasePromptLambda(PassphraseLambda lambda)
+{
+   decryptedData_->setPassphrasePromptLambda(lambda);
+}
+
+////
+void AssetWallet::resetPassphrasePromptLambda()
+{
+   decryptedData_->resetPassphraseLambda();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+std::shared_ptr<Encryption::KeyDerivationFunction>
+AssetWallet::getPrimaryKdf() const
+{
+   return decryptedData_->getMasterKdf();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 void AssetWallet::extendPublicChain(unsigned count)
 {
-   for (auto& account : accounts_)
-   {
+   for (auto& account : accounts_) {
       account.second->extendPublicChain(iface_, count);
    }
 }
@@ -730,8 +745,7 @@ void AssetWallet::extendPublicChain(unsigned count)
 ////////////////////////////////////////////////////////////////////////////////
 void AssetWallet::extendPrivateChain(unsigned count)
 {
-   for (auto& account : accounts_)
-   {
+   for (auto& account : accounts_) {
       account.second->extendPrivateChain(iface_, decryptedData_, count);
    }
 }
@@ -760,20 +774,17 @@ void AssetWallet::extendPrivateChainToIndex(
 void AssetWallet::addSubDB(
    const std::string& dbName, const PassphraseLambda& passLbd)
 {
-   if (iface_->getFreeDbCount() == 0)
+   if (iface_->getFreeDbCount() == 0) {
       iface_->setDbCount(iface_->getDbCount() + 1);
-
+   }
    auto headerPtr = make_shared<IO::WalletHeader_Custom>();
    headerPtr->walletID_ = dbName;
 
-   try
-   {   
+   try {
       iface_->lockControlContainer(passLbd);
       iface_->addHeader(headerPtr);
       iface_->unlockControlContainer();
-   }
-   catch (...)
-   {
+   } catch (...) {
       iface_->unlockControlContainer();
       rethrow_exception(current_exception());
    }
@@ -784,14 +795,16 @@ shared_ptr<IO::WalletIfaceTransaction> AssetWallet::beginSubDBTransaction(
    const string& dbName, bool write)
 {
    shared_ptr<IO::DBIfaceTransaction> tx;
-   if (!write)
+   if (!write) {
       tx = iface_->beginReadTransaction(dbName);
-   else
+   } else {
       tx = iface_->beginWriteTransaction(dbName);
+   }
 
    auto wltTx = dynamic_pointer_cast<IO::WalletIfaceTransaction>(tx);
-   if (wltTx == nullptr)
+   if (wltTx == nullptr) {
       throw WalletException("[beginSubDBTransaction] invalid dbtx type");
+   }
    return wltTx;
 }
 
@@ -804,7 +817,6 @@ shared_ptr<AssetWallet> AssetWallet::loadMainWalletFromFile(
    auto headerPtr = iface->getWalletHeader(mainWalletID);
 
    shared_ptr<AssetWallet> wltPtr;
-
    switch (headerPtr->type_)
    {
       case IO::WalletHeaderType_Single:

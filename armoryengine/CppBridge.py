@@ -841,6 +841,12 @@ class BridgeWalletWrapper(ProtoWrapper):
       reply = fut.getVal()
       return reply.wallet.getLedgerDelegateIdForScrAddr
 
+   ####
+   def getUnlockTime(self, callback):
+      packet = self.getPacket()
+      packet.wallet.getUnlockTime = None
+      self.send(packet, callback=callback)
+
 ################################################################################
 class BridgeCoinSelectionWrapper(ProtoWrapper):
    #############################################################################

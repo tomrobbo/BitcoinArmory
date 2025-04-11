@@ -204,7 +204,6 @@ namespace Armory
             /*
             May have multiple cipher data objects
             */
-
             friend class DecryptedDataContainer;
 
          protected:
@@ -220,12 +219,9 @@ namespace Armory
 
          public:
             EncryptionKey(Wallets::EncryptionKeyId&,
-               SecureBinaryData&,
-               std::unique_ptr<Cipher>);
-
+               SecureBinaryData&, std::unique_ptr<Cipher>);
             EncryptionKey(Wallets::EncryptionKeyId&,
-               std::map<Wallets::EncryptionKeyId,
-                  std::unique_ptr<CipherData>>);
+               std::map<Wallets::EncryptionKeyId, std::unique_ptr<CipherData>>);
 
             ////
             bool isSame(EncryptionKey* const) const;
@@ -240,7 +236,6 @@ namespace Armory
             TODO:
                - dedicated decrypt per sub class instead of virtual (
                otherwise the return type is always ClearTextAssetData)
-               - dedicated encryption key id
             */
             std::unique_ptr<ClearTextAssetData> decrypt(
                const SecureBinaryData& key) const;

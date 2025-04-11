@@ -2205,6 +2205,59 @@ SecureBinaryData CppBridge::generateRandom(size_t count) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+void CppBridge::getUnlockTime(const std::string& walletId, MessageId refId)
+{
+   using namespace std::chrono;
+   auto testUnlockTime = [this, walletId, refId]
+   {
+      try {
+         //get wallet
+         auto wltContainer = wltManager_->getWalletContainer(walletId);
+         auto wlt = wltContainer->getWalletPtr();
+
+         //get kdf
+         auto kdf = wlt->getPrimaryKdf();
+         if (kdf == nullptr) {
+            throw std::runtime_error("kdf is null!");
+         }
+
+         //time the derivation of a dummy key
+         auto start = system_clock::now();
+         kdf->deriveKey(SecureBinaryData::fromString("test key"));
+         auto end = system_clock::now();
+         auto result = duration_cast<milliseconds>(end-start);
+
+         //reply
+         capnp::MallocMessageBuilder message;
+         auto fromBridge = message.initRoot<FromBridge>();
+         auto reply = fromBridge.initReply();
+         reply.setReferenceId(refId);
+         reply.setSuccess(true);
+         auto wltReply = reply.initWallet();
+         wltReply.setGetUnlockTime(result.count());
+
+         auto serialized = serializeCapnp(message);
+         this->writeToClient(serialized);
+      } catch (const std::exception& e) {
+         //report error
+         capnp::MallocMessageBuilder message;
+         auto fromBridge = message.initRoot<FromBridge>();
+         auto reply = fromBridge.initReply();
+         reply.setReferenceId(refId);
+         reply.setSuccess(false);
+         reply.setError(e.what());
+         auto serialized = serializeCapnp(message);
+         this->writeToClient(serialized);
+      }
+   };
+
+   std::thread thr(testUnlockTime);
+   if (thr.joinable()) {
+      thr.detach();
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 ////
 ////  BridgeCallback
 ////
