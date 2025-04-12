@@ -4,7 +4,7 @@
 # Distributed under the GNU Affero General Public License (AGPL v3)            #
 # See LICENSE or http://www.gnu.org/licenses/agpl.html                         #
 #                                                                              #
-# Copyright (C) 2016-2024, goatpig                                             #
+# Copyright (C) 2016-2025, goatpig                                             #
 #  Distributed under the MIT license                                           #
 #  See LICENSE-MIT or https://opensource.org/licenses/MIT                      #
 #                                                                              #
@@ -13,7 +13,7 @@
 from qtpy import QtCore, QtGui, QtWidgets
 
 from armoryengine.ArmoryUtils import toUnicode, USE_TESTNET, \
-   USE_REGTEST, LOGEXCEPT
+   USE_REGTEST, LOGEXCEPT, LOGINFO, LOGERROR
 from armoryengine.AddressUtils import binary_to_base58, encodePrivKeyBase58, \
    hash160_to_addrStr
 from armorycolors import htmlColor, Colors
@@ -623,17 +623,17 @@ class DlgPrintBackup(ArmoryDialog):
                self.comboPageNum.addItem(str(i + 1))
             self.lblPageMaxStr.setText(self.tr('of %d' % (self.numImportPages + 1)))
 
-
       self.lblPageStr.setVisible(doShow)
       self.comboPageNum.setVisible(doShow)
       self.lblPageMaxStr.setVisible(doShow)
 
    def print_(self):
       LOGINFO('Printing!')
-      self.printer = QPrinter(QPrinter.HighResolution)
-      self.printer.setPageSize(QPrinter.Letter)
+      from qtpy import QtPrintSupport
+      self.printer = QtPrintSupport.QPrinter(QtPrintSupport.QPrinter.HighResolution)
+      self.printer.setPageSize(QtGui.QPageSize.PageSizeId.Letter)
 
-      if QPrintDialog(self.printer).exec_():
+      if QtPrintSupport.QPrintDialog(self.printer).exec_():
          painter = QtGui.QPainter(self.printer)
          painter.setRenderHint(QtGui.QPainter.TextAntialiasing)
 
