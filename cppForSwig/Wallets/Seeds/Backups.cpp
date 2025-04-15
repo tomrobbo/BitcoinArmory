@@ -1072,21 +1072,23 @@ RestoreResult Helpers::restoreFromBackup(
    }
 
    //prompt for passwords
-   BinaryDataRef pass = params.privatePassphrase.getRef();
-   BinaryDataRef control = params.controlPassphrase.getRef();
-   if (pass.empty()) {
+   SecureBinaryData pass;
+   SecureBinaryData control;
+   if (params.privatePassphrase.empty()) {
       auto reply = callback(RestorePrompt{RestorePromptType::Passphrases});
       if (!reply.success) {
          throw RestoreUserException("user did not provide a passphrase");
       }
-
-      pass.setRef(reply.privPass);
-      control.setRef(reply.controlPass);
+      pass = std::move(reply.privPass);
+      control = std::move(reply.controlPass);
+   } else {
+      pass = params.privatePassphrase;
+      control = params.controlPassphrase;
    }
 
    IO::CreationParams paramsCopy{ params.folder,
-      pass, params.privateUnlock,
-      control, params.controlUnlock,
+      std::move(pass), params.privateUnlock,
+      std::move(control), params.controlUnlock,
       params.progressFunc, params.lookup
    };
 
@@ -1416,7 +1418,7 @@ std::string_view Backup_Easy16::getChaincode(LineIndex li, bool encrypted) const
             " missing encrypted line");
       }
    }
-   return std::string_view(iter->toCharPtr(), iter->getSize());
+   return std::string_view(iter->toCharPtr(), iter->getSize() - 1);
 }
 
 std::string_view Backup_Easy16::getSpPass() const

@@ -193,7 +193,7 @@ namespace Armory
             const std::string&, //callbackId
             MessageId);
          void createBackupStringForWallet(const std::string&,
-            const std::string&, MessageId);
+            const std::string&, SecureBinaryData, MessageId);
          void restoreWallet(
             const std::vector<std::string_view>&,
             const std::string_view&,

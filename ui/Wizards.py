@@ -117,6 +117,7 @@ class WalletWizard(ArmoryWizard):
       self.setWindowTitle(self.tr("Wallet Creation Wizard"))
       self.setOption(QtWidgets.QWizard.HaveFinishButtonOnEarlyPages, on=True)
       self.setOption(QtWidgets.QWizard.IgnoreSubTitles, on=True)
+      self.passphrase = None
 
       self.walletCreationId, \
          self.manualEntropyId, \
@@ -126,7 +127,7 @@ class WalletWizard(ArmoryWizard):
          self.walletBackupId, \
          self.WOWId = range(7)
 
-        # Page 1: Create Wallet
+      # Page 1: Create Wallet
       self.walletCreationPage = WalletCreationPage(self)
       self.setPage(self.walletCreationId, self.walletCreationPage)
 
@@ -186,8 +187,8 @@ class WalletWizard(ArmoryWizard):
          self.createNewWalletFromWizard()
 
       elif self.currentPage() == self.walletBackupPage:
-         self.walletBackupPage.pageFrame.setPassphrase(
-            self.setPassphrasePage.pageFrame.getPassphrase())
+         self.walletBackupPage.pageFrame.setPassphrase(self.passphrase)
+         self.passphrase = None
          self.walletBackupPage.pageFrame.setWallet(self.newWallet)
 
       elif self.currentPage() == self.walletCreationPage:
@@ -244,10 +245,11 @@ class WalletWizard(ArmoryWizard):
       def finalizeCb(reply):
          TheSignalExecution.executeMethod(finalizeInner, reply)
 
+      self.passphrase = self.verifyPassphrasePage.pageFrame.getPassphrase()
       handler = CreateWalletNotifHandler(self.walletProgressPage.pageFrame)
       PyBtcWallet().createNewWallet(
          replyCallback=finalizeCb, callbackId=handler.callbackId,
-         passphrase=self.setPassphrasePage.pageFrame.getPassphrase(),
+         passphrase=self.passphrase,
          kdfTargSec=self.walletCreationPage.pageFrame.getKdfSec(),
          kdfMaxMem=self.walletCreationPage.pageFrame.getKdfBytes(),
          shortLabel=self.walletCreationPage.pageFrame.getName(),
@@ -506,7 +508,7 @@ class CreateTxPage(ArmoryWizardPage):
          self.txdp = result
          result = True
       return result
-   
+
    def updateOnSelectWallet(self, wlt):
       self.wizard().updateOnSelectWallet(wlt)
 

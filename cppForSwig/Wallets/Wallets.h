@@ -87,8 +87,8 @@ namespace Armory
          friend class ResolverFeed_AssetWalletSingle_ForMultisig;
 
       private:
-         virtual void initAfterLock(void) {}
-         virtual void cleanUpBeforeUnlock(void) {}
+         virtual void initAfterLock(void) override {}
+         virtual void cleanUpBeforeUnlock(void) override {}
 
          static std::string getMasterID(std::shared_ptr<IO::WalletDBInterface>);
          void checkMasterID(const std::string& masterID);
@@ -130,7 +130,7 @@ namespace Armory
 
          //static
          static BinaryDataRef getDataRefForKey(
-            IO::DBIfaceTransaction*, const BinaryData& key);
+            IO::DBIfaceTransaction*, const BinaryData&);
 
       public:
          //tors
@@ -156,14 +156,14 @@ namespace Armory
          const std::string& getID(void) const;
          const std::string& getMasterID(void) const;
          virtual ReentrantLock lockDecryptedContainer(void);
-         std::shared_ptr<Encryption::KeyDerivationFunction> getPrimaryKdf(void) const;
+         std::shared_ptr<Encryption::KeyDerivationFunction>
+            getPrimaryKdf(void) const;
+         std::shared_ptr<Encryption::KeyDerivationFunction>
+            getDefaultKdf(void) const;
 
          bool isDecryptedContainerLocked(void) const;
          void setPassphrasePromptLambda(PassphraseLambda);
          void resetPassphrasePromptLambda(void);
-
-         std::shared_ptr<Assets::AssetEntry> getAssetForID(
-            const AssetId&) const;
 
          void extendPublicChain(unsigned);
          void extendPublicChainToIndex(const AddressAccountId&, unsigned,
@@ -175,6 +175,8 @@ namespace Armory
          bool hasAddrStr(const std::string& scrAddr) const;
          bool isAssetUsed(const AssetId&) const;
 
+         std::shared_ptr<Assets::AssetEntry> getAssetForID(
+            const AssetId&) const;
          const std::pair<AssetId, AddressEntryType>&
             getAssetIDForAddrStr(const std::string& scrAddr) const;
          const std::pair<AssetId, AddressEntryType>&
@@ -217,8 +219,6 @@ namespace Armory
 
          const AddressAccountId& getMainAccountID(void) const;
          const EncryptionKeyId& getDefaultEncryptionKeyId(void) const;
-         std::shared_ptr<Encryption::KeyDerivationFunction>
-            getDefaultKdf(void) const;
 
          void setLabel(const std::string&);
          void setDescription(const std::string&);
@@ -227,9 +227,10 @@ namespace Armory
          const std::string& getDescription(void) const;
 
          std::shared_ptr<IO::WalletDBInterface> getIface(void) const;
+         bool isMasterRecordEncrypted(void) const;
 
          //virtual
-         virtual std::set<BinaryData> getAddrHashSet();
+         virtual std::set<BinaryData> getAddrHashSet(void) const;
          virtual const SecureBinaryData& getDecryptedValue(
             std::shared_ptr<Encryption::EncryptedAssetData>) = 0;
          virtual std::shared_ptr<Assets::AssetEntry> getRoot(void) const = 0;
@@ -304,9 +305,7 @@ namespace Armory
             const std::function<SecureBinaryData(void)>&);
          void erasePrivateKeyPassphrase(void);
 
-         std::shared_ptr<Assets::AssetEntry> getRoot(void) const override
-         { return root_; }
-
+         std::shared_ptr<Assets::AssetEntry> getRoot(void) const override;
          const SecureBinaryData& getPublicRoot(void) const;
          const SecureBinaryData& getArmory135Chaincode(void) const;
 

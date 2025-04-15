@@ -1499,12 +1499,18 @@ class DlgEnterSecurePrintCode(ArmoryDialog):
       self.accept()
 
 ################################################################################
-def OpenPaperBackupDialog(backupType, parent, main, wlt, unlockTitle=None):
+def OpenPaperBackupDialog(backupType, parent, main, wlt, passphrase: str=None):
+   if passphrase:
+      #cleanup passphrase after 20sec
+      def cleanupPassphrase():
+         passphrase = None
+      TheSignalExecution.callLater(20, cleanupPassphrase)
+
    result = True
    verifyText = ''
    if backupType == 'Single':
       from qtdialogs.DlgBackupCenter import DlgPrintBackup
-      result = DlgPrintBackup(parent, main, wlt).exec_()
+      result = DlgPrintBackup(parent, main, wlt, passphrase=passphrase).exec_()
       verifyText = parent.tr(
          u'If the backup was printed with SecurePrint\u200b\u2122, please '
          u'make sure you wrote the SecurePrint\u200b\u2122 code on the '
@@ -1518,36 +1524,36 @@ def OpenPaperBackupDialog(backupType, parent, main, wlt, unlockTitle=None):
          'fragment (or stored with each file fragment). The code is the '
          'same for all fragments.')
 
-   doTest = MsgBoxCustom(MSGBOX.Warning, parent.tr('Verify Your Backup!'), parent.tr(
-      '<b><u>Verify your backup!</u></b> '
-      '<br><br>'
-      'If you just made a backup, make sure that it is correct! '
-      'The following steps are recommended to verify its integrity: '
-      '<br>'
-      '<ul>'
-      '<li>Verify each line of the backup data contains <b>9 columns</b> '
-      'of <b>4 letters each</b> (excluding any "ID" lines).</li> '
-      '<li>%s</li>'
-      '<li>Use Armory\'s backup tester to test the backup before you '
-      'physiclly secure it.</li> '
-      '</ul>'
-      '<br>'
-      'Armory has a backup tester that uses the exact same '
-      'process as restoring your wallet, but stops before it writes any '
-      'data to disk.  Would you like to test your backup now? '
-       % verifyText), yesStr="Test Backup", noStr="Cancel")
+   doTest = MsgBoxCustom(MSGBOX.Warning, parent.tr('Verify Your Backup!'),
+      parent.tr(
+         '<b><u>Verify your backup!</u></b> '
+         '<br><br>'
+         'If you just made a backup, make sure that it is correct! '
+         'The following steps are recommended to verify its integrity: '
+         '<br>'
+         '<ul>'
+         '<li>Verify each line of the backup data contains <b>9 columns</b> '
+         'of <b>4 letters each</b> (excluding any "ID" lines).</li> '
+         '<li>%s</li>'
+         '<li>Use Armory\'s backup tester to test the backup before you '
+         'physiclly secure it.</li> '
+         '</ul>'
+         '<br>'
+         'Armory has a backup tester that uses the exact same '
+         'process as restoring your wallet, but stops before it writes any '
+         'data to disk.  Would you like to test your backup now? '
+         % verifyText),
+      yesStr="Test Backup", noStr="Cancel")
 
    if doTest:
       if backupType == 'Single':
-         DlgRestoreSingle(parent, main, True, wlt.uniqueIDB58).exec_()
+         DlgRestoreSingle(parent, main, True, wlt.walletId).exec_()
       elif backupType == 'Frag':
-         DlgRestoreFragged(parent, main, True, wlt.uniqueIDB58).exec_()
+         DlgRestoreFragged(parent, main, True, wlt.walletId).exec_()
    return result
-
 
 ################################################################################
 def verifyRecoveryTestID(parent, computedWltID, expectedWltID=None):
-
    if expectedWltID == None:
       # Testing an arbitrary paper backup
       yesno = QtWidgets.QMessageBox.question(parent, parent.tr('Recovery Test'), parent.tr(

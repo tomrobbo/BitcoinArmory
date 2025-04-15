@@ -386,11 +386,10 @@ class DlgPrintBackup(ArmoryDialog):
    printing of single-sheet, imported keys, single fragments, multiple
    fragments, with-or-without SecurePrint.
    """
-   def __init__(self, parent, main, wlt, printType='SingleSheet', \
-                                    fragMtrx=[], fragMtrxCrypt=[], fragData=[],
-                                    privKey=None, chaincode=None):
+   def __init__(self, parent, main, wlt, printType='SingleSheet',
+      fragMtrx=[], fragMtrxCrypt=[], fragData=[],
+      privKey=None, chaincode=None, passphrase: str=None):
       super(DlgPrintBackup, self).__init__(parent, main)
-
 
       self.wlt = wlt
       self.binImport = []
@@ -410,9 +409,14 @@ class DlgPrintBackup(ArmoryDialog):
             self.backupData = reply.wallet.createBackupString
          self.executeMethod(self.setup)
 
-      unlockHandler = UnlockWalletHandler(self.wlt.walletId,
-         "Create Backup", self)
-      self.wlt.createBackupString(unlockHandler, resumeSetup)
+      if passphrase:
+         self.wlt.createBackupString(
+            resumeSetup, passphrase=passphrase)
+      else:
+         unlockHandler = UnlockWalletHandler(
+            self.wlt.walletId, "Create Backup", self)
+         self.wlt.createBackupString(
+            resumeSetup, unlockHandler=unlockHandler)
 
    ###
    def setup(self):
@@ -979,22 +983,20 @@ class DlgPrintBackup(ArmoryDialog):
 
 ################################################################################
 class DlgFragBackup(ArmoryDialog):
-
-   #############################################################################
    def __init__(self, parent, main, wlt):
       super(DlgFragBackup, self).__init__(parent, main)
-
       self.wlt = wlt
 
       lblDescrTitle = QRichLabel(self.tr(
-         '<b><u>Create M-of-N Fragmented Backup</u> of "%s" (%s)</b>' % (wlt.labelName, wlt.walletId)), doWrap=False)
+         '<b><u>Create M-of-N Fragmented Backup</u> of "%s" (%s)</b>' %
+         (wlt.labelName, wlt.walletId)), doWrap=False)
       lblDescrTitle.setContentsMargins(5, 5, 5, 5)
 
       self.lblAboveFrags = QRichLabel('')
       self.lblAboveFrags.setContentsMargins(10, 0, 10, 0)
 
-      frmDescr = makeVertFrame([lblDescrTitle, self.lblAboveFrags], \
-                                                            STYLE_RAISED)
+      frmDescr = makeVertFrame([lblDescrTitle, self.lblAboveFrags],
+         STYLE_RAISED)
 
       self.fragDisplayLastN = 0
       self.fragDisplayLastM = 0
@@ -1081,12 +1083,10 @@ class DlgFragBackup(ArmoryDialog):
       self.setMinimumHeight(450)
       self.setWindowTitle('Create Backup Fragments')
 
-
    #############################################################################
    def clickChkSP(self):
       self.lblSecurePrint.setVisible(self.chkSecurePrint.isChecked())
       self.createFragDisplay()
-
 
    #############################################################################
    def updateComboN(self):
@@ -1105,37 +1105,34 @@ class DlgFragBackup(ArmoryDialog):
             if N == oldN:
                self.comboN.setCurrentIndex(i)
 
-
-
    #############################################################################
    def createFragDisplay(self):
       M = int(str(self.comboM.currentText()))
       N = int(str(self.comboN.currentText()))
 
       #only recompute fragments if M or N changed
-      if self.fragDisplayLastN != N or \
-         self.fragDisplayLastM != M:
+      if self.fragDisplayLastN != N or self.fragDisplayLastM != M:
          self.recomputeFragData()
 
       self.fragDisplayLastN = N
       self.fragDisplayLastM = M
 
-      lblAboveM = QRichLabel(self.tr('<u><b>Required Fragments</b></u> '), hAlign=QtCore.Qt.AlignHCenter, doWrap=False)
-      lblAboveN = QRichLabel(self.tr('<u><b>Total Fragments</b></u> '), hAlign=QtCore.Qt.AlignHCenter)
+      lblAboveM = QRichLabel(self.tr('<u><b>Required Fragments</b></u> '),
+         hAlign=QtCore.Qt.AlignHCenter, doWrap=False)
+      lblAboveN = QRichLabel(self.tr('<u><b>Total Fragments</b></u> '),
+         hAlign=QtCore.Qt.AlignHCenter)
       frmComboM = makeHorizFrame([STRETCH, QtWidgets.QLabel('M:'), self.comboM, STRETCH])
       frmComboN = makeHorizFrame([STRETCH, QtWidgets.QLabel('N:'), self.comboN, STRETCH])
 
       btnPrintAll = QtWidgets.QPushButton(self.tr('Print All Fragments'))
       btnPrintAll.connect.clicked(self.clickPrintAll)
-      leftFrame = makeVertFrame([STRETCH, \
-                                 lblAboveM, \
-                                 frmComboM, \
-                                 lblAboveN, \
-                                 frmComboN, \
-                                 STRETCH, \
-                                 HLINE(), \
-                                 btnPrintAll, \
-                                 STRETCH], STYLE_STYLED)
+      leftFrame = makeVertFrame([
+         STRETCH,
+         lblAboveM, frmComboM,
+         lblAboveN, frmComboN,
+         STRETCH, HLINE(),
+         btnPrintAll,
+         STRETCH], STYLE_STYLED)
 
       layout = QtWidgets.QHBoxLayout()
       layout.addWidget(leftFrame)
@@ -1143,11 +1140,10 @@ class DlgFragBackup(ArmoryDialog):
       for f in range(N):
          layout.addWidget(self.createFragFrm(f))
 
-
       frmScroll = QtWidgets.QFrame()
       frmScroll.setFrameStyle(STYLE_SUNKEN)
-      frmScroll.setStyleSheet('QtWidgets.QFrame { background-color : %s  }' % \
-                                                htmlColor('SlightBkgdDark'))
+      frmScroll.setStyleSheet('QtWidgets.QFrame { background-color : %s  }' %
+         htmlColor('SlightBkgdDark'))
       frmScroll.setLayout(layout)
       self.scrollArea.setWidget(frmScroll)
 
@@ -1157,18 +1153,17 @@ class DlgFragBackup(ArmoryDialog):
          '<font color="%s"><b>%d</b></font>'
          'fragments are sufficient to restore your wallet, and each fragment '
          'has the ID, <font color="%s"><b>%s</b></font>.  All fragments with the '
-         'same fragment ID are compatible with each other!' % (BLUE, M, BLUE, N, BLUE, self.fragPrefixStr)))
-
+         'same fragment ID are compatible with each other!' %
+         (BLUE, M, BLUE, N, BLUE, self.fragPrefixStr)))
 
    #############################################################################
    def createFragFrm(self, idx):
-
       doMask = self.chkSecurePrint.isChecked()
       M = int(str(self.comboM.currentText()))
       N = int(str(self.comboN.currentText()))
 
-      lblFragID = QRichLabel(self.tr('<b>Fragment ID:<br>%s-%s</b>' % \
-                                    (str(self.fragPrefixStr), str(idx + 1))))
+      lblFragID = QRichLabel(self.tr('<b>Fragment ID:<br>%s-%s</b>' % 
+         (str(self.fragPrefixStr), str(idx + 1))))
       lblFragPix = QImageLabel(self.fragPixmapFn, size=(72, 72))
       if doMask:
          ys = self.secureMtrxCrypt[idx][1].toBinStr()[:42]
@@ -1187,8 +1182,8 @@ class DlgFragBackup(ArmoryDialog):
       lblPreview = QRichLabel(fragPreview)
       lblPreview.setFont(GETFONT('Fixed', 9))
 
-      lblFragIdx = QRichLabel('#%d' % (idx + 1), size=4, color='TextBlue', \
-                                                   hAlign=QtCore.Qt.AlignHCenter)
+      lblFragIdx = QRichLabel('#%d' % (idx + 1), size=4, color='TextBlue',
+         hAlign=QtCore.Qt.AlignHCenter)
 
       frmTopLeft = makeVertFrame([lblFragID, lblFragIdx, STRETCH])
       frmTopRight = makeVertFrame([lblFragPix, STRETCH])
@@ -1218,7 +1213,6 @@ class DlgFragBackup(ArmoryDialog):
       outFrame.setLayout(layout)
       return outFrame
 
-
    #############################################################################
    def clickPrintAll(self):
       self.clickPrintFrag(range(int(str(self.comboN.currentText()))))
@@ -1235,9 +1229,9 @@ class DlgFragBackup(ArmoryDialog):
       fragData['Range'] = zindex
       fragData['Secure'] = self.chkSecurePrint.isChecked()
       fragData['fragSetID'] = self.uniqueFragSetID
-      dlg = DlgPrintBackup(self, self.main, self.wlt, 'Fragments', \
-                              self.secureMtrx, self.secureMtrxCrypt, fragData, \
-                              self.secureRoot, self.secureChain)
+      dlg = DlgPrintBackup(self, self.main, self.wlt, 'Fragments',
+         self.secureMtrx, self.secureMtrxCrypt, fragData,
+         self.secureRoot, self.secureChain)
       dlg.exec_()
 
    #############################################################################
@@ -1262,7 +1256,6 @@ class DlgFragBackup(ArmoryDialog):
          else:
             return
 
-
       wid = self.wlt.walletId
       pref = self.fragPrefixStr
       fnum = zindex + 1
@@ -1270,9 +1263,9 @@ class DlgFragBackup(ArmoryDialog):
       sec = 'secure.' if doMask else ''
       defaultFn = 'wallet_%s_%s_num%d_need%d.%sfrag' % (wid, pref, fnum, M, sec)
       #print 'FragFN:', defaultFn
-      savepath = self.main.getFileSave('Save Fragment', \
-                                       ['Wallet Fragments (*.frag)'], \
-                                       defaultFn)
+      savepath = self.main.getFileSave('Save Fragment',
+         ['Wallet Fragments (*.frag)'],
+         defaultFn)
 
       if len(toUnicode(savepath)) == 0:
          return
@@ -1323,8 +1316,6 @@ class DlgFragBackup(ArmoryDialog):
             self.backupData.spPass))
 
       QtWidgets.QMessageBox.information(self, self.tr('Success'), qmsg, QtWidgets.QMessageBox.Ok)
-
-
 
    #############################################################################
    def destroyFrags(self):
@@ -1382,13 +1373,12 @@ class DlgFragBackup(ArmoryDialog):
       self.secureMtrxCrypt = []
       for sbdX, sbdY in self.secureMtrx:
          self.secureMtrxCrypt.append([sbdX.copy(), MASK(sbdY)])
-      #####
 
+      #####
       self.M, self.N = M, N
       self.fragPrefixStr = ComputeFragIDBase58(self.M, \
-                              base58_to_binary(self.uniqueFragSetID))
+         base58_to_binary(self.uniqueFragSetID))
       self.fragPixmapFn = './img/frag%df.png' % M
-
 
    #############################################################################
    def accept(self):

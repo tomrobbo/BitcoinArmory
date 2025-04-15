@@ -128,6 +128,32 @@ std::shared_ptr<KeyDerivationFunction> DecryptedDataContainer::getMasterKdf() co
    return nullptr;
 }
 
+////
+bool DecryptedDataContainer::isMasterKeyEncrypted() const
+{
+   //look for the master encryption key
+   auto keyIter = encryptedKeys_.find(masterEncryptionKeyId_);
+   if (keyIter == encryptedKeys_.end()) {
+      return false;
+   }
+
+   /*
+   This key is encrypted by at least one outer key, look for the kdf
+   of this outer key and return it
+   */
+   const auto& cipherDataMap = keyIter->second->cipherDataMap_;
+   for (const auto& cipherDataPair : cipherDataMap) {
+      auto kdfId = cipherDataPair.second->cipher_->getKdfId();
+      if (kdfId == passthroughKdfId) {
+         return false;
+      }
+   }
+
+   //all of the keys that encrypted the master key have a proper kdf,
+   //therefor the master key is effectively encrypted
+   return true;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 const EncryptionKeyId& DecryptedDataContainer::getMasterEncryptionKeyId() const
 {

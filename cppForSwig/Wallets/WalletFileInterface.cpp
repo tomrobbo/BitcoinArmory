@@ -428,8 +428,6 @@ MasterKeyStruct WalletDBInterface::initWalletHeaderObject(
       master key. This has no real effect on the key but it avoids a big
       deviation in implementation.
       */
-      LOGWARN << "No control passphrase provided!";
-      LOGWARN << "The public data in this wallet not be encrypted";
 
       //create copy of master key struct cipher to cycle the IV
       auto masterKeyCipher = mks.cipher_->getCopy(
@@ -468,6 +466,11 @@ shared_ptr<WalletHeader_Control> WalletDBInterface::setupControlDB(
    SecureBinaryData controlPass;
    if (params.controlPassFunc) {
       controlPass = params.controlPassFunc({});
+   }
+
+   if (controlPass.empty()) {
+      LOGWARN << "No control passphrase provided!";
+      LOGWARN << "The public data in this wallet will not be encrypted";
    }
    auto keyStruct = initWalletHeaderObject(headerPtr,
       std::move(controlPass), params.controlUnlock);

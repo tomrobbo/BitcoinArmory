@@ -595,7 +595,10 @@ class SetPassphraseFrame(ArmoryFrame):
       return result
 
    def getPassphrase(self):
-      return str(self.editPasswd1.text())
+      passphrase = str(self.editPasswd1.text())
+      self.editPasswd1.clear()
+      self.editPasswd2.clear()
+      return passphrase
 
 ################################################################################
 class VerifyPassphraseFrame(ArmoryFrame):
@@ -636,6 +639,11 @@ class VerifyPassphraseFrame(ArmoryFrame):
       # These help us collect entropy as the user goes through the wizard
       # to be used for wallet creation
       self.main.registerWidgetActivateTime(self)
+
+   def getPassphrase(self):
+      passphrase = str(self.edtPasswd3.text())
+      self.edtPasswd3.clear()
+      return passphrase
 
 ################################################################################
 class WalletProgressFrame(ArmoryFrame):
@@ -1027,31 +1035,43 @@ class WalletBackupFrame(ArmoryFrame):
    def setPassphrase(self, passphrase):
       self.passphrase = passphrase
 
+      #wipe the passphrase after 20sec
+      def cleanPassphrase():
+         self.passhrase = None
+      TheSignalExecution.callLater(20, cleanPassphrase)
+
    def clickedDoIt(self):
+      passphrase = self.passphrase
+      self.passphrase = None
       isBackupCreated = False
       if self.optPaperBackupOne.isChecked():
-         isBackupCreated = OpenPaperBackupDialog('Single', self.parent(), self.main, self.wlt)
+         isBackupCreated = OpenPaperBackupDialog('Single',
+            self.parent(), self.main, self.wlt, passphrase=passphrase)
       elif self.optPaperBackupFrag.isChecked():
-         isBackupCreated = OpenPaperBackupDialog('Frag', self.parent(), self.main, self.wlt)
+         isBackupCreated = OpenPaperBackupDialog('Frag',
+            self.parent(), self.main, self.wlt, passphrase=passphrase)
       elif self.optDigitalBackupPlain.isChecked():
          if self.main.digitalBackupWarning():
-            isBackupCreated = self.main.makeWalletCopy(self, self.wlt, 'Decrypt', 'decrypt')
+            isBackupCreated = self.main.makeWalletCopy(
+               self, self.wlt, 'Decrypt', 'decrypt')
       elif self.optDigitalBackupCrypt.isChecked():
-         isBackupCreated = self.main.makeWalletCopy(self, self.wlt, 'Encrypt', 'encrypt')
+         isBackupCreated = self.main.makeWalletCopy(
+            self, self.wlt, 'Encrypt', 'encrypt')
       elif self.optIndivKeyListTop.isChecked():
          if self.wlt.useEncryption and self.wlt.isLocked:
-            dlg = DlgUnlockWallet(self.wlt, self, self.main, 'Unlock Private Keys')
+            dlg = DlgUnlockWallet(self.wlt, self, self.main,
+               'Unlock Private Keys')
             if not dlg.exec_():
                if self.main.usermode == USERMODE.Expert:
-                  QtWidgets.QMessageBox.warning(self, self.tr('Unlock Failed'), self.tr(
-                     'Wallet was not unlocked.  The public keys and addresses '
-                     'will still be shown, but private keys will not be available '
-                     'unless you reopen the dialog with the correct passphrase.'), \
-                     QtWidgets.QMessageBox.Ok)
+                  QtWidgets.QMessageBox.warning(self, self.tr('Unlock Failed'),
+                     self.tr( 'Wallet was not unlocked.  The public keys and '
+                     'addresses will still be shown, but private keys will '
+                     'not be available unless you reopen the dialog with the '
+                     'correct passphrase.'), QtWidgets.QMessageBox.Ok)
                else:
-                  QtWidgets.QMessageBox.warning(self, self.tr('Unlock Failed'), self.tr(
-                     'Wallet could not be unlocked to display individual keys.'), \
-                     QtWidgets.QMessageBox.Ok)
+                  QtWidgets.QMessageBox.warning(self, self.tr('Unlock Failed'),
+                     self.tr( 'Wallet could not be unlocked to display '
+                     'individual keys.'), QtWidgets.QMessageBox.Ok)
                   if self.main.usermode == USERMODE.Standard:
                      return
          DlgShowKeyList(self.wlt, self.parent(), self.main).exec_()

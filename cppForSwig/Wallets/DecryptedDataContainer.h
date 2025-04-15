@@ -176,6 +176,7 @@ namespace Armory
             void lockOther(std::shared_ptr<DecryptedDataContainer> other);
             const KdfId& getDefaultKdfId(void) const;
             std::shared_ptr<KeyDerivationFunction> getMasterKdf(void) const;
+            bool isMasterKeyEncrypted(void) const;
             const EncryptionKeyId& getMasterEncryptionKeyId(void) const;
             const EncryptionKeyId& getDefaultEncryptionKeyId(void) const;
          };

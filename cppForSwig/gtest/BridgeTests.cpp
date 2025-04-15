@@ -1008,7 +1008,7 @@ TEST_F(BridgeTests, CreateWallet)
       4. remove passphrase
    */
 
-   //1. request KDF unlock time
+   //1 request KDF unlock time
    auto unlockTime = testKDFUnlock(wltId);
    EXPECT_GE(unlockTime, 500ms) << unlockTime.count();
    EXPECT_LE(unlockTime, 650ms) << unlockTime.count();
@@ -1018,6 +1018,14 @@ TEST_F(BridgeTests, CreateWallet)
 TEST_F(BridgeTests, RestoreWallet_Legacy)
 {
    const std::string walletId{"292AxMD9H"};
+   const std::vector<std::string> lines {
+      "oiow rfta wueg hewo  wuaj jawj rddi uufu  tusi",
+      "idnt enrd sjgo tgfi  esni eutw ktna ustg  arfe",
+      "jdtf fink jshs ewda  kkor daet kgtr eiha  ejgd",
+      "uaew ggod ngjk ejuu  rugf kufg awnn ofas  rhtf"
+   };
+
+   const std::string passphrase{"privPassTest"};
 
    //restore the wallet
    auto refId = rand();
@@ -1034,12 +1042,12 @@ TEST_F(BridgeTests, RestoreWallet_Legacy)
       restoreWltReq.setPrivKdfTargetMs(300);
 
       auto rootLines = restoreWltReq.initRoot(2);
-      rootLines.set(0, "oiow rfta wueg hewo  wuaj jawj rddi uufu  tusi");
-      rootLines.set(1, "idnt enrd sjgo tgfi  esni eutw ktna ustg  arfe");
+      rootLines.set(0, lines[0]);
+      rootLines.set(1, lines[1]);
 
       auto ccLines = restoreWltReq.initChaincode(2);
-      ccLines.set(0, "jdtf fink jshs ewda  kkor daet kgtr eiha  ejgd");
-      ccLines.set(1, "uaew ggod ngjk ejuu  rugf kufg awnn ofas  rhtf");
+      ccLines.set(0, lines[2]);
+      ccLines.set(1, lines[3]);
 
       auto rawReq = serializeCapnp(message);
       pushRequest(rawReq);
@@ -1112,7 +1120,7 @@ TEST_F(BridgeTests, RestoreWallet_Legacy)
                   notifReply.setSuccess(true);
                   notifReply.setCounter(counter);
                   auto pass = notifReply.initPassphrases(1);
-                  pass.set(0, "privPass");
+                  pass.set(0, passphrase);
 
                   auto rawReq = serializeCapnp(notifMsg);
                   pushRequest(rawReq);
@@ -1203,6 +1211,126 @@ TEST_F(BridgeTests, RestoreWallet_Legacy)
    EXPECT_TRUE(wltData.encrypted);
    EXPECT_FALSE(wltData.watchingOnly);
    EXPECT_EQ(wltData.addresses.size(), 1);
+
+   //request KDF unlock time
+   auto unlockTime = testKDFUnlock(walletId);
+   EXPECT_GE(unlockTime, 300ms) << unlockTime.count();
+   EXPECT_LE(unlockTime, 450ms) << unlockTime.count();
+
+   //grab backup strings via callback
+   {
+      auto refId = rand();
+      auto callbackId = BtcUtils::fortuna_.generateRandom(10).toHexStr();
+
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto request = toBridge.initWallet();
+      request.setWalletId(walletId);
+      auto reqBackup = request.initCreateBackupString();
+      reqBackup.setCallbackId(callbackId);
+      auto rawReq = serializeCapnp(message);
+      pushRequest(rawReq);
+
+      //wait for unlock request
+      auto result = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+         result->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+      auto fromBridge = reader.getRoot<Bridge::FromBridge>();
+      auto notif = fromBridge.getNotification();
+      ASSERT_EQ(notif.getCallbackId(), callbackId);
+      ASSERT_EQ(notif.which(), Bridge::Notification::UNLOCK_REQUEST);
+
+      //reply with passphrase
+      capnp::MallocMessageBuilder notifMsg;
+      auto notifBridge = notifMsg.initRoot<Bridge::ToBridge>();
+      auto notifReply = notifBridge.initNotification();
+      notifReply.setSuccess(true);
+      notifReply.setCounter(notif.getCounter());
+      auto capnPasses = notifReply.initPassphrases(1);
+      capnPasses.set(0, passphrase);
+
+      auto rawNotif = serializeCapnp(notifMsg);
+      pushRequest(rawNotif);
+
+      //cleanup notif
+      result = waitOnReply();
+      words = kj::ArrayPtr<const capnp::word>(
+         reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+         result->data.getSize() / sizeof(capnp::word));
+      reader = capnp::FlatArrayMessageReader(words);
+      fromBridge = reader.getRoot<Bridge::FromBridge>();
+      notif = fromBridge.getNotification();
+      ASSERT_EQ(notif.which(), Bridge::Notification::CLEANUP);
+
+      //check the backup
+      auto backup = waitOnReply();
+      words = kj::ArrayPtr<const capnp::word>(
+         reinterpret_cast<const capnp::word*>(backup->data.getPtr()),
+         backup->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader replyReader(words);
+      fromBridge = replyReader.getRoot<Bridge::FromBridge>();
+      ASSERT_EQ(fromBridge.which(), Bridge::FromBridge::REPLY);
+      auto reply = fromBridge.getReply();
+      ASSERT_TRUE(reply.getSuccess());
+      ASSERT_EQ(reply.getReferenceId(), refId);
+
+      ASSERT_EQ(reply.which(), Bridge::RpcReply::WALLET);
+      auto walletReply = reply.getWallet();
+      ASSERT_EQ(walletReply.which(), Bridge::WalletReply::CREATE_BACKUP_STRING);
+
+      auto capnBackup = walletReply.getCreateBackupString();
+      auto rootLines = capnBackup.getRootClear();
+      ASSERT_EQ(rootLines.size(), 2);
+      ASSERT_EQ(rootLines[0], lines[0]);
+      ASSERT_EQ(rootLines[1], lines[1]);
+
+      auto chainLines = capnBackup.getChainClear();
+      ASSERT_EQ(chainLines.size(), 2);
+      ASSERT_EQ(chainLines[0], lines[2]);
+      ASSERT_EQ(chainLines[1], lines[3]);
+   }
+
+   //grab backup strings via passphrase
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto request = toBridge.initWallet();
+      request.setWalletId(walletId);
+      auto reqBackup = request.initCreateBackupString();
+      reqBackup.setPassphrase(passphrase);
+      auto rawReq = serializeCapnp(message);
+      pushRequest(rawReq);
+
+      auto result = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+         result->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+      auto fromBridge = reader.getRoot<Bridge::FromBridge>();
+      auto reply = fromBridge.getReply();
+      ASSERT_TRUE(reply.getSuccess());
+      ASSERT_EQ(reply.getReferenceId(), refId);
+
+      ASSERT_EQ(reply.which(), Bridge::RpcReply::WALLET);
+      auto walletReply = reply.getWallet();
+      ASSERT_EQ(walletReply.which(), Bridge::WalletReply::CREATE_BACKUP_STRING);
+
+      auto capnBackup = walletReply.getCreateBackupString();
+      auto rootLines = capnBackup.getRootClear();
+      ASSERT_EQ(rootLines.size(), 2);
+      ASSERT_EQ(rootLines[0], lines[0]);
+      ASSERT_EQ(rootLines[1], lines[1]);
+
+      auto chainLines = capnBackup.getChainClear();
+      ASSERT_EQ(chainLines.size(), 2);
+      ASSERT_EQ(chainLines[0], lines[2]);
+      ASSERT_EQ(chainLines[1], lines[3]);
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

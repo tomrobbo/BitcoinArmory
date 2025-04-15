@@ -296,9 +296,17 @@ namespace
       {
          case WalletRequest::CREATE_BACKUP_STRING:
          {
-            auto callbackId = request.getCreateBackupString();
+            std::string callbackId;
+            SecureBinaryData passphrase;
+            auto backupStruct = request.getCreateBackupString();
+            if (backupStruct.which() == WalletRequest::BackupStringStruct::PASSPHRASE) {
+               passphrase = SecureBinaryData::fromString(backupStruct.getPassphrase());
+            } else {
+               callbackId = backupStruct.getCallbackId();
+            }
+
             bridge->createBackupStringForWallet(
-               walletId, callbackId, referenceId);
+               walletId, callbackId, std::move(passphrase), referenceId);
             break;
          }
 

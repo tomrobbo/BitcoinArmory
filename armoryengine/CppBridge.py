@@ -714,10 +714,16 @@ class BridgeWalletWrapper(ProtoWrapper):
 
    ####
    def createBackupStringForWallet(self,
-      serverPushObj, callbackFunc, callbackArgs=[]):
+      callbackFunc, passphrase, serverPushObj):
       packet = self.getPacket()
-      packet.wallet.createBackupString = serverPushObj.callbackId
-      self.send(packet, callback=callbackFunc, cbArgs=callbackArgs)
+      req = packet.wallet.init("createBackupString")
+      if passphrase:
+         req.passphrase = passphrase
+      elif serverPushObj:
+         req.callbackId = serverPushObj.callbackId
+      else:
+         raise Exception("[createBackupStringForWallet] invalid args")
+      self.send(packet, callback=callbackFunc)
 
    ####
    def setAddressTypeFor(self, assetId, addrType):

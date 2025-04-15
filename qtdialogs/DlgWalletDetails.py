@@ -38,7 +38,7 @@ from qtdialogs.DlgNewAddress import \
    DlgNewAddressDisp, ShowRecvCoinsWarningIfNecessary
 from qtdialogs.DlgKeypoolSettings import DlgKeypoolSettings
 from qtdialogs.DlgSendBitcoins import DlgSendBitcoins
-from qtdialogs.DlgBackupCenter import DlgBackupCenter
+from qtdialogs.DlgBackupCenter import DlgBackupCenter, DlgSimpleBackup
 from qtdialogs.DlgAddressInfo import DlgAddressInfo
 from qtdialogs.DlgRestore import OpenPaperBackupDialog
 from qtdialogs.DlgChangePassphrase import DlgChangePassphrase

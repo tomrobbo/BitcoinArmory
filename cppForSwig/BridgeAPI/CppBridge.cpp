@@ -47,7 +47,7 @@ namespace
       return BinaryData(bytes.begin(), bytes.end());
    }
 
-   bool addressToCapnp(WalletData::AddressData::Builder& capnAddress,
+   void addressToCapnp(WalletData::AddressData::Builder& capnAddress,
       std::shared_ptr<AddressEntry> addrPtr,
       std::shared_ptr<Accounts::AddressAccount> addrAcc,
       const Wallets::EncryptionKeyId& keyId)
@@ -123,15 +123,13 @@ namespace
 
       //precursor, if any
       if (addrNested == nullptr) {
-         return isLocked;
+         return;
       }
 
       const auto& precursor = addrNested->getPredecessor()->getScript();
       capnAddress.setPrecursorScript(capnp::Data::Builder(
          (uint8_t*)precursor.getPtr(), precursor.getSize()
       ));
-
-      return isLocked;
    }
 
    void walletToCapnp(std::shared_ptr<Wallets::AssetWallet> wallet,
@@ -182,26 +180,29 @@ namespace
 
       //address map
       auto addrMap = accPtr->getUsedAddressMap();
-      bool useEncryption = false;
       auto capnAddresses = capnWallet.initAddressData(addrMap.size());
       i=0;
       for (const auto& addrPair : addrMap) {
          auto capnAddress = capnAddresses[i++];
-         useEncryption |= addressToCapnp(capnAddress,
+         addressToCapnp(capnAddress,
             addrPair.second, accPtr,
-            wallet->getDefaultEncryptionKeyId());
+            wallet->getDefaultEncryptionKeyId()
+         );
       }
 
       /* encryption info */
-      uint32_t kdfMem = 0;
-      auto kdfPtr = wallet->getDefaultKdf();
-      auto kdfRomix = std::dynamic_pointer_cast<
-         Wallets::Encryption::KeyDerivationFunction_Romix>(kdfPtr);
-      if (kdfRomix != nullptr) {
-         kdfMem = kdfRomix->memTarget();
+      bool usesEncryption = wallet->isMasterRecordEncrypted();
+      capnWallet.setUsesEncryption(usesEncryption);
+      if (usesEncryption) {
+         uint32_t kdfMem = 0;
+         auto kdfPtr = wallet->getDefaultKdf();
+         auto kdfRomix = std::dynamic_pointer_cast<
+            Wallets::Encryption::KeyDerivationFunction_Romix>(kdfPtr);
+         if (kdfRomix != nullptr) {
+            kdfMem = kdfRomix->memTarget();
+         }
+         capnWallet.setKdfMemReq(kdfMem);
       }
-      capnWallet.setUsesEncryption(useEncryption);
-      capnWallet.setKdfMemReq(kdfMem);
 
       /* comments */
       auto capnComments = capnWallet.initComments(commentsMap.size());
@@ -748,29 +749,46 @@ void CppBridge::registerWallet(const std::string& wltId,
 
 ////////////////////////////////////////////////////////////////////////////////
 void CppBridge::createBackupStringForWallet(const std::string& wltId,
-   const std::string& callbackId, MessageId msgId)
+   const std::string& callbackId, SecureBinaryData passphrase, MessageId msgId)
 {
-   auto backupStringLbd = [this, wltId, msgId, callbackId]()->void
+   auto backupStringLbd =
+   [this, wltId, msgId, callbackId, passphrase=std::move(passphrase)]()
    {
-      auto passPromptObj = std::make_shared<BridgePassphrasePrompt>(
-         callbackId, [this](ServerPushWrapper wrapper){
-            this->callbackWriter(wrapper);
-         });
-      auto lbd = passPromptObj->getLambda();
+      std::shared_ptr<BridgePassphrasePrompt> passPromptObj;
+      if (passphrase.empty()) {
+         passPromptObj = std::make_shared<BridgePassphrasePrompt>(
+            callbackId, [this](ServerPushWrapper wrapper){
+               this->callbackWriter(wrapper);
+            });
+      }
 
       std::unique_ptr<Seeds::WalletBackup> backupData;
+      std::string error;
       try {
          //grab wallet
          auto wltContainer = wltManager_->getWalletContainer(wltId);
 
          //grab root
-         backupData = move(wltContainer->getBackupStrings(lbd));
-      } catch (const std::exception&) {
+         if (passphrase.empty()) {
+            auto lbd = passPromptObj->getLambda();
+            backupData = std::move(wltContainer->getBackupStrings(lbd));
+         } else {
+            backupData = std::move(wltContainer->getBackupStrings(
+               [passphrase=std::move(passphrase)]
+               (const std::set<Wallets::EncryptionKeyId>&)->SecureBinaryData
+               { return passphrase; }
+            ));
+         }
+      } catch (const std::exception& e) {
+         error = e.what();
          backupData = nullptr;
       }
 
       //wind down passphrase prompt
-      passPromptObj->cleanup();
+      if (passPromptObj != nullptr) {
+         passPromptObj->cleanup();
+         passPromptObj.reset();
+      }
 
       capnp::MallocMessageBuilder message;
       auto fromBridge = message.initRoot<FromBridge>();
@@ -779,6 +797,7 @@ void CppBridge::createBackupStringForWallet(const std::string& wltId,
       if (backupData == nullptr) {
          //return on error
          reply.setSuccess(false);
+         reply.setError(error);
          auto payload = serializeCapnp(message);
          writeToClient(payload);
          return;

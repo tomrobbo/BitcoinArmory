@@ -1571,12 +1571,10 @@ class PyBtcWallet(object):
       TheBridge.service.registerWallet(self.walletId, self.accountId, isNew)
 
    #############################################################################
-   def createBackupString(self, unlockHandler, callback):
-      def callbackHandler(callbackFunc, reply):
-         callbackFunc(reply)
-
-      return self.bridgeWalletObj.createBackupStringForWallet(
-         unlockHandler, callbackHandler, [callback])
+   def createBackupString(self, callback,
+      passphrase: str=None, unlockHandler: callable=None):
+      return self.bridgeWalletObj.createBackupStringForWallet(callback,
+         passphrase, unlockHandler)
 
    #############################################################################
    def getAddressTypes(self):

@@ -270,6 +270,13 @@ struct WalletRequest {
       callbackId  @1 : Types.CallbackId;
    }
 
+   struct BackupStringStruct {
+      union {
+         callbackId @0 : Types.CallbackId;
+         passphrase @1 : Text;
+      }
+   }
+
    struct SetAddressTypeFor {
       assetId       @0 : Data;
       addressType   @1 : UInt32;
@@ -302,7 +309,7 @@ struct WalletRequest {
       getHighestUsedIndex           @4 : Void;
       extendAddressPool             @5 : ExtendAddressPool;
 
-      createBackupString            @6 : Types.CallbackId;
+      createBackupString            @6 : BackupStringStruct;
       deleteWallet                  @7 : Void;
       getData                       @8 : Void;
 

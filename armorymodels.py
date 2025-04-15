@@ -38,14 +38,14 @@ from qtdialogs.qtdefines import GETFONT, CHANGE_ADDR_DESCR_STRING
 from qtdialogs.ArmoryDialog import ArmoryDialog
 
 WLTVIEWCOLS = enum('Visible', 'ID', 'Name', 'Secure', 'Bal')
-LEDGERCOLS  = enum('NumConf', 'UnixTime', 'DateStr', 'TxDir', 'WltName', 'Comment', \
-                   'Amount', 'isOther', 'WltID', 'TxHash', 'isCoinbase', 'toSelf', \
-                   'optInRBF', 'isChainedZC')
+LEDGERCOLS  = enum('NumConf', 'UnixTime', 'DateStr', 'TxDir', 'WltName',
+   'Comment', 'Amount', 'isOther', 'WltID', 'TxHash', 'isCoinbase', 'toSelf',
+   'optInRBF', 'isChainedZC')
 ADDRESSCOLS  = enum('ChainIdx', 'Address', 'Comment', 'NumTx', 'Balance')
 ADDRBOOKCOLS = enum('Address', 'WltID', 'NumSent', 'Comment')
 
-TXINCOLS  = enum('WltID', 'Sender', 'Btc', 'OutPt', 'OutIdx', 'FromBlk', \
-                               'ScrType', 'Sequence', 'Script', 'AddrStr')
+TXINCOLS  = enum('WltID', 'Sender', 'Btc', 'OutPt', 'OutIdx', 'FromBlk',
+   'ScrType', 'Sequence', 'Script', 'AddrStr')
 TXOUTCOLS = enum('WltID', 'Recip', 'Btc', 'ScrType', 'Script', 'AddrStr')
 PROMCOLS = enum('PromID', 'Label', 'PayAmt', 'FeeAmt')
 
