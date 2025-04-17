@@ -69,15 +69,11 @@ namespace Armory
 
       public:
          AssetAccountData(
-            const AssetAccountTypeEnum type,
-            const Wallets::AssetAccountId& id,
-            std::shared_ptr<Assets::AssetEntry> root,
-            std::shared_ptr<Assets::DerivationScheme> scheme,
-            const std::string& dbName) :
-            type_(type), id_(id),
-            root_(root), derScheme_(scheme),
-            dbName_(dbName)
-         {}
+            const AssetAccountTypeEnum,
+            const Wallets::AssetAccountId&,
+            std::shared_ptr<Assets::AssetEntry>,
+            std::shared_ptr<Assets::DerivationScheme>,
+            const std::string&);
 
          std::shared_ptr<AssetAccountData> copy(const std::string&) const;
       };
@@ -174,16 +170,10 @@ namespace Armory
             const Wallets::AssetId&);
 
          virtual unsigned getLookup(void) const;
-         virtual AssetAccountTypeEnum type(void) const
-         { return AssetAccountTypeEnum_Plain; }
+         virtual AssetAccountTypeEnum type(void) const;
 
       public:
-         AssetAccount(std::shared_ptr<AssetAccountData> data) :
-            data_(data)
-         {
-            if (data == nullptr)
-               throw std::runtime_error("null account data ptr");
-         }
+         AssetAccount(std::shared_ptr<AssetAccountData>);
 
          size_t getAssetCount(void) const;
          int32_t getLastComputedIndex(void) const;
@@ -198,8 +188,8 @@ namespace Armory
          bool isAssetIDValid(const Wallets::AssetId&) const;
 
          void updateAddressHashMap(const std::set<AddressEntryType>&);
-         const AssetAccountData::AddrHashMapType&
-            getAddressHashMap(const std::set<AddressEntryType>&);
+         const AssetAccountData::AddrHashMapType& getAddressHashMap(
+            const std::set<AddressEntryType>&);
 
          const Wallets::AssetAccountId& getID(void) const;
          const SecureBinaryData& getChaincode(void) const;
@@ -223,17 +213,12 @@ namespace Armory
       class AssetAccount_ECDH : public AssetAccount
       {
       private:
-         unsigned getLookup(void) const override { return 1; }
-         AssetAccountTypeEnum type(void) const override
-         { return AssetAccountTypeEnum_ECDH; }
-
+         unsigned getLookup(void) const override;
+         AssetAccountTypeEnum type(void) const override;
          void commit(std::shared_ptr<Wallets::IO::WalletDBInterface>) override;
 
       public:
-         AssetAccount_ECDH(
-            std::shared_ptr<AssetAccountData> data) :
-            AssetAccount(data)
-         {}
+         AssetAccount_ECDH(std::shared_ptr<AssetAccountData>);
 
          Wallets::AssetKeyType addSalt(
             std::shared_ptr<Wallets::IO::WalletIfaceTransaction>,

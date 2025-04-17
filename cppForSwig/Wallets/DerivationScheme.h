@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2017, goatpig                                               //
+//  Copyright (C) 2017-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -60,9 +60,7 @@ namespace Armory
       class DerivationSchemeException : public std::runtime_error
       {
       public:
-         DerivationSchemeException(const std::string& msg) :
-            std::runtime_error(msg)
-         {}
+         DerivationSchemeException(const std::string&);
       };
 
       //////////////////////////////////////////////////////////////////////////
@@ -75,14 +73,11 @@ namespace Armory
 
       public:
          //tors
-         DerivationScheme(DerivationSchemeType type) :
-            type_(type)
-         {}
-
+         DerivationScheme(DerivationSchemeType);
          virtual ~DerivationScheme(void) = 0;
 
          //local
-         DerivationSchemeType getType(void) const { return type_; }
+         DerivationSchemeType getType(void) const;
 
          //virtual
          virtual std::vector<std::shared_ptr<Assets::AssetEntry>>
@@ -112,10 +107,7 @@ namespace Armory
 
       public:
          //tors
-         DerivationScheme_ArmoryLegacy(SecureBinaryData& chainCode) :
-            DerivationScheme(DerivationSchemeType::ArmoryLegacy),
-            chainCode_(std::move(chainCode))
-         {}
+         DerivationScheme_ArmoryLegacy(SecureBinaryData&);
 
          //locals
          std::shared_ptr<AssetEntry_Single> computeNextPrivateEntry(
@@ -125,7 +117,7 @@ namespace Armory
             Wallets::AssetId);
 
          std::shared_ptr<AssetEntry_Single> computeNextPublicEntry(
-            const SecureBinaryData& pubKey, Wallets::AssetId);
+            const SecureBinaryData&, Wallets::AssetId);
 
          //virtuals
          std::vector<std::shared_ptr<AssetEntry>> extendPublicChain(
@@ -137,7 +129,7 @@ namespace Armory
 
          BinaryData serialize(void) const;
 
-         const SecureBinaryData& getChaincode(void) const { return chainCode_; }
+         const SecureBinaryData& getChaincode(void) const;
       };
 
       ////////////////////////////////////////////////////////////////////////////////
@@ -152,22 +144,12 @@ namespace Armory
          const unsigned leafId_;
 
       private:
-         DerivationScheme_BIP32(DerivationSchemeType type,
-            SecureBinaryData& chainCode,
-            unsigned depth, unsigned leafId) :
-            DerivationScheme(type),
-            chainCode_(std::move(chainCode)),
-            depth_(depth), leafId_(leafId)
-         {}
+         DerivationScheme_BIP32(DerivationSchemeType,
+            SecureBinaryData&, unsigned, unsigned);
 
       public:
          //tors
-         DerivationScheme_BIP32(SecureBinaryData& chainCode,
-            unsigned depth, unsigned leafId) :
-            DerivationScheme(DerivationSchemeType::BIP32),
-            chainCode_(std::move(chainCode)),
-            depth_(depth), leafId_(leafId)
-         {}
+         DerivationScheme_BIP32(SecureBinaryData&, unsigned, unsigned);
 
          //locals
          virtual std::shared_ptr<AssetEntry_Single> computeNextPrivateEntry(
@@ -190,11 +172,9 @@ namespace Armory
 
          virtual BinaryData serialize(void) const;
 
-         const SecureBinaryData& getChaincode(void) const
-         { return chainCode_; }
-
-         unsigned getDepth(void) const { return depth_; }
-         unsigned getLeafId(void) const { return leafId_; }
+         const SecureBinaryData& getChaincode(void) const;
+         unsigned getDepth(void) const;
+         unsigned getLeafId(void) const;
       };
 
       ////////////////////////////////////////////////////////////////////////////////
@@ -205,12 +185,8 @@ namespace Armory
 
       public:
          DerivationScheme_BIP32_Salted(
-            SecureBinaryData& salt,
-            SecureBinaryData& chainCode,
-            unsigned depth, unsigned leafId) :
-            DerivationScheme_BIP32(DerivationSchemeType::BIP32_Salted,
-               chainCode, depth, leafId), salt_(std::move(salt))
-         {}
+            SecureBinaryData&, SecureBinaryData&,
+            unsigned, unsigned);
 
          //virtuals
          std::shared_ptr<AssetEntry_Single> computeNextPrivateEntry(
@@ -224,7 +200,7 @@ namespace Armory
             Wallets::AssetId) override;
 
          BinaryData serialize(void) const override;
-         const SecureBinaryData& getSalt(void) const { return salt_; }
+         const SecureBinaryData& getSalt(void) const;
       };
 
       ////////////////////////////////////////////////////////////////////////////////
