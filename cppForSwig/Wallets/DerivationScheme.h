@@ -87,15 +87,15 @@ namespace Armory
          //virtual
          virtual std::vector<std::shared_ptr<Assets::AssetEntry>>
          extendPublicChain(std::shared_ptr<Assets::AssetEntry>,
-            uint32_t start, uint32_t end,
+            int32_t start, int32_t end,
             const std::function<void(int)>&) = 0;
          virtual std::vector<std::shared_ptr<Assets::AssetEntry>>
          extendPrivateChain(
             std::shared_ptr<Wallets::Encryption::DecryptedDataContainer>,
             std::shared_ptr<Assets::AssetEntry>,
-            uint32_t start, uint32_t end) = 0;
-         virtual BinaryData serialize(void) const = 0;
+            int32_t start, int32_t end) = 0;
 
+         virtual BinaryData serialize(void) const = 0;
          virtual const SecureBinaryData& getChaincode(void) const = 0;
 
          //static
@@ -129,11 +129,11 @@ namespace Armory
 
          //virtuals
          std::vector<std::shared_ptr<AssetEntry>> extendPublicChain(
-            std::shared_ptr<AssetEntry>, uint32_t start, uint32_t end,
+            std::shared_ptr<AssetEntry>, int32_t start, int32_t end,
             const std::function<void(int)>&) override;
          std::vector<std::shared_ptr<AssetEntry>> extendPrivateChain(
             std::shared_ptr<Wallets::Encryption::DecryptedDataContainer>,
-            std::shared_ptr<AssetEntry>, uint32_t start, uint32_t end) override;
+            std::shared_ptr<AssetEntry>, int32_t start, int32_t end) override;
 
          BinaryData serialize(void) const;
 
@@ -182,11 +182,11 @@ namespace Armory
 
          //virtuals
          std::vector<std::shared_ptr<AssetEntry>> extendPublicChain(
-            std::shared_ptr<AssetEntry>, uint32_t start, uint32_t end,
+            std::shared_ptr<AssetEntry>, int32_t start, int32_t end,
             const std::function<void(int)>&) override;
          std::vector<std::shared_ptr<AssetEntry>> extendPrivateChain(
             std::shared_ptr<Wallets::Encryption::DecryptedDataContainer>,
-            std::shared_ptr<AssetEntry>, uint32_t start, uint32_t end) override;
+            std::shared_ptr<AssetEntry>, int32_t start, int32_t end) override;
 
          virtual BinaryData serialize(void) const;
 
@@ -260,11 +260,11 @@ namespace Armory
 
          //virtuals
          std::vector<std::shared_ptr<AssetEntry>> extendPublicChain(
-            std::shared_ptr<AssetEntry>, uint32_t start, uint32_t end,
+            std::shared_ptr<AssetEntry>, int32_t start, int32_t end,
             const std::function<void(int)>&) override;
          std::vector<std::shared_ptr<AssetEntry>> extendPrivateChain(
             std::shared_ptr<Wallets::Encryption::DecryptedDataContainer>,
-            std::shared_ptr<AssetEntry>, uint32_t start, uint32_t end) override;
+            std::shared_ptr<AssetEntry>, int32_t start, int32_t end) override;
          BinaryData serialize(void) const override;
 
          const SecureBinaryData& getChaincode(void) const override;

@@ -141,7 +141,7 @@ namespace Armory
             std::shared_ptr<Assets::AssetEntry>, unsigned,
             const std::function<void(int)>&);
          std::vector<std::shared_ptr<Assets::AssetEntry>> extendPublicChain(
-            std::shared_ptr<Assets::AssetEntry>, unsigned, unsigned,
+            std::shared_ptr<Assets::AssetEntry>, int32_t, int32_t,
             const std::function<void(int)>&);
 
          void extendPrivateChain(
@@ -159,7 +159,7 @@ namespace Armory
          std::vector<std::shared_ptr<Assets::AssetEntry>> extendPrivateChain(
             std::shared_ptr<Wallets::Encryption::DecryptedDataContainer>,
             std::shared_ptr<Assets::AssetEntry>,
-            unsigned, unsigned);
+            int32_t, int32_t);
 
          std::shared_ptr<Assets::AssetEntry> getOrSetAssetAtIndex(
             std::shared_ptr<Wallets::IO::WalletDBInterface>, unsigned);

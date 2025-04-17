@@ -4547,7 +4547,7 @@ TEST_F(WalletsTest, SeedEncryption)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(WalletsTest, LockAndExtend_Test)
+TEST_F(WalletsTest, LockAndExtend_Legacy)
 {
    //create wallet from priv key
    IO::CreationParams params{
@@ -4574,15 +4574,17 @@ TEST_F(WalletsTest, LockAndExtend_Test)
    //derive private chain from root
    auto chaincode = BtcUtils::computeChainCode_Armory135(rawEntropy);
 
-   std::vector<SecureBinaryData> privateKeys;
+   std::vector<std::pair<SecureBinaryData, SecureBinaryData>> pkeys;
    auto currentPrivKey = &rawEntropy;
    for (int i = 0; i < 10; i++) {
-      privateKeys.push_back(std::move(CryptoECDSA().ComputeChainedPrivateKey(
-         *currentPrivKey, chaincode)));
-      currentPrivKey = &privateKeys.back();
+      auto privKey = CryptoECDSA().ComputeChainedPrivateKey(
+         *currentPrivKey, chaincode);
+      auto pubkey = CryptoECDSA().ComputePublicKey(privKey, true);
+      pkeys.emplace_back(pubkey, privKey);
+      currentPrivKey = &pkeys.back().second;
    }
 
-   auto secondthread = [assetWlt, &privateKeys](void)->void
+   auto secondthread = [assetWlt, &pkeys](void)->void
    {
       //lock wallet
       auto secondlock = assetWlt->lockDecryptedContainer();
@@ -4601,13 +4603,15 @@ TEST_F(WalletsTest, LockAndExtend_Test)
       //grab last asset with a priv key
       auto asset3 = outerAcc->getAssetForKey(3);
       auto asset3_single = std::dynamic_pointer_cast<AssetEntry_Single>(asset3);
-      if (asset3_single == nullptr) {
-         throw std::runtime_error("unexpected asset entry type");
-      }
+      ASSERT_NE(asset3_single, nullptr);
       auto& privkey3 = assetWlt->getDecryptedValue(asset3_single->getPrivKey());
 
       //check privkey
-      ASSERT_EQ(privkey3, privateKeys[3]);
+      ASSERT_EQ(privkey3, pkeys[3].second);
+
+      //check pubkey
+      auto pubkey = asset3_single->getPubKey();
+      ASSERT_EQ(pubkey->getCompressedKey(), pkeys[3].first);
 
       //extend private chain to 10 entries
       assetWlt->extendPrivateChainToIndex(assetWlt->getMainAccountID(), 9);
@@ -4624,7 +4628,7 @@ TEST_F(WalletsTest, LockAndExtend_Test)
       auto& privkey9 = assetWlt->getDecryptedValue(asset9_single->getPrivKey());
 
       //check priv key
-      ASSERT_EQ(privkey9, privateKeys[9]);
+      ASSERT_EQ(privkey9, pkeys[9].second);
    };
 
    std::thread t2;
@@ -4647,13 +4651,15 @@ TEST_F(WalletsTest, LockAndExtend_Test)
       //grab 4th privkey
       auto asset3 = outerAcc->getAssetForKey(3);
       auto asset3_single = std::dynamic_pointer_cast<AssetEntry_Single>(asset3);
-      if (asset3_single == nullptr) {
-         throw std::runtime_error("unexpected asset entry type");
-      }
+      ASSERT_NE(asset3_single, nullptr);
       auto& privkey3 = assetWlt->getDecryptedValue(asset3_single->getPrivKey());
 
       //check privkey
-      ASSERT_EQ(privkey3, privateKeys[3]);
+      ASSERT_EQ(privkey3, pkeys[3].second);
+
+      //check pubkey
+      auto pubkey = asset3_single->getPubKey();
+      ASSERT_EQ(pubkey->getCompressedKey(), pkeys[3].first);
 
       int deriveCount = 0;
       auto deriveCallback = [&deriveCount](int count)->void
@@ -4664,7 +4670,6 @@ TEST_F(WalletsTest, LockAndExtend_Test)
       //extend address chain to 10 entries
       assetWlt->extendPublicChainToIndex(
          assetWlt->getMainAccountID(), 9, deriveCallback);
-
       ASSERT_EQ(outerAcc->getAssetCount(), 10U);
       ASSERT_EQ(deriveCount, 21);
 
@@ -4672,6 +4677,11 @@ TEST_F(WalletsTest, LockAndExtend_Test)
       for (unsigned i = 4; i < 10; i++) {
          auto asseti = outerAcc->getAssetForKey(i);
          ASSERT_FALSE(asseti->hasPrivateKey());
+
+         auto asseti_single = std::dynamic_pointer_cast<AssetEntry_Single>(asseti);
+         ASSERT_NE(asseti_single, nullptr);
+         auto pubkeyi = asseti_single->getPubKey();
+         ASSERT_EQ(pubkeyi->getCompressedKey(), pkeys[i].first);
       }
    }
 
@@ -4698,15 +4708,204 @@ TEST_F(WalletsTest, LockAndExtend_Test)
    auto accountPtr = wltSingle->getAccountForID(wltSingle->getMainAccountID());
    auto outerAcc = accountPtr->getOuterAccount();
    auto lastlock = wltSingle->lockDecryptedContainer();
+   std::set<BinaryData> ivs;
    for (unsigned i = 0; i < 10; i++) {
       auto asseti = outerAcc->getAssetForKey(i);
       auto asseti_single = std::dynamic_pointer_cast<AssetEntry_Single>(asseti);
       ASSERT_NE(asseti_single, nullptr);
 
-      auto& asseti_privkey = wltSingle->getDecryptedValue(
-         asseti_single->getPrivKey());
-      ASSERT_EQ(asseti_privkey, privateKeys[i]);
+      auto privKey = asseti_single->getPrivKey();
+      auto iv = privKey->getIV();
+      auto& asseti_privkey = wltSingle->getDecryptedValue(privKey);
+      auto pubkey = asseti_single->getPubKey();
+
+      ASSERT_EQ(asseti_privkey, pkeys[i].second);
+      ASSERT_EQ(pubkey->getCompressedKey(), pkeys[i].first);
+      ASSERT_FALSE(iv.empty());
+      ASSERT_EQ(ivs.find(iv), ivs.end());
+      ivs.emplace(iv);
    }
+   ASSERT_EQ(ivs.size(), 10);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(WalletsTest, LockAndExtend_BIP32)
+{
+   //create wallet from priv key
+   IO::CreationParams params{
+      homedir_,
+      SecureBinaryData::fromString("passphrase"), 1ms,
+      controlPass_, 1ms,
+      nullptr, 4
+   };
+
+   auto rawEntropy = CryptoPRNG::generateRandom(32);
+   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
+      new Armory::Seeds::ClearTextSeed_BIP32(rawEntropy,
+         Armory::Seeds::SeedType::BIP32_Structured));
+   auto assetWlt = AssetWallet_Single::createFromSeed(
+      std::move(seed), params);
+
+   auto passLbd = [](const std::set<EncryptionKeyId>&)->SecureBinaryData
+   {
+      return SecureBinaryData::fromString("passphrase");
+   };
+   assetWlt->setPassphrasePromptLambda(passLbd);
+
+   //derive private chain from root
+   BIP32_Node seedNode;
+   seedNode.initFromSeed(rawEntropy);
+   seedNode.derivePrivate(0x8000002C);
+   seedNode.derivePrivate(0x80000000);
+   seedNode.derivePrivate(0x80000000);
+   seedNode.derivePrivate(0);
+
+   std::vector<std::pair<SecureBinaryData, SecureBinaryData>> pkeys;
+   for (int i = 0; i < 10; i++) {
+      auto node = seedNode;
+      node.derivePrivate(i);
+      pkeys.emplace_back(node.getPublicKey(), node.getPrivateKey());
+   }
+
+   auto secondthread = [assetWlt, &pkeys](void)->void
+   {
+      //lock wallet
+      auto secondlock = assetWlt->lockDecryptedContainer();
+
+      //wallet should have 10 assets, last half with only pub keys
+      auto accPtr = assetWlt->getAccountForID(assetWlt->getMainAccountID());
+      auto outerAcc = accPtr->getOuterAccount();
+      ASSERT_EQ(outerAcc->getAssetCount(), 10U);
+
+      //none of the new assets should have private keys
+      for (unsigned i = 4; i < 10; i++) {
+         auto asseti = outerAcc->getAssetForKey(i);
+         ASSERT_FALSE(asseti->hasPrivateKey());
+      }
+
+      //grab last asset with a priv key
+      auto asset3 = outerAcc->getAssetForKey(3);
+      auto asset3_single = std::dynamic_pointer_cast<AssetEntry_Single>(asset3);
+      ASSERT_NE(asset3_single, nullptr);
+      auto& privkey3 = assetWlt->getDecryptedValue(asset3_single->getPrivKey());
+      ASSERT_EQ(privkey3, pkeys[3].second);
+
+      //check pubkey
+      auto pubkey = asset3_single->getPubKey();
+      ASSERT_EQ(pubkey->getCompressedKey(), pkeys[3].first);
+
+      //extend private chain to 10 entries
+      assetWlt->extendPrivateChainToIndex(assetWlt->getMainAccountID(), 9);
+
+      //there should still be 10 assets
+      ASSERT_EQ(outerAcc->getAssetCount(), 10U);
+
+      //try to grab 10th private key
+      auto asset9 = outerAcc->getAssetForKey(9);
+      auto asset9_single = std::dynamic_pointer_cast<AssetEntry_Single>(asset9);
+      if (asset9_single == nullptr) {
+         throw std::runtime_error("unexpected asset entry type");
+      }
+      auto& privkey9 = assetWlt->getDecryptedValue(asset9_single->getPrivKey());
+
+      //check priv key
+      ASSERT_EQ(privkey9, pkeys[9].second);
+   };
+
+   std::thread t2;
+
+   {
+      //grab lock
+      auto firstlock = assetWlt->lockDecryptedContainer();
+
+      //start second thread
+      t2 = std::thread(secondthread);
+
+      //sleep for a second
+      std::this_thread::sleep_for(1s);
+
+      //make sure there are only 4 entries
+      auto accPtr = assetWlt->getAccountForID(assetWlt->getMainAccountID());
+      auto outerAcc = accPtr->getOuterAccount();
+      ASSERT_EQ(outerAcc->getAssetCount(), 4U);
+
+      //grab 4th privkey
+      auto asset3 = outerAcc->getAssetForKey(3);
+      auto asset3_single = std::dynamic_pointer_cast<AssetEntry_Single>(asset3);
+      ASSERT_NE(asset3_single, nullptr);
+      auto& privkey3 = assetWlt->getDecryptedValue(asset3_single->getPrivKey());
+      ASSERT_EQ(privkey3, pkeys[3].second);
+
+      //check pubkey
+      auto pubkey = asset3_single->getPubKey();
+      ASSERT_EQ(pubkey->getCompressedKey(), pkeys[3].first);
+
+      int deriveCount = 0;
+      auto deriveCallback = [&deriveCount](int count)->void
+      {
+         deriveCount += count;
+      };
+
+      //extend address chain to 10 entries
+      assetWlt->extendPublicChainToIndex(
+         assetWlt->getMainAccountID(), 9, deriveCallback);
+
+      ASSERT_EQ(outerAcc->getAssetCount(), 10U);
+      ASSERT_EQ(deriveCount, 21);
+
+      //none of the new assets should have private keys
+      for (unsigned i = 4; i < 10; i++) {
+         auto asseti = outerAcc->getAssetForKey(i);
+         ASSERT_FALSE(asseti->hasPrivateKey());
+
+         auto asseti_single = std::dynamic_pointer_cast<AssetEntry_Single>(asseti);
+         ASSERT_NE(asseti_single, nullptr);
+         auto pubkeyi = asseti_single->getPubKey();
+         ASSERT_EQ(pubkeyi->getCompressedKey(), pkeys[i].first);
+      }
+   }
+
+   if (t2.joinable()) {
+      t2.join();
+   }
+
+   //wallet should be unlocked now
+   ASSERT_FALSE(assetWlt->isDecryptedContainerLocked());
+
+   //delete wallet, reload and check private keys are on disk and valid
+   auto wltID = assetWlt->getID();
+   auto filename = assetWlt->getDbFilename();
+   assetWlt.reset();
+
+   auto newWallet = AssetWallet::loadMainWalletFromFile(
+      IO::OpenFileParams{filename, controlLbd_});
+   auto wltSingle = std::dynamic_pointer_cast<AssetWallet_Single>(newWallet);
+
+   ASSERT_NE(wltSingle, nullptr);
+   ASSERT_FALSE(wltSingle->isDecryptedContainerLocked());
+   wltSingle->setPassphrasePromptLambda(passLbd);
+
+   auto accountPtr = wltSingle->getAccountForID(wltSingle->getMainAccountID());
+   auto outerAcc = accountPtr->getOuterAccount();
+   auto lastlock = wltSingle->lockDecryptedContainer();
+   std::set<BinaryData> ivs;
+   for (unsigned i = 0; i < 10; i++) {
+      auto asseti = outerAcc->getAssetForKey(i);
+      auto asseti_single = std::dynamic_pointer_cast<AssetEntry_Single>(asseti);
+      ASSERT_NE(asseti_single, nullptr);
+
+      auto privKey = asseti_single->getPrivKey();
+      auto iv = privKey->getIV();
+      auto& asseti_privkey = wltSingle->getDecryptedValue(privKey);
+      auto pubkey = asseti_single->getPubKey();
+
+      ASSERT_EQ(asseti_privkey, pkeys[i].second);
+      ASSERT_EQ(pubkey->getCompressedKey(), pkeys[i].first);
+      ASSERT_FALSE(iv.empty());
+      ASSERT_EQ(ivs.find(iv), ivs.end());
+      ivs.emplace(iv);
+   }
+   ASSERT_EQ(ivs.size(), 10);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -6702,7 +6901,7 @@ TEST_F(WalletsTest, BIP32_Fork_WatchingOnly)
       IO::OpenFileParams{woCopyPath, controlLbd_});
    auto woSingle = std::dynamic_pointer_cast<AssetWallet_Single>(woWlt);
 
-   //check WO roots have no private keys
+   //check WO root has no private keys
    {
       EXPECT_TRUE(woSingle->isWatchingOnly());
 
@@ -6720,7 +6919,7 @@ TEST_F(WalletsTest, BIP32_Fork_WatchingOnly)
 
       auto assetWo = TestUtils::getMainAccountAssetForIndex(woSingle, i);
       auto assetWoSingle = std::dynamic_pointer_cast<AssetEntry_Single>(assetWo);
-      
+
       //compare keys
       EXPECT_EQ(assetFullSingle->getPubKey()->getCompressedKey(),
          assetWoSingle->getPubKey()->getCompressedKey());
@@ -9248,7 +9447,7 @@ TEST_F(BackupTests, Easy16_AutoRepair)
       auto asset_single = std::make_shared<AssetEntry_Single>(
          AssetId::getRootAssetId(), pubkey, nullptr);
 
-      auto addrVec = derScheme->extendPublicChain(asset_single, 1, 1, nullptr);
+      auto addrVec = derScheme->extendPublicChain(asset_single, 0, 0, nullptr);
       if (addrVec.size() != 1) {
          throw std::runtime_error("unexpected chain derivation output");
       }

@@ -728,7 +728,7 @@ std::string Armory::Wallets::generateWalletId(
    Armory::Seeds::SeedType sType)
 {
    auto addrVec = derScheme->extendPublicChain(rootEntry,
-      1, 1 + (int)sType, nullptr);
+      0, (int)sType, nullptr);
    if (addrVec.size() != (int)sType+1) {
       throw WalletException("unexpected chain derivation output");
    }

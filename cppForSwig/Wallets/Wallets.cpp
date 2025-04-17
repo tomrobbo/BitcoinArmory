@@ -1225,6 +1225,9 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::createFromSeed(
       auto prg = std::make_unique<Progress::ExtendChain>(params.lookup);
       params.progressFunc(std::move(prg));
    }
+
+   //legacy derivation bootstraps the accounts with asset 0,
+   //lookup should be - 1
    accountPtr->extendPrivateChain(
       iface, walletPtr->decryptedData_, params.lookup - 1);
 
@@ -1377,6 +1380,7 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::createFromSeed(
          break;
    }
 
+   //cleanup and return
    walletPtr->resetPassphrasePromptLambda();
    return walletPtr;
 }
@@ -1424,6 +1428,9 @@ AssetWallet_Single::createFromPublicRoot_Armory135(
       auto prg = std::make_unique<Progress::ExtendChain>(params.lookup);
       params.progressFunc(std::move(prg));
    }
+
+   //legacy derivation bootstraps the accounts with asset 0,
+   //lookup should be -1
    accountPtr->extendPublicChain(iface, params.lookup - 1);
    return walletPtr;
 }

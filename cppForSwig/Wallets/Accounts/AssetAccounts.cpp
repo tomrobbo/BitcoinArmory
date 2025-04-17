@@ -371,7 +371,7 @@ void AssetAccount::extendPublicChain(shared_ptr<IO::WalletDBInterface> iface,
    ReentrantLock lock(this);
 
    auto assetVec = extendPublicChain(assetPtr,
-      assetPtr->getIndex() + 1,
+      assetPtr->getIndex(),
       assetPtr->getIndex() + count,
       progressCallback);
 
@@ -391,7 +391,7 @@ void AssetAccount::extendPublicChain(shared_ptr<IO::WalletDBInterface> iface,
 
 ////////////////////////////////////////////////////////////////////////////////
 vector<shared_ptr<AssetEntry>> AssetAccount::extendPublicChain(
-   shared_ptr<AssetEntry> assetPtr, unsigned start, unsigned end,
+   shared_ptr<AssetEntry> assetPtr, int32_t start, int32_t end,
    const function<void(int)>& progressCallback)
 {
    vector<shared_ptr<AssetEntry>> result;
@@ -430,39 +430,30 @@ void AssetAccount::extendPrivateChain(
    unsigned count)
 {
    ReentrantLock lock(this);
-   shared_ptr<AssetEntry> topAsset = nullptr;
-   
-   try
-   {
-      topAsset = getLastAssetWithPrivateKey();
-   }
-   catch(runtime_error&)
-   {}
+   std::shared_ptr<AssetEntry> topAsset = nullptr;
 
+   try {
+      topAsset = getLastAssetWithPrivateKey();
+   } catch (const std::runtime_error&) {}
    extendPrivateChain(iface, ddc, topAsset, count);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 void AssetAccount::extendPrivateChainToIndex(
-   shared_ptr<IO::WalletDBInterface> iface,
-   shared_ptr<Encryption::DecryptedDataContainer> ddc,
+   std::shared_ptr<IO::WalletDBInterface> iface,
+   std::shared_ptr<Encryption::DecryptedDataContainer> ddc,
    unsigned id)
 {
    ReentrantLock lock(this);
-
-   shared_ptr<AssetEntry> topAsset = nullptr;
+   std::shared_ptr<AssetEntry> topAsset = nullptr;
    int topIndex = 0;
 
-   try
-   {
+   try {
       topAsset = getLastAssetWithPrivateKey();
       topIndex = topAsset->getIndex();
-   }
-   catch(runtime_error&)
-   {}
+   } catch (const std::runtime_error&) {}
 
-   if ((int)id > topIndex)
-   {
+   if ((int)id > topIndex) {
       auto count = id - topIndex;
       extendPrivateChain(iface, ddc, topAsset, count);
    }
@@ -470,80 +461,71 @@ void AssetAccount::extendPrivateChainToIndex(
 
 ////////////////////////////////////////////////////////////////////////////////
 void AssetAccount::extendPrivateChain(shared_ptr<IO::WalletDBInterface> iface,
-   shared_ptr<Encryption::DecryptedDataContainer> ddc,
-   shared_ptr<AssetEntry> assetPtr, unsigned count)
+   std::shared_ptr<Encryption::DecryptedDataContainer> ddc,
+   std::shared_ptr<AssetEntry> assetPtr, unsigned count)
 {
-   if (count == 0)
+   if (count == 0) {
       return;
-
-   ReentrantLock lock(this);
-   unsigned assetIndex = UINT32_MAX;
-   if (assetPtr != nullptr)
-      assetIndex = assetPtr->getIndex();
-
-   auto&& assetVec = extendPrivateChain(ddc, assetPtr, 
-      assetIndex + 1, assetIndex + count);
-
-   {
-      for (auto& asset : assetVec)
-      {
-         auto id = asset->getIndex();
-         auto iter = data_->assets_.find(id);
-         if (iter != data_->assets_.end())
-         {
-            if (iter->second->hasPrivateKey())
-            {
-               //do not overwrite an existing asset that already has a privkey
-               continue;
-            }
-            else
-            {
-               iter->second = asset;
-               continue;
-            }
-         }
-
-         data_->assets_.insert(make_pair(
-            id, asset));
-      }
    }
 
-   if (iface != nullptr)
+   ReentrantLock lock(this);
+   int32_t assetIndex = -1;
+   if (assetPtr != nullptr) {
+      assetIndex = assetPtr->getIndex();
+   }
+   auto assetVec = extendPrivateChain(ddc, assetPtr,
+      assetIndex, assetIndex + count);
+
+   for (auto& asset : assetVec) {
+      auto id = asset->getIndex();
+      auto iter = data_->assets_.find(id);
+      if (iter != data_->assets_.end()) {
+         if (iter->second->hasPrivateKey()) {
+            //do not overwrite an existing asset that already has a privkey
+            continue;
+         } else {
+            iter->second = asset;
+            continue;
+         }
+      }
+      data_->assets_.emplace(id, asset);
+   }
+
+   if (iface != nullptr) {
       updateOnDiskAssets(iface);
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-vector<shared_ptr<AssetEntry>> AssetAccount::extendPrivateChain(
-   shared_ptr<Encryption::DecryptedDataContainer> ddc,
-   shared_ptr<AssetEntry> assetPtr,
-   unsigned start, unsigned end)
+std::vector<std::shared_ptr<AssetEntry>> AssetAccount::extendPrivateChain(
+   std::shared_ptr<Encryption::DecryptedDataContainer> ddc,
+   std::shared_ptr<AssetEntry> assetPtr,
+   int32_t start, int32_t end)
 {
-   vector<shared_ptr<AssetEntry>> result;
-
+   std::vector<shared_ptr<AssetEntry>> result;
    switch (data_->derScheme_->getType())
    {
-   case DerivationSchemeType::ArmoryLegacy:
-   {
-      //Armory legacy derivation operates from the last valid asset
-      result = move(data_->derScheme_->extendPrivateChain(
-         ddc, assetPtr, start, end));
-      break;
-   }
+      case DerivationSchemeType::ArmoryLegacy:
+      {
+         //Armory legacy derivation operates from the last valid asset
+         result = std::move(data_->derScheme_->extendPrivateChain(
+            ddc, assetPtr, start, end));
+         break;
+      }
 
-   case DerivationSchemeType::BIP32:
-   case DerivationSchemeType::BIP32_Salted:
-   case DerivationSchemeType::ECDH:
-   {
-      //BIP32 operates from the node's root asset
-      result = move(data_->derScheme_->extendPrivateChain(
-         ddc, data_->root_, start, end));
-      break;
-   }
+      case DerivationSchemeType::BIP32:
+      case DerivationSchemeType::BIP32_Salted:
+      case DerivationSchemeType::ECDH:
+      {
+         //BIP32 operates from the node's root asset
+         result = std::move(data_->derScheme_->extendPrivateChain(
+            ddc, data_->root_, start, end));
+         break;
+      }
 
-   default:
-      throw AccountException("unexpected derscheme type");
+      default:
+         throw AccountException("unexpected derscheme type");
    }
-
    return result;
 }
 
@@ -551,18 +533,15 @@ vector<shared_ptr<AssetEntry>> AssetAccount::extendPrivateChain(
 shared_ptr<AssetEntry> AssetAccount::getLastAssetWithPrivateKey() const
 {
    ReentrantLock lock(this);
-
    auto assetIter = data_->assets_.rbegin();
-   while (assetIter != data_->assets_.rend())
-   {
-      if (assetIter->second->hasPrivateKey())
+   while (assetIter != data_->assets_.rend()) {
+      if (assetIter->second->hasPrivateKey()) {
          return assetIter->second;
-
+      }
       ++assetIter;
    }
 
-   throw runtime_error("no asset with private keys");
-   return nullptr;
+   throw std::runtime_error("no asset with private keys");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
