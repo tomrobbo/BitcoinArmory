@@ -1094,7 +1094,10 @@ RestoreResult Helpers::restoreFromBackup(
 
    //return wallet
    auto wlt = AssetWallet_Single::createFromSeed(std::move(seed), paramsCopy);
-   return {wlt, merge, SecureBinaryData{control}};
+   return {wlt, merge,
+      paramsCopy.privatePassphrase,
+      paramsCopy.controlPassphrase
+   };
 }
 
 ////////

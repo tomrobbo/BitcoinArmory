@@ -94,7 +94,7 @@ std::shared_ptr<WalletContainer> WalletManager::getWalletContainer(
    auto accIter = wltIter->second.find(accId);
    if (accIter == wltIter->second.end()) {
       std::string errStr{"there is no account "sv};
-      errStr += accId.toHexStr() + std::string{" for wallet "sv} + wltId;
+      errStr += accId.toHexStr() + std::string{"for wallet "sv} + wltId;
       throw std::runtime_error(errStr);
    }
 

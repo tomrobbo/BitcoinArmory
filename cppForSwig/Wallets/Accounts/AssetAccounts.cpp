@@ -209,7 +209,7 @@ std::shared_ptr<AssetAccountData> AssetAccount::loadFromDisk(
       bwKey_assetcount.put_uint8_t(ASSET_COUNT_PREFIX);
       bwKey_assetcount.put_BinaryDataRef(key.getSliceRef(1, key.getSize() - 1));
 
-      auto&& assetcount = tx->getDataRef(bwKey_assetcount.getData());
+      auto assetcount = tx->getDataRef(bwKey_assetcount.getData());
       if (assetcount.empty()) {
          throw AccountException("[loadFromDisk] missing asset count entry");
       }
@@ -347,10 +347,10 @@ size_t AssetAccount::getAssetCount() const
 
 ////////////////////////////////////////////////////////////////////////////////
 void AssetAccount::extendPublicChain(
-   std::shared_ptr<IO::WalletDBInterface> iface, unsigned count,
+   std::shared_ptr<IO::WalletDBInterface> iface, int32_t count,
    const std::function<void(int)>& progressCallback)
 {
-   if (count == 0) {
+   if (count <= 0) {
       return;
    }
    ReentrantLock lock(this);
@@ -387,10 +387,10 @@ void AssetAccount::extendPublicChainToIndex(
 ////////////////////////////////////////////////////////////////////////////////
 void AssetAccount::extendPublicChain(
    std::shared_ptr<IO::WalletDBInterface> iface,
-   std::shared_ptr<AssetEntry> assetPtr, unsigned count,
+   std::shared_ptr<AssetEntry> assetPtr, int32_t count,
    const std::function<void(int)>& progressCallback)
 {
-   if (count == 0) {
+   if (count <= 0) {
       return;
    }
    ReentrantLock lock(this);
@@ -451,7 +451,7 @@ std::vector<std::shared_ptr<AssetEntry>> AssetAccount::extendPublicChain(
 void AssetAccount::extendPrivateChain(
    std::shared_ptr<IO::WalletDBInterface> iface,
    std::shared_ptr<Encryption::DecryptedDataContainer> ddc,
-   unsigned count)
+   int32_t count)
 {
    ReentrantLock lock(this);
    std::shared_ptr<AssetEntry> topAsset = nullptr;
@@ -478,7 +478,7 @@ void AssetAccount::extendPrivateChainToIndex(
    } catch (const std::runtime_error&) {}
 
    if ((int)id > topIndex) {
-      auto count = id - topIndex;
+      int32_t count = (int)id - topIndex;
       extendPrivateChain(iface, ddc, topAsset, count);
    }
 }
@@ -487,9 +487,9 @@ void AssetAccount::extendPrivateChainToIndex(
 void AssetAccount::extendPrivateChain(
    std::shared_ptr<IO::WalletDBInterface> iface,
    std::shared_ptr<Encryption::DecryptedDataContainer> ddc,
-   std::shared_ptr<AssetEntry> assetPtr, unsigned count)
+   std::shared_ptr<AssetEntry> assetPtr, int32_t count)
 {
-   if (count == 0) {
+   if (count <= 0) {
       return;
    }
 

@@ -346,6 +346,7 @@ struct WalletReply {
       chainEncr   @3 : List(Text);
 
       spPass      @4 : Text;
+      backupType  @5 : UInt32;
    }
 
    # Address Balance

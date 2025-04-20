@@ -127,10 +127,9 @@ BinaryDataRef WalletDBInterface::getDataRefForKey(
    maintain the tx for as long as the data ref needs to be valid **/
 
    auto ref = tx->getDataRef(key);
-
-   if (ref.getSize() == 0)
+   if (ref.empty()) {
       throw NoEntryInWalletException();
-
+   }
    return DBUtils::getDataRefForPacket(ref);
 }
 

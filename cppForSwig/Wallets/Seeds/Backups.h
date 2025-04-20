@@ -286,6 +286,7 @@ namespace Armory
       {
          std::shared_ptr<Wallets::AssetWallet> wltPtr;
          const bool merge;
+         const SecureBinaryData privPass;
          const SecureBinaryData controlPass;
       };
 

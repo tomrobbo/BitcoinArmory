@@ -75,6 +75,9 @@ namespace Armory
          std::map<Accounts::MetaAccountType,
             std::shared_ptr<Accounts::MetaDataAccount>> metaAccounts_{};
 
+         std::string label;
+         std::string description;
+
       public:
          WalletPublicData(const std::string&, const std::string&,
             const std::string&, const AddressAccountId&);
@@ -103,7 +106,7 @@ namespace Armory
          std::map<Accounts::MetaAccountType, std::shared_ptr<
             Accounts::MetaDataAccount>> metaDataAccounts_;
 
-         AddressAccountId mainAccount_;
+         AddressAccountId mainAccountId_;
 
          ////
          std::string walletID_;
@@ -165,11 +168,11 @@ namespace Armory
          void setPassphrasePromptLambda(PassphraseLambda);
          void resetPassphrasePromptLambda(void);
 
-         void extendPublicChain(unsigned);
-         void extendPublicChainToIndex(const AddressAccountId&, unsigned,
+         void extendPublicChain(int32_t);
+         void extendPublicChainToIndex(const AddressAccountId&, int32_t,
             const std::function<void(int)>& = nullptr);
-         void extendPrivateChain(unsigned);
-         void extendPrivateChainToIndex(const AddressAccountId&, unsigned);
+         void extendPrivateChain(int32_t);
+         void extendPrivateChainToIndex(const AddressAccountId&, int32_t);
 
          bool hasScrAddr(const BinaryData& scrAddr) const;
          bool hasAddrStr(const std::string& scrAddr) const;

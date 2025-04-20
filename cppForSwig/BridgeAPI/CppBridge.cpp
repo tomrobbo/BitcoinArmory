@@ -175,7 +175,7 @@ namespace
 
       //address use count
       auto assetAccountPtr = accPtr->getOuterAccount();
-      capnWallet.setLookupCount(assetAccountPtr->getLastComputedIndex());
+      capnWallet.setLookupCount(assetAccountPtr->getLastComputedIndex() + 1);
       capnWallet.setUseCount(assetAccountPtr->getHighestUsedIndex());
 
       //address map
@@ -857,6 +857,9 @@ void CppBridge::createBackupStringForWallet(const std::string& wltId,
       backupStringCapnp.setSpPass(
          capnp::Text::Reader(spPass.data(), spPass.size()));
 
+      //backup type
+      backupStringCapnp.setBackupType((unsigned)backupData->type());
+
       reply.setSuccess(true);
       auto payload = serializeCapnp(message);
       writeToClient(payload);
@@ -1018,14 +1021,15 @@ void CppBridge::restoreWallet(
          FileUtils::createDirectory(tempDir);
 
          //create wallet from backup
+         auto progFunc = getWalletProgressLbd(this, callbackId);
          Wallets::IO::CreationParams params{
             tempDir,
             //passphrase + default unlock time, leave empty to prompt the user
             {}, privUnlockTarget,
             //control passphrase + default unlock time, same treatment
             {}, ctrlUnlockTarget,
-            getWalletProgressLbd(this, callbackId),
-            100 //address lookup
+            progFunc,
+            0 //address lookup
          };
 
          auto restoreResult = Armory::Seeds::Helpers::restoreFromBackup(
@@ -1036,36 +1040,53 @@ void CppBridge::restoreWallet(
          }
 
          //lambda to reload new wallet
-         auto passLbd = [&restoreResult](
+         auto ctrlLbd = [&restoreResult](
             const std::set<Armory::Wallets::EncryptionKeyId>&)->SecureBinaryData
          {
             return restoreResult.controlPass;
          };
 
-         //get new wallet path and unload it
+         //get new wallet path
          auto newWltID = restoreResult.wltPtr->getID();
          auto newWltPath = restoreResult.wltPtr->getDbFilename();
-         restoreResult.wltPtr.reset();
 
-         //have we already loaded this wallet?
+         //are we merging this wallet or overwriting an existing one?
          std::filesystem::path oldWltPath;
-         if (wltManager_->hasWallet(newWltID)) {
-            if (restoreResult.merge == true) {
-               //we want to merge the old wallet data in the new one
-               auto oldWlt = wltManager_->getWalletContainer(newWltID);
-               auto oldWltSingle =
-                  std::dynamic_pointer_cast<Wallets::AssetWallet_Single>(oldWlt);
-               if (oldWltSingle == nullptr) {
-                  LOGWARN << "replaced wallet is not single, cannot merge";
-               } else {
-                  auto oldWltData = Wallets::AssetWallet_Single::exportPublicData(
-                     oldWltSingle);
-                  Wallets::AssetWallet_Single::mergePublicData(
-                     Wallets::IO::OpenFileParams{newWltPath, passLbd}, oldWltData);
-               }
-            }
+         if (restoreResult.merge && wltManager_->hasWallet(newWltID)) {
+            //we want to merge the old wallet data in the new one,
+            //close the new file first
+            restoreResult.wltPtr.reset();
 
-            //unload old wallet & rename it
+            //grab the old wallet
+            auto oldWlt = wltManager_->getWalletContainer(newWltID);
+            auto oldWltSingle = std::dynamic_pointer_cast<Wallets::AssetWallet_Single>(
+               oldWlt->getWalletPtr());
+
+            //merge old into new one
+            if (oldWltSingle == nullptr) {
+               LOGWARN << "replaced wallet is not single, merging not implemented yet!";
+            } else {
+               auto oldWltData = Wallets::AssetWallet_Single::exportPublicData(
+                  oldWltSingle);
+               progFunc(std::make_unique<Wallets::Progress::ExtendChain>(1));
+               Wallets::AssetWallet_Single::mergePublicData(
+                  Wallets::IO::OpenFileParams{newWltPath, ctrlLbd}, oldWltData);
+            }
+         } else {
+            //we didnt have an old wallet merge into the new one, extend
+            //the address chain for some baseline count
+            restoreResult.wltPtr->setPassphrasePromptLambda(
+               [&pass=restoreResult.privPass]
+               (const std::set<Wallets::EncryptionKeyId>&) {
+               return pass;
+            });
+            progFunc(std::make_unique<Wallets::Progress::ExtendChain>(500));
+            restoreResult.wltPtr->extendPrivateChain(500);
+            restoreResult.wltPtr.reset();
+         }
+
+         //unload old wallet & rename it
+         if (wltManager_->hasWallet(newWltID)) {
             oldWltPath = wltManager_->unloadWallet(newWltID);
             if (!oldWltPath.empty()) {
                oldWltPath = FileUtils::appendTagToPath(oldWltPath, "_old");
@@ -1078,7 +1099,7 @@ void CppBridge::restoreWallet(
 
          //reload new wallet
          wltManager_->loadWallet(Wallets::IO::OpenFileParams{
-            newPath, passLbd});
+            newPath, ctrlLbd});
 
          //delete old wallet if there's one
          if (!oldWltPath.empty() && std::filesystem::exists(oldWltPath)) {
@@ -1086,7 +1107,7 @@ void CppBridge::restoreWallet(
          }
 
          //put first address in use, or the GUI will have nothing to display
-         {
+         if (!restoreResult.merge) {
             auto wltContainer = wltManager_->getWalletContainer(newWltID);
             auto wltPtr = wltContainer->getWalletPtr();
             auto accPtr = wltContainer->getAddressAccount();

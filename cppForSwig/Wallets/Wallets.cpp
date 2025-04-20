@@ -116,13 +116,13 @@ std::shared_ptr<AddressAccount> AssetWallet::createAccount(
    account_ptr->commit(iface_);
 
    if (accountType->isMain()) {
-      mainAccount_ = account_ptr->getID();
+      mainAccountId_ = account_ptr->getID();
 
       BinaryWriter bwKey;
       bwKey.put_uint32_t(MAIN_ACCOUNT_KEY);
 
       BinaryWriter bwData;
-      mainAccount_.serializeValue(bwData);
+      mainAccountId_.serializeValue(bwData);
 
       auto tx = iface_->beginWriteTransaction(dbName_);
       tx->insert(bwKey.getData(), bwData.getData());
@@ -249,7 +249,7 @@ void AssetWallet_Single::readFromFile()
 
       try {
          auto account_id = sharedTx->getDataRef(bwKey.getData());
-         mainAccount_ = AddressAccountId::deserializeValue(account_id);
+         mainAccountId_ = AddressAccountId::deserializeValue(account_id);
       } catch (const IdException&) {}
    }
 
@@ -354,11 +354,11 @@ std::shared_ptr<AddressEntry> AssetWallet::getNewAddress(
    //lock
    ReentrantLock lock(this);
 
-   if (!mainAccount_.isValid()) {
+   if (!mainAccountId_.isValid()) {
       throw WalletException("no main account for wallet");
    }
 
-   auto mainAccount = getAccountForID(mainAccount_);
+   auto mainAccount = getAccountForID(mainAccountId_);
    if (mainAccount->hasAddressType(aeType)) {
       return mainAccount->getNewAddress(iface_, aeType);
    }
@@ -377,11 +377,11 @@ std::shared_ptr<AddressEntry> AssetWallet::getNewChangeAddress(
    AddressEntryType aeType)
 {
    ReentrantLock lock(this);
-   if (!mainAccount_.isValid()) {
+   if (!mainAccountId_.isValid()) {
       throw WalletException("no main account for wallet");
    }
 
-   auto mainAccount = getAccountForID(mainAccount_);
+   auto mainAccount = getAccountForID(mainAccountId_);
    if (mainAccount->hasAddressType(aeType)) {
       return mainAccount->getNewChangeAddress(iface_, aeType);
    }
@@ -401,11 +401,11 @@ std::shared_ptr<AddressEntry> AssetWallet::peekNextChangeAddress(
 {
    ReentrantLock lock(this);
 
-   if (!mainAccount_.isValid()) {
+   if (!mainAccountId_.isValid()) {
       throw WalletException("no main account for wallet");
    }
 
-   auto mainAccount = getAccountForID(mainAccount_);
+   auto mainAccount = getAccountForID(mainAccountId_);
    if (mainAccount->hasAddressType(aeType)) {
       return mainAccount->peekNextChangeAddress(iface_, aeType);
    }
@@ -531,10 +531,10 @@ bool AssetWallet::isAssetUsed(const AssetId& id) const
 ////////////////////////////////////////////////////////////////////////////////
 const Armory::Wallets::AddressAccountId& AssetWallet::getMainAccountID() const
 {
-   if (!mainAccount_.isValid()) {
+   if (!mainAccountId_.isValid()) {
       throw WalletException("[getMainAccountID] invalid account id");
    }
-   return mainAccount_;
+   return mainAccountId_;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -693,7 +693,7 @@ bool AssetWallet::isMasterRecordEncrypted() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void AssetWallet::extendPublicChain(unsigned count)
+void AssetWallet::extendPublicChain(int32_t count)
 {
    for (auto& account : accounts_) {
       account.second->extendPublicChain(iface_, count);
@@ -701,7 +701,7 @@ void AssetWallet::extendPublicChain(unsigned count)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void AssetWallet::extendPrivateChain(unsigned count)
+void AssetWallet::extendPrivateChain(int32_t count)
 {
    for (auto& account : accounts_) {
       account.second->extendPrivateChain(iface_, decryptedData_, count);
@@ -710,7 +710,7 @@ void AssetWallet::extendPrivateChain(unsigned count)
 
 ////////////////////////////////////////////////////////////////////////////////
 void AssetWallet::extendPublicChainToIndex(
-   const AddressAccountId& accountId, unsigned count,
+   const AddressAccountId& accountId, int32_t count,
    const std::function<void(int)>& progressCallback)
 {
    auto account = getAccountForID(accountId);
@@ -720,7 +720,7 @@ void AssetWallet::extendPublicChainToIndex(
 
 ////////////////////////////////////////////////////////////////////////////////
 void AssetWallet::extendPrivateChainToIndex(
-   const AddressAccountId& accountId, unsigned count)
+   const AddressAccountId& accountId, int32_t count)
 {
    auto account = getAccountForID(accountId);
    account->extendPrivateChainToIndex(
@@ -1221,15 +1221,17 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::createFromSeed(
    auto accountPtr = walletPtr->createAccount(account135, params.progressFunc);
 
    //compute lookup worth of address in primary account
-   if (params.progressFunc) {
-      auto prg = std::make_unique<Progress::ExtendChain>(params.lookup);
-      params.progressFunc(std::move(prg));
-   }
+   if (params.lookup > 0) {
+      if (params.progressFunc) {
+         auto prg = std::make_unique<Progress::ExtendChain>(params.lookup);
+         params.progressFunc(std::move(prg));
+      }
 
-   //legacy derivation bootstraps the accounts with asset 0,
-   //lookup should be - 1
-   accountPtr->extendPrivateChain(
-      iface, walletPtr->decryptedData_, params.lookup - 1);
+      //legacy derivation bootstraps the accounts with asset 0,
+      //lookup should be - 1
+      accountPtr->extendPrivateChain(
+         iface, walletPtr->decryptedData_, params.lookup - 1);
+   }
 
    //clean up and return wallet
    walletPtr->resetPassphrasePromptLambda();
@@ -1820,18 +1822,19 @@ const SecureBinaryData& AssetWallet_Single::getArmory135Chaincode() const
 void AssetWallet_Single::importPublicData(const WalletPublicData& wpd,
    std::shared_ptr<IO::WalletDBInterface> iface)
 {
-   //TODO: merging from exported data
-
-   //open the relevant db name
-   auto tx = iface->beginWriteTransaction(wpd.dbName_);
-
    //open the wallet
    auto headerPtr = std::make_shared<IO::WalletHeader_Single>(
       Armory::Config::BitcoinSettings::getMagicBytes());
    headerPtr->walletID_ = wpd.walletID_;
-   auto wltWO = std::make_unique<AssetWallet_Single>(iface, headerPtr, wpd.masterID_);
+   auto wltRecipient = std::make_unique<AssetWallet_Single>(
+      iface, headerPtr, wpd.masterID_);
+   wltRecipient->readFromFile();
 
-   if (wpd.mainAccountID_.isValid()) {
+   //open the relevant db name
+   auto tx = iface->beginWriteTransaction(wpd.dbName_);
+
+   if (wpd.mainAccountID_.isValid() &&
+      !wltRecipient->mainAccountId_.isValid()) {
       //main account
       BinaryWriter bwKey;
       bwKey.put_uint32_t(MAIN_ACCOUNT_KEY);
@@ -1841,180 +1844,190 @@ void AssetWallet_Single::importPublicData(const WalletPublicData& wpd,
       tx->insert(bwKey.getData(), bwData.getData());
    }
 
-   if (wpd.pubRoot_ != nullptr && wltWO->getRoot() == nullptr) {
-      //wallet is missing a root, commit
+   //does the wallet have a root entry?
+   if (wpd.pubRoot_ != nullptr && wltRecipient->getRoot() == nullptr) {
+      //wallet is missing a root, add it
       BinaryWriter bwKey;
       bwKey.put_uint32_t(ROOTASSET_KEY);
 
       auto data = wpd.pubRoot_->serialize();
       tx->insert(bwKey.getData(), data);
-
-      //and set it
-      wltWO->root_ = wpd.pubRoot_;
+      wltRecipient->root_ = wpd.pubRoot_;
    }
+
+   //label & description
+   wltRecipient->setLabel(wpd.label);
+   wltRecipient->setDescription(wpd.description);
 
    //address accounts
    for (const auto& accPair : wpd.accounts_) {
+      std::shared_ptr<AddressAccount> accPtr;
       const auto& accData = accPair.second;
 
-      //guess address account type
-      auto outerAccIter = accData.accountDataMap_.find(accData.outerAccountId_);
-      if (outerAccIter == accData.accountDataMap_.end()) {
-         throw WalletException("[importPublicData] "
-            "Address account data missing outer account");
-      }
+      try {
+         accPtr = wltRecipient->getAccountForID(accPair.first);
+      } catch (const WalletException&) {
+         /* recipient wallet does not have this account, create it */
 
-      //reconstruct derivation scheme object
-      auto derData = DBUtils::getDataRefForPacket(
-         outerAccIter->second.derivationData_);
-      auto derScheme = DerivationScheme::deserialize(derData);
-
-      //instantiate account type object
-      std::shared_ptr<AccountType> accTypePtr;
-      switch (derScheme->getType())
-      {
-         case DerivationSchemeType::ArmoryLegacy:
-         {
-            if (accData.accountDataMap_.size() != 1) {
-               throw WalletException("[importPublicData]"
-                  " invalid account data map size");
-            }
-            accTypePtr = std::make_shared<AccountType_ArmoryLegacy>();
-            break;
+         //guess address account type
+         auto outerAccIter = accData.accountDataMap_.find(accData.outerAccountId_);
+         if (outerAccIter == accData.accountDataMap_.end()) {
+            throw WalletException("[importPublicData] "
+               "Address account data missing outer account");
          }
 
-         case DerivationSchemeType::BIP32:
-         case DerivationSchemeType::BIP32_Salted:
+         //reconstruct derivation scheme object
+         auto derData = DBUtils::getDataRefForPacket(
+            outerAccIter->second.derivationData_);
+         auto derScheme = DerivationScheme::deserialize(derData);
+
+         //instantiate account type object
+         std::shared_ptr<AccountType> accTypePtr;
+         switch (derScheme->getType())
          {
-            //create derTree
-            auto rootBip32 = std::dynamic_pointer_cast<AssetEntry_BIP32Root>(
-               wpd.pubRoot_);
-            if (rootBip32 == nullptr) {
-               throw WalletException("[importPublicData] invalid root");
+            case DerivationSchemeType::ArmoryLegacy:
+            {
+               if (accData.accountDataMap_.size() != 1) {
+                  throw WalletException("[importPublicData]"
+                     " invalid account data map size");
+               }
+               accTypePtr = std::make_shared<AccountType_ArmoryLegacy>();
+               break;
             }
 
-            //grab the path for each asset account
-            std::vector<PathAndRoot> pathsAndRoots;
-            for (const auto& acc : accData.accountDataMap_) {
-               //deser the root
-               auto accRootData = DBUtils::getDataRefForPacket(
-                  acc.second.rootData_);
+            case DerivationSchemeType::BIP32:
+            case DerivationSchemeType::BIP32_Salted:
+            {
+               //create derTree
+               auto rootBip32 = std::dynamic_pointer_cast<AssetEntry_BIP32Root>(
+                  wpd.pubRoot_);
+               if (rootBip32 == nullptr) {
+                  throw WalletException("[importPublicData] invalid root");
+               }
+
+               //grab the path for each asset account
+               std::vector<PathAndRoot> pathsAndRoots;
+               for (const auto& acc : accData.accountDataMap_) {
+                  //deser the root
+                  auto accRootData = DBUtils::getDataRefForPacket(
+                     acc.second.rootData_);
+                  auto accRoot = AssetEntry::deserDBValue(
+                     AssetId::getRootAssetId(), accRootData);
+                  auto accRootBip32 =
+                     std::dynamic_pointer_cast<AssetEntry_BIP32Root>(accRoot);
+                  if (accRootBip32 == nullptr) {
+                     throw WalletException("[importPublicData] "
+                        "unexpected account root type");
+                  }
+
+                  //get der path from the root
+                  pathsAndRoots.emplace_back(
+                     accRootBip32->getDerivationPath(),
+                     accRootBip32->getXPub()
+                  );
+               }
+
+               //create account type object from paths
+               std::vector<std::vector<uint32_t>> paths;
+               for (auto& pathAndRootIt : pathsAndRoots) {
+                  paths.emplace_back(pathAndRootIt.getPath());
+               }
+
+               std::shared_ptr<AccountType_BIP32> accTypeBip32;
+               if (derScheme->getType() == DerivationSchemeType::BIP32) {
+                  accTypeBip32 = AccountType_BIP32::makeFromDerPaths(
+                     rootBip32->getSeedFingerprint(true), paths);
+               } else if (derScheme->getType() == DerivationSchemeType::BIP32_Salted) {
+                  auto derSchemeSalted =
+                     std::dynamic_pointer_cast<DerivationScheme_BIP32_Salted>(derScheme);
+                  if (derSchemeSalted == nullptr) {
+                     throw WalletException("[importPublicData]"
+                        " unexpected der scheme");
+                  }
+
+                  accTypeBip32 = AccountType_BIP32_Salted::makeFromDerPaths(
+                     rootBip32->getSeedFingerprint(true), paths,
+                     derSchemeSalted->getSalt());
+               }
+
+               //set the roots
+               accTypeBip32->setRoots(pathsAndRoots);
+
+               //address types
+               for (auto& addrType : accData.addressTypes_) {
+                  accTypeBip32->addAddressType(addrType);
+               }
+               accTypeBip32->setDefaultAddressType(accData.defaultAddressEntryType_);
+
+               //account ids
+               accTypeBip32->setOuterAccountID(
+                  accData.outerAccountId_.getAssetAccountKey());
+               accTypeBip32->setInnerAccountID(
+                  accData.innerAccountId_.getAssetAccountKey());
+
+               accTypePtr = accTypeBip32;
+               break;
+            }
+
+            case DerivationSchemeType::ECDH:
+            {
+               if (accData.accountDataMap_.size() != 1) {
+                  throw WalletException("[importPublicData]"
+                     " invalid account data map size");
+               }
+
+               const auto& adm = accData.accountDataMap_.begin()->second;
+               auto accRootData = DBUtils::getDataRefForPacket(adm.rootData_);
                auto accRoot = AssetEntry::deserDBValue(
                   AssetId::getRootAssetId(), accRootData);
-               auto accRootBip32 =
-                  std::dynamic_pointer_cast<AssetEntry_BIP32Root>(accRoot);
-               if (accRootBip32 == nullptr) {
+               auto accRootEcdh =
+                  std::dynamic_pointer_cast<AssetEntry_Single>(accRoot);
+               if (accRootEcdh == nullptr) {
                   throw WalletException("[importPublicData] "
                      "unexpected account root type");
                }
 
-               //get der path from the root
-               pathsAndRoots.emplace_back(
-                  accRootBip32->getDerivationPath(),
-                  accRootBip32->getXPub()
-               );
-            }
-
-            //create account type object from paths
-            std::vector<std::vector<uint32_t>> paths;
-            for (auto& pathAndRootIt : pathsAndRoots) {
-               paths.emplace_back(pathAndRootIt.getPath());
-            }
-
-            std::shared_ptr<AccountType_BIP32> accTypeBip32;
-            if (derScheme->getType() == DerivationSchemeType::BIP32) {
-               accTypeBip32 = AccountType_BIP32::makeFromDerPaths(
-                  rootBip32->getSeedFingerprint(true), paths);
-            } else if (derScheme->getType() == DerivationSchemeType::BIP32_Salted) {
-               auto derSchemeSalted =
-                  std::dynamic_pointer_cast<DerivationScheme_BIP32_Salted>(derScheme);
-               if (derSchemeSalted == nullptr) {
-                  throw WalletException("[importPublicData]"
-                     " unexpected der scheme");
+               //address types
+               auto accEcdh = std::make_shared<AccountType_ECDH>(
+                  SecureBinaryData(), accRootEcdh->getPubKey()->getCompressedKey());
+               for (auto& addrType : accData.addressTypes_) {
+                  accEcdh->addAddressType(addrType);
                }
-
-               accTypeBip32 = AccountType_BIP32_Salted::makeFromDerPaths(
-                  rootBip32->getSeedFingerprint(true), paths,
-                  derSchemeSalted->getSalt());
+               accEcdh->setDefaultAddressType(accData.defaultAddressEntryType_);
+               accTypePtr = accEcdh;
+               break;
             }
 
-            //set the roots
-            accTypeBip32->setRoots(pathsAndRoots);
-
-            //address types
-            for (auto& addrType : accData.addressTypes_) {
-               accTypeBip32->addAddressType(addrType);
-            }
-            accTypeBip32->setDefaultAddressType(accData.defaultAddressEntryType_);
-
-            //account ids
-            accTypeBip32->setOuterAccountID(
-               accData.outerAccountId_.getAssetAccountKey());
-            accTypeBip32->setInnerAccountID(
-               accData.innerAccountId_.getAssetAccountKey());
-
-            accTypePtr = accTypeBip32;
-            break;
+            default:
+               break;
          }
 
-         case DerivationSchemeType::ECDH:
-         {
-            if (accData.accountDataMap_.size() != 1) {
-               throw WalletException("[importPublicData]"
-                  " invalid account data map size");
-            }
-
-            const auto& adm = accData.accountDataMap_.begin()->second;
-            auto accRootData = DBUtils::getDataRefForPacket(adm.rootData_);
-            auto accRoot = AssetEntry::deserDBValue(
-               AssetId::getRootAssetId(), accRootData);
-            auto accRootEcdh =
-               std::dynamic_pointer_cast<AssetEntry_Single>(accRoot);
-            if (accRootEcdh == nullptr) {
-               throw WalletException("[importPublicData] "
-                  "unexpected account root type");
-            }
-
-            //address types
-            auto accEcdh = std::make_shared<AccountType_ECDH>(
-               SecureBinaryData(), accRootEcdh->getPubKey()->getCompressedKey());
-            for (auto& addrType : accData.addressTypes_) {
-               accEcdh->addAddressType(addrType);
-            }
-            accEcdh->setDefaultAddressType(accData.defaultAddressEntryType_);
-            accTypePtr = accEcdh;
-            break;
+         if (accTypePtr == nullptr) {
+            throw WalletException("[importPublicData] "
+               "Failed to resolve address account type");
          }
 
-         default:
-            break;
+         //flag main account
+         if (accData.ID_ == wpd.mainAccountID_) {
+            accTypePtr->setMain(true);
+         }
+
+         //create the account
+         accPtr = wltRecipient->createAccount(accTypePtr, nullptr);
       }
 
-      if (accTypePtr == nullptr) {
-         throw WalletException("[importPublicData] "
-            "Failed to resolve address account type");
-      }
-
-      //flag main account
-      if (accData.ID_ == wpd.mainAccountID_) {
-         accTypePtr->setMain(true);
-      }
-
-      //create the account
-      auto newAcc = wltWO->createAccount(accTypePtr, nullptr);
-
-      //check the created account matches the public data we're importing from
-      if (newAcc->addressTypes_ != accData.addressTypes_ ||
-         newAcc->defaultAddressEntryType_ != accData.defaultAddressEntryType_) {
+      //check the account matches the public data we're importing from
+      if (accPtr->addressTypes_ != accData.addressTypes_ ||
+         accPtr->defaultAddressEntryType_ != accData.defaultAddressEntryType_) {
          throw WalletException("[importPublicData] Address type mismtach");
       }
 
-      if (newAcc->accountDataMap_.size() != accData.accountDataMap_.size()) {
+      if (accPtr->accountDataMap_.size() != accData.accountDataMap_.size()) {
          throw WalletException("[importPublicData] Account map mismatch");
       }
-      auto newAccDataIter = newAcc->accountDataMap_.begin();
+      auto newAccDataIter = accPtr->accountDataMap_.begin();
       auto accDataIter = accData.accountDataMap_.begin();
-      while (newAccDataIter != newAcc->accountDataMap_.end()) {
+      while (newAccDataIter != accPtr->accountDataMap_.end()) {
          if (newAccDataIter->first != accDataIter->first) {
             throw WalletException("[importPublicData] Account map mismatch");
          }
@@ -2022,17 +2035,17 @@ void AssetWallet_Single::importPublicData(const WalletPublicData& wpd,
          ++accDataIter;
       }
 
-      if (newAcc->outerAccountId_ != accData.outerAccountId_ ||
-         newAcc->innerAccountId_ != accData.innerAccountId_) {
+      if (accPtr->outerAccountId_ != accData.outerAccountId_ ||
+         accPtr->innerAccountId_ != accData.innerAccountId_) {
          throw WalletException("[importPublicData] "
             "Mismtach in outer/inner accounts");
       }
 
       //synchronize the account
-      newAcc->importPublicData(accData);
+      accPtr->importPublicData(accData);
 
       //commit to disk
-      newAcc->commit(iface);
+      accPtr->commit(iface);
    }
 
    //meta accounts
@@ -2059,7 +2072,7 @@ WalletPublicData AssetWallet_Single::exportPublicData(
       wlt->dbName_,
       wlt->masterID_,
       wlt->walletID_,
-      wlt->mainAccount_
+      wlt->mainAccountId_
    };
 
    //root
@@ -2078,6 +2091,10 @@ WalletPublicData AssetWallet_Single::exportPublicData(
       auto accCopy = metaAccPtr.second->copy(wlt->dbName_);
       wpd.metaAccounts_.emplace(accCopy->getType(), accCopy);
    }
+
+   //label and description
+   wpd.label = wlt->label_;
+   wpd.description = wlt->description_;
 
    return wpd;
 }
