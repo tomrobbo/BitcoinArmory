@@ -367,21 +367,21 @@ void AssetAccount::extendPublicChain(
 
 ////////////////////////////////////////////////////////////////////////////////
 void AssetAccount::extendPublicChainToIndex(
-   std::shared_ptr<IO::WalletDBInterface> iface, unsigned index,
+   std::shared_ptr<IO::WalletDBInterface> iface, int32_t index,
    const std::function<void(int)>& progressCallback)
 {
    ReentrantLock lock(this);
 
    //make address chain at least *count* long
    auto lastComputedIndex = getLastComputedIndex();
-   if (lastComputedIndex >= (int)index) {
+   if (lastComputedIndex >= index) {
       return;
    }
-   int toCompute = int(index) - lastComputedIndex;
+   int32_t toCompute = index - lastComputedIndex;
    if (toCompute < 0) {
       throw AccountException("extendPublicChainToIndex: invalid index");
    }
-   extendPublicChain(iface, (unsigned)toCompute, progressCallback);
+   extendPublicChain(iface, toCompute, progressCallback);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -466,7 +466,7 @@ void AssetAccount::extendPrivateChain(
 void AssetAccount::extendPrivateChainToIndex(
    std::shared_ptr<IO::WalletDBInterface> iface,
    std::shared_ptr<Encryption::DecryptedDataContainer> ddc,
-   unsigned id)
+   int32_t id)
 {
    ReentrantLock lock(this);
    std::shared_ptr<AssetEntry> topAsset = nullptr;
@@ -477,8 +477,8 @@ void AssetAccount::extendPrivateChainToIndex(
       topIndex = topAsset->getIndex();
    } catch (const std::runtime_error&) {}
 
-   if ((int)id > topIndex) {
-      int32_t count = (int)id - topIndex;
+   if (id > topIndex) {
+      int32_t count = id - topIndex;
       extendPrivateChain(iface, ddc, topAsset, count);
    }
 }

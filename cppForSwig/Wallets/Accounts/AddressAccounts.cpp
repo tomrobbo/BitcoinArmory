@@ -518,7 +518,7 @@ std::unique_ptr<AddressAccount> AddressAccount::readFromDisk(
 
 ////////////////////////////////////////////////////////////////////////////////
 void AddressAccount::extendPublicChain(
-   std::shared_ptr<IO::WalletDBInterface> iface, unsigned count,
+   std::shared_ptr<IO::WalletDBInterface> iface, int32_t count,
    const std::function<void(int)>& progressCallback)
 {
    for (auto& accDataPair : accountDataMap_) {
@@ -530,7 +530,7 @@ void AddressAccount::extendPublicChain(
 ////////////////////////////////////////////////////////////////////////////////
 void AddressAccount::extendPublicChain(
    std::shared_ptr<IO::WalletDBInterface> iface,
-   const AssetAccountId& id, unsigned count,
+   const AssetAccountId& id, int32_t count,
    const std::function<void(int)>& progressCallback)
 {
    auto accountPtr = getAccountForID(id);
@@ -540,7 +540,7 @@ void AddressAccount::extendPublicChain(
 ////////////////////////////////////////////////////////////////////////////////
 void AddressAccount::extendPublicChainToIndex(
    std::shared_ptr<IO::WalletDBInterface> iface,
-   const AssetAccountId& accountID, unsigned index,
+   const AssetAccountId& accountID, int32_t index,
    const std::function<void(int)>& progressCallback)
 {
    auto accountPtr = getAccountForID(accountID);
@@ -551,7 +551,7 @@ void AddressAccount::extendPublicChainToIndex(
 void AddressAccount::extendPrivateChain(
    std::shared_ptr<IO::WalletDBInterface> iface,
    std::shared_ptr<Encryption::DecryptedDataContainer> ddc,
-   unsigned count)
+   int32_t count)
 {
    for (auto& accDataPair : accountDataMap_) {
       auto accountPtr = getAccountForID(accDataPair.first);
@@ -563,7 +563,7 @@ void AddressAccount::extendPrivateChain(
 void AddressAccount::extendPrivateChainToIndex(
    std::shared_ptr<IO::WalletDBInterface> iface,
    std::shared_ptr<Encryption::DecryptedDataContainer> ddc,
-   const AssetAccountId& accountID, unsigned count)
+   const AssetAccountId& accountID, int32_t count)
 {
    auto account = getAccountForID(accountID);
    account->extendPrivateChainToIndex(iface, ddc, count);

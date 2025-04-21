@@ -172,6 +172,7 @@ namespace Armory
          void extendPublicChainToIndex(const AddressAccountId&, int32_t,
             const std::function<void(int)>& = nullptr);
          void extendPrivateChain(int32_t);
+         void extendPrivateChainToIndex(int32_t);
          void extendPrivateChainToIndex(const AddressAccountId&, int32_t);
 
          bool hasScrAddr(const BinaryData& scrAddr) const;
@@ -282,7 +283,9 @@ namespace Armory
 
       private:
          static void importPublicData(const WalletPublicData&,
-            std::shared_ptr<IO::WalletDBInterface>);
+            std::shared_ptr<IO::WalletDBInterface>,
+            Progress::Func prog=nullptr
+         );
 
          void setSeed(std::unique_ptr<Armory::Seeds::ClearTextSeed>,
             const SecureBinaryData&);
@@ -356,7 +359,7 @@ namespace Armory
          static WalletPublicData exportPublicData(
             std::shared_ptr<AssetWallet_Single>);
          static void mergePublicData(const IO::OpenFileParams&,
-            const WalletPublicData&);
+            const WalletPublicData&, Progress::Func);
       };
 
       //////////////////////////////////////////////////////////////////////////

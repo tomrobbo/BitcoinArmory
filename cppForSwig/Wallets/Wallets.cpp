@@ -719,6 +719,14 @@ void AssetWallet::extendPublicChainToIndex(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+void AssetWallet::extendPrivateChainToIndex(int32_t count)
+{
+   for (auto& account : accounts_) {
+      extendPrivateChainToIndex(account.first, count);
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 void AssetWallet::extendPrivateChainToIndex(
    const AddressAccountId& accountId, int32_t count)
 {
@@ -1820,7 +1828,7 @@ const SecureBinaryData& AssetWallet_Single::getArmory135Chaincode() const
 
 ////////////////////////////////////////////////////////////////////////////////
 void AssetWallet_Single::importPublicData(const WalletPublicData& wpd,
-   std::shared_ptr<IO::WalletDBInterface> iface)
+   std::shared_ptr<IO::WalletDBInterface> iface, Progress::Func prog)
 {
    //open the wallet
    auto headerPtr = std::make_shared<IO::WalletHeader_Single>(
@@ -1858,6 +1866,30 @@ void AssetWallet_Single::importPublicData(const WalletPublicData& wpd,
    //label & description
    wltRecipient->setLabel(wpd.label);
    wltRecipient->setDescription(wpd.description);
+
+   //report how many addresses we will be generating
+   if (prog) {
+      int32_t lookupAggregate = 0;
+      for (const auto& addrAccPair : wpd.accounts_) {
+         try {
+            auto addrAccPtr = wltRecipient->getAccountForID(addrAccPair.first);
+            for (const auto& accPair : addrAccPair.second.accountDataMap_) {
+               auto accPtr = addrAccPtr->getAccountForID(accPair.first);
+               auto delta = accPair.second.lastComputedIndex_ -
+                  accPtr->getLastComputedIndex();
+               if (delta <= 0) {
+                  continue;
+               }
+               lookupAggregate += delta;
+            }
+         } catch (const WalletException&) {
+            for (const auto& accPair : addrAccPair.second.accountDataMap_) {
+               lookupAggregate += accPair.second.lastComputedIndex_ + 1;
+            }
+         }
+      }
+      prog(std::make_unique<Progress::ExtendChain>(lookupAggregate));
+   }
 
    //address accounts
    for (const auto& accPair : wpd.accounts_) {
@@ -2058,10 +2090,10 @@ void AssetWallet_Single::importPublicData(const WalletPublicData& wpd,
 
 ////////////////////////////////////////////////////////////////////////////////
 void AssetWallet_Single::mergePublicData(const IO::OpenFileParams& params,
-   const WalletPublicData& wpd)
+   const WalletPublicData& wpd, Progress::Func prog)
 {
    auto iface = getIfaceFromFile(params);
-   importPublicData(wpd, iface);
+   importPublicData(wpd, iface, prog);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

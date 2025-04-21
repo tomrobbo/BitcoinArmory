@@ -320,8 +320,8 @@ namespace
       }
    }
 
-   std::function<void(std::unique_ptr<Wallets::Progress::State>)>
-   getWalletProgressLbd (CppBridge* bridgePtr, const std::string& callbackId)
+   Wallets::Progress::Func getWalletProgressLbd(
+      CppBridge* bridgePtr, const std::string& callbackId)
    {
       return [bridgePtr, callbackId](
          std::unique_ptr<Wallets::Progress::State> statePtr)
@@ -1068,9 +1068,10 @@ void CppBridge::restoreWallet(
             } else {
                auto oldWltData = Wallets::AssetWallet_Single::exportPublicData(
                   oldWltSingle);
-               progFunc(std::make_unique<Wallets::Progress::ExtendChain>(1));
                Wallets::AssetWallet_Single::mergePublicData(
-                  Wallets::IO::OpenFileParams{newWltPath, ctrlLbd}, oldWltData);
+                  Wallets::IO::OpenFileParams{newWltPath, ctrlLbd},
+                  oldWltData, progFunc
+               );
             }
          } else {
             //we didnt have an old wallet merge into the new one, extend
@@ -1081,7 +1082,7 @@ void CppBridge::restoreWallet(
                return pass;
             });
             progFunc(std::make_unique<Wallets::Progress::ExtendChain>(500));
-            restoreResult.wltPtr->extendPrivateChain(500);
+            restoreResult.wltPtr->extendPrivateChainToIndex(499);
             restoreResult.wltPtr.reset();
          }
 

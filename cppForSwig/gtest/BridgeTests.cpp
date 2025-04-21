@@ -907,8 +907,7 @@ protected:
 
    WalletData restoreWallet(const std::vector<std::string>& lines,
       const std::string& expectedWltId, uint32_t backupType,
-      const std::string& passphrase,
-      bool merge)
+      const std::string& passphrase, bool merge, unsigned expectedLookup)
    {
       if (lines.size() < 2) {
          throw std::runtime_error("1");
@@ -1028,7 +1027,7 @@ protected:
       }
 
       //create wallet notifs
-      auto wltData = progressWalletCreation(callbackId, 500);
+      auto wltData = progressWalletCreation(callbackId, expectedLookup);
 
       //validate reply
       auto result = waitOnReply();
@@ -1330,7 +1329,7 @@ TEST_F(BridgeTests, RestoreWallet_Legacy)
    const std::string passphrase{"privPassTest"};
 
    //restore the wallet
-   auto restoreData = restoreWallet(lines, walletId, 0, passphrase, false);
+   auto restoreData = restoreWallet(lines, walletId, 0, passphrase, false, 500);
 
    //get the wallet data & validate it
    auto wltData = getWalletData(walletId);
@@ -1342,7 +1341,7 @@ TEST_F(BridgeTests, RestoreWallet_Legacy)
    EXPECT_TRUE(wltData.encrypted);
    EXPECT_FALSE(wltData.watchingOnly);
    EXPECT_EQ(wltData.addresses.size(), 1);
-   EXPECT_EQ(wltData.lookup, 100);
+   EXPECT_EQ(wltData.lookup, 500);
 
    //request KDF unlock time
    auto unlockTime = testKDFUnlock(walletId);
@@ -1446,6 +1445,7 @@ TEST_F(BridgeTests, RestoreMerge)
    auto callbackId = BtcUtils::fortuna_.generateRandom(10).toHexStr();
    std::string passphrase{"pass2"};
    std::string passphrase2{"pass3"};
+   unsigned lookup = 46;
 
    capnp::MallocMessageBuilder message;
    auto toBridge = message.initRoot<Bridge::ToBridge>();
@@ -1454,7 +1454,7 @@ TEST_F(BridgeTests, RestoreMerge)
    auto createWltReq = request.initCreateWallet();
 
    createWltReq.setCallbackId(callbackId);
-   createWltReq.setLookup(46);
+   createWltReq.setLookup(lookup);
    createWltReq.setLabel("labl2");
    createWltReq.setDescription("desc2");
 
@@ -1469,7 +1469,7 @@ TEST_F(BridgeTests, RestoreMerge)
    std::string masterId;
    std::filesystem::path path;
    try {
-      auto walletData = progressWalletCreation(callbackId, 46);
+      auto walletData = progressWalletCreation(callbackId, lookup);
       masterId = walletData.masterId;
       path = walletData.path;
    } catch (const std::exception& e) {
@@ -1506,7 +1506,7 @@ TEST_F(BridgeTests, RestoreMerge)
    EXPECT_TRUE(wltData.encrypted);
    EXPECT_FALSE(wltData.watchingOnly);
    EXPECT_EQ(wltData.addresses.size(), 1);
-   EXPECT_EQ(wltData.lookup, 46);
+   EXPECT_EQ(wltData.lookup, lookup);
 
    //grab 3 addresses
    std::vector<AddressData> addresses;
@@ -1534,7 +1534,12 @@ TEST_F(BridgeTests, RestoreMerge)
    for (const auto& line : lines) {
       ASSERT_FALSE(line.empty());
    }
-   auto restoreData = restoreWallet(lines, wltId, 3, passphrase2, true);
+   auto restoreData = restoreWallet(lines, wltId,
+      3, //backup type
+      passphrase2, true,
+      //the legacy armory account always starts with asset 0
+      lookup - 1
+   );
    ASSERT_EQ(restoreData.masterId, masterId);
    ASSERT_EQ(restoreData.path, path);
 
@@ -1551,13 +1556,22 @@ TEST_F(BridgeTests, RestoreMerge)
    EXPECT_TRUE(wltData2.encrypted);
    EXPECT_FALSE(wltData2.watchingOnly);
    EXPECT_EQ(wltData2.addresses.size(), 4);
-   EXPECT_EQ(wltData2.lookup, 46);
+   EXPECT_EQ(wltData2.lookup, lookup);
 
    for (const auto& addr : wltData2.addresses) {
       ASSERT_LT(addr.index, 4);
       const auto& addrI = addresses[addr.index];
       ASSERT_EQ(addr.hash, addrI.hash);
    }
+
+   //check it unlocks with passphrase2
+   std::vector<std::string> lines2;
+   try {
+      lines2 = getBackup(wltId, passphrase2, 3);
+   } catch (const std::exception& e) {
+      ASSERT_TRUE(false) << e.what();
+   }
+   EXPECT_EQ(lines, lines2);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
