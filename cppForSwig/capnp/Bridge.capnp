@@ -9,6 +9,31 @@ using Types = import "Types.capnp";
 # WalletData
 ###############################
 
+struct WalletBackup {
+   enum Type {
+      unknown     @0;
+
+      legacy135A  @1;
+      legacy135C  @2;
+
+      legacy200A  @3;
+      legacy200B  @4;
+      legacy200C  @5;
+      legacy200D  @6;
+
+      bip39       @7;
+   }
+
+   rootClear   @0 : List(Text);
+   chainClear  @1 : List(Text);
+
+   rootEncr    @2 : List(Text);
+   chainEncr   @3 : List(Text);
+
+   spPass      @4 : Text;
+   backupType  @5 : Type;
+}
+
 struct WalletData {
    struct AddressData {
       index             @0 : Int32;
@@ -77,7 +102,7 @@ struct Notification {
    struct RestorePrompt {
       struct WalletMeta {
          walletId          @0 : Text;
-         backupType        @1 : UInt32;
+         backupType        @1 : WalletBackup.Type;
       }
 
       struct ChecksumResult {
@@ -338,17 +363,6 @@ struct UTXO {
 }
 
 struct WalletReply {
-   struct BackupString {
-      rootClear   @0 : List(Text);
-      chainClear  @1 : List(Text);
-
-      rootEncr    @2 : List(Text);
-      chainEncr   @3 : List(Text);
-
-      spPass      @4 : Text;
-      backupType  @5 : UInt32;
-   }
-
    # Address Balance
    struct AddressBalanceData {
       scrAddr  @0 : Types.ScrAddr;
@@ -360,7 +374,6 @@ struct WalletReply {
       updatedAssets  @1 : List(WalletData.AddressData);
    }
 
-
    # reply
    union {
       unset                         @0 : Void;
@@ -368,7 +381,7 @@ struct WalletReply {
       getAddress                    @1 : WalletData.AddressData;
       getHighestUsedIndex           @2 : Int32;
       extendAddressPool             @3 : WalletData;
-      createBackupString            @4 : BackupString;
+      createBackupString            @4 : WalletBackup;
       getData                       @5 : WalletData;
       getAddrCombinedList           @6 : AddressAndBalanceData;
       setAddressTypeFor             @7 : WalletData.AddressData;

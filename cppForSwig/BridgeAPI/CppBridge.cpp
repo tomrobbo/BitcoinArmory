@@ -410,6 +410,36 @@ namespace
       auto serialized = serializeCapnp(message);
       bridgePtr->writeToClient(serialized);
    }
+
+   WalletBackup::Type toCapnBackupType(const Seeds::BackupType& bType)
+   {
+      switch (bType)
+      {
+         case Seeds::BackupType::Armory135a:
+            return WalletBackup::Type::LEGACY135_A;
+
+         case Seeds::BackupType::Armory135c:
+            return WalletBackup::Type::LEGACY135_C;
+
+         case Seeds::BackupType::Armory200a:
+            return WalletBackup::Type::LEGACY200_A;
+
+         case Seeds::BackupType::Armory200b:
+            return WalletBackup::Type::LEGACY200_B;
+
+         case Seeds::BackupType::Armory200c:
+            return WalletBackup::Type::LEGACY200_C;
+
+         case Seeds::BackupType::Armory200d:
+            return WalletBackup::Type::LEGACY200_D;
+
+         case Seeds::BackupType::BIP39:
+            return WalletBackup::Type::BIP39;
+
+         default:
+            return WalletBackup::Type::UNKNOWN;
+      }
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -858,7 +888,7 @@ void CppBridge::createBackupStringForWallet(const std::string& wltId,
          capnp::Text::Reader(spPass.data(), spPass.size()));
 
       //backup type
-      backupStringCapnp.setBackupType((unsigned)backupData->type());
+      backupStringCapnp.setBackupType(toCapnBackupType(backupData->type()));
 
       reply.setSuccess(true);
       auto payload = serializeCapnp(message);
@@ -968,7 +998,7 @@ void CppBridge::restoreWallet(
             {
                auto metaCapnp = restore.initCheckWalletId();
                metaCapnp.setWalletId(prompt.walletId);
-               metaCapnp.setBackupType((int)prompt.backupType);
+               metaCapnp.setBackupType(toCapnBackupType(prompt.backupType));
                break;
             }
 

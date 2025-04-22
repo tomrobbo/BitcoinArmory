@@ -46,7 +46,6 @@ selectorDescriptions[AddressEntryType_P2WPKH] = str(
    )
 
 class AddressTypeSelectDialog(ArmoryDialog):
-
    def __init__(self, parent, main, addressTypes, currentType):
       super(AddressTypeSelectDialog, self).__init__(parent, main)
       self.radioFrames = {}

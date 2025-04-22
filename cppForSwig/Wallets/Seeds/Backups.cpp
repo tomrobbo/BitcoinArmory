@@ -55,7 +55,7 @@ const std::vector<char> Easy16Codec::e16chars_ = {
 
 ////////////////////////////////////////////////////////////////////////////////
 const std::set<BackupType> Easy16Codec::eligibleIndexes_ = {
-   BackupType::Armory135,
+   BackupType::Armory135a,
    BackupType::Armory200a,
    BackupType::Armory200b,
    BackupType::Armory200c,
@@ -139,6 +139,10 @@ std::vector<SecureBinaryData> Easy16Codec::encode(
 {
    //TODO: use index pairs for a given backup type instead (one index per line)
    uint8_t index = (uint8_t)bType;
+   if (bType == BackupType::Armory135c) {
+      //index for 135a/c should be 0
+      index = 0;
+   }
 
    if (index > EASY16_INDEX_MAX) {
       LOGERR << "index is too large";
@@ -881,7 +885,8 @@ std::unique_ptr<WalletBackup> Helpers::getWalletBackup(
 
    switch (bType)
    {
-      case BackupType::Armory135:
+      case BackupType::Armory135a:
+      case BackupType::Armory135c:
       case BackupType::Armory200a:
       case BackupType::Armory200b:
       case BackupType::Armory200c:
@@ -954,12 +959,9 @@ std::unique_ptr<WalletBackup> Helpers::getEasy16BackupString(
    auto result = std::make_unique<Backup_Easy16>(mode);
    result->rootClear_ = std::move(lines_clear);
    result->rootEncr_ = std::move(lines_encr);
-   if (mode == BackupType::Armory135) {
-      //if there's a chaincode, set it too
-      if (!secondaryData.empty()) {
-         result->chaincodeClear_ = std::move(Easy16Codec::encode(secondaryData, mode));
-         result->chaincodeEncr_ = std::move(Easy16Codec::encode(encrRoot.second, mode));
-      }
+   if (mode == BackupType::Armory135a) {
+      result->chaincodeClear_ = std::move(Easy16Codec::encode(secondaryData, mode));
+      result->chaincodeEncr_ = std::move(Easy16Codec::encode(encrRoot.second, mode));
    }
    result->spPass_ = std::move(sp.getPassphrase());
    return result;
@@ -1031,7 +1033,8 @@ RestoreResult Helpers::restoreFromBackup(
    switch (bType)
    {
       //easy16 backups
-      case BackupType::Armory135:
+      case BackupType::Armory135a:
+      case BackupType::Armory135c:
       case BackupType::Armory200a:
       case BackupType::Armory200b:
       case BackupType::Armory200d:
@@ -1225,6 +1228,9 @@ std::unique_ptr<ClearTextSeed> Helpers::restoreFromEasy16(
    /* backup type */
    if (bType == BackupType::Easy16_Unkonwn) {
       bType = (BackupType)primaryData.getIndex();
+      if (bType == BackupType::Armory135a && !secondaryData.isInitialized()) {
+         bType = BackupType::Armory135c;
+      }
    } else {
       if ((BackupType)primaryData.getIndex() != bType) {
          RestorePrompt prompt{RestorePromptType::ChecksumMismatch};
@@ -1239,7 +1245,8 @@ std::unique_ptr<ClearTextSeed> Helpers::restoreFromEasy16(
    std::unique_ptr<ClearTextSeed> seedPtr = nullptr;
    switch (bType)
    {
-      case BackupType::Armory135:
+      case BackupType::Armory135a:
+      case BackupType::Armory135c:
       {
          /*legacy armory wallet, legacy backup string*/
          seedPtr = std::move(std::make_unique<ClearTextSeed_Armory135>(
@@ -1373,11 +1380,7 @@ Backup_Easy16::~Backup_Easy16()
 
 bool Backup_Easy16::hasChaincode() const
 {
-   if (type() != BackupType::Armory135 &&
-      type() != BackupType::Easy16_Unkonwn) {
-      return false;
-   }
-   return !chaincodeClear_.empty() || !chaincodeEncr_.empty() ;
+   return !chaincodeClear_.empty() || !chaincodeEncr_.empty();
 }
 
 ////

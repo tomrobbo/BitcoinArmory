@@ -734,7 +734,7 @@ class BridgeWalletWrapper(ProtoWrapper):
 
       fut = self.send(packet)
       reply = fut.getVal()
-      return reply.wallet.addressData
+      return reply.wallet.setAddressTypeFor
 
    ####
    def setComment(self, key, val):

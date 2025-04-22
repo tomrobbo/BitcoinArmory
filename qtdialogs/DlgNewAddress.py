@@ -162,7 +162,6 @@ class DlgNewAddressDisp(ArmoryDialog):
       frmQRsub3 = makeHorizFrame([STRETCH, self.smLabel, STRETCH ])
       frmQR = makeVertFrame([STRETCH, qrdescr, frmQRsub2, frmQRsub3, STRETCH ], STYLE_SUNKEN)
 
-
       def setAddressType(addrType):
          self.addrType = addrType
          self.wlt.setAddressTypeFor(self.addr, addrType)
@@ -176,7 +175,7 @@ class DlgNewAddressDisp(ArmoryDialog):
       #addr type selection frame
       from ui.AddressTypeSelectDialog import AddressLabelFrame
       self.addrType = self.wlt.getDefaultAddressType()
-      self.addrTypeFrame = AddressLabelFrame(\
+      self.addrTypeFrame = AddressLabelFrame(
          main, setAddressType, self.wlt.getAddressTypes(), self.addrType)
 
       layout = QtWidgets.QGridLayout()

@@ -455,7 +455,8 @@ bool ClearTextSeed_Armory135::isBackupTypeEligible(BackupType bType) const
    switch (legacyType_)
    {
       case LegacyType::Armory135:
-         return bType == BackupType::Armory135;
+         return bType == BackupType::Armory135a ||
+            bType==BackupType::Armory135c;
 
       case LegacyType::Armory200:
          return bType == BackupType::Armory200a;
@@ -471,7 +472,13 @@ BackupType ClearTextSeed_Armory135::getPreferedBackupType() const
    switch (legacyType_)
    {
       case LegacyType::Armory135:
-         return BackupType::Armory135;
+      {
+         if (chaincode_.empty()) {
+            return BackupType::Armory135c;
+         } else {
+            return BackupType::Armory135a;
+         }
+      }
 
       case LegacyType::Armory200:
          return BackupType::Armory200a;

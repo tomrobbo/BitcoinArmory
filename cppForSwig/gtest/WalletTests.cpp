@@ -8906,7 +8906,7 @@ TEST_F(BackupTests, Easy16_Repair)
 
       //encode the root
       auto encoded = Armory::Seeds::Easy16Codec::encode(root.getRef(),
-         Armory::Seeds::BackupType::Armory135);
+         Armory::Seeds::BackupType::Armory135c);
       ASSERT_EQ(encoded.size(), 2ULL);
 
       //corrupt one character in one line
@@ -8952,7 +8952,7 @@ TEST_F(BackupTests, Easy16_Repair)
 
       //encode the root
       auto encoded = Armory::Seeds::Easy16Codec::encode(root.getRef(),
-         Armory::Seeds::BackupType::Armory135);
+         Armory::Seeds::BackupType::Armory135c);
       ASSERT_EQ(encoded.size(), 2ULL);
 
       //corrupt 2 characters in one line
@@ -9000,7 +9000,7 @@ TEST_F(BackupTests, Easy16_Repair)
 
       //encode the root
       auto encoded = Armory::Seeds::Easy16Codec::encode(root.getRef(),
-         Armory::Seeds::BackupType::Armory135);
+         Armory::Seeds::BackupType::Armory135c);
       ASSERT_EQ(encoded.size(), 2ULL);
 
       //corrupt 1 character per line
@@ -9162,7 +9162,7 @@ TEST_F(BackupTests, BackupStrings_Legacy)
          case RestorePromptType::Id:
          {
             EXPECT_EQ(prompt.walletId, backupData->getWalletId());
-            EXPECT_EQ(prompt.backupType, BackupType::Armory135);
+            EXPECT_EQ(prompt.backupType, BackupType::Armory135c);
             return PromptReply{true};
          }
 
@@ -9345,7 +9345,7 @@ TEST_F(BackupTests, BackupStrings_Legacy_SecurePrint)
 
          case RestorePromptType::Id:
          {
-            EXPECT_EQ(prompt.backupType, BackupType::Armory135);
+            EXPECT_EQ(prompt.backupType, BackupType::Armory135c);
             return PromptReply{prompt.walletId == backupData->getWalletId()};
          }
 
@@ -9467,7 +9467,7 @@ TEST_F(BackupTests, Easy16_AutoRepair)
       auto wltID = computeWalletID(root);
 
       //encode the root
-      auto encoded = Easy16Codec::encode(root.getRef(), BackupType::Armory135);
+      auto encoded = Easy16Codec::encode(root.getRef(), BackupType::Armory135c);
       ASSERT_EQ(encoded.size(), 2ULL);
 
       //corrupt one character in one line
@@ -9510,7 +9510,7 @@ TEST_F(BackupTests, Easy16_AutoRepair)
 
                case RestorePromptType::Id:
                {
-                  EXPECT_EQ(prompt.backupType, BackupType::Armory135);
+                  EXPECT_EQ(prompt.backupType, BackupType::Armory135c);
                   if (prompt.walletId == wltID) {
                      ++succesfulRepairs;
                   }
@@ -9552,8 +9552,7 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode)
       new Armory::Seeds::ClearTextSeed_Armory135(
          CryptoPRNG::generateRandom(32), CryptoPRNG::generateRandom(32)
    ));
-   auto assetWlt = AssetWallet_Single::createFromSeed(
-      std::move(seed), params);
+   auto assetWlt = AssetWallet_Single::createFromSeed(std::move(seed), params);
 
    auto passLbd = [](const std::set<EncryptionKeyId>&)->SecureBinaryData
    {
@@ -9609,7 +9608,7 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode)
 
          case RestorePromptType::Id:
          {
-            EXPECT_EQ(prompt.backupType, BackupType::Armory135);
+            EXPECT_EQ(prompt.backupType, BackupType::Armory135a);
             return PromptReply{prompt.walletId == backupData->getWalletId()};
          }
 
@@ -9761,7 +9760,7 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode_SecurePrint)
 
          case RestorePromptType::Id:
          {
-            EXPECT_EQ(prompt.backupType, BackupType::Armory135);
+            EXPECT_EQ(prompt.backupType, BackupType::Armory135a);
             return PromptReply{prompt.walletId == backupData->getWalletId()};
          }
 

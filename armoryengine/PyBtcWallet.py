@@ -1594,8 +1594,7 @@ class PyBtcWallet(object):
          return
 
       if addrType not in self.getAddressTypes():
-         raise Exception(\
-            "[PyBtcWallet::setAddressTypeFor] inneligible address type")
+         raise Exception("ineligible address type")
 
       protoAddr = self.bridgeWalletObj.setAddressTypeFor(
          addrObj.assetId, addrType)

@@ -56,8 +56,11 @@ namespace Armory
       ////
       enum class BackupType : int
       {
-         //easy16, seed (2 or 4 lines), hash index is always 0
-         Armory135  = 0,
+         //legacy easy16 root + chaincode (4 lines) hash index is always 0
+         Armory135a  = 0,
+
+         //legacy easy16 root (2 lines) hash index is always 0
+         Armory135c  = 1,
 
          /*
          easy16, seed (2 lines), hash index defines seed type:

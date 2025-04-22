@@ -806,7 +806,7 @@ protected:
    }
 
    std::vector<std::string> getBackup(const std::string& walletId,
-      const std::string& passphrase, uint32_t backupType)
+      const std::string& passphrase, Bridge::WalletBackup::Type backupType)
    {
       auto refId = rand();
       capnp::MallocMessageBuilder message;
@@ -906,7 +906,7 @@ protected:
    }
 
    WalletData restoreWallet(const std::vector<std::string>& lines,
-      const std::string& expectedWltId, uint32_t backupType,
+      const std::string& expectedWltId, Bridge::WalletBackup::Type backupType,
       const std::string& passphrase, bool merge, unsigned expectedLookup)
    {
       if (lines.size() < 2) {
@@ -1329,7 +1329,9 @@ TEST_F(BridgeTests, RestoreWallet_Legacy)
    const std::string passphrase{"privPassTest"};
 
    //restore the wallet
-   auto restoreData = restoreWallet(lines, walletId, 0, passphrase, false, 500);
+   auto restoreData = restoreWallet(lines, walletId,
+      Bridge::WalletBackup::Type::LEGACY135_A,
+      passphrase, false, 500);
 
    //get the wallet data & validate it
    auto wltData = getWalletData(walletId);
@@ -1426,7 +1428,8 @@ TEST_F(BridgeTests, RestoreWallet_Legacy)
 
    //grab backup strings via passphrase
    try {
-      auto capnLines = getBackup(walletId, passphrase, 0);
+      auto capnLines = getBackup(walletId, passphrase,
+         Bridge::WalletBackup::Type::LEGACY135_A);
       ASSERT_EQ(capnLines.size(), 4);
 
       for (unsigned i=0; i<4; i++) {
@@ -1524,7 +1527,8 @@ TEST_F(BridgeTests, RestoreMerge)
    //grab the backup strings
    std::vector<std::string> lines;
    try {
-      lines = getBackup(wltId, passphrase, 3);
+      lines = getBackup(wltId, passphrase,
+         Bridge::WalletBackup::Type::LEGACY200_A);
    } catch (const std::exception& e) {
       ASSERT_TRUE(false) << e.what();
    }
@@ -1535,7 +1539,7 @@ TEST_F(BridgeTests, RestoreMerge)
       ASSERT_FALSE(line.empty());
    }
    auto restoreData = restoreWallet(lines, wltId,
-      3, //backup type
+      Bridge::WalletBackup::Type::LEGACY200_A,
       passphrase2, true,
       //the legacy armory account always starts with asset 0
       lookup - 1
@@ -1567,7 +1571,8 @@ TEST_F(BridgeTests, RestoreMerge)
    //check it unlocks with passphrase2
    std::vector<std::string> lines2;
    try {
-      lines2 = getBackup(wltId, passphrase2, 3);
+      lines2 = getBackup(wltId, passphrase2,
+         Bridge::WalletBackup::Type::LEGACY200_A);
    } catch (const std::exception& e) {
       ASSERT_TRUE(false) << e.what();
    }

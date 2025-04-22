@@ -1,14 +1,14 @@
-##############################################################################
-#                                                                            #
-# Copyright (C) 2011-2015, Armory Technologies, Inc.                         #
-# Distributed under the GNU Affero General Public License (AGPL v3)          #
-# See LICENSE or http://www.gnu.org/licenses/agpl.html                       #
-#                                                                            #
-# Copyright (C) 2016-2024, goatpig                                           #
-#  Distributed under the MIT license                                         #
-#  See LICENSE-MIT or https://opensource.org/licenses/MIT                    #
-#                                                                            #
-##############################################################################
+################################################################################
+#                                                                              #
+# Copyright (C) 2011-2015, Armory Technologies, Inc.                           #
+# Distributed under the GNU Affero General Public License (AGPL v3)            #
+# See LICENSE or http://www.gnu.org/licenses/agpl.html                         #
+#                                                                              #
+# Copyright (C) 2016-2025, goatpig                                             #
+#  Distributed under the MIT license                                           #
+#  See LICENSE-MIT or https://opensource.org/licenses/MIT                      #
+#                                                                              #
+################################################################################
 
 from qtpy import QtWidgets
 
@@ -27,6 +27,27 @@ from qtdialogs.MsgBoxCustom import MsgBoxCustom
 from qtdialogs.qtdefines import HLINE, QRichLabel, STRETCH, STYLE_RAISED, \
    makeHorizFrame, makeVertFrame, MSGBOX, GETFONT, tightSizeStr, \
    AdvancedOptionsFrame
+
+################################################################################
+def getBackupTypeString(capnBType):
+   if not capnBType:
+      return 'N/A'
+   elif capnBType == 'legacy135A':
+      return '1.35a'
+   elif capnBType == 'legacy135C':
+      return '1.35c'
+   elif capnBType == 'legacy200A':
+      return '2.00a'
+   elif capnBType == 'legacy200B':
+      return '2.00b'
+   elif capnBType == 'legacy200C':
+      return '2.00c'
+   elif capnBType == 'legacy200D':
+      return '2.00d'
+   elif capnBType == 'bip39':
+      return 'BIP39'
+   else:
+      return str(capnBType)
 
 ################################################################################
 # Create a special QtWidgets.QLineEdit with a masked input
@@ -70,11 +91,16 @@ class DlgRestoreSingle(ArmoryDialog, ServerPush):
             'Keys" from the right-hand menu.'))
 
       lblType = QRichLabel(self.tr('<b>Backup Type:</b>'), doWrap=False)
-      self.version135Button = QtWidgets.QRadioButton(self.tr('Version 1.35 (4 lines)'), self)
-      self.version135aButton = QtWidgets.QRadioButton(self.tr('Version 1.35a (4 lines Unencrypted)'), self)
-      self.version135aSPButton = QtWidgets.QRadioButton(self.tr(u'Version 1.35a (4 lines + SecurePrint\u200b\u2122)'), self)
-      self.version135cButton = QtWidgets.QRadioButton(self.tr('Version 1.35c (2 lines Unencrypted)'), self)
-      self.version135cSPButton = QtWidgets.QRadioButton(self.tr(u'Version 1.35c (2 lines + SecurePrint\u200b\u2122)'), self)
+      self.version135Button = QtWidgets.QRadioButton(
+         self.tr('Version 1.35 (4 lines)'), self)
+      self.version135aButton = QtWidgets.QRadioButton(
+         self.tr('Version 1.35a (4 lines Unencrypted)'), self)
+      self.version135aSPButton = QtWidgets.QRadioButton(
+         self.tr(u'Version 1.35a (4 lines + SecurePrint\u200b\u2122)'), self)
+      self.version135cButton = QtWidgets.QRadioButton(
+         self.tr('Version 1.35c (2 lines Unencrypted)'), self)
+      self.version135cSPButton = QtWidgets.QRadioButton(
+         self.tr(u'Version 1.35c (2 lines + SecurePrint\u200b\u2122)'), self)
       self.backupTypeButtonGroup = QtWidgets.QButtonGroup(self)
       self.backupTypeButtonGroup.addButton(self.version135Button)
       self.backupTypeButtonGroup.addButton(self.version135aButton)
@@ -227,23 +253,20 @@ class DlgRestoreSingle(ArmoryDialog, ServerPush):
       which = restorePayload.which()
       if which == 'checkWalletId':
          newWltID = restorePayload.checkWalletId.walletId
+         print (f" .. btype: {restorePayload.checkWalletId.backupType}")
+         wltType = getBackupTypeString(restorePayload.checkWalletId.backupType)
          if not newWltID:
             LOGWARN("empty wallet id in backup restore process")
 
-         '''
-         #TODO: also check/test backup type
-         wltType = restorePayload.checkWalletId.backupType
-         '''
-
+         #ask the user to check the restored wallet id
          replyToBridge = self.getNewPacket()
          replyToBridge.success = False
-
-         #ask the user to check the restored wallet id
-         userAccept = QtWidgets.QMessageBox.question(self, self.tr('Verify Wallet ID'),
-            self.tr("The data you entered corresponds to a wallet with a wallet ID:"
-            f"\n\n{newWltID}\n\n"
-            'Does this ID match the "Wallet Unique ID" printed on your paper backup?'
-            'If not, click "No" and reenter key and chain-code data again.'),
+         userAccept = QtWidgets.QMessageBox.question(self,
+            self.tr('Verify Wallet ID'),
+            self.tr("The data you entered corresponds to the following wallet:"
+               f"\n\n{newWltID}, version: {wltType}\n\n"
+               'Does this ID match the "Wallet Unique ID" printed on your paper backup?'
+               'If not, click "No" and reenter key and chain-code data again.'),
             QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
 
          if userAccept == QtWidgets.QMessageBox.Yes:
@@ -281,7 +304,7 @@ class DlgRestoreSingle(ArmoryDialog, ServerPush):
          reply = QtWidgets.QMessageBox.critical(self, self.tr('Invalid Data'), self.tr(
             'There is an error in the data you entered that could not be '
             'fixed automatically.  Please double-check that you entered the '
-            'text exactly as it appears on the wallet-backup page.'), \
+            'text exactly as it appears on the wallet-backup page.'),
             QtWidgets.QMessageBox.Ok)
          LOGWARN('Bad input in wallet restore field')
          return
@@ -296,7 +319,6 @@ class DlgRestoreSingle(ArmoryDialog, ServerPush):
          #prompts user to set private keys password
          #TODO: add UI for control pass submission
          reply = self.getNewPacket()
-
          passwd = []
          if self.chkEncrypt.isChecked():
             dlgPasswd = DlgChangePassphrase(self, self.main)
