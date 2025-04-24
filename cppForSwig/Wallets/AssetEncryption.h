@@ -13,6 +13,7 @@
 #include <string_view>
 #include "BinaryData.h"
 #include "WalletIdTypes.h"
+#include "../BtcUtils.h"
 
 #define CIPHER_BYTE              0xB2
 
@@ -22,6 +23,7 @@
 #define CIPHER_DATA_VERSION      0x00000001
 #define ENCRYPTION_KEY_VERSION   0x00000001
 
+//fml typo =(
 #define HMAC_KEY_ENCRYPTIONKEYS  "EncyrptionKey"
 
 enum CipherType

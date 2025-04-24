@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2020-2024, goatpig                                          //
+//  Copyright (C) 2020-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -10,6 +10,8 @@
 #include "CppBridge.h"
 #include "Wallets/Seeds/Backups.h"
 #include "Wallets/IOHeader.h"
+#include "../AsyncClient.h"
+#include "../CoinSelection.h"
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
@@ -786,14 +788,14 @@ namespace
 
          case SignerRequest::SET_VERSION:
          {
-            signer->signer_.setVersion(request.getSetVersion());
+            signer->signer->setVersion(request.getSetVersion());
             replySuccess(true);
             break;
          }
 
          case SignerRequest::SET_LOCK_TIME:
          {
-            signer->signer_.setLockTime(request.getSetLockTime());
+            signer->signer->setLockTime(request.getSetLockTime());
             replySuccess(true);
             break;
          }
@@ -803,7 +805,7 @@ namespace
             auto args = request.getAddSpenderByOutpoint();
             auto capnHash = args.getHash();
             BinaryDataRef hashRef(capnHash.begin(), capnHash.end());
-            signer->signer_.addSpender_ByOutpoint(hashRef,
+            signer->signer->addSpender_ByOutpoint(hashRef,
                args.getTxOutId(), args.getSequence());
 
             replySuccess(true);
@@ -822,7 +824,7 @@ namespace
 
             ::UTXO utxo(args.getValue(), UINT32_MAX, UINT32_MAX,
                args.getTxOutId(), hashRef, scriptRef);
-            signer->signer_.populateUtxo(utxo);
+            signer->signer->populateUtxo(utxo);
 
             replySuccess(true);
             break;
@@ -832,7 +834,7 @@ namespace
          {
             auto capnTx = request.getAddSupportingTx();
             BinaryDataRef txRef(capnTx.begin(), capnTx.end());
-            signer->signer_.addSupportingTx(txRef);
+            signer->signer->addSupportingTx(txRef);
 
             replySuccess(true);
             break;
@@ -847,7 +849,7 @@ namespace
             BinaryDataRef scriptRef(capnScript.begin(), capnScript.end());
             auto hash = BtcUtils::getTxOutScrAddr(scriptRef);
 
-            signer->signer_.addRecipient(
+            signer->signer->addRecipient(
                CoinSelection::CoinSelectionInstance::createRecipient(
                   hash, args.getValue()));
 
@@ -857,7 +859,7 @@ namespace
 
          case SignerRequest::TO_TX_SIG_COLLECT:
          {
-            auto txSigCollect = signer->signer_.toString(
+            auto txSigCollect = signer->signer->toString(
                static_cast<Signing::SignerStringFormat>(
                   request.getToTxSigCollect()));
 
@@ -876,8 +878,9 @@ namespace
 
          case SignerRequest::FROM_TX_SIG_COLLECT:
          {
-            signer->signer_ = Signing::Signer::fromString(
+            auto signerObj = Signing::Signer::fromString(
                request.getFromTxSigCollect());
+            signer->signer = std::make_unique<Signing::Signer>(std::move(signerObj));
 
             replySuccess(true);
             break;
@@ -899,7 +902,7 @@ namespace
             reply.setReferenceId(referenceId);
 
             try {
-               auto signedTx = signer->signer_.serializeSignedTx();
+               auto signedTx = signer->signer->serializeSignedTx();
                reply.setSuccess(true);
 
                auto signerReply = reply.initSigner();
@@ -923,7 +926,7 @@ namespace
             reply.setReferenceId(referenceId);
 
             try {
-               auto signedTx = signer->signer_.serializeUnsignedTx();
+               auto signedTx = signer->signer->serializeUnsignedTx();
                reply.setSuccess(true);
 
                auto signerReply = reply.initSigner();
@@ -956,7 +959,7 @@ namespace
 
          case SignerRequest::FROM_TYPE:
          {
-            auto result = signer->signer_.deserializedFromType();
+            auto result = signer->signer->deserializedFromType();
 
             capnp::MallocMessageBuilder message;
             auto fromBridge = message.initRoot<FromBridge>();
@@ -973,7 +976,7 @@ namespace
 
          case SignerRequest::CAN_LEGACY_SERIALIZE:
          {
-            auto result = signer->signer_.canLegacySerialize();
+            auto result = signer->signer->canLegacySerialize();
             replySuccess(result);
             break;
          }

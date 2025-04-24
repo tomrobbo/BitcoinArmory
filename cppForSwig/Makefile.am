@@ -71,9 +71,11 @@ KEYMANAGER_SOURCE_FILES = KeyManager.cpp
 
 CPPBRIDGE_SOURCE_FILES = BridgeAPI/CppBridge.cpp \
 	BridgeAPI/BridgeSocket.cpp \
-	BridgeAPI/WalletManager.cpp \
 	BridgeAPI/ProtoCommandParser.cpp \
-	BridgeAPI/PassphrasePrompt.cpp
+	BridgeAPI/PassphrasePrompt.cpp \
+	BridgeAPI/Wallets/Container.cpp \
+	BridgeAPI/Wallets/Loader.cpp \
+	BridgeAPI/Wallets/Manager.cpp
 
 LIBTREZORCRYPTO_SOURCE_FILES = $(LIBBTC_LIBDIR)/src/trezor-crypto/bip39.c \
 	$(LIBBTC_LIBDIR)/src/trezor-crypto/pbkdf2.c \

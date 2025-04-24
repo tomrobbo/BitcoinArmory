@@ -12,7 +12,6 @@
 #include <string>
 #include <stdexcept>
 #include "../BinaryData.h"
-#include "../BtcUtils.h"
 
 #define KDF_PREFIX 0xC1
 

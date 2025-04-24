@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2019-2021, goatpig                                          //
+//  Copyright (C) 2019-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -10,7 +10,8 @@
 #define _CPPBRIDGE_H
 
 #include "../ArmoryConfig.h"
-#include "WalletManager.h"
+#include "Wallets/Manager.h"
+#include "../DBClientClasses.h"
 #include "btc/ecc.h"
 
 namespace AsyncClient
@@ -25,6 +26,17 @@ namespace Armory
    {
       struct PromptReply;
    };
+
+   namespace Signing
+   {
+      class Signer;
+      class TxEvalState;
+   }
+
+   namespace CoinSelection
+   {
+      class CoinSelectionInstance;
+   }
 
    namespace Bridge
    {
@@ -94,12 +106,12 @@ namespace Armory
       class CppBridgeSignerStruct
       {
       private:
-         std::unique_ptr<Armory::Signing::TxEvalState> signState_{};
+         std::unique_ptr<Signing::TxEvalState> signState_{};
          const std::function<WalletPtr(const std::string&)> getWalletFunc_;
          const std::function<void(ServerPushWrapper)> writeFunc_;
 
       public:
-         Armory::Signing::Signer signer_{};
+         std::unique_ptr<Signing::Signer> signer;
 
       public:
          CppBridgeSignerStruct(std::function<WalletPtr(const std::string&)>,

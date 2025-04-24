@@ -24,8 +24,14 @@ Handle codec and socketing for armory client
 #include "SocketWritePayload.h"
 #include "Wallets/PassphraseLambda.h"
 
-class WalletManager;
-class WalletContainer;
+namespace Armory
+{
+   namespace Bridge
+   {
+      class WalletManager;
+      class WalletContainer;
+   }
+}
 
 ////
 struct OutputBatch
@@ -195,7 +201,7 @@ namespace AsyncClient
    /////////////////////////////////////////////////////////////////////////////
    class ScrAddrObj
    {
-      friend class ::WalletContainer;
+      friend class Armory::Bridge::WalletContainer;
 
    private:
       const std::string bdvID_;
@@ -329,7 +335,7 @@ namespace AsyncClient
       friend class RemoteCallback;
       friend class LedgerDelegate;
       friend class Blockchain;
-      friend class ::WalletManager;
+      friend class Armory::Bridge::WalletManager;
 
    private:
       std::string bdvID_;

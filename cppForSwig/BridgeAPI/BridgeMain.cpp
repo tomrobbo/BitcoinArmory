@@ -8,7 +8,9 @@
 
 #include <cstdlib>
 #include "BridgeSocket.h"
+#include "../AsyncClient.h"
 #include "CppBridge.h"
+#include "BIP150_151.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 int main(int argc, char* argv[])

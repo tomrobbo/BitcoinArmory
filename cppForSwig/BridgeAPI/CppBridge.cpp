@@ -10,10 +10,12 @@
 #include "BridgeSocket.h"
 #include "TerminalPassphrasePrompt.h"
 #include "PassphrasePrompt.h"
+#include "../AsyncClient.h"
 #include "../Wallets/Seeds/Backups.h"
 #include "../Signer/ResolverFeed_Wallets.h"
 #include "../Wallets/WalletIdTypes.h"
 #include "../Wallets/KDF.h"
+#include "../CoinSelection.h"
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
@@ -526,13 +528,18 @@ BinaryData CppBridge::listWallets(MessageId msgId)
    for (const auto& wltObj : wltList) {
       auto capnWltObj = capnWltList[i++];
       capnWltObj.setState(WalletManagerReply::WalletLoadState(
-         (int)wltObj.second.loadState));
-
-      if (!wltObj.second.walletId.empty()) {
-         capnWltObj.setWalletId(wltObj.second.walletId);
-      }
+         (int)wltObj.second->state()));
       capnWltObj.setPath(wltObj.first);
-      capnWltObj.setStaged(wltObj.second.staged);
+      capnWltObj.setStaged(wltObj.second->staged());
+
+      try {
+         const auto& walletId = wltObj.second->walletId();
+         if (!walletId.empty()) {
+            capnWltObj.setWalletId(walletId);
+         }
+      } catch (const std::exception&) {
+         capnWltObj.setWalletId("N/A");
+      }
    }
 
    reply.setReferenceId(msgId);
@@ -2561,7 +2568,9 @@ CppBridgeSignerStruct::CppBridgeSignerStruct(
    std::function<WalletPtr(const std::string&)> getWalletFunc,
    std::function<void(ServerPushWrapper)> writeFunc) :
    getWalletFunc_(getWalletFunc), writeFunc_(writeFunc)
-{}
+{
+   signer = std::make_unique<Signing::Signer>();
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 void CppBridgeSignerStruct::signTx(const std::string& wltId,
@@ -2588,8 +2597,8 @@ void CppBridgeSignerStruct::signTx(const std::string& wltId,
             Signing::ResolverFeed_AssetWalletSingle>(wltSingle);
 
          //set resolver
-         signer_.resetFeed();
-         signer_.setFeed(feed);
+         signer->resetFeed();
+         signer->setFeed(feed);
 
          //create & set passphrase lambda
          wltPtr->setPassphrasePromptLambda(passLbd);
@@ -2598,7 +2607,7 @@ void CppBridgeSignerStruct::signTx(const std::string& wltId,
          auto lock = wltPtr->lockDecryptedContainer();
 
          //sign, this will prompt the passphrase lambda on demand
-         signer_.sign();
+         signer->sign();
       } catch (const std::exception&) {
          success = false;
       }
@@ -2637,9 +2646,9 @@ bool CppBridgeSignerStruct::resolve(const std::string& wltId)
    auto feed = std::make_shared<Signing::ResolverFeed_AssetWalletSingle>(wltSingle);
 
    //set feed & resolve
-   signer_.resetFeed();
-   signer_.setFeed(feed);
-   signer_.resolvePublicData();
+   signer->resetFeed();
+   signer->setFeed(feed);
+   signer->resolvePublicData();
 
    return true;
 }
@@ -2650,7 +2659,7 @@ BinaryData CppBridgeSignerStruct::getSignedStateForInput(
 {
    if (signState_ == nullptr) {
       signState_ = std::make_unique<Signing::TxEvalState>(
-         signer_.evaluateSignedState());
+         signer->evaluateSignedState());
    }
 
    const auto signState = signState_.get();

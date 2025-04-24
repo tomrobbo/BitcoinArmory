@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2019-2024, goatpig                                          //
+//  Copyright (C) 2019-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -11,6 +11,8 @@
 #include "BIP15x_Handshake.h"
 #include "BIP150_151.h"
 #include "ProtoCommandParser.h"
+#include "../Wallets/AuthorizedPeers.h"
+#include "../WebSocketMessage.h"
 
 using namespace Armory;
 using namespace Armory::Bridge;
