@@ -24,14 +24,25 @@
 #include "EncryptionUtils.h"
 #include "ArmoryConfig.h"
 #include "SocketService.h"
-#include "AuthorizedPeers.h"
-
 #include "BIP150_151.h"
 
 #define SERVER_AUTH_PEER_FILENAME "server.peers"
 
 class Clients;
 class BlockDataManager;
+
+namespace Armory
+{
+   namespace Wallets
+   {
+      class AuthorizedPeers;
+
+      namespace IO
+      {
+         struct ReadOnlyFileParams;
+      }
+   }
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 struct per_session_data__http {
@@ -161,7 +172,7 @@ public:
       struct lws *wsi, enum lws_callback_reasons reason,
       void *user, void *in, size_t len);
 
-   static void initAuthPeers(const PassphraseLambda&);
+   static void initAuthPeers(const Armory::Wallets::IO::ReadOnlyFileParams&);
    static void start(std::shared_ptr<BlockDataManager>, bool);
    static void shutdown(void);
    static void waitOnShutdown(void);

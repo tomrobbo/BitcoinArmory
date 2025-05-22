@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2016-19, goatpig.                                           //
+//  Copyright (C) 2016-2025, goatpig.                                         //
 //  Distributed under the MIT license                                         //
-//  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //                                      
+//  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -10,13 +10,17 @@
 #include <iostream>
 #include <sstream>
 #include <btc/ecc.h>
+#include <chrono>
 
 #include "ArmoryConfig.h"
 #include "BDM_mainthread.h"
 #include "BDM_Server.h"
 #include "TerminalPassphrasePrompt.h"
+#include "Wallets/IOHeader.h"
+#include "Wallets/AuthorizedPeers.h"
 
 using namespace Armory::Config;
+using namespace std::chrono_literals;
 
 #define LOG_FILE_NAME "dbLog"
 
@@ -69,13 +73,29 @@ int main(int argc, char* argv[])
          exit(1);
       }
    }
+   LOGINFO << "datadir: " << Armory::Config::getDataDir().string();
 
    {
-      //setup remote peers db, this will block the init process until 
+      //setup remote peers db, this will block the init process until
       //peers db is unlocked
-      LOGINFO << "datadir: " << Armory::Config::getDataDir().string();
+      auto serverPeersFile = Armory::Config::getDataDir() / SERVER_AUTH_PEER_FILENAME;
       auto passLbd = TerminalPassphrasePrompt::getLambda("peers db");
-      WebSocketServer::initAuthPeers(passLbd);
+      if (!FileUtils::fileExists(serverPeersFile, 0)) {
+         LOGINFO << "not peers db, creating one...";
+         auto passWrapper = [&passLbd]()->std::unique_ptr<Armory::Passphrase::Params>
+         {
+            auto passphrase = passLbd({});
+            return std::make_unique<Armory::Passphrase::Params>(
+               250ms, 0, std::move(passphrase));
+         };
+         Armory::Wallets::IO::CreateFileParams params{serverPeersFile, {passWrapper}};
+         Armory::Wallets::AuthorizedPeers::createWallet(params);
+         WebSocketServer::initAuthPeers({
+            serverPeersFile, params.setCtrlPassObj.getUnlockFunc()
+         });
+      } else {
+         WebSocketServer::initAuthPeers({serverPeersFile, passLbd});
+      }
    }
 
    //start blockchain service

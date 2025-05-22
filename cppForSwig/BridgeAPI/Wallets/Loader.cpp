@@ -94,7 +94,7 @@ const std::string& LMDBWalletInfo::name() const
 {
    if (name_.empty()) {
       if (wltPtr_ == nullptr) {
-         throw std::runtime_error("missing wlt ptr");
+         throw std::runtime_error("no wlt ptr");
       }
       name_ = wltPtr_->getLabel();
    }
@@ -102,10 +102,10 @@ const std::string& LMDBWalletInfo::name() const
 }
 
 ////////
-void LMDBWalletInfo::unlockControlHeader(const PassphraseLambda& lbd)
+void LMDBWalletInfo::unlockControlHeader(const Passphrase::UnlockFunc& lbd)
 {
    auto wltPtr = Wallets::AssetWallet::loadMainWalletFromFile(
-      Wallets::IO::OpenFileParams{path(), lbd});
+      Wallets::IO::ReadOnlyFileParams{path(), lbd});
    wltPtr_ = wltPtr;
    setState(WalletLoadState::Ready);
 }
@@ -137,6 +137,13 @@ const std::string& A135FileInfo::walletId() const
 const std::string& A135FileInfo::name() const
 {
    return a135Ptr_->getLabel();
+}
+
+std::shared_ptr<Wallets::AssetWallet_Single> A135FileInfo::migrate(
+   const Passphrase::UnlockFunc& passLbd,
+   const Wallets::IO::CreateWalletParams& params) const
+{
+   return a135Ptr_->migrate(passLbd, params);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -192,7 +199,7 @@ void Armory135Header::parseFile()
    Simply return on any failure, the version_ field will not be initialized 
    until the whole header is parsed and checksums pass
    */
-   
+
    uint32_t version = UINT32_MAX;
    try {
       //grab root key & address chain length from python wallet
@@ -227,15 +234,15 @@ void Armory135Header::parseFile()
       timestamp_ = brr.get_uint64_t();
 
       //label name & description
-      auto&& labelNameBd = brr.get_BinaryData(32);
-      auto&& labelDescBd = brr.get_BinaryData(256);
+      auto labelNameBd = brr.get_BinaryData(32);
+      auto labelDescBd = brr.get_BinaryData(256);
 
       auto labelNameLen = strnlen(labelNameBd.toCharPtr(), 32);
-      labelName_ = std::string(labelNameBd.toCharPtr(), labelNameLen);
+      labelName_ = std::string{labelNameBd.toCharPtr(), labelNameLen};
 
-      auto labelDescriptionLen = strnlen(labelNameBd.toCharPtr(), 256);
-      labelDescription_ = std::string(
-         labelDescBd.toCharPtr(), labelDescriptionLen);
+      auto labelDescriptionLen = strnlen(labelDescBd.toCharPtr(), 256);
+      labelDescription_ = std::string{
+         labelDescBd.toCharPtr(), labelDescriptionLen};
 
       //highest used chain index
       highestUsedIndex_ = brr.get_int64_t();
@@ -247,7 +254,7 @@ void Armory135Header::parseFile()
          auto allKdfData = brrPayload.get_BinaryDataRef(44);
          auto allKdfChecksum  = brrPayload.get_BinaryDataRef(4);
 
-         //skip check if there is wallet is unencrypted
+         //skip check if wallet is unencrypted
          if (isEncrypted_) {
             verifyChecksum(allKdfData, allKdfChecksum);
 
@@ -323,7 +330,7 @@ void Armory135Header::parseFile()
          }
       }
    } catch (const std::exception& e) {
-      LOGWARN << "failed to load wallet at " << path_.string() << " with error: ";
+      LOGWARN << "failed to load legacy wallet at " << path_.string() << " with error: ";
       LOGWARN << "   " << e.what();
       return;
    }
@@ -333,7 +340,8 @@ void Armory135Header::parseFile()
 
 ////////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<Wallets::AssetWallet_Single> Armory135Header::migrate(
-   const PassphraseLambda& passLbd) const
+   const Passphrase::UnlockFunc& passLbd,
+   const Wallets::IO::CreateWalletParams& params) const
 {
    auto rootKey = BinaryData::fromString("ROOT"sv);
    auto rootAddrIter = addrMap_.find(rootKey);
@@ -344,30 +352,30 @@ std::shared_ptr<Wallets::AssetWallet_Single> Armory135Header::migrate(
    auto& rootAddrObj = rootAddrIter->second;
    auto chaincodeCopy = rootAddrObj.chaincode();
 
-   auto highestIndex = highestUsedIndex_;
-   for (auto& addrPair : addrMap_) {
-      if (highestIndex < addrPair.second.chainIndex()) {
-         highestIndex = addrPair.second.chainIndex();
-      }
-   }
-   ++highestIndex;
+   //copy params over to set lookup
+   Wallets::IO::CreateWalletParams newParams{
+      params.folder,
+      params.setPrivPassObj, params.setCtrlPassObj,
+      params.progressFunc,
+      addrMap_.size(),
+      params.label, params.description
+   };
 
    //try to decrypt the private root
    SecureBinaryData privKeyPass;
    SecureBinaryData decryptedRoot;
    {
-      if (isEncrypted_ && rootAddrObj.hasPrivKey() && rootAddrObj.isEncrypted()) {
+      if (isEncrypted_ &&
+         rootAddrObj.hasPrivKey() &&
+         rootAddrObj.isEncrypted()) {
          //decrypt lbd
          auto decryptPrivKey = [this, &privKeyPass](
-            const PassphraseLambda& passLbd,
+            const Passphrase::UnlockFunc& passLbd,
             const Armory135Address& rootAddrObj)->SecureBinaryData
          {
-            std::set<Wallets::EncryptionKeyId> idSet = {
-               BinaryData::fromString(walletID_)
-            };
             while (true) {
                //prompt for passphrase
-               auto passphrase = passLbd(idSet);
+               auto passphrase = passLbd({});
                if (passphrase.empty()) {
                   return {};
                }
@@ -402,26 +410,18 @@ std::shared_ptr<Wallets::AssetWallet_Single> Armory135Header::migrate(
    }
 
    //create wallet
-   auto params = Wallets::IO::CreationParams{
-      path_.parent_path(),
-      privKeyPass, 2000ms,
-      {}, 250ms,
-      nullptr, (size_t)highestIndex
-   };
-
    std::shared_ptr<Wallets::AssetWallet_Single> wallet;
    if (decryptedRoot.empty()) {
       auto pubKeyCopy = rootAddrObj.pubKey();
       wallet = Wallets::AssetWallet_Single::createFromPublicRoot_Armory135(
-         pubKeyCopy, chaincodeCopy, params);
+         pubKeyCopy, chaincodeCopy, newParams);
    } else {
       std::unique_ptr<Seeds::ClearTextSeed> seed(
          new Seeds::ClearTextSeed_Armory135(
-            decryptedRoot,
-            chaincodeCopy
+            decryptedRoot, chaincodeCopy
       ));
       wallet = Wallets::AssetWallet_Single::createFromSeed(
-         std::move(seed), params);
+         std::move(seed), newParams);
    }
 
    //main account id, check it matches armory wallet id
@@ -486,7 +486,6 @@ std::shared_ptr<Wallets::AssetWallet_Single> Armory135Header::migrate(
          wallet->setComment(commentPair.first, commentPair.second);
       }
    }
-
    return wallet;
 }
 

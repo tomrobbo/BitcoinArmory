@@ -201,7 +201,7 @@ namespace Armory
             uint32_t, MessageId);
          void createWallet(
             SecureBinaryData, //extra entropy
-            Wallets::IO::CreationParams,
+            Wallets::IO::CreateWalletParams,
             const std::string&, //callbackId
             MessageId);
          void createBackupStringForWallet(const std::string&,

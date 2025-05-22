@@ -174,7 +174,7 @@ const KdfId& DecryptedDataContainer::getDefaultKdfId() const
 
 ////////////////////////////////////////////////////////////////////////////////
 void DecryptedDataContainer::setPassphrasePromptLambda(
-   const PassphraseLambda& lambda)
+   const Passphrase::UnlockFunc& lambda)
 {
    getPassphraseLambda_ = lambda;
 }
@@ -746,7 +746,7 @@ void DecryptedDataContainer::readFromDisk(
 void DecryptedDataContainer::encryptEncryptionKey(
    const EncryptionKeyId& keyID,
    const KdfId& kdfIdIn, const KdfId& kdfIdOut,
-   const std::function<SecureBinaryData(void)>& newPassLbd, bool replace)
+   Passphrase::SetNew& newPassObj, bool replace)
 {
    /***
    Encrypts an encryption key with newPassphrase.
@@ -809,13 +809,15 @@ void DecryptedDataContainer::encryptEncryptionKey(
    }
 
    //grab passphrase through the lambda
-   auto newPassphrase = newPassLbd();
-   if (newPassphrase.empty()) {
+   std::unique_ptr<ClearTextEncryptionKey> newEncryptionKey;
+   try {
+      newPassObj.get();
+      newEncryptionKey = std::make_unique<ClearTextEncryptionKey>(newPassObj);
+   } catch (const std::exception&) {
       throw DecryptedDataContainerException("cannot set an empty passphrase");
    }
 
    //kdf the new passphrase to get its id
-   auto newEncryptionKey = std::make_unique<ClearTextEncryptionKey>(newPassphrase);
    newEncryptionKey->deriveKey(kdfIter->second);
    auto newKeyId = newEncryptionKey->getId(kdfIdOut);
 

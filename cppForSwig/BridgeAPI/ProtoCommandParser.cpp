@@ -1001,18 +1001,6 @@ namespace
             auto args = request.getCreateWallet();
             std::string callbackId = args.getCallbackId();
 
-            auto capnPassphrase = args.getPrivPassphrase();
-            SecureBinaryData sbdPass(
-               (uint8_t*)capnPassphrase.begin(),
-               (uint8_t*)capnPassphrase.end()
-            );
-
-            auto capnControlPass = args.getCtrlPassphrase();
-            SecureBinaryData sbdControl{
-               (uint8_t*)capnControlPass.begin(),
-               (uint8_t*)capnControlPass.end()
-            };
-
             auto capnEntropy = args.getExtraEntropy();
             SecureBinaryData sbdEntropy{
                (uint8_t*)capnEntropy.begin(),
@@ -1021,10 +1009,9 @@ namespace
 
             bridge->createWallet(
                std::move(sbdEntropy),
-               Wallets::IO::CreationParams {
+               Wallets::IO::CreateWalletParams{
                   bridge->getDataDir(),
-                  std::move(sbdPass), std::chrono::milliseconds(args.getPrivKdfTargetMs()),
-                  std::move(sbdControl), 250ms,
+                  Passphrase::SetNew{}, Passphrase::SetNew{},
                   nullptr,
                   args.getLookup(),
                   args.getLabel(), args.getDescription()},
@@ -1218,42 +1205,46 @@ namespace
       NotificationReply::Reader& notif)
    {
       try {
-         std::vector<SecureBinaryData> passphrases;
-         bool merge = false;
+         auto handler = bridge->getCallbackHandler(notif.getCounter());
          switch (notif.which())
          {
-            case NotificationReply::PASSPHRASES:
+            case NotificationReply::WALLET_CREATION:
             {
-               auto capnpPasses = notif.getPassphrases();
-               passphrases.reserve(capnpPasses.size());
-               for (const auto& capnpPass : capnpPasses) {
-                  passphrases.emplace_back(SecureBinaryData{
-                     (uint8_t*)capnpPass.begin(),
-                     (uint8_t*)capnpPass.end()
-                  });
-               }
-               break;
+               auto capnpPassStruct = notif.getWalletCreation();
+               auto pass = SecureBinaryData::fromString(capnpPassStruct.getPassphrase());
+               auto kdfMs = std::chrono::milliseconds{capnpPassStruct.getKdfTargetMs()};
+               return handler(Seeds::PromptReply{
+                  notif.getSuccess(), false,
+                  Passphrase::Params{
+                     kdfMs, capnpPassStruct.getKdfTargetMB(),
+                     std::move(pass)
+                  }});
             }
 
             case NotificationReply::RESTORE:
             {
-               if (notif.getRestore() == NotificationReply::RestoreMode::MERGE) {
-                  merge = true;
-               }
-               break;
+               return handler(Seeds::PromptReply{
+                  notif.getSuccess(),
+                  notif.getRestore() == NotificationReply::RestoreMode::MERGE ?
+                     true : false
+               });
+            }
+
+            case NotificationReply::UNLOCK_REQUEST:
+            {
+               auto pass = SecureBinaryData::fromString(notif.getUnlockRequest());
+               return handler(Seeds::PromptReply{
+                  notif.getSuccess(), false,
+                  Passphrase::Params{
+                     1ms, 0,
+                     std::move(pass)
+                  }});
             }
 
             default:
                throw std::runtime_error("invalid NotificationReply which");
          }
-
-         Seeds::PromptReply promptReply{
-            notif.getSuccess(), merge,
-            passphrases.size() > 0 ? std::move(passphrases[0]) : SecureBinaryData{},
-            passphrases.size() > 1 ? std::move(passphrases[1]) : SecureBinaryData{},
-         };
-         auto handler = bridge->getCallbackHandler(notif.getCounter());
-         return handler(promptReply);
+         return false;
       } catch (const std::runtime_error& e) {
          LOGERR << "failed notif handling with error: " << e.what();
          return false;

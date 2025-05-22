@@ -1026,7 +1026,7 @@ std::unique_ptr<Backup_Base58> Helpers::getBase58BackupString(
 ////////////////////////////// -- restore methods -- ///////////////////////////
 RestoreResult Helpers::restoreFromBackup(
    std::unique_ptr<WalletBackup> backup, const UserPrompt& callback,
-   const IO::CreationParams& params)
+   const IO::CreateWalletParams& params)
 {
    std::unique_ptr<ClearTextSeed> seed = nullptr;
    auto bType = backup->type();
@@ -1074,33 +1074,29 @@ RestoreResult Helpers::restoreFromBackup(
       }
    }
 
+   /*
    //prompt for passwords
-   SecureBinaryData pass;
-   SecureBinaryData control;
+   Passphrase::Params priv;
    if (params.privatePassphrase.empty()) {
       auto reply = callback(RestorePrompt{RestorePromptType::Passphrases});
       if (!reply.success) {
          throw RestoreUserException("user did not provide a passphrase");
       }
-      pass = std::move(reply.privPass);
-      control = std::move(reply.controlPass);
+      priv = std::move(reply.passParams);
    } else {
-      pass = params.privatePassphrase;
-      control = params.controlPassphrase;
+      priv = std::move(params.privPassParams);
    }
 
    IO::CreationParams paramsCopy{ params.folder,
-      std::move(pass), params.privateUnlock,
-      std::move(control), params.controlUnlock,
+      std::move(priv),
+      std::move(params.ctrlPassParams),
       params.progressFunc, params.lookup
    };
+   */
 
    //return wallet
-   auto wlt = AssetWallet_Single::createFromSeed(std::move(seed), paramsCopy);
-   return {wlt, merge,
-      paramsCopy.privatePassphrase,
-      paramsCopy.controlPassphrase
-   };
+   auto wlt = AssetWallet_Single::createFromSeed(std::move(seed), params);
+   return {wlt, merge};
 }
 
 ////////
@@ -1429,6 +1425,9 @@ std::string_view Backup_Easy16::getChaincode(LineIndex li, bool encrypted) const
 
 std::string_view Backup_Easy16::getSpPass() const
 {
+   if (spPass_.empty()) {
+      return {};
+   }
    return std::string_view(spPass_.toCharPtr(), spPass_.getSize());
 }
 

@@ -7,9 +7,10 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <filesystem>
+#include <memory>
 
 #include "TestUtils.h"
-#include "../Wallets/PassphraseLambda.h"
+#include "../Wallets/GetPassphrase.h"
 #include "../Wallets/Seeds/Backups.h"
 #include "../Wallets/Seeds/Seeds.h"
 #include "../Wallets/WalletFileInterface.h"
@@ -1335,7 +1336,8 @@ TEST_F(DerivationTests, DerivationTree_FromWalletRoot)
       auto whs = std::make_shared<IO::WalletHeader_Single>(
          Armory::Config::BitcoinSettings::getMagicBytes());
       whs->walletID_ = "abc";
-      auto mks = IO::WalletDBInterface::initWalletHeaderObject(whs, {}, 1ms);
+      Armory::Passphrase::Params params{1ms, 0, {}};
+      auto mks = IO::WalletDBInterface::initWalletHeaderObject(whs, params);
 
       auto rootCipher = mks.cipher_->getCopy(
          whs->masterEncryptionKeyId_);
@@ -3096,9 +3098,15 @@ TEST_F(WalletInterfaceTest, Passphrase_Test)
    ***/
 
    //passphrase lambdas
-   auto passLbd = [](const std::set<EncryptionKeyId>&)->SecureBinaryData
+   auto thePassphrase = SecureBinaryData::fromString("abcd");
+   auto unlockLbd = [&thePassphrase](
+      const std::set<EncryptionKeyId>&)->SecureBinaryData
    {
-      return SecureBinaryData::fromString("abcd");
+      return thePassphrase;
+   };
+   auto setPassLbd = [&thePassphrase]()->std::unique_ptr<Armory::Passphrase::Params>
+   {
+      return std::make_unique<Armory::Passphrase::Params>(400ms, 0, thePassphrase);
    };
 
    int count=0;
@@ -3110,16 +3118,13 @@ TEST_F(WalletInterfaceTest, Passphrase_Test)
       return {};
    };
 
-   auto passEmpty = [](const std::set<EncryptionKeyId>&)->SecureBinaryData
-   {
-      return {};
-   };
-
    {
       //create wallet iface
       IO::WalletDBInterface dbIface;
-      dbIface.setupEnv(IO::OpenFileParams{
-         dbPath_, passLbd, 400ms, false});
+      IO::CreateFileParams params{
+         dbPath_, Armory::Passphrase::SetNew{setPassLbd}};
+      dbIface.createEnv(params);
+      dbIface.setupEnv(params.getOpenFileParams());
 
       //close iface
       dbIface.shutdown();
@@ -3130,11 +3135,10 @@ TEST_F(WalletInterfaceTest, Passphrase_Test)
       auto start = std::chrono::system_clock::now();
       try {
          IO::WalletDBInterface dbIface;
-         dbIface.setupEnv(IO::OpenFileParams{
-            dbPath_, passEmpty, 1ms, true});
+         dbIface.setupEnv(IO::ReadOnlyFileParams{dbPath_, {}});
          ASSERT_TRUE(false);
       } catch (const DecryptedDataContainerException& e) {
-         EXPECT_EQ(e.what(), std::string("empty passphrase"));
+         EXPECT_EQ(e.what(), std::string("empty passphrase lambda"));
       }
       auto end = std::chrono::system_clock::now();
       auto timeTaken = end-start;
@@ -3144,8 +3148,7 @@ TEST_F(WalletInterfaceTest, Passphrase_Test)
       start = std::chrono::system_clock::now();
       try {
          IO::WalletDBInterface dbIface;
-         dbIface.setupEnv(IO::OpenFileParams{
-            dbPath_, passBad, 1ms, true});
+         dbIface.setupEnv(IO::ReadOnlyFileParams{dbPath_, passBad});
          ASSERT_TRUE(false);
       } catch (const DecryptedDataContainerException& e) {
          EXPECT_EQ(e.what(), std::string("empty passphrase"));
@@ -3155,22 +3158,11 @@ TEST_F(WalletInterfaceTest, Passphrase_Test)
       EXPECT_GE(timeTaken, 400ms);
       EXPECT_LE(timeTaken, 600ms);
 
-      //try to open iface with wrong file flag
-      try {
-         IO::WalletDBInterface dbIface;
-         dbIface.setupEnv(IO::OpenFileParams{
-            dbPath_, passLbd, 1ms, false});
-         ASSERT_TRUE(false);
-      } catch (const IO::WalletInterfaceException& e) {
-         EXPECT_EQ(e.what(), std::string("[openEnv] file flag mismatch"));
-      }
-
       //open with proper passphrase
       try {
          start = std::chrono::system_clock::now();
          IO::WalletDBInterface dbIface;
-         dbIface.setupEnv(IO::OpenFileParams{
-            dbPath_, passLbd});
+         dbIface.setupEnv(IO::ReadOnlyFileParams{dbPath_, unlockLbd});
          end = std::chrono::system_clock::now();
          timeTaken = end-start;
          EXPECT_GE(timeTaken, 400ms);
@@ -3185,15 +3177,23 @@ TEST_F(WalletInterfaceTest, Passphrase_Test)
    auto dbPath2 = homedir_ / "db2_test";
    {
       //create wallet iface with empty passphrase lambda
+      auto setPassLbd2 = []()->std::unique_ptr<Armory::Passphrase::Params>
+      {
+         return std::make_unique<Armory::Passphrase::Params>(600ms, 0, SecureBinaryData{});
+      };
+   
       IO::WalletDBInterface dbIface;
-      dbIface.setupEnv(IO::OpenFileParams{dbPath2, nullptr, 600ms, false});
+      dbIface.createEnv(IO::CreateFileParams{
+         dbPath2, Armory::Passphrase::SetNew{setPassLbd2}
+      });
+      dbIface.setupEnv(IO::ReadOnlyFileParams{dbPath2, {}});
 
       //close iface
       dbIface.shutdown();
    }
 
    {
-      auto passLbd2 = [](const std::set<EncryptionKeyId>&)->SecureBinaryData
+      auto unlockFunc2 = [](const std::set<EncryptionKeyId>&)->SecureBinaryData
       {
          throw std::runtime_error("shouldn't get here");
       };
@@ -3202,7 +3202,7 @@ TEST_F(WalletInterfaceTest, Passphrase_Test)
       IO::WalletDBInterface dbIface;
       try {
          auto start = std::chrono::system_clock::now();
-         dbIface.setupEnv(IO::OpenFileParams{dbPath2, passLbd2});
+         dbIface.setupEnv(IO::ReadOnlyFileParams{dbPath2, unlockFunc2});
          auto end = std::chrono::system_clock::now();
 
          //it should be almost instant, since the 600ms kdf will not be used,
@@ -3220,9 +3220,15 @@ TEST_F(WalletInterfaceTest, Passphrase_Test)
 TEST_F(WalletInterfaceTest, DbCount_Test)
 {
    //lambdas
-   auto passLbd = [](const std::set<EncryptionKeyId>&)->SecureBinaryData
+   auto thePassphrase = SecureBinaryData::fromString("abcd");
+   auto unlockLbd = [&thePassphrase](
+      const std::set<EncryptionKeyId>&)->SecureBinaryData
    {
-      return SecureBinaryData::fromString("abcd");
+      return thePassphrase;
+   };
+   auto setPassLbd = [&thePassphrase]()->std::unique_ptr<Armory::Passphrase::Params>
+   {
+      return std::make_unique<Armory::Passphrase::Params>(1ms, 0, thePassphrase);
    };
 
    auto checkDbValues = [](IO::WalletDBInterface& iface, std::string dbName,
@@ -3246,7 +3252,9 @@ TEST_F(WalletInterfaceTest, DbCount_Test)
 
    //create wallet dbEnv
    IO::WalletDBInterface dbIface;
-   dbIface.setupEnv(IO::OpenFileParams{dbPath_, passLbd, 1ms, false});
+   dbIface.createEnv(IO::CreateFileParams{dbPath_,
+      Armory::Passphrase::SetNew{setPassLbd}});
+   dbIface.setupEnv(IO::ReadOnlyFileParams{dbPath_, unlockLbd});
 
    //add db
    {
@@ -3255,7 +3263,7 @@ TEST_F(WalletInterfaceTest, DbCount_Test)
       auto headerPtr = std::make_shared<IO::WalletHeader_Custom>();
       headerPtr->walletID_ = "db1";
 
-      dbIface.lockControlContainer(passLbd);
+      dbIface.lockControlContainer(unlockLbd);
       dbIface.addHeader(headerPtr);
       dbIface.unlockControlContainer();
       EXPECT_EQ(dbIface.getDbCount(), 1U);
@@ -3325,7 +3333,7 @@ TEST_F(WalletInterfaceTest, DbCount_Test)
       auto headerPtr = std::make_shared<IO::WalletHeader_Custom>();
       headerPtr->walletID_ = "db2";
 
-      dbIface.lockControlContainer(passLbd);
+      dbIface.lockControlContainer(unlockLbd);
       dbIface.addHeader(headerPtr);
       dbIface.unlockControlContainer();
       EXPECT_EQ(dbIface.getDbCount(), 2U);
@@ -3361,7 +3369,7 @@ TEST_F(WalletInterfaceTest, DbCount_Test)
       auto headerPtr = std::make_shared<IO::WalletHeader_Custom>();
       headerPtr->walletID_ = "db3";
 
-      dbIface.lockControlContainer(passLbd);
+      dbIface.lockControlContainer(unlockLbd);
       dbIface.addHeader(headerPtr);
       ASSERT_TRUE(false);
    } catch (const IO::WalletInterfaceException& e) {
@@ -3389,14 +3397,14 @@ TEST_F(WalletInterfaceTest, DbCount_Test)
    }
 
    try {
-      dbIface.lockControlContainer(passLbd);
+      dbIface.lockControlContainer(unlockLbd);
       ASSERT_TRUE(false);
    } catch (const LockableException& e) {
       EXPECT_EQ(e.what(), std::string("null lockable ptr"));
    }
 
    //setup db env anew
-   dbIface.setupEnv(IO::OpenFileParams{dbPath_, passLbd});
+   dbIface.setupEnv(IO::ReadOnlyFileParams{dbPath_, unlockLbd});
 
    try {
       //try to increase db count while a tx is live, should fail
@@ -3421,7 +3429,7 @@ TEST_F(WalletInterfaceTest, DbCount_Test)
       auto headerPtr = std::make_shared<IO::WalletHeader_Custom>();
       headerPtr->walletID_ = "db3";
 
-      dbIface.lockControlContainer(passLbd);
+      dbIface.lockControlContainer(unlockLbd);
       dbIface.addHeader(headerPtr);
       dbIface.unlockControlContainer();
       EXPECT_EQ(dbIface.getDbCount(), 3U);
@@ -3477,7 +3485,7 @@ TEST_F(WalletInterfaceTest, DbCount_Test)
       auto headerPtr = std::make_shared<IO::WalletHeader_Custom>();
       headerPtr->walletID_ = "db3";
 
-      dbIface.lockControlContainer(passLbd);
+      dbIface.lockControlContainer(unlockLbd);
       dbIface.addHeader(headerPtr);
       ASSERT_FALSE(true);
    } catch (const IO::WalletInterfaceException& e) {
@@ -3503,7 +3511,7 @@ TEST_F(WalletInterfaceTest, DbCount_Test)
    dbIface.shutdown();
 
    //setup db env anew
-   dbIface.setupEnv(IO::OpenFileParams{dbPath_, passLbd});
+   dbIface.setupEnv(IO::ReadOnlyFileParams{dbPath_, unlockLbd});
 
    //check db values
    EXPECT_TRUE(checkDbValues(dbIface, "db1", db1Values));
@@ -3514,18 +3522,15 @@ TEST_F(WalletInterfaceTest, DbCount_Test)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(WalletInterfaceTest, WipeEntries_Test)
 {
-   auto passLbd = [](const std::set<EncryptionKeyId>&)->SecureBinaryData
-   {
-      return SecureBinaryData();
-   };
-
    auto iface = std::make_shared<IO::WalletDBInterface>();
-   iface->setupEnv(IO::OpenFileParams{dbPath_, passLbd, 1ms, false});
+   iface->createEnv(IO::CreateFileParams{dbPath_,
+      Armory::Passphrase::SetNew{1ms, 0, {}}});
+   iface->setupEnv(IO::ReadOnlyFileParams{dbPath_, {}});
 
    std::string dbName{"test"};
    auto dbHeader = std::make_shared<IO::WalletHeader_Custom>();
    dbHeader->walletID_ = dbName;
-   iface->lockControlContainer(passLbd);
+   iface->lockControlContainer({});
    iface->addHeader(dbHeader);
    iface->unlockControlContainer();
 
@@ -3745,7 +3750,7 @@ TEST_F(WalletInterfaceTest, WipeEntries_Test)
 
    //reopen db iface
    iface = std::make_shared<IO::WalletDBInterface>();
-   iface->setupEnv(IO::OpenFileParams{dbPath_, passLbd});
+   iface->setupEnv(IO::ReadOnlyFileParams{dbPath_, {}});
 
    //replace a couple entries
    {
@@ -3809,7 +3814,7 @@ class WalletsTest : public ::testing::Test
 protected:
    std::filesystem::path homedir_;
    SecureBinaryData controlPass_;
-   PassphraseLambda controlLbd_;
+   Armory::Passphrase::UnlockFunc controlLbd_;
 
    /////////////////////////////////////////////////////////////////////////////
    virtual void SetUp()
@@ -3994,10 +3999,10 @@ TEST_F(WalletsTest, CreateCloseOpen_Test)
 
    //create 3 wallets
    for (unsigned i = 0; i < 3; i++) {
-      IO::CreationParams params{
+      IO::CreateWalletParams params{
          homedir_,
-         SecureBinaryData::fromString("passphrase"), 1ms,
-         controlPass_, 1ms,
+         Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("passphrase")},
+         Armory::Passphrase::SetNew{1ms, 0, controlPass_},
          //misc stuff starts here
          progressFunc, 4,
          "lbl", "dsc"
@@ -4030,7 +4035,7 @@ TEST_F(WalletsTest, CreateCloseOpen_Test)
       ASSERT_NE(fnameIter, filenames.end());
 
       auto newWallet = AssetWallet::loadMainWalletFromFile(
-         IO::OpenFileParams{fnameIter->second, controlLbd_});
+         IO::ReadOnlyFileParams{fnameIter->second, controlLbd_});
 
       auto wltSingle =
          std::dynamic_pointer_cast<AssetWallet_Single>(newWallet);
@@ -4047,10 +4052,10 @@ TEST_F(WalletsTest, CreateCloseOpen_Test)
 TEST_F(WalletsTest, CreateWOCopy_Test)
 {
    //create 1 wallet from priv key
-   IO::CreationParams params {
+   IO::CreateWalletParams params {
       homedir_,
-      SecureBinaryData::fromString("passphrase"), 1ms,
-      SecureBinaryData::fromString("control"), 1ms,
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("passphrase")},
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("control")},
       nullptr, 4
    };
 
@@ -4077,10 +4082,10 @@ TEST_F(WalletsTest, CreateWOCopy_Test)
 
    auto woWallet = AssetWallet_Single::createFromPublicRoot_Armory135(
       pubRoot, chainCode,
-      IO::CreationParams {
+      IO::CreateWalletParams{
          homedir_,
-         {}, 1ms,
-         SecureBinaryData::fromString("control"), 1ms,
+         Armory::Passphrase::SetNew{1ms, 0, {}},
+         Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("control")},
          nullptr, 4
       });
    EXPECT_EQ(mainAccId, woWallet->getMainAccountID());
@@ -4103,7 +4108,7 @@ TEST_F(WalletsTest, CreateWOCopy_Test)
    };
 
    auto reloadWoWallet = AssetWallet_Single::loadMainWalletFromFile(
-      IO::OpenFileParams{woFilename, passLbd});
+      IO::ReadOnlyFileParams{woFilename, passLbd});
    auto hashSetWO2 = reloadWoWallet->getAddrHashSet();
    ASSERT_EQ(hashSet, hashSetWO);
    EXPECT_EQ(mainAccId, reloadWoWallet->getMainAccountID());
@@ -4118,10 +4123,12 @@ TEST_F(WalletsTest, CreateWOCopy_Test)
 
    //fork WO from full wallet
    auto forkFilename = AssetWallet_Single::forkWatchingOnly(
-      IO::OpenFileParams{filename, passLbd});
+      IO::ReadOnlyFileParams{filename, passLbd},
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("control")}
+   );
 
    auto woFork = AssetWallet::loadMainWalletFromFile(
-      IO::OpenFileParams{forkFilename, passLbd});
+      IO::ReadOnlyFileParams{forkFilename, passLbd});
    auto hashSetFork = woFork->getAddrHashSet();
    ASSERT_EQ(hashSet, hashSetFork);
    EXPECT_EQ(mainAccId, woFork->getMainAccountID());
@@ -4143,10 +4150,10 @@ TEST_F(WalletsTest, IDs)
    }
    ASSERT_FALSE(id.empty());
 
-   IO::CreationParams params{
+   IO::CreateWalletParams params {
       homedir_,
-      SecureBinaryData::fromString("passphrase"), 1ms,
-      SecureBinaryData::fromString("control"), 1ms,
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("passphrase")},
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("control")},
       nullptr, 4
    };
 
@@ -4336,10 +4343,10 @@ TEST_F(WalletsTest, Encryption_Test)
 {
    //#1: check deriving from an encrypted root yield correct chain
    //create 1 wallet from priv key
-   IO::CreationParams params{
+   IO::CreateWalletParams params {
       homedir_,
-      SecureBinaryData::fromString("passphrase"), 1ms,
-      SecureBinaryData::fromString("control"), 1ms,
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("passphrase")},
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("control")},
       nullptr, 4
    };
 
@@ -4398,7 +4405,7 @@ TEST_F(WalletsTest, Encryption_Test)
    };
 
    IO::WalletDBInterface dbIface;
-   dbIface.setupEnv(IO::OpenFileParams{filename, passLbd});
+   dbIface.setupEnv(IO::ReadOnlyFileParams{filename, passLbd});
    std::string dbName;
 
    {
@@ -4435,10 +4442,10 @@ TEST_F(WalletsTest, SeedEncryption)
 {
    //create wallet
    auto passphrase = SecureBinaryData::fromString("password");
-   IO::CreationParams params{
+   IO::CreateWalletParams params {
       homedir_,
-      passphrase, 350ms,
-      SecureBinaryData::fromString("control"), 1ms,
+      Armory::Passphrase::SetNew{350ms, 0, passphrase},
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("control")},
       nullptr, 10
    };
 
@@ -4515,12 +4522,13 @@ TEST_F(WalletsTest, SeedEncryption)
    wlt.reset();
 
    //create WO
+   Armory::Passphrase::SetNew passObj{1ms, 0, controlPass_};
    auto woFilename = AssetWallet::forkWatchingOnly(
-      IO::OpenFileParams{filename, controlLbd_});
+      IO::ReadOnlyFileParams{filename, passObj.getUnlockFunc()}, passObj);
 
    //check it has no seed
    auto wo = AssetWallet::loadMainWalletFromFile(
-      IO::OpenFileParams{woFilename, controlLbd_});
+      IO::ReadOnlyFileParams{woFilename, controlLbd_});
    auto woWlt = std::dynamic_pointer_cast<AssetWallet_Single>(wo);
 
    ASSERT_NE(woWlt, nullptr);
@@ -4529,7 +4537,7 @@ TEST_F(WalletsTest, SeedEncryption)
    //reload wallet
    ASSERT_EQ(wlt, nullptr);
    auto wltReload = AssetWallet::loadMainWalletFromFile(
-      IO::OpenFileParams{filename, controlLbd_});
+      IO::ReadOnlyFileParams{filename, controlLbd_});
    wlt = std::dynamic_pointer_cast<AssetWallet_Single>(wltReload);
    ASSERT_NE(wlt, nullptr);
 
@@ -4550,10 +4558,10 @@ TEST_F(WalletsTest, SeedEncryption)
 TEST_F(WalletsTest, LockAndExtend_Legacy)
 {
    //create wallet from priv key
-   IO::CreationParams params{
+   IO::CreateWalletParams params {
       homedir_,
-      SecureBinaryData::fromString("passphrase"), 1ms,
-      controlPass_, 1ms,
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("passphrase")},
+      Armory::Passphrase::SetNew{1ms, 0, controlPass_},
       nullptr, 4
    };
 
@@ -4698,7 +4706,7 @@ TEST_F(WalletsTest, LockAndExtend_Legacy)
    assetWlt.reset();
 
    auto newWallet = AssetWallet::loadMainWalletFromFile(
-      IO::OpenFileParams{filename, controlLbd_});
+      IO::ReadOnlyFileParams{filename, controlLbd_});
    auto wltSingle = std::dynamic_pointer_cast<AssetWallet_Single>(newWallet);
 
    ASSERT_NE(wltSingle, nullptr);
@@ -4732,10 +4740,10 @@ TEST_F(WalletsTest, LockAndExtend_Legacy)
 TEST_F(WalletsTest, LockAndExtend_BIP32)
 {
    //create wallet from priv key
-   IO::CreationParams params{
+   IO::CreateWalletParams params {
       homedir_,
-      SecureBinaryData::fromString("passphrase"), 1ms,
-      controlPass_, 1ms,
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("passphrase")},
+      Armory::Passphrase::SetNew{1ms, 0, controlPass_},
       nullptr, 4
    };
 
@@ -4878,7 +4886,7 @@ TEST_F(WalletsTest, LockAndExtend_BIP32)
    assetWlt.reset();
 
    auto newWallet = AssetWallet::loadMainWalletFromFile(
-      IO::OpenFileParams{filename, controlLbd_});
+      IO::ReadOnlyFileParams{filename, controlLbd_});
    auto wltSingle = std::dynamic_pointer_cast<AssetWallet_Single>(newWallet);
 
    ASSERT_NE(wltSingle, nullptr);
@@ -4917,13 +4925,6 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
       return SecureBinaryData::fromString("control");
    };
 
-   auto noPassLbd = []
-      (const std::set<EncryptionKeyId>&)
-      ->SecureBinaryData
-   {
-      return {};
-   };
-
    auto checkSubDbValues = [](
       std::shared_ptr<AssetWallet> wlt,
       const std::string& dbName,
@@ -4956,10 +4957,10 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
    std::filesystem::path filename;
    std::set<BinaryData> addrSet;
    {
-      IO::CreationParams params{
+      IO::CreateWalletParams params {
          homedir_,
-         SecureBinaryData::fromString("test"), 1ms,
-         SecureBinaryData::fromString("control"), 1ms,
+         Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("test")},
+         Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("control")},
          nullptr, 4
       };
 
@@ -5016,7 +5017,7 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
 
       try {
          auto assetWlt = AssetWallet::loadMainWalletFromFile(
-            IO::OpenFileParams{filename, badPassLbd});
+            IO::ReadOnlyFileParams{filename, badPassLbd});
          ASSERT_TRUE(false);
       } catch (const DecryptedDataContainerException& e) {
          EXPECT_EQ(e.what(), std::string{"empty passphrase"});
@@ -5024,15 +5025,15 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
 
       try {
          auto assetWlt = AssetWallet::loadMainWalletFromFile(
-            IO::OpenFileParams{filename, noPassLbd});
+            IO::ReadOnlyFileParams{filename, nullptr});
          ASSERT_TRUE(false);
       } catch (const DecryptedDataContainerException& e) {
-         EXPECT_EQ(e.what(), std::string{"empty passphrase"});
+         EXPECT_EQ(e.what(), std::string{"empty passphrase lambda"});
          EXPECT_EQ(badPassCtr, 5U);
       }
 
       auto assetWlt = AssetWallet::loadMainWalletFromFile(
-         IO::OpenFileParams{filename, goodPassLbd});
+         IO::ReadOnlyFileParams{filename, goodPassLbd});
       auto loadedAddrSet = assetWlt->getAddrHashSet();
 
       //wallet values
@@ -5058,7 +5059,8 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
             return {};
          };
          auto woFilename = AssetWallet::forkWatchingOnly(
-            IO::OpenFileParams{filename, badPassLbd});
+            IO::ReadOnlyFileParams{filename, badPassLbd},
+            Armory::Passphrase::SetNew{nullptr});
          ASSERT_TRUE(false);
       } catch (const DecryptedDataContainerException& e) {
          EXPECT_EQ(e.what(), std::string{"empty passphrase"});
@@ -5066,15 +5068,14 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
 
       //set different pass for WO fork
       auto passShift = [&wltPassID]
-         (const std::set<EncryptionKeyId>& ids)->SecureBinaryData
+         (const std::set<EncryptionKeyId>&)->SecureBinaryData
       {
-         if (ids.size() == 1 && *ids.begin() == wltPassID) {
-            return SecureBinaryData::fromString("control");
-         }
-         return SecureBinaryData::fromString("newwopass");
+         return SecureBinaryData::fromString("control");
       };
       auto woFilename = AssetWallet::forkWatchingOnly(
-         IO::OpenFileParams{filename, passShift});
+         IO::ReadOnlyFileParams{filename, passShift},
+         Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("newwopass")}
+      );
 
       //try to open WO with old pass, should fail
       try {
@@ -5088,7 +5089,7 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
             return {};
          };
          auto woWlt = AssetWallet::loadMainWalletFromFile(
-            IO::OpenFileParams{woFilename, oldPassLbd});
+            IO::ReadOnlyFileParams{woFilename, oldPassLbd});
       } catch (const DecryptedDataContainerException& e) {
          EXPECT_EQ(e.what(), std::string{"empty passphrase"});
       }
@@ -5099,7 +5100,7 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
          return SecureBinaryData::fromString("newwopass");
       };
       auto woWlt = AssetWallet::loadMainWalletFromFile(
-         IO::OpenFileParams{woFilename, newPassLbd});
+         IO::ReadOnlyFileParams{woFilename, newPassLbd});
       auto loadedAddrSet = woWlt->getAddrHashSet();
       EXPECT_EQ(addrSet, loadedAddrSet);
    }
@@ -5115,10 +5116,10 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
 
    std::filesystem::path filename2;
    {
-      IO::CreationParams params{
+      IO::CreateWalletParams params{
          homedir_,
-         SecureBinaryData::fromString("test"), 1ms,
-         {}, 1ms,
+         Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("test")},
+         Armory::Passphrase::SetNew{1ms, 0, {}},
          nullptr, 4
       };
 
@@ -5152,7 +5153,7 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
    //try to load, check passphrase lambda is never hit
    {
       auto assetWlt = AssetWallet::loadMainWalletFromFile(
-         IO::OpenFileParams{filename2, emptyPassLbd});
+         IO::ReadOnlyFileParams{filename2, emptyPassLbd});
       auto loadedAddrSet = assetWlt->getAddrHashSet();
 
       //wallet values
@@ -5165,11 +5166,13 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
    {
       //create WO copy (lambda that returns empty pass)
       auto woFilename = AssetWallet_Single::forkWatchingOnly(
-            IO::OpenFileParams{filename2, noPassLbd});
+         IO::ReadOnlyFileParams{filename2, nullptr},
+         Armory::Passphrase::SetNew{1ms, 0, {}}
+      );
 
       //check WO wallet has no passphrase
       auto wltWO = AssetWallet::loadMainWalletFromFile(
-         IO::OpenFileParams{woFilename, emptyPassLbd});
+         IO::ReadOnlyFileParams{woFilename, nullptr});
       auto loadedAddrSet = wltWO->getAddrHashSet();
 
       //wallet values
@@ -5191,15 +5194,11 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
    /***********/
 
    {
-      auto newPass = []
-         (const std::set<EncryptionKeyId>&)->SecureBinaryData
-      {
-         return SecureBinaryData::fromString("newpass");
-      };
-
       //create WO with different pass
       auto woFilename = AssetWallet_Single::forkWatchingOnly(
-         IO::OpenFileParams{filename2, newPass});
+         IO::ReadOnlyFileParams{filename2, nullptr},
+         Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("newpass")}
+      );
 
       unsigned count = 0;
       auto wrongPass = [&count]
@@ -5213,7 +5212,7 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
 
       try {
          auto wltWO = AssetWallet::loadMainWalletFromFile(
-            IO::OpenFileParams{woFilename, wrongPass});
+            IO::ReadOnlyFileParams{woFilename, wrongPass});
          ASSERT_TRUE(false);
       } catch (const DecryptedDataContainerException& e) {
          EXPECT_EQ(e.what(), std::string{"empty passphrase"});
@@ -5221,8 +5220,13 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
       }
 
       //check WO works with different pass
+      auto newPass = []
+         (const std::set<EncryptionKeyId>&)->SecureBinaryData
+      {
+         return SecureBinaryData::fromString("newpass");
+      };
       auto wltWO = AssetWallet::loadMainWalletFromFile(
-         IO::OpenFileParams{woFilename, newPass});
+         IO::ReadOnlyFileParams{woFilename, newPass});
       auto loadedAddrSet = wltWO->getAddrHashSet();
 
       //wallet values
@@ -5256,7 +5260,7 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
 
       //check pass is gone
       wltWO = AssetWallet::loadMainWalletFromFile(
-         IO::OpenFileParams{woFilename, emptyPassLbd});
+         IO::ReadOnlyFileParams{woFilename, nullptr});
       loadedAddrSet = wltWO->getAddrHashSet();
 
       //wallet values
@@ -5268,10 +5272,10 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
 TEST_F(WalletsTest, SignPassphrase_Test)
 {
    //create wallet from priv key
-   IO::CreationParams params{
+   IO::CreateWalletParams params{
       homedir_,
-      SecureBinaryData::fromString("test"), 1ms,
-      SecureBinaryData::fromString("control"), 1ms,
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("test")},
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("control")},
       nullptr, 4
    };
 
@@ -5287,7 +5291,7 @@ TEST_F(WalletsTest, SignPassphrase_Test)
    {
       //pass wrong passphrase once then give up
       if (passphraseCount++ > 1) {
-         return SecureBinaryData();
+         return {};
       }
       return SecureBinaryData::fromString("bad pass");
    };
@@ -5349,10 +5353,10 @@ TEST_F(WalletsTest, SignPassphrase_Test)
 TEST_F(WalletsTest, WrongPassphrase_BIP32_Test)
 {
    //create wallet from priv key
-   IO::CreationParams params{
+   IO::CreateWalletParams params{
       homedir_,
-      SecureBinaryData::fromString("test"), 1ms,
-      SecureBinaryData::fromString("control"), 1ms,
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("test")},
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("control")},
       nullptr, 4
    };
 
@@ -5369,7 +5373,7 @@ TEST_F(WalletsTest, WrongPassphrase_BIP32_Test)
    {
       //pass wrong passphrase once then give up
       if (passphraseCount++ > 1) {
-         return SecureBinaryData();
+         return {};
       }
       return SecureBinaryData::fromString("bad pass");
    };
@@ -5498,10 +5502,10 @@ TEST_F(WalletsTest, WrongPassphrase_BIP32_Test)
 TEST_F(WalletsTest, ChangePassphrase_Test)
 {
    //create wallet from priv key
-   IO::CreationParams params{
+   IO::CreateWalletParams params{
       homedir_,
-      SecureBinaryData::fromString("test"), 1ms,
-      controlPass_, 1ms,
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("test")},
+      Armory::Passphrase::SetNew{1ms, 0, controlPass_},
       nullptr, 4
    };
 
@@ -5614,9 +5618,9 @@ TEST_F(WalletsTest, ChangePassphrase_Test)
       }
    };
 
-   auto newPassLbd = [&newPassphrase](void)->SecureBinaryData
+   auto newPassLbd = [&newPassphrase](void)->std::unique_ptr<Armory::Passphrase::Params>
    {
-      return newPassphrase;
+      return std::make_unique<Armory::Passphrase::Params>(1ms, 0, newPassphrase);
    };
 
    {
@@ -5627,7 +5631,8 @@ TEST_F(WalletsTest, ChangePassphrase_Test)
       auto lock = assetWlt->lockDecryptedContainer();
       try {
          //change passphrase
-         assetWlt->changePrivateKeyPassphrase(newPassLbd);
+         Armory::Passphrase::SetNew newPassObj{newPassLbd};
+         assetWlt->changePrivateKeyPassphrase(newPassObj);
          ASSERT_TRUE(false);
       } catch (const AlreadyLocked&) {}
    }
@@ -5636,7 +5641,8 @@ TEST_F(WalletsTest, ChangePassphrase_Test)
       //try again without locking, should work
       try {
          //change passphrase
-         assetWlt->changePrivateKeyPassphrase(newPassLbd);
+         Armory::Passphrase::SetNew newPassObj{newPassLbd};
+         assetWlt->changePrivateKeyPassphrase(newPassObj);
       } catch (const AlreadyLocked&) {
          ASSERT_TRUE(false);
       }
@@ -5666,7 +5672,7 @@ TEST_F(WalletsTest, ChangePassphrase_Test)
    assetWlt.reset();
 
    auto newWallet = AssetWallet::loadMainWalletFromFile(
-      IO::OpenFileParams{filename, controlLbd_});
+      IO::ReadOnlyFileParams{filename, controlLbd_});
    auto wltSingle = std::dynamic_pointer_cast<AssetWallet_Single>(newWallet);
    ASSERT_NE(wltSingle, nullptr);
    ASSERT_FALSE(wltSingle->isDecryptedContainerLocked());
@@ -5735,7 +5741,7 @@ TEST_F(WalletsTest, ChangePassphrase_Test)
    };
 
    IO::WalletDBInterface dbIface;
-   dbIface.setupEnv(IO::OpenFileParams{filename, passLbd});
+   dbIface.setupEnv(IO::ReadOnlyFileParams{filename, passLbd});
    std::string dbName;
 
    {
@@ -5774,10 +5780,10 @@ TEST_F(WalletsTest, ChangePassphrase_Test)
 TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
 {
    //create wallet from priv key
-   IO::CreationParams params{
+   IO::CreateWalletParams params{
       homedir_,
-      {}, 1200ms,
-      SecureBinaryData::fromString("control"), 100ms,
+      Armory::Passphrase::SetNew{1200ms, 0, {}},
+      Armory::Passphrase::SetNew{100ms, 0, SecureBinaryData::fromString("control")},
       nullptr, 4
    };
 
@@ -5831,13 +5837,14 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
    }
 
    //try to add passhrase to an unencrypted wallet, should fail
-   auto changePassLbd = [&newPass](void)->SecureBinaryData
+   auto changePassLbd = [&newPass](void)->std::unique_ptr<Armory::Passphrase::Params>
    {
-      return newPass;
+      return std::make_unique<Armory::Passphrase::Params>(1200ms, 0, newPass);
    };
 
    try {
-      assetWlt->addPrivateKeyPassphrase(changePassLbd);
+      Armory::Passphrase::SetNew newPassObj{changePassLbd};
+      assetWlt->addPrivateKeyPassphrase(newPassObj);
       ASSERT_TRUE(false);
    } catch (const DecryptedDataContainerException& e) {
       EXPECT_EQ(e.what(), std::string{"cannot add passphrase to unencrypted wallet"});
@@ -5846,10 +5853,12 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
    //encrypt with new pass
    {
       auto start = std::chrono::system_clock::now();
-      assetWlt->changePrivateKeyPassphrase(changePassLbd);
+      Armory::Passphrase::SetNew newPassObj{changePassLbd};
+      assetWlt->changePrivateKeyPassphrase(newPassObj);
       auto end = std::chrono::system_clock::now();
-      EXPECT_GE(end-start, 1200ms);
-      EXPECT_LE(end-start, 1320ms);
+      auto diff = end - start;
+      EXPECT_GE(diff, 1200ms) << diff.count();
+      EXPECT_LE(diff, 1320ms) << diff.count();
    }
 
    //check the wallet can't be decrypted without a passphrase anymore
@@ -5887,8 +5896,9 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
       auto& decryptedKey = assetWlt->getDecryptedValue(asset0_single->getPrivKey());
       auto end = std::chrono::system_clock::now();
       ASSERT_EQ(decryptedKey, privkey_ex);
-      EXPECT_GE(end-start, 1200ms);
-      EXPECT_LE(end-start, 1320ms);
+      auto diff = end - start;
+      EXPECT_GE(diff, 1200ms) << diff.count();
+      EXPECT_LE(diff, 1320ms) << diff.count();
    }
 
    {
@@ -5897,13 +5907,15 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
       auto& decryptedKey = assetWlt->getDecryptedValue(root_single->getPrivKey());
       auto end = std::chrono::system_clock::now();
       ASSERT_EQ(decryptedKey, clearRoot);
-      EXPECT_GE(end-start, 1200ms);
-      EXPECT_LE(end-start, 1320ms) << (end-start).count();
+      auto diff = end - start;
+      EXPECT_GE(diff, 1200ms) << diff.count();
+      EXPECT_LE(diff, 1320ms) << diff.count();
    }
 
    //try to add the same passphrase
    try {
-      assetWlt->addPrivateKeyPassphrase(changePassLbd);
+      Armory::Passphrase::SetNew newPassObj{changePassLbd};
+      assetWlt->addPrivateKeyPassphrase(newPassObj);
       ASSERT_TRUE(false);
    } catch (const DecryptedDataContainerException& e) {
       EXPECT_EQ(e.what(), std::string{"cipher data already present in encryption key"});
@@ -5918,16 +5930,18 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
 
    //add another passphrase
    auto newPass2 = SecureBinaryData::fromString("another pass");
-   auto changePass2Lbd = [&newPass2](void)->SecureBinaryData
+   auto changePass2Lbd = [&newPass2](void)->std::unique_ptr<Armory::Passphrase::Params>
    {
-      return newPass2;
+      return std::make_unique<Armory::Passphrase::Params>(1200ms, 0, newPass2);
    };
    {
       auto start = std::chrono::system_clock::now();
-      assetWlt->addPrivateKeyPassphrase(changePass2Lbd);
+      Armory::Passphrase::SetNew newPassObj{changePass2Lbd};
+      assetWlt->addPrivateKeyPassphrase(newPassObj);
       auto end = std::chrono::system_clock::now();
-      EXPECT_GE(end-start, 2400ms);
-      EXPECT_LE(end-start, 2640ms);
+      auto diff = end - start;
+      EXPECT_GE(diff, 2400ms) << diff.count();
+      EXPECT_LE(diff, 2640ms) << diff.count();
    }
 
    //check old pass works
@@ -5940,8 +5954,9 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
       decryptedKey = assetWlt->getDecryptedValue(root_single->getPrivKey());
       ASSERT_EQ(decryptedKey, clearRoot);
       auto end = std::chrono::system_clock::now();
-      EXPECT_GE(end-start, 1200ms);
-      EXPECT_LE(end-start, 1320ms);
+      auto diff = end - start;
+      EXPECT_GE(diff, 2400ms) << diff.count();
+      EXPECT_LE(diff, 2640ms) << diff.count();
    }
 
    //check new pass works
@@ -5960,8 +5975,9 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
       decryptedKey = assetWlt->getDecryptedValue(root_single->getPrivKey());
       ASSERT_EQ(decryptedKey, clearRoot);
       auto end = std::chrono::system_clock::now();
-      EXPECT_GE(end-start, 1200ms);
-      EXPECT_LE(end-start, 1320ms);
+      auto diff = end - start;
+      EXPECT_GE(diff, 1200ms) << diff.count();
+      EXPECT_LE(diff, 1320ms) << diff.count();
    }
 
    //reload the wallet
@@ -5969,7 +5985,7 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
    asset0_single.reset();
    root_single.reset();
    auto wlt2 = AssetWallet::loadMainWalletFromFile(
-      IO::OpenFileParams{filename, [](
+      IO::ReadOnlyFileParams{filename, [](
          const std::set<EncryptionKeyId>&)->SecureBinaryData {
             return SecureBinaryData::fromString("control");
          }
@@ -5998,8 +6014,9 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
       decryptedKey = assetWlt2->getDecryptedValue(root1_single->getPrivKey());
       ASSERT_EQ(decryptedKey, clearRoot);
       auto end = std::chrono::system_clock::now();
-      EXPECT_GE(end-start, 1200ms);
-      EXPECT_LE(end-start, 1320ms);
+      auto diff = end - start;
+      EXPECT_GE(diff, 1200ms) << diff.count();
+      EXPECT_LE(diff, 1320ms) << diff.count();
    }
 
    {
@@ -6011,8 +6028,9 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
       decryptedKey = assetWlt2->getDecryptedValue(root1_single->getPrivKey());
       ASSERT_EQ(decryptedKey, clearRoot);
       auto end = std::chrono::system_clock::now();
-      EXPECT_GE(end-start, 1200ms);
-      EXPECT_LE(end-start, 1320ms);
+      auto diff = end - start;
+      EXPECT_GE(diff, 1200ms) << diff.count();
+      EXPECT_LE(diff, 1320ms) << diff.count();
    }
 
    //delete old pass
@@ -6058,8 +6076,9 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
       auto& decryptedKey = assetWlt2->getDecryptedValue(asset1_single->getPrivKey());
       auto end = std::chrono::system_clock::now();
       ASSERT_EQ(decryptedKey, privkey_ex);
-      EXPECT_GE(end-start, 1200ms);
-      EXPECT_LE(end-start, 1320ms);
+      auto diff = end - start;
+      EXPECT_GE(diff, 1200ms) << diff.count();
+      EXPECT_LE(diff, 1320ms) << diff.count();
    }
 
    {
@@ -6068,8 +6087,9 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
       auto& decryptedKey = assetWlt2->getDecryptedValue(root1_single->getPrivKey());
       auto end = std::chrono::system_clock::now();
       ASSERT_EQ(decryptedKey, clearRoot);
-      EXPECT_GE(end-start, 1200ms);
-      EXPECT_LE(end-start, 1320ms);
+      auto diff = end - start;
+      EXPECT_GE(diff, 1200ms) << diff.count();
+      EXPECT_LE(diff, 1320ms) << diff.count();
    }
 
    //delete new pass
@@ -6113,10 +6133,10 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
 TEST_F(WalletsTest, ChangePassphrase_SeedBIP32_Test)
 {
    //create wallet from priv key
-   IO::CreationParams params{
+   IO::CreateWalletParams params{
       homedir_,
-      {}, 1200ms,
-      SecureBinaryData::fromString("control"), 100ms,
+      Armory::Passphrase::SetNew{1200ms, 0, {}},
+      Armory::Passphrase::SetNew{100ms, 0, SecureBinaryData::fromString("control")},
       nullptr, 4
    };
 
@@ -6148,13 +6168,14 @@ TEST_F(WalletsTest, ChangePassphrase_SeedBIP32_Test)
    }
 
    //try to add passhrase to an unencrypted wallet, should fail
-   auto changePassLbd = [&newPass](void)->SecureBinaryData
+   auto changePassLbd = [&newPass](void)->std::unique_ptr<Armory::Passphrase::Params>
    {
-      return newPass;
+      return std::make_unique<Armory::Passphrase::Params>(1200ms, 0, newPass);
    };
 
    try {
-      assetWlt->addPrivateKeyPassphrase(changePassLbd);
+      Armory::Passphrase::SetNew newPassObj{changePassLbd};
+      assetWlt->addPrivateKeyPassphrase(newPassObj);
       ASSERT_TRUE(false);
    } catch (const DecryptedDataContainerException& e) {
       EXPECT_EQ(e.what(), std::string{"cannot add passphrase to unencrypted wallet"});
@@ -6163,10 +6184,12 @@ TEST_F(WalletsTest, ChangePassphrase_SeedBIP32_Test)
    //encrypt with new pass
    {
       auto start = std::chrono::system_clock::now();
-      assetWlt->changePrivateKeyPassphrase(changePassLbd);
+      Armory::Passphrase::SetNew newPassObj{changePassLbd};
+      assetWlt->changePrivateKeyPassphrase(newPassObj);
       auto end = std::chrono::system_clock::now();
-      EXPECT_GE(end-start, 1200ms);
-      EXPECT_LE(end-start, 1320ms);
+      auto diff = end - start;
+      EXPECT_GE(diff, 1200ms) << diff.count();
+      EXPECT_LE(diff, 1320ms) << diff.count();
    }
 
    //check the wallet can't be decrypted without a passphrase anymore
@@ -6199,14 +6222,15 @@ TEST_F(WalletsTest, ChangePassphrase_SeedBIP32_Test)
       auto seedBip32 = dynamic_cast<ClearTextSeed_BIP32*>(clearTextSeed.get());
       EXPECT_EQ(seedBip32->getRawEntropy(), rawEntropy);
       auto end = std::chrono::system_clock::now();
-      EXPECT_GE(end-start, 1200ms);
-      EXPECT_LE(end-start, 1320ms);
+      auto diff = end - start;
+      EXPECT_GE(diff, 1200ms) << diff.count();
+      EXPECT_LE(diff, 1320ms) << diff.count();
    }
 
    //reload the wallet
    assetWlt.reset();
    auto wlt = AssetWallet::loadMainWalletFromFile(
-      IO::OpenFileParams{filename, [](
+      IO::ReadOnlyFileParams{filename, [](
          const std::set<EncryptionKeyId>&)->SecureBinaryData {
             return SecureBinaryData::fromString("control");
          }
@@ -6239,8 +6263,9 @@ TEST_F(WalletsTest, ChangePassphrase_SeedBIP32_Test)
       auto seedBip32 = dynamic_cast<ClearTextSeed_BIP32*>(clearTextSeed.get());
       EXPECT_EQ(seedBip32->getRawEntropy(), rawEntropy);
       auto end = std::chrono::system_clock::now();
-      EXPECT_GE(end-start, 1200ms);
-      EXPECT_LE(end-start, 1320ms);
+      auto diff = end - start;
+      EXPECT_GE(diff, 1200ms) << diff.count();
+      EXPECT_LE(diff, 1320ms) << diff.count();
    }
 
    //delete old pass
@@ -6271,7 +6296,7 @@ TEST_F(WalletsTest, ChangePassphrase_SeedBIP32_Test)
    //reload wallet one last time
    assetWlt2.reset();
    auto wlt2 = AssetWallet::loadMainWalletFromFile(
-      IO::OpenFileParams{filename, [](
+      IO::ReadOnlyFileParams{filename, [](
          const std::set<EncryptionKeyId>&)->SecureBinaryData {
             return SecureBinaryData::fromString("control");
          }
@@ -6301,10 +6326,10 @@ TEST_F(WalletsTest, ChangeControlPassphrase_Test)
 {
 
    auto newPass = SecureBinaryData::fromString("newpass");
-   IO::CreationParams params{
+   IO::CreateWalletParams params{
       homedir_,
-      SecureBinaryData::fromString("test"), 1ms,
-      SecureBinaryData::fromString("control"), 1ms,
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("test")},
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("control")},
       nullptr, 40,
    };
 
@@ -6319,16 +6344,11 @@ TEST_F(WalletsTest, ChangeControlPassphrase_Test)
       filename = assetWlt->getDbFilename();
 
       //change control pass
-      auto passLbd = [](const std::set<EncryptionKeyId>&)->SecureBinaryData
-      {
-         return SecureBinaryData::fromString("control");
-      };
-
-      auto newPass1Lbd = [newPass](void)->SecureBinaryData
-      {
-         return newPass;
-      };
-      assetWlt->changeControlPassphrase(newPass1Lbd, passLbd);
+      Armory::Passphrase::SetNew newCtrlPassObj{
+         Armory::Passphrase::SetNew{1ms, 0, newPass}};
+      assetWlt->changeControlPassphrase(
+         newCtrlPassObj,
+         params.setCtrlPassObj.getUnlockFunc());
 
       //close wallet by scoping out
    }
@@ -6346,7 +6366,7 @@ TEST_F(WalletsTest, ChangeControlPassphrase_Test)
 
    try {
       auto wlt = AssetWallet::loadMainWalletFromFile(
-         IO::OpenFileParams{filename, oldPassLbd});
+         IO::ReadOnlyFileParams{filename, oldPassLbd});
       ASSERT_FALSE(true);
    } catch (const DecryptedDataContainerException& e) {
       EXPECT_EQ(e.what(), std::string{"empty passphrase"});
@@ -6366,7 +6386,7 @@ TEST_F(WalletsTest, ChangeControlPassphrase_Test)
 
    try {
       auto wlt = AssetWallet::loadMainWalletFromFile(
-         IO::OpenFileParams{filename, anyPassLbd});
+         IO::ReadOnlyFileParams{filename, anyPassLbd});
       ASSERT_FALSE(true);
    } catch (const DecryptedDataContainerException& e)
    {
@@ -6383,14 +6403,11 @@ TEST_F(WalletsTest, ChangeControlPassphrase_Test)
 
    try {
       auto wlt = AssetWallet::loadMainWalletFromFile(
-         IO::OpenFileParams{filename, newPassLbd});
+         IO::ReadOnlyFileParams{filename, newPassLbd});
       //change pass again from the loaded wallet
       auto newPass2 = SecureBinaryData::fromString("second-pass");
-      auto newPass2Lbd = [newPass2](void)->SecureBinaryData
-      {
-         return newPass2;
-      };
-      wlt->changeControlPassphrase(newPass2Lbd, newPassLbd);
+      Armory::Passphrase::SetNew newCtrlPassObj{1ms, 0, newPass2};
+      wlt->changeControlPassphrase(newCtrlPassObj, newPassLbd);
    } catch (const DecryptedDataContainerException&) {
       ASSERT_FALSE(true);
    }
@@ -6408,7 +6425,7 @@ TEST_F(WalletsTest, ChangeControlPassphrase_Test)
 
    try {
       auto wlt = AssetWallet::loadMainWalletFromFile(
-         IO::OpenFileParams{filename, oldPassLbd2});
+         IO::ReadOnlyFileParams{filename, oldPassLbd2});
       ASSERT_FALSE(true);
    } catch (const DecryptedDataContainerException& e) {
       EXPECT_EQ(e.what(), std::string{"empty passphrase"});
@@ -6419,7 +6436,7 @@ TEST_F(WalletsTest, ChangeControlPassphrase_Test)
    counter = 0;
    try {
       auto wlt = AssetWallet::loadMainWalletFromFile(
-         IO::OpenFileParams{filename, anyPassLbd});
+         IO::ReadOnlyFileParams{filename, anyPassLbd});
       ASSERT_FALSE(true);
    } catch (const DecryptedDataContainerException& e)
    {
@@ -6435,7 +6452,7 @@ TEST_F(WalletsTest, ChangeControlPassphrase_Test)
 
    try {
       auto wlt = AssetWallet::loadMainWalletFromFile(
-         IO::OpenFileParams{filename, newPassLbd2});
+         IO::ReadOnlyFileParams{filename, newPassLbd2});
    } catch (const DecryptedDataContainerException&) {
       ASSERT_FALSE(true);
    }
@@ -6445,10 +6462,10 @@ TEST_F(WalletsTest, ChangeControlPassphrase_Test)
 TEST_F(WalletsTest, MultiplePassphrase_Test)
 {
    //create wallet from priv key
-   IO::CreationParams params{
+   IO::CreateWalletParams params{
       homedir_,
-      SecureBinaryData::fromString("test"), 1ms,
-      controlPass_, 1ms,
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("test")},
+      Armory::Passphrase::SetNew{1ms, 0, controlPass_},
       nullptr, 4
    };
 
@@ -6467,9 +6484,9 @@ TEST_F(WalletsTest, MultiplePassphrase_Test)
       return SecureBinaryData::fromString("abcdedfg");
    };
 
-   auto newPassLbd = [](void)->SecureBinaryData
+   auto newPassLbd = [](void)->std::unique_ptr<Armory::Passphrase::Params>
    {
-      return SecureBinaryData::fromString("abcdedfg");
+      return std::make_unique<Armory::Passphrase::Params>(1ms, 0, SecureBinaryData::fromString("abcdedfg"));
    };
 
    {
@@ -6478,7 +6495,8 @@ TEST_F(WalletsTest, MultiplePassphrase_Test)
       auto lock = assetWlt->lockDecryptedContainer();
 
       try {
-         assetWlt->addPrivateKeyPassphrase(newPassLbd);
+         Armory::Passphrase::SetNew setnew{newPassLbd};
+         assetWlt->addPrivateKeyPassphrase(setnew);
          ASSERT_TRUE(false);
       } catch (const AlreadyLocked&) {}
    }
@@ -6486,7 +6504,8 @@ TEST_F(WalletsTest, MultiplePassphrase_Test)
    {
       //try without locking first, should work
       try {
-         assetWlt->addPrivateKeyPassphrase(newPassLbd);
+         Armory::Passphrase::SetNew setnew{newPassLbd};
+         assetWlt->addPrivateKeyPassphrase(setnew);
       } catch (const AlreadyLocked&) {
          ASSERT_TRUE(false);
       }
@@ -6542,10 +6561,10 @@ TEST_F(WalletsTest, BIP32_Chain)
    account->setMain(true);
    account->setAddressLookup(4);
 
-   IO::CreationParams params{
+   IO::CreateWalletParams params{
       homedir_,
-      SecureBinaryData::fromString("test"), 1ms,
-      controlPass_, 1ms,
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("test")},
+      Armory::Passphrase::SetNew{1ms, 0, controlPass_},
       nullptr, 0
    };
 
@@ -6615,7 +6634,12 @@ TEST_F(WalletsTest, BIP32_Public_Chain)
    mainAccType->addAddressType(AddressEntryType_P2WPKH);
 
    auto assetWlt = AssetWallet_Single::createBlank(
-      "a wallet", IO::CreationParams{ homedir_, {}, 1ms, controlPass_, 1ms});
+      "a wallet", IO::CreateWalletParams{
+         homedir_,
+         Armory::Passphrase::SetNew{1ms, 0, {}},
+         Armory::Passphrase::SetNew{1ms, 0, controlPass_},
+         nullptr, 0, {}, {}
+   });
    assetWlt->createBIP32Account(mainAccType);
 
    auto accID = assetWlt->getMainAccountID();
@@ -6644,10 +6668,10 @@ TEST_F(WalletsTest, BIP32_ArmoryDefault)
 
    //create empty wallet
    auto passphrase = SecureBinaryData::fromString("password");
-   IO::CreationParams params{
+   IO::CreateWalletParams params{
       homedir_,
-      passphrase, 1ms,
-      controlPass_, 1ms,
+      Armory::Passphrase::SetNew{1ms, 0, passphrase},
+      Armory::Passphrase::SetNew{1ms, 0, controlPass_},
       nullptr, 5
    };
 
@@ -6697,10 +6721,10 @@ TEST_F(WalletsTest, BIP32_Chain_AddAccount)
 
    //create empty wallet
    auto passphrase = SecureBinaryData::fromString("password");
-   IO::CreationParams params{
+   IO::CreateWalletParams params{
       homedir_,
-      passphrase, 1ms,
-      controlPass_, 1ms,
+      Armory::Passphrase::SetNew{1ms, 0, passphrase},
+      Armory::Passphrase::SetNew{1ms, 0, controlPass_},
       nullptr, 0
    };
 
@@ -6824,7 +6848,7 @@ TEST_F(WalletsTest, BIP32_Chain_AddAccount)
    assetWlt.reset();
 
    auto assetWlt2 = AssetWallet::loadMainWalletFromFile(
-      IO::OpenFileParams{filename, controlLbd_});
+      IO::ReadOnlyFileParams{filename, controlLbd_});
    auto wltSingle2 = std::dynamic_pointer_cast<AssetWallet_Single>(assetWlt2);
    ASSERT_NE(wltSingle2, nullptr);
 
@@ -6880,10 +6904,10 @@ TEST_F(WalletsTest, BIP32_Chain_AddAccount)
 TEST_F(WalletsTest, BIP32_Fork_WatchingOnly)
 {
    auto passphrase = SecureBinaryData::fromString("password");
-   IO::CreationParams params{
+   IO::CreateWalletParams params{
       homedir_,
-      passphrase, 1ms,
-      controlPass_, 1ms,
+      Armory::Passphrase::SetNew{1ms, 0, passphrase},
+      Armory::Passphrase::SetNew{1ms, 0, controlPass_},
       nullptr, 10
    };
 
@@ -6896,9 +6920,10 @@ TEST_F(WalletsTest, BIP32_Fork_WatchingOnly)
 
    //create WO copy
    auto woCopyPath = AssetWallet::forkWatchingOnly(
-      IO::OpenFileParams{wlt->getDbFilename(), controlLbd_});
+      IO::ReadOnlyFileParams{wlt->getDbFilename(), controlLbd_},
+      Armory::Passphrase::SetNew{1ms, 0, controlPass_});
    auto woWlt = AssetWallet::loadMainWalletFromFile(
-      IO::OpenFileParams{woCopyPath, controlLbd_});
+      IO::ReadOnlyFileParams{woCopyPath, controlLbd_});
    auto woSingle = std::dynamic_pointer_cast<AssetWallet_Single>(woWlt);
 
    //check WO root has no private keys
@@ -6935,7 +6960,7 @@ TEST_F(WalletsTest, BIP32_Fork_WatchingOnly)
       wlt.reset();
       wlt = std::dynamic_pointer_cast<AssetWallet_Single>(
          AssetWallet::loadMainWalletFromFile(
-            IO::OpenFileParams{filename, controlLbd_}));
+            IO::ReadOnlyFileParams{filename, controlLbd_}));
 
       auto passphraseLBD = [&passphrase]
          (const std::set<EncryptionKeyId>&)->SecureBinaryData
@@ -6978,9 +7003,10 @@ TEST_F(WalletsTest, BIP32_WatchingOnly_FromXPub)
    };
 
    auto passphrase = SecureBinaryData::fromString("password");
-   IO::CreationParams params{
+   IO::CreateWalletParams params{
       homedir_,
-      passphrase, 1ms, controlPass_, 1ms,
+      Armory::Passphrase::SetNew{1ms, 0, passphrase},
+      Armory::Passphrase::SetNew{1ms, 0, controlPass_},
       nullptr, 10
    };
 
@@ -7006,7 +7032,12 @@ TEST_F(WalletsTest, BIP32_WatchingOnly_FromXPub)
 
    //1: create wallet
    auto wltWO = AssetWallet_Single::createBlank(
-      "walletWO1", IO::CreationParams { homedir_, {}, 1ms, controlPass_, 1ms});
+      "walletWO1", IO::CreateWalletParams{
+         homedir_,
+         Armory::Passphrase::SetNew{1ms, 0, {}},
+         Armory::Passphrase::SetNew{1ms, 0, controlPass_},
+         nullptr, 0, {}, {}
+      });
 
    //2: create a custom bip32 account meta data object to setup the WO account
    //structure (nodes & address types)
@@ -7056,9 +7087,10 @@ TEST_F(WalletsTest, AddressEntryTypes)
 {
    //create wallet
    auto passphrase = SecureBinaryData::fromString("password");
-   IO::CreationParams params{
+   IO::CreateWalletParams params{
       homedir_,
-      passphrase, 1ms, controlPass_, 1ms,
+      Armory::Passphrase::SetNew{1ms, 0, passphrase},
+      Armory::Passphrase::SetNew{1ms, 0, controlPass_},
       nullptr, 10
    };
 
@@ -7097,7 +7129,7 @@ TEST_F(WalletsTest, AddressEntryTypes)
 
    //load from file
    auto loaded = AssetWallet::loadMainWalletFromFile(
-      IO::OpenFileParams{filename, controlLbd_});
+      IO::ReadOnlyFileParams{filename, controlLbd_});
 
    //check used address list from loaded wallet matches grabbed addresses
    {
@@ -7114,9 +7146,10 @@ TEST_F(WalletsTest, AddressEntryTypes)
 
    //create WO copy
    auto woFilename = AssetWallet::forkWatchingOnly(
-      IO::OpenFileParams{filename, controlLbd_});
+      IO::ReadOnlyFileParams{filename, controlLbd_},
+      Armory::Passphrase::SetNew{1ms, 0, controlPass_});
    auto woLoaded = AssetWallet::loadMainWalletFromFile(
-      IO::OpenFileParams{woFilename, controlLbd_});
+      IO::ReadOnlyFileParams{woFilename, controlLbd_});
 
    {
       auto usedAddressMap = woLoaded->getUsedAddressMap();
@@ -7140,9 +7173,10 @@ TEST_F(WalletsTest, LegacyUncompressedAddressTypes)
    };
 
    auto passphrase = SecureBinaryData::fromString("password");
-   IO::CreationParams params{
+   IO::CreateWalletParams params{
       homedir_,
-      passphrase, 1ms, controlPass_, 1ms,
+      Armory::Passphrase::SetNew{1ms, 0, passphrase},
+      Armory::Passphrase::SetNew{1ms, 0, controlPass_},
       nullptr, 0
    };
 
@@ -7277,9 +7311,10 @@ TEST_F(WalletsTest, BIP32_SaltedAccount)
          new Armory::Seeds::ClearTextSeed_BIP32(
             rawEntropy, Armory::Seeds::SeedType::BIP32_Virgin));
       auto passphrase = SecureBinaryData::fromString("password");
-      IO::CreationParams params{
+      IO::CreateWalletParams params{
          homedir_,
-         passphrase, 1ms, controlPass_, 1ms,
+         Armory::Passphrase::SetNew{1ms, 0, passphrase},
+         Armory::Passphrase::SetNew{1ms, 0, controlPass_},
          nullptr, 0
       };
 
@@ -7366,7 +7401,7 @@ TEST_F(WalletsTest, BIP32_SaltedAccount)
 
    {
       auto assetWlt = AssetWallet::loadMainWalletFromFile(
-         IO::OpenFileParams{filename, controlLbd_});
+         IO::ReadOnlyFileParams{filename, controlLbd_});
       auto wltSingle = std::dynamic_pointer_cast<AssetWallet_Single>(assetWlt);
 
       //check current address map
@@ -7415,12 +7450,14 @@ TEST_F(WalletsTest, BIP32_SaltedAccount)
 
       //create WO copy
       filename = AssetWallet_Single::forkWatchingOnly(
-         IO::OpenFileParams{filename, controlLbd_});
+         IO::ReadOnlyFileParams{filename, controlLbd_},
+         Armory::Passphrase::SetNew{1ms, 0, controlPass_}
+      );
    }
 
    {
       auto assetWlt = AssetWallet::loadMainWalletFromFile(
-         IO::OpenFileParams{filename, controlLbd_});
+         IO::ReadOnlyFileParams{filename, controlLbd_});
       auto wltSingle = std::dynamic_pointer_cast<AssetWallet_Single>(assetWlt);
 
       ASSERT_TRUE(wltSingle->isWatchingOnly());
@@ -7494,9 +7531,10 @@ TEST_F(WalletsTest, ECDH_Account)
 
    {
       //create empty wallet
-      IO::CreationParams params{
+      IO::CreateWalletParams params{
          homedir_,
-         passphrase, 1ms, controlPass_, 1ms,
+         Armory::Passphrase::SetNew{1ms, 0, passphrase},
+         Armory::Passphrase::SetNew{1ms, 0, controlPass_},
          nullptr, 0
       };
 
@@ -7578,7 +7616,7 @@ TEST_F(WalletsTest, ECDH_Account)
    {
       //reload wallet
       auto wlt = AssetWallet::loadMainWalletFromFile(
-         IO::OpenFileParams{filename, controlLbd_});
+         IO::ReadOnlyFileParams{filename, controlLbd_});
       auto assetWlt = std::dynamic_pointer_cast<AssetWallet_Single>(wlt);
       if (assetWlt == nullptr) {
          throw std::runtime_error("unexpected wallet type");
@@ -7665,13 +7703,15 @@ TEST_F(WalletsTest, ECDH_Account)
    }
 
    woFilename = AssetWallet::forkWatchingOnly(
-      IO::OpenFileParams{filename, controlLbd_});
+      IO::ReadOnlyFileParams{filename, controlLbd_},
+      Armory::Passphrase::SetNew{1ms, 0, controlPass_}
+   );
 
    //same with WO
    {
       //reload wallet
       auto wlt = AssetWallet::loadMainWalletFromFile(
-         IO::OpenFileParams{woFilename, controlLbd_});
+         IO::ReadOnlyFileParams{woFilename, controlLbd_});
       auto assetWlt = std::dynamic_pointer_cast<AssetWallet_Single>(wlt);
       if (assetWlt == nullptr) {
          throw std::runtime_error("unexpected wallet type");
@@ -7797,9 +7837,12 @@ TEST_F(WalletsTest, AssetPathResolution)
 
    {
       //empty wallet + custom account
-      IO::CreationParams params{
+      IO::CreateWalletParams params{
          homedir_,
-         {}, 1ms, {}, 1ms, nullptr, 0};
+         Armory::Passphrase::SetNew{1ms, 0, {}},
+         Armory::Passphrase::SetNew{1ms, 0, {}},
+         nullptr, 0
+      };
 
       std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
          new Armory::Seeds::ClearTextSeed_BIP32(
@@ -7821,7 +7864,9 @@ TEST_F(WalletsTest, AssetPathResolution)
       //create a WO copy
       auto filename = wlt->getDbFilename();
       auto woFilename = AssetWallet_Single::forkWatchingOnly(
-         IO::OpenFileParams{filename, nullptr});
+         IO::ReadOnlyFileParams{filename, nullptr},
+         Armory::Passphrase::SetNew{1ms, 0, {}}
+      );
 
       //cleanup original wallet
       wlt.reset();
@@ -7829,7 +7874,7 @@ TEST_F(WalletsTest, AssetPathResolution)
 
       //check WO wallet
       auto wltWO = AssetWallet_Single::loadMainWalletFromFile(
-         IO::OpenFileParams{woFilename,
+         IO::ReadOnlyFileParams{woFilename,
             [](const std::set<EncryptionKeyId>&) ->SecureBinaryData{ return {}; }
          });
       EXPECT_TRUE(checkWlt(wltWO));
@@ -7842,7 +7887,12 @@ TEST_F(WalletsTest, AssetPathResolution)
    {
       //empty WO wallet
       auto wltWO = AssetWallet_Single::createBlank(
-         "walletWO1", IO::CreationParams { homedir_, {}, 1ms, {}, 1ms });
+         "walletWO1", IO::CreateWalletParams{
+            homedir_,
+            Armory::Passphrase::SetNew{1ms, 0, {}},
+            Armory::Passphrase::SetNew{1ms, 0, {}},
+            nullptr, 0
+         });
 
       //add account
       auto mainAccType = AccountType_BIP32::makeFromDerPaths(
@@ -7868,9 +7918,12 @@ TEST_F(WalletsTest, isAssetIdInUse)
 {
    //create wallet
    auto passphrase = SecureBinaryData::fromString("password");
-   IO::CreationParams params{
+   IO::CreateWalletParams params{
       homedir_,
-      passphrase, 1ms, controlPass_, 1ms, nullptr, 10};
+      Armory::Passphrase::SetNew{1ms, 0, passphrase},
+      Armory::Passphrase::SetNew{1ms, 0, controlPass_},
+      nullptr, 10
+   };
 
    //create regular wallet
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
@@ -7957,12 +8010,20 @@ protected:
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(WalletMetaDataTest, AuthPeers)
 {
-   auto peerPassLbd = [](const std::set<EncryptionKeyId>&)->SecureBinaryData
+   auto authPeersPass = SecureBinaryData::fromString("authpeerpass");
+   auto peerPassLbd = [&authPeersPass]()->std::unique_ptr<Armory::Passphrase::Params>
    {
-      return SecureBinaryData::fromString("authpeerpass");
+      return std::make_unique<Armory::Passphrase::Params>(
+         100ms, 0, authPeersPass);
    };
-   auto authPeers = std::make_unique<AuthorizedPeers>(
-      homedir_, "test.peers", peerPassLbd);
+   IO::CreateFileParams createFileParams{homedir_ / "test.peers", {peerPassLbd}};
+   IO::ReadOnlyFileParams roFileParams{
+      homedir_ / "test.peers",
+      [&authPeersPass](const std::set<EncryptionKeyId>&)->SecureBinaryData
+      { return authPeersPass; }
+   };
+   AuthorizedPeers::createWallet(createFileParams);
+   auto authPeers = std::make_unique<AuthorizedPeers>(roFileParams);
 
    //auth meta account expects valid pubkeys
    auto privKey1 = CryptoPRNG::generateRandom(32);
@@ -8035,7 +8096,7 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
    //delete auth peer object, reload and test again
    authPeers.reset();
-   authPeers = std::make_unique<AuthorizedPeers>(homedir_, "test.peers", peerPassLbd);
+   authPeers = std::make_unique<AuthorizedPeers>(roFileParams);
 
    {
       //check peer object has expected values
@@ -8265,7 +8326,7 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
    //delete auth peer object, reload and test again
    authPeers.reset();
-   authPeers = std::make_unique<AuthorizedPeers>(homedir_, "test.peers", peerPassLbd);
+   authPeers = std::make_unique<AuthorizedPeers>(roFileParams);
 
    {
       //check peer object has expected values
@@ -8678,9 +8739,10 @@ TEST_F(WalletMetaDataTest, Comments)
    //create regular wallet
    std::filesystem::path filename;
    {
-      IO::CreationParams params{
+      IO::CreateWalletParams params{
          homedir_,
-         passphrase, 1ms, controlPass, 1ms,
+         Armory::Passphrase::SetNew{1ms, 0, passphrase},
+         Armory::Passphrase::SetNew{1ms, 0, controlPass},
          nullptr, 10
       };
 
@@ -8705,7 +8767,7 @@ TEST_F(WalletMetaDataTest, Comments)
    {
       //shut down wallet and reload it
       auto wlt = AssetWallet::loadMainWalletFromFile(
-         IO::OpenFileParams{filename, controlLbd});
+         IO::ReadOnlyFileParams{filename, controlLbd});
       auto wltSingle = std::dynamic_pointer_cast<AssetWallet_Single>(wlt);
       ASSERT_NE(wltSingle, nullptr);
 
@@ -8733,9 +8795,11 @@ TEST_F(WalletMetaDataTest, Comments)
    {
       //create WO copy
       auto woCopyPath = AssetWallet::forkWatchingOnly(
-         IO::OpenFileParams{filename, controlLbd});
+         IO::ReadOnlyFileParams{filename, controlLbd},
+         Armory::Passphrase::SetNew{1ms, 0, controlPass}
+      );
       auto woWlt = AssetWallet::loadMainWalletFromFile(
-         IO::OpenFileParams{woCopyPath, controlLbd});
+         IO::ReadOnlyFileParams{woCopyPath, controlLbd});
       auto woSingle = std::dynamic_pointer_cast<AssetWallet_Single>(woWlt);
 
       //check loaded comments
@@ -8790,7 +8854,7 @@ public:
 
       //load it, newCtrl should work for the control passphrase
       auto loadedWlt = AssetWallet::loadMainWalletFromFile(
-         IO::OpenFileParams{path, controlPassLbd});
+         IO::ReadOnlyFileParams{path, controlPassLbd});
       METHOD_ASSERT_NE(loadedWlt, nullptr);
       METHOD_ASSERT_EQ(controlPassCount, 1U);
 
@@ -9124,10 +9188,10 @@ TEST_F(BackupTests, SecurePrint)
 TEST_F(BackupTests, BackupStrings_Legacy)
 {
    //create a legacy wallet
-   IO::CreationParams params{
+   IO::CreateWalletParams params{
       homedir_,
-      SecureBinaryData::fromString("passphrase"), 1ms,
-      SecureBinaryData::fromString("control"), 1ms,
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("passphrase")},
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("control")},
       nullptr, 4
    };
 
@@ -9155,8 +9219,7 @@ TEST_F(BackupTests, BackupStrings_Legacy)
       {
          case RestorePromptType::Passphrases:
             return PromptReply{true, false,
-               SecureBinaryData::fromString(newPass),
-               SecureBinaryData::fromString(newCtrl)
+               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)}
             };
 
          case RestorePromptType::Id:
@@ -9183,10 +9246,10 @@ TEST_F(BackupTests, BackupStrings_Legacy)
          backupEasy16->getRoot(Backup_Easy16::LineIndex::Two, false),
       });
       auto restoreResult = Armory::Seeds::Helpers::restoreFromBackup(
-         std::move(backupCopy), callback, IO::CreationParams{
+         std::move(backupCopy), callback, IO::CreateWalletParams{
             newHomeDir,
-            SecureBinaryData::fromString(newPass), 1ms,
-            SecureBinaryData::fromString(newCtrl), 1ms,
+            Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass)},
+            Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newCtrl)},
             nullptr, 10});
       EXPECT_NE(restoreResult.wltPtr, nullptr);
 
@@ -9217,10 +9280,10 @@ TEST_F(BackupTests, BackupStrings_Legacy)
 TEST_F(BackupTests, BackupStrings_Legacy_Armory200a)
 {
    //create a legacy wallet
-   IO::CreationParams params{
+   IO::CreateWalletParams params{
       homedir_,
-      SecureBinaryData::fromString("passphrase"), 1ms,
-      SecureBinaryData::fromString("control"), 1ms,
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("passphrase")},
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("control")},
       nullptr, 4
    };
 
@@ -9246,8 +9309,7 @@ TEST_F(BackupTests, BackupStrings_Legacy_Armory200a)
       {
          case RestorePromptType::Passphrases:
             return PromptReply{true, false,
-               SecureBinaryData::fromString(newPass),
-               SecureBinaryData::fromString(newCtrl)
+               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)}
             };
 
          case RestorePromptType::Id:
@@ -9274,10 +9336,10 @@ TEST_F(BackupTests, BackupStrings_Legacy_Armory200a)
          backupEasy16->getRoot(Backup_Easy16::LineIndex::Two, false),
       });
       auto restoreResult = Armory::Seeds::Helpers::restoreFromBackup(
-         move(backupCopy), callback, IO::CreationParams{
+         move(backupCopy), callback, IO::CreateWalletParams{
             newHomeDir,
-            SecureBinaryData::fromString(newPass), 1ms,
-            SecureBinaryData::fromString(newCtrl), 1ms,
+            Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass)},
+            Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newCtrl)},
             nullptr, 10});
       EXPECT_NE(restoreResult.wltPtr, nullptr);
 
@@ -9308,10 +9370,10 @@ TEST_F(BackupTests, BackupStrings_Legacy_Armory200a)
 TEST_F(BackupTests, BackupStrings_Legacy_SecurePrint)
 {
    //create a legacy wallet
-   IO::CreationParams params{
+   IO::CreateWalletParams params{
       homedir_,
-      SecureBinaryData::fromString("passphrase"), 1ms,
-      SecureBinaryData::fromString("control"), 1ms,
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("passphrase")},
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("control")},
       nullptr, 4
    };
 
@@ -9339,8 +9401,7 @@ TEST_F(BackupTests, BackupStrings_Legacy_SecurePrint)
       {
          case RestorePromptType::Passphrases:
             return PromptReply{true, false,
-               SecureBinaryData::fromString(newPass),
-               SecureBinaryData::fromString(newCtrl)
+               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)}
             };
 
          case RestorePromptType::Id:
@@ -9367,10 +9428,10 @@ TEST_F(BackupTests, BackupStrings_Legacy_SecurePrint)
             backupEasy16->getRoot(Backup_Easy16::LineIndex::Two, true),
          });
          Armory::Seeds::Helpers::restoreFromBackup(
-            move(backupCopy), callback, IO::CreationParams{
+            move(backupCopy), callback, IO::CreateWalletParams{
                newHomeDir,
-               SecureBinaryData::fromString(newPass), 1ms,
-               SecureBinaryData::fromString(newCtrl), 1ms,
+               Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass)},
+               Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newCtrl)},
                nullptr, 10});
          ASSERT_TRUE(false);
       } catch (const Armory::Seeds::RestoreUserException& e) {
@@ -9383,10 +9444,10 @@ TEST_F(BackupTests, BackupStrings_Legacy_SecurePrint)
          backupEasy16->getRoot(Backup_Easy16::LineIndex::Two, true)},
          backupEasy16->getSpPass());
       auto restoreResult = Armory::Seeds::Helpers::restoreFromBackup(
-         std::move(backupCopy), callback, IO::CreationParams{
+         std::move(backupCopy), callback, IO::CreateWalletParams{
             newHomeDir,
-            SecureBinaryData::fromString(newPass), 1ms,
-            SecureBinaryData::fromString(newCtrl), 1ms,
+               Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass)},
+               Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newCtrl)},
             nullptr, 10});
       EXPECT_NE(restoreResult.wltPtr, nullptr);
 
@@ -9527,8 +9588,12 @@ TEST_F(BackupTests, Easy16_AutoRepair)
             std::string_view(corrupted[1].toCharPtr(), corrupted[1].getSize())
          });
          Armory::Seeds::Helpers::restoreFromBackup(
-            std::move(backup), userPrompt, IO::CreationParams{
-               homedir_, {}, 1ms, {}, 1ms, nullptr, 10});
+            std::move(backup), userPrompt, IO::CreateWalletParams{
+               homedir_,
+               Armory::Passphrase::SetNew{1ms, 0, {}},
+               Armory::Passphrase::SetNew{1ms, 0, {}},
+               nullptr, 10
+            });
       }
       catch (const std::exception&)
       {}
@@ -9541,10 +9606,10 @@ TEST_F(BackupTests, Easy16_AutoRepair)
 TEST_F(BackupTests, BackupStrings_LegacyWithChaincode)
 {
    //create a legacy wallet
-   IO::CreationParams params{
+   IO::CreateWalletParams params{
       homedir_,
-      SecureBinaryData::fromString("passphrase"), 1ms,
-      SecureBinaryData::fromString("control"), 1ms,
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("passphrase")},
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("control")},
       nullptr, 4
    };
 
@@ -9602,8 +9667,7 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode)
       {
          case RestorePromptType::Passphrases:
             return PromptReply{true, false,
-               SecureBinaryData::fromString(newPass),
-               SecureBinaryData::fromString(newCtrl)
+               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)}
             };
 
          case RestorePromptType::Id:
@@ -9669,10 +9733,10 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode)
                backupCopy[0], backupCopy[1], backupCopy[2], backupCopy[3]
             });
             Armory::Seeds::Helpers::restoreFromBackup(
-               std::move(corruptedBackup), callback, IO::CreationParams{
+               std::move(corruptedBackup), callback, IO::CreateWalletParams{
                   newHomeDir,
-                  SecureBinaryData::fromString(newPass), 1ms,
-                  SecureBinaryData::fromString(newCtrl), 1ms,
+                  Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass)},
+                  Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newCtrl)},
                   nullptr, 10});
             ASSERT_TRUE(false);
          } catch (const Armory::Seeds::RestoreUserException& e) {
@@ -9684,10 +9748,10 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode)
       auto validBackup = Backup_Easy16::fromLines({
          backupLines[0], backupLines[1], backupLines[2], backupLines[3]});
       auto restoreResult = Armory::Seeds::Helpers::restoreFromBackup(
-         std::move(validBackup), callback, IO::CreationParams{
+         std::move(validBackup), callback, IO::CreateWalletParams{
             newHomeDir,
-            SecureBinaryData::fromString(newPass), 1ms,
-            SecureBinaryData::fromString(newCtrl), 1ms,
+            Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass)},
+            Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newCtrl)},
             nullptr, 10});
       EXPECT_NE(restoreResult.wltPtr, nullptr);
 
@@ -9723,10 +9787,10 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode)
 TEST_F(BackupTests, BackupStrings_LegacyWithChaincode_SecurePrint)
 {
    //create a legacy wallet
-   IO::CreationParams params{
+   IO::CreateWalletParams params{
       homedir_,
-      SecureBinaryData::fromString("passphrase"), 1ms,
-      SecureBinaryData::fromString("control"), 1ms,
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("passphrase")},
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("control")},
       nullptr, 4
    };
 
@@ -9754,8 +9818,7 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode_SecurePrint)
       {
          case RestorePromptType::Passphrases:
             return PromptReply{true, false,
-               SecureBinaryData::fromString(newPass),
-               SecureBinaryData::fromString(newCtrl)
+               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)},
             };
 
          case RestorePromptType::Id:
@@ -9784,10 +9847,10 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode_SecurePrint)
             backupEasy16->getChaincode(Backup_Easy16::LineIndex::Two, true),
          });
          Armory::Seeds::Helpers::restoreFromBackup(
-            std::move(backupCopy), callback, IO::CreationParams{\
+            std::move(backupCopy), callback, IO::CreateWalletParams{
                newHomeDir,
-               SecureBinaryData::fromString(newPass), 1ms,
-               SecureBinaryData::fromString(newCtrl), 1ms,
+               Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass)},
+               Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newCtrl)},
                nullptr, 10});
          ASSERT_TRUE(false);
       } catch (const Armory::Seeds::RestoreUserException& e) {
@@ -9803,10 +9866,10 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode_SecurePrint)
          backupEasy16->getSpPass()
       );
       auto restoreResult = Armory::Seeds::Helpers::restoreFromBackup(
-         std::move(backupCopy), callback, IO::CreationParams{
+         std::move(backupCopy), callback, IO::CreateWalletParams{
             newHomeDir,
-            SecureBinaryData::fromString(newPass), 1ms,
-            SecureBinaryData::fromString(newCtrl), 1ms,
+            Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass)},
+            Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newCtrl)},
             nullptr, 10});
       EXPECT_NE(restoreResult.wltPtr, nullptr);
 
@@ -9842,10 +9905,10 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode_SecurePrint)
 TEST_F(BackupTests, BackupStrings_BIP32)
 {
    //create a legacy wallet
-   IO::CreationParams params{
+   IO::CreateWalletParams params{
       homedir_,
-      SecureBinaryData::fromString("passphrase"), 1ms,
-      SecureBinaryData::fromString("control"), 1ms,
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("passphrase")},
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("control")},
       nullptr, 4
    };
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
@@ -9872,8 +9935,7 @@ TEST_F(BackupTests, BackupStrings_BIP32)
       {
          case RestorePromptType::Passphrases:
             return PromptReply{true, false,
-               SecureBinaryData::fromString(newPass),
-               SecureBinaryData::fromString(newCtrl)
+               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)}
             };
 
          case RestorePromptType::Id:
@@ -9900,10 +9962,10 @@ TEST_F(BackupTests, BackupStrings_BIP32)
          backupEasy16->getRoot(Backup_Easy16::LineIndex::Two, false),
       });
       auto restoreResult = Armory::Seeds::Helpers::restoreFromBackup(
-         std::move(backupCopy), callback, IO::CreationParams{
+         std::move(backupCopy), callback, IO::CreateWalletParams{
             newHomeDir,
-            SecureBinaryData::fromString(newPass), 1ms,
-            SecureBinaryData::fromString(newCtrl), 1ms,
+            Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass)},
+            Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newCtrl)},
             nullptr, 10});
       ASSERT_NE(restoreResult.wltPtr, nullptr);
 
@@ -9934,10 +9996,10 @@ TEST_F(BackupTests, BackupStrings_BIP32)
 TEST_F(BackupTests, BackupStrings_BIP32_Virgin)
 {
    //create a legacy wallet
-   IO::CreationParams params{
+   IO::CreateWalletParams params{
       homedir_,
-      SecureBinaryData::fromString("passphrase"), 1ms,
-      SecureBinaryData::fromString("control"), 1ms,
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("passphrase")},
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("control")},
       nullptr, 4
    };
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
@@ -9966,8 +10028,7 @@ TEST_F(BackupTests, BackupStrings_BIP32_Virgin)
       {
          case RestorePromptType::Passphrases:
             return PromptReply{true, false,
-               SecureBinaryData::fromString(newPass),
-               SecureBinaryData::fromString(newCtrl)
+               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)},
             };
 
          case RestorePromptType::Id:
@@ -9992,10 +10053,10 @@ TEST_F(BackupTests, BackupStrings_BIP32_Virgin)
       backupEasy16->getRoot(Backup_Easy16::LineIndex::Two, false),
    });
    auto restoreResult = Armory::Seeds::Helpers::restoreFromBackup(
-      std::move(backupCopy), callback, IO::CreationParams{
+      std::move(backupCopy), callback, IO::CreateWalletParams{
          newHomeDir,
-         SecureBinaryData::fromString(newPass), 1ms,
-         SecureBinaryData::fromString(newCtrl), 1ms,
+         Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass)},
+         Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newCtrl)},
          nullptr, 10});
    ASSERT_NE(restoreResult.wltPtr, nullptr);
 
@@ -10042,8 +10103,7 @@ TEST_F(BackupTests, BackupStrings_BIP32_FromBase58)
       {
          case RestorePromptType::Passphrases:
             return PromptReply{true, false,
-               SecureBinaryData::fromString(newPass),
-               SecureBinaryData::fromString(newCtrl)
+               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)},
             };
 
          case RestorePromptType::Id:
@@ -10063,10 +10123,10 @@ TEST_F(BackupTests, BackupStrings_BIP32_FromBase58)
    {
       auto backup = Backup_Base58::fromString(b58seed);
       auto restoreResult = Helpers::restoreFromBackup(
-         move(backup), callback, IO::CreationParams{
+         move(backup), callback, IO::CreateWalletParams{
             homedir_,
-            SecureBinaryData::fromString(newPass), 1ms,
-            SecureBinaryData::fromString(newCtrl), 1ms,
+            Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass)},
+            Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newCtrl)},
             nullptr, 10});
       ASSERT_NE(restoreResult.wltPtr, nullptr);
 
@@ -10093,7 +10153,7 @@ TEST_F(BackupTests, BackupStrings_BIP32_FromBase58)
 
       //load it, newCtrl should work for the control passphrase
       auto loadedWlt = AssetWallet::loadMainWalletFromFile(
-         IO::OpenFileParams{filename, controlPassLbd});
+         IO::ReadOnlyFileParams{filename, controlPassLbd});
       ASSERT_NE(loadedWlt, nullptr);
 
       auto passLbd = [newPass](const std::set<EncryptionKeyId>&)->SecureBinaryData
@@ -10114,10 +10174,10 @@ TEST_F(BackupTests, BackupStrings_BIP39)
 {
    //create a legacy wallet
    std::filesystem::path filename;
-   IO::CreationParams params{
+   IO::CreateWalletParams params{
       homedir_,
-      SecureBinaryData::fromString("passphrase"), 1ms,
-      SecureBinaryData::fromString("control"), 1ms,
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("passphrase")},
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("control")},
       nullptr, 4};
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
       new ClearTextSeed_BIP39(
@@ -10149,8 +10209,7 @@ TEST_F(BackupTests, BackupStrings_BIP39)
       {
          case RestorePromptType::Passphrases:
             return PromptReply{true, false,
-               SecureBinaryData::fromString(newPass),
-               SecureBinaryData::fromString(newCtrl)
+               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)}
             };
 
          case RestorePromptType::Id:
@@ -10177,10 +10236,10 @@ TEST_F(BackupTests, BackupStrings_BIP39)
          backupE16->getRoot(Backup_Easy16::LineIndex::Two, false),
       });
       auto restoreResult = Armory::Seeds::Helpers::restoreFromBackup(
-         std::move(backupE16Copy), callback, IO::CreationParams{
+         std::move(backupE16Copy), callback, IO::CreateWalletParams{
             newHomeDir,
-            SecureBinaryData::fromString(newPass), 1ms,
-            SecureBinaryData::fromString(newCtrl), 1ms,
+            Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass)},
+            Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newCtrl)},
             nullptr, 10});
       ASSERT_NE(restoreResult.wltPtr, nullptr);
 
@@ -10217,8 +10276,7 @@ TEST_F(BackupTests, BackupStrings_BIP39)
       {
          case RestorePromptType::Passphrases:
             return PromptReply{true, false,
-               SecureBinaryData::fromString(newPass2),
-               SecureBinaryData::fromString(newCtrl2)
+               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass2)}
             };
 
          case RestorePromptType::Id:
@@ -10242,10 +10300,10 @@ TEST_F(BackupTests, BackupStrings_BIP39)
       auto backupBIP39Copy = Backup_BIP39::fromMnemonicString(
          backupBIP39->getMnemonicString());
       auto restoreResult = Armory::Seeds::Helpers::restoreFromBackup(
-         std::move(backupBIP39Copy), callbackBip39, IO::CreationParams{
+         std::move(backupBIP39Copy), callbackBip39, IO::CreateWalletParams{
             newHomeDir,
-            SecureBinaryData::fromString(newPass2), 1ms,
-            SecureBinaryData::fromString(newCtrl2), 1ms,
+            Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass2)},
+            Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newCtrl2)},
             nullptr, 10});
       ASSERT_NE(restoreResult.wltPtr, nullptr);
 

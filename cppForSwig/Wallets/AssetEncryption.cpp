@@ -9,6 +9,7 @@
 #include "AssetEncryption.h"
 #include "KDF.h"
 #include "DBUtils.h"
+#include "GetPassphrase.h"
 
 #define CIPHER_VERSION     0x00000001
 
@@ -435,6 +436,14 @@ std::set<KdfId> EncryptionKey::getKdfIds() const
 //// ClearTextEncryptionKey
 //
 ////////////////////////////////////////////////////////////////////////////////
+ClearTextEncryptionKey::ClearTextEncryptionKey(SecureBinaryData& key) :
+   rawKey_(std::move(key))
+{}
+
+ClearTextEncryptionKey::ClearTextEncryptionKey(Passphrase::SetNew& setNewObj) :
+   rawKey_(std::move(setNewObj.moveParams()->passphrase))
+{}
+
 void ClearTextEncryptionKey::deriveKey(
    std::shared_ptr<Encryption::KeyDerivationFunction> kdf)
 {

@@ -40,8 +40,8 @@ namespace Armory
 
       namespace IO
       {
-         struct CreationParams;
-         struct OpenFileParams;
+         struct CreateWalletParams;
+         struct ReadOnlyFileParams;
       }
    };
 
@@ -58,8 +58,6 @@ namespace Armory
             Wallets::AddressAccountId,
             std::shared_ptr<WalletContainer>>> wallets_;
          std::map<std::string, std::shared_ptr<WalletContainer>> walletsByDbId_;
-
-         PassphraseLambda passphraseLbd_;
          std::shared_ptr<AsyncClient::BlockDataViewer> bdvPtr_;
 
       private:
@@ -75,7 +73,11 @@ namespace Armory
 
          /* pre wallets loading calls */
          std::map<std::string, std::shared_ptr<WalletFileInfo>> listWallets(void);
-         void unlockControlHeader(const std::string&, const PassphraseLambda&);
+         void unlockControlHeader(const std::string&, const Passphrase::UnlockFunc&);
+         void migrateWallet(const std::string&,
+            const Passphrase::UnlockFunc&,
+            const Wallets::IO::CreateWalletParams&
+         );
          bool stageWallet(const std::string&, bool);
          void loadWallets(void);
 
@@ -99,10 +101,10 @@ namespace Armory
             getAccountIdMap(void) const;
 
          /* wallet add/create/delete */
-         void loadWallet(const Wallets::IO::OpenFileParams&);
+         void loadWallet(const Wallets::IO::ReadOnlyFileParams&);
          std::shared_ptr<WalletContainer> createNewWallet(
             const SecureBinaryData&, //extra entropy
-            const Wallets::IO::CreationParams&);
+            const Wallets::IO::CreateWalletParams&);
 
          std::filesystem::path unloadWallet(const std::string&);
          void deleteWallet(const std::string&);

@@ -183,7 +183,8 @@ void TerminalPassphrasePrompt::setEcho(bool enable)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-PassphraseLambda TerminalPassphrasePrompt::getLambda(const std::string& verbose)
+Armory::Passphrase::UnlockFunc TerminalPassphrasePrompt::getLambda(
+   const std::string& verbose)
 {
    auto ptr = new TerminalPassphrasePrompt(verbose);
    std::shared_ptr<TerminalPassphrasePrompt> smartPtr(ptr);

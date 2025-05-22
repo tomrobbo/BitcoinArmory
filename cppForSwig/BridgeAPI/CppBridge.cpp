@@ -12,6 +12,7 @@
 #include "PassphrasePrompt.h"
 #include "../AsyncClient.h"
 #include "../Wallets/Seeds/Backups.h"
+#include "../Wallets/IOHeader.h"
 #include "../Signer/ResolverFeed_Wallets.h"
 #include "../Wallets/WalletIdTypes.h"
 #include "../Wallets/KDF.h"
@@ -719,8 +720,11 @@ void CppBridge::setupDB()
       //setup bdv obj
       callbackPtr_ = std::make_shared<BridgeCallback>(pushNotif);
       bdvPtr_ = AsyncClient::BlockDataViewer::getNewBDV(
-         dbAddr_, dbPort_, path_,
-         TerminalPassphrasePrompt::getLambda("db identification key"),
+         dbAddr_, dbPort_,
+         Wallets::IO::ReadOnlyFileParams {
+            path_ / CLIENT_AUTH_PEER_FILENAME,
+            TerminalPassphrasePrompt::getLambda("db identification key")
+         },
          true, dbOneWayAuth_, callbackPtr_
       );
 
@@ -951,18 +955,19 @@ void CppBridge::restoreWallet(
          notifCapnp.setCallbackId(callbackId);
          notifCapnp.setCounter(notifCounter);
 
-         auto restore = notifCapnp.initRestore();
          switch (prompt.promptType)
          {
             case Seeds::RestorePromptType::FormatError:
             case Seeds::RestorePromptType::Failure:
             {
+               auto restore = notifCapnp.initRestore();
                restore.setFailure(prompt.error);
                break;
             }
 
             case Seeds::RestorePromptType::ChecksumError:
             {
+               auto restore = notifCapnp.initRestore();
                auto chksumCapnp = restore.initChecksumError(
                   prompt.checksumResult.size());
 
@@ -977,6 +982,7 @@ void CppBridge::restoreWallet(
 
             case Seeds::RestorePromptType::ChecksumMismatch:
             {
+               auto restore = notifCapnp.initRestore();
                auto chksumCapnp = restore.initChecksumMismatch(
                   prompt.checksumResult.size());
 
@@ -991,18 +997,21 @@ void CppBridge::restoreWallet(
 
             case Seeds::RestorePromptType::DecryptError:
             {
+               auto restore = notifCapnp.initRestore();
                restore.setDecryptError();
                break;
             }
 
             case Seeds::RestorePromptType::Passphrases:
             {
-               restore.setGetPassphrases();
+               auto wltCreation = notifCapnp.initWalletCreation();
+               wltCreation.setSetPrivPass();
                break;
             }
 
             case Seeds::RestorePromptType::Id:
             {
+               auto restore = notifCapnp.initRestore();
                auto metaCapnp = restore.initCheckWalletId();
                metaCapnp.setWalletId(prompt.walletId);
                metaCapnp.setBackupType(toCapnBackupType(prompt.backupType));
@@ -1011,6 +1020,7 @@ void CppBridge::restoreWallet(
 
             case Seeds::RestorePromptType::TypeError:
             {
+               auto restore = notifCapnp.initRestore();
                restore.setTypeError(prompt.error);
                break;
             }
@@ -1052,6 +1062,16 @@ void CppBridge::restoreWallet(
          }
       };
 
+      auto setNewPassFunc = [callback]()->std::unique_ptr<Passphrase::Params>
+      {
+         auto reply = callback(Seeds::RestorePrompt{
+            Seeds::RestorePromptType::Passphrases});
+         if (!reply.success) {
+            nullptr;
+         }
+         return std::make_unique<Passphrase::Params>(reply.passParams);
+      };
+
       auto tempDir = wltManager_->getWalletDir() / "temp";
       try {
          //create a temp folder where the wallet will be generated
@@ -1059,12 +1079,10 @@ void CppBridge::restoreWallet(
 
          //create wallet from backup
          auto progFunc = getWalletProgressLbd(this, callbackId);
-         Wallets::IO::CreationParams params{
+         Wallets::IO::CreateWalletParams params{
             tempDir,
-            //passphrase + default unlock time, leave empty to prompt the user
-            {}, privUnlockTarget,
-            //control passphrase + default unlock time, same treatment
-            {}, ctrlUnlockTarget,
+            Passphrase::SetNew{setNewPassFunc},
+            Passphrase::SetNew{setNewPassFunc},
             progFunc,
             0 //address lookup
          };
@@ -1075,13 +1093,6 @@ void CppBridge::restoreWallet(
          if (restoreResult.wltPtr == nullptr) {
             throw std::runtime_error("empty wallet");
          }
-
-         //lambda to reload new wallet
-         auto ctrlLbd = [&restoreResult](
-            const std::set<Armory::Wallets::EncryptionKeyId>&)->SecureBinaryData
-         {
-            return restoreResult.controlPass;
-         };
 
          //get new wallet path
          auto newWltID = restoreResult.wltPtr->getID();
@@ -1106,7 +1117,8 @@ void CppBridge::restoreWallet(
                auto oldWltData = Wallets::AssetWallet_Single::exportPublicData(
                   oldWltSingle);
                Wallets::AssetWallet_Single::mergePublicData(
-                  Wallets::IO::OpenFileParams{newWltPath, ctrlLbd},
+                  Wallets::IO::ReadOnlyFileParams{
+                     newWltPath, params.setCtrlPassObj.getUnlockFunc()},
                   oldWltData, progFunc
                );
             }
@@ -1114,10 +1126,7 @@ void CppBridge::restoreWallet(
             //we didnt have an old wallet merge into the new one, extend
             //the address chain for some baseline count
             restoreResult.wltPtr->setPassphrasePromptLambda(
-               [&pass=restoreResult.privPass]
-               (const std::set<Wallets::EncryptionKeyId>&) {
-               return pass;
-            });
+               params.setPrivPassObj.getUnlockFunc());
             progFunc(std::make_unique<Wallets::Progress::ExtendChain>(500));
             restoreResult.wltPtr->extendPrivateChainToIndex(499);
             restoreResult.wltPtr.reset();
@@ -1136,8 +1145,8 @@ void CppBridge::restoreWallet(
          std::filesystem::rename(newWltPath, newPath);
 
          //reload new wallet
-         wltManager_->loadWallet(Wallets::IO::OpenFileParams{
-            newPath, ctrlLbd});
+         wltManager_->loadWallet(Wallets::IO::ReadOnlyFileParams{
+            newPath, params.setCtrlPassObj.getUnlockFunc()});
 
          //delete old wallet if there's one
          if (!oldWltPath.empty() && std::filesystem::exists(oldWltPath)) {
@@ -1516,19 +1525,58 @@ void CppBridge::extendAddressPool(const std::string& wltId,
 
 ////////////////////////////////////////////////////////////////////////////////
 void CppBridge::createWallet(SecureBinaryData extraEntropy,
-   Wallets::IO::CreationParams params, const std::string& callbackId,
+   Wallets::IO::CreateWalletParams params, const std::string& callbackId,
    MessageId refId)
 {
-   //setup progress notif
-   params.progressFunc = getWalletProgressLbd(this, callbackId);
+   auto setPassFunc = [this, callbackId]()->std::unique_ptr<Passphrase::Params>
+   {
+      auto counterBd = fortuna_.generateRandom(4);
+      auto notifCounter = *(uint32_t*)counterBd.getPtr();
+
+      //create set passphrase notif
+      capnp::MallocMessageBuilder notifMessage;
+      auto fromBridge = notifMessage.initRoot<FromBridge>();
+      auto notif = fromBridge.initNotification();
+      notif.setCallbackId(callbackId);
+      notif.setCounter(notifCounter);
+      auto wltCrt = notif.initWalletCreation();
+      wltCrt.setSetPrivPass();
+      auto notifSerialized = serializeCapnp(notifMessage);
+
+      //reply handler
+      auto prom = std::make_shared<std::promise<Seeds::PromptReply>>();
+      auto fut = prom->get_future();
+      auto replyLbd = [prom](const Seeds::PromptReply& reply)->bool
+      {
+         prom->set_value(reply);
+         return true;
+      };
+
+      //push prompt to caller
+      ServerPushWrapper wrapper{notifCounter, replyLbd, std::move(notifSerialized)};
+      callbackWriter(wrapper);
+
+      //wait on reply
+      auto reply = std::move(fut.get());
+      if (!reply.success) {
+         return nullptr;
+      }
+      return std::make_unique<Passphrase::Params>(reply.passParams);
+   };
+
+   auto paramsCopy = std::make_unique<Wallets::IO::CreateWalletParams>(
+      params.folder,
+      Passphrase::SetNew{setPassFunc}, Passphrase::SetNew(),
+      getWalletProgressLbd(this, callbackId),
+      params.lookup, params.label, params.description
+   );
 
    //this is a long process (several seconds), run in its own thread
    auto createWltFunc = [this, callbackId,
       extraEntropy=std::move(extraEntropy),
-      params=std::move(params),
-      refId]() {
+      refId](std::unique_ptr<Wallets::IO::CreateWalletParams> paramPtr) {
       //create wallet
-      auto wltContainer = wltManager_->createNewWallet(extraEntropy, params);
+      auto wltContainer = wltManager_->createNewWallet(extraEntropy, *paramPtr);
 
       //callback cleanup
       sendCleanup(this, callbackId);
@@ -1553,7 +1601,7 @@ void CppBridge::createWallet(SecureBinaryData extraEntropy,
       this->writeToClient(replySerialized);
    };
 
-   std::thread thr(createWltFunc);
+   std::thread thr(createWltFunc, std::move(paramsCopy));
    if (thr.joinable()) {
       thr.detach();
    }

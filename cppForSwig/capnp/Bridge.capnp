@@ -80,6 +80,13 @@ struct WalletData {
 # Notifications
 ###############################
 
+struct SetPassphraseStruct
+{
+   passphrase  @0 : Text;
+   kdfTargetMs @1 : UInt32;
+   kdfTargetMB @2 : UInt32;
+}
+
 struct Notification {
    ## Wallet creation progress notifs
    struct WalletProgress {
@@ -98,7 +105,16 @@ struct Notification {
       }
    }
 
-   ## RestoreWallet notifs
+   ## Wallet creation prompts
+   struct WalletCreation {
+      union {
+         unset       @0 : Void;
+         setCtrlPass @1 : Void;
+         setPrivPass @2 : Void;
+      }
+   }
+
+   ## RestoreWallet prompts
    struct RestorePrompt {
       struct WalletMeta {
          walletId          @0 : Text;
@@ -113,12 +129,11 @@ struct Notification {
       union {
          unset             @0 : Void;
          checkWalletId     @1 : WalletMeta;
-         getPassphrases    @2 : Void;
-         decryptError      @3 : Void;
-         failure           @4 : Text; #error verbose
-         typeError         @5 : Text;
-         checksumError     @6 : List(ChecksumResult);
-         checksumMismatch  @7 : List(ChecksumResult);
+         decryptError      @2 : Void;
+         failure           @3 : Text; #error verbose
+         typeError         @4 : Text;
+         checksumError     @5 : List(ChecksumResult);
+         checksumMismatch  @6 : List(ChecksumResult);
       }
    }
 
@@ -142,23 +157,25 @@ struct Notification {
       cleanup        @13: Void;
       unlockRequest  @14: List(Text);
       walletProgress @15: WalletProgress;
-      restore        @16: RestorePrompt;
+      walletCreation @16: WalletCreation;
+      restore        @17: RestorePrompt;
    }
 }
 
 struct NotificationReply
 {
    enum RestoreMode {
-      overwrite   @0;
-      merge       @1;
+      overwrite      @0;
+      merge          @1;
    }
 
-   success        @0 : Bool;
-   counter        @1 : UInt32;
+   success           @0 : Bool;
+   counter           @1 : UInt32;
 
    union {
-      restore     @2 : RestoreMode;
-      passphrases @3 : List(Text);
+      unlockRequest  @2 : Text;
+      restore        @3 : RestoreMode;
+      walletCreation @4 : SetPassphraseStruct;
    }
 }
 
@@ -559,14 +576,6 @@ struct UtilsRequest {
 
       label             @3 : Text;
       description       @4 : Text;
-
-      privPassphrase    @5 : Text;
-      privKdfTargetMs   @6 : UInt32;
-      privKdfTargetMB   @7 : UInt32;
-
-      ctrlPassphrase    @8 : Text;
-      ctrlKdfTargetMs   @9 : UInt32;
-      ctrlKdfTargetMB   @10: UInt32;
    }
 
    struct RestoreWalletStruct

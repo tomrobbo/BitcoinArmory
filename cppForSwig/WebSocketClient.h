@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2018-2021, goatpig.                                         //
+//  Copyright (C) 2018-2025, goatpig.                                         //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -22,12 +22,22 @@
 #include "WebSocketMessage.h"
 #include "ArmoryConfig.h"
 #include "DBClientClasses.h"
-//#include "AsyncClient.h" //TODO <-- nuke this
 
 #include "BIP150_151.h"
 #include "AuthorizedPeers.h"
 
 #define CLIENT_AUTH_PEER_FILENAME "client.peers"
+
+namespace Armory
+{
+   namespace Wallets
+   {
+      namespace IO
+      {
+         struct ReadOnlyFileParams;
+      }
+   }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 struct WriteAndReadPacket
@@ -136,7 +146,7 @@ private:
 
 public:
    WebSocketClient(const std::string& addr, const std::string& port,
-      const std::filesystem::path&, const PassphraseLambda&,
+      const Armory::Wallets::IO::ReadOnlyFileParams&,
       bool ephemeralPeers, bool oneWayAuth,
       std::shared_ptr<RemoteCallback> cbPtr);
 

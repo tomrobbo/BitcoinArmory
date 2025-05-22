@@ -22,7 +22,7 @@
 #include "BinaryData.h"
 #include "SecureBinaryData.h"
 #include "EncryptedDB.h"
-#include "PassphraseLambda.h"
+#include "GetPassphrase.h"
 #include "IOHeader.h"
 
 #define CONTROL_DB_NAME "control_db"sv
@@ -183,7 +183,7 @@ namespace Armory
             //header methods
             void openControlDb(void);
             std::shared_ptr<WalletHeader_Control> setupControlDB(
-               const OpenFileParams&);
+               const CreateFileParams&);
             void putHeader(std::shared_ptr<WalletHeader>);
 
             void openDbEnv(bool);
@@ -199,7 +199,8 @@ namespace Armory
             ~WalletDBInterface(void);
 
             //setup
-            void setupEnv(const OpenFileParams&);
+            void createEnv(const CreateFileParams&);
+            void setupEnv(const ReadOnlyFileParams&);
             void shutdown(void);
             void eraseFromDisk(void);
 
@@ -207,8 +208,7 @@ namespace Armory
 
             //headers
             static MasterKeyStruct initWalletHeaderObject(
-               std::shared_ptr<WalletHeader>, SecureBinaryData,
-               const std::chrono::milliseconds&);
+               std::shared_ptr<WalletHeader>, Passphrase::Params&);
             void addHeader(std::shared_ptr<WalletHeader>);
             std::shared_ptr<WalletHeader> getWalletHeader(
                const std::string&) const;
@@ -227,13 +227,13 @@ namespace Armory
                const std::string&);
 
             //utils
-            void lockControlContainer(const PassphraseLambda&);
+            void lockControlContainer(const Passphrase::UnlockFunc&);
             void unlockControlContainer(void);
 
             void changeControlPassphrase(
-               const std::function<SecureBinaryData(void)>& newPassLbd,
-               const PassphraseLambda& passLbd);
-            void eraseControlPassphrase(const PassphraseLambda& passLbd);
+               Passphrase::SetNew&,
+               const Passphrase::UnlockFunc&);
+            void eraseControlPassphrase(const Passphrase::UnlockFunc&);
          };
       }; //namespace IO
    }; //namespace Wallets

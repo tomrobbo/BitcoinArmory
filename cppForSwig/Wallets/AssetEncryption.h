@@ -35,6 +35,11 @@ enum CipherType
 
 namespace Armory
 {
+   namespace Passphrase
+   {
+      class SetNew;
+   }
+
    namespace Wallets
    {
       class AssetWallet;
@@ -50,7 +55,8 @@ namespace Armory
          class CipherException : public std::runtime_error
          {
          public:
-            CipherException(const std::string& msg) : std::runtime_error(msg)
+            CipherException(const std::string& msg) :
+               std::runtime_error(msg)
             {}
          };
 
@@ -261,9 +267,8 @@ namespace Armory
             const SecureBinaryData& getDerivedKey(const KdfId&) const;
 
          public:
-            ClearTextEncryptionKey(SecureBinaryData& key) :
-               rawKey_(std::move(key))
-            {}
+            ClearTextEncryptionKey(SecureBinaryData&);
+            ClearTextEncryptionKey(Passphrase::SetNew&);
 
             void deriveKey(std::shared_ptr<KeyDerivationFunction>);
             EncryptionKeyId getId(const KdfId& kdfid) const;

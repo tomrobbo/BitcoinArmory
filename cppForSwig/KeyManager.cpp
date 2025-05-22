@@ -15,6 +15,7 @@
 #include "EncryptionUtils.h"
 #include "AuthorizedPeers.h"
 #include "TerminalPassphrasePrompt.h"
+#include "Wallets/IOHeader.h"
 
 #define SERVER_FILE "server.peers"
 #define CLIENT_FILE "client.peers"
@@ -112,7 +113,7 @@ int processArgs(std::map<std::string, std::string> args)
       filename = CLIENT_FILE;
    }
 
-   if (filename.size() == 0) {
+   if (filename.empty()) {
       throw std::runtime_error("missing client or server argument!");
    }
 
@@ -139,15 +140,15 @@ int processArgs(std::map<std::string, std::string> args)
    }
 
    //passphrase lbd
-   PassphraseLambda passLbd;
+   Armory::Passphrase::UnlockFunc passLbd;
    if (!noPass) {
       passLbd = TerminalPassphrasePrompt::getLambda("peers db");
    } else {
       passLbd = [](const std::set<EncryptionKeyId>&)->SecureBinaryData
-      { return SecureBinaryData(); };
+      { return {}; };
    }
 
-   AuthorizedPeers authPeers(datadir, filename, passLbd);
+   AuthorizedPeers authPeers(IO::ReadOnlyFileParams{fullpath, passLbd});
 
    /*mutually exclusive args from here on*/
 

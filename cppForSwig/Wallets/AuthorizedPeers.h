@@ -19,7 +19,6 @@
 #include "Wallets.h"
 #include "DBUtils.h"
 #include "ArmoryConfig.h"
-#include "IOHeader.h"
 
 #define PEERS_WALLET_PASSWORD "password"
 #define PEERS_WALLET_BIP32_ACCOUNT 0xFF005618
@@ -30,6 +29,12 @@ namespace Armory
 {
    namespace Wallets
    {
+      namespace IO
+      {
+         struct ReadOnlyFileParams;
+         struct CreateFileParams;
+      };
+
       //////////////////////////////////////////////////////////////////////////
       class PeerFileMissing
       {
@@ -68,10 +73,8 @@ namespace Armory
             std::pair<std::string, unsigned>> peerRootKeys_;
 
       private:
-         void loadWallet(const IO::OpenFileParams&);
-         void createWallet(const std::filesystem::path&, const std::string&,
-            const PassphraseLambda&);
 
+         void loadWallet(const IO::ReadOnlyFileParams&);
          void addPeer(const SecureBinaryData&,
             const std::initializer_list<std::string>&);
          void addPeer(const btc_pubkey&,
@@ -79,8 +82,7 @@ namespace Armory
          void erasePeerRootKey(const SecureBinaryData&);
 
       public:
-         AuthorizedPeers(
-            const std::filesystem::path&, const std::string&, const PassphraseLambda&);
+         AuthorizedPeers(const IO::ReadOnlyFileParams&);
          AuthorizedPeers(void);
 
          const std::map<std::string, btc_pubkey>& getPeerNameMap(void) const;
@@ -132,9 +134,10 @@ namespace Armory
          const btc_pubkey& getOwnPublicKey(void) const;
 
          //takes path to peers db, passphrase lambdas are handled internally
-         static void changeControlPassphrase(const std::string&);
+         static void changeControlPassphrase(const std::filesystem::path&);
          static AuthPeersLambdas getAuthPeersLambdas(
             std::shared_ptr<AuthorizedPeers>);
+         static void createWallet(const IO::CreateFileParams&);
       };
    }; //namespace Wallets
 }; //namespace Armory

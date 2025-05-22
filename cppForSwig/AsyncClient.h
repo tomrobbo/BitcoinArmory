@@ -22,7 +22,7 @@ Handle codec and socketing for armory client
 #include "ArmoryConfig.h"
 #include "WebSocketClient.h"
 #include "SocketWritePayload.h"
-#include "Wallets/PassphraseLambda.h"
+#include "Wallets/GetPassphrase.h"
 
 namespace Armory
 {
@@ -30,6 +30,14 @@ namespace Armory
    {
       class WalletManager;
       class WalletContainer;
+   }
+
+   namespace Wallets
+   {
+      namespace IO
+      {
+         struct ReadOnlyFileParams;
+      }
    }
 }
 
@@ -377,7 +385,7 @@ namespace AsyncClient
       const std::string& getID(void) const { return bdvID_; }
       static std::shared_ptr<BlockDataViewer> getNewBDV(
          const std::string& addr, const std::string& port,
-         const std::filesystem::path& datadir, const PassphraseLambda&,
+         const Armory::Wallets::IO::ReadOnlyFileParams&,
          bool ephemeralPeers, bool oneWayAuth,
          std::shared_ptr<RemoteCallback> callbackPtr);
 

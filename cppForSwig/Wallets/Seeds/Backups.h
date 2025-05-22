@@ -25,11 +25,16 @@ namespace capnp {
 
 namespace Armory
 {
+   namespace Passphrase
+   {
+      struct Params;
+   }
+
    namespace Wallets
    {
       namespace IO
       {
-         struct CreationParams;
+         struct CreateWalletParams;
       }
    }
 
@@ -281,16 +286,14 @@ namespace Armory
       {
          const bool success;
          const bool merge;
-         SecureBinaryData privPass{};
-         SecureBinaryData controlPass{};
+
+         Passphrase::Params passParams;
       };
 
       struct RestoreResult
       {
          std::shared_ptr<Wallets::AssetWallet> wltPtr;
          const bool merge;
-         const SecureBinaryData privPass;
-         const SecureBinaryData controlPass;
       };
 
       ////
@@ -314,7 +317,7 @@ namespace Armory
          //primary restore call
          static RestoreResult restoreFromBackup(
             std::unique_ptr<WalletBackup>, const UserPrompt&,
-            const Wallets::IO::CreationParams&
+            const Wallets::IO::CreateWalletParams&
          );
 
          //seed restore methods

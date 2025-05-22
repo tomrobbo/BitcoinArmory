@@ -42,7 +42,7 @@ WalletDBInterface::~WalletDBInterface()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void WalletDBInterface::setupEnv(const OpenFileParams& params)
+void WalletDBInterface::createEnv(const CreateFileParams& params)
 {
    auto lock = std::unique_lock<mutex>(setupMutex_);
    if (dbEnv_ != nullptr) {
@@ -52,7 +52,24 @@ void WalletDBInterface::setupEnv(const OpenFileParams& params)
    dbCount_ = 2;
 
    //open env for control and meta dbs
-   openDbEnv(params.fileExists);
+   openDbEnv(false);
+
+   //init control db
+   setupControlDB(params);
+   setDbCount(3, false);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void WalletDBInterface::setupEnv(const ReadOnlyFileParams& params)
+{
+   auto lock = std::unique_lock<mutex>(setupMutex_);
+   if (dbEnv_ == nullptr) {
+      path_ = params.filePath;
+      dbCount_ = 2;
+
+      //open env for control and meta dbs
+      openDbEnv(true);
+   }
 
    //open control db
    openControlDb();
@@ -60,16 +77,10 @@ void WalletDBInterface::setupEnv(const OpenFileParams& params)
    //get control header
    bool isNew = false;
    std::shared_ptr<WalletHeader_Control> controlHeader;
-   try {
-      controlHeader = std::dynamic_pointer_cast<WalletHeader_Control>(
-         loadControlHeader());
-      if (controlHeader == nullptr) {
-         throw WalletException("invalid control header");
-      }
-   } catch (const NoEntryInWalletException&) {
-      //no control header, this is a fresh wallet, set it up
-      controlHeader = setupControlDB(params);
-      isNew = true;
+   controlHeader = std::dynamic_pointer_cast<WalletHeader_Control>(
+      loadControlHeader());
+   if (controlHeader == nullptr) {
+      throw WalletException("invalid control header");
    }
 
    //load control decrypted data container
@@ -85,7 +96,7 @@ void WalletDBInterface::setupEnv(const OpenFileParams& params)
    */
 
    //decrypt control seed
-   lockControlContainer(params.controlPassFunc);
+   lockControlContainer(params.unlockFunc);
    auto& rootEncrKey = decryptedData_->getClearTextAssetData(
       controlSeed_.get());
 
@@ -99,16 +110,10 @@ void WalletDBInterface::setupEnv(const OpenFileParams& params)
    }
 
    //load wallet header objects
-   unsigned dbCount;
-   if (!isNew) {
-      loadHeaders();
-      dbCount = headerMap_.size() + 2;
-   } else {
-      dbCount = 3;
-   }
+   loadHeaders();
 
    //set new db count;
-   setDbCount(dbCount, false);
+   setDbCount(headerMap_.size() + 2, false);
 
    //open all dbs listed in header map
    for (auto& headerPtr : headerMap_) {
@@ -193,8 +198,7 @@ void WalletDBInterface::shutdown()
    if (DBIfaceTransaction::hasTx())
       throw WalletInterfaceException("live transactions, cannot shutdown env");
 
-   if (controlDb_ != nullptr)
-   {
+   if (controlDb_ != nullptr) {
       controlDb_->close();
       controlDb_.reset();
    }
@@ -205,8 +209,7 @@ void WalletDBInterface::shutdown()
 
    dbMap_.clear();
 
-   if (dbEnv_ != nullptr)
-   {
+   if (dbEnv_ != nullptr) {
       dbEnv_->close();
       dbEnv_.reset();
    }
@@ -219,10 +222,11 @@ void WalletDBInterface::shutdown()
 void WalletDBInterface::openDB(std::shared_ptr<WalletHeader> headerPtr,
    const SecureBinaryData& encrRootKey, unsigned encrVersion)
 {
-   auto&& dbName = headerPtr->getDbName();
+   auto dbName = headerPtr->getDbName();
    auto iter = dbMap_.find(dbName);
-   if (iter != dbMap_.end())
+   if (iter != dbMap_.end()) {
       return;
+   }
 
    //create db object
    auto dbiPtr = make_unique<DBInterface>(
@@ -248,22 +252,19 @@ const std::filesystem::path& WalletDBInterface::getFilename() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-unique_ptr<DBIfaceTransaction> WalletDBInterface::beginWriteTransaction(
-   const string& dbName)
+std::unique_ptr<DBIfaceTransaction> WalletDBInterface::beginWriteTransaction(
+   const std::string& dbName)
 {
    auto iter = dbMap_.find(dbName);
-   if (iter == dbMap_.end())
-   {
-      if (dbName == CONTROL_DB_NAME)
-      {
-         return make_unique<RawIfaceTransaction>(
+   if (iter == dbMap_.end()) {
+      if (dbName == CONTROL_DB_NAME) {
+         return std::make_unique<RawIfaceTransaction>(
             dbEnv_.get(), controlDb_.get(), true);
       }
-
       throw WalletInterfaceException("invalid db name");
    }
-
-   return make_unique<WalletIfaceTransaction>(this, iter->second.get(), true);
+   return std::make_unique<WalletIfaceTransaction>(
+      this, iter->second.get(), true);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -271,18 +272,14 @@ unique_ptr<DBIfaceTransaction> WalletDBInterface::beginReadTransaction(
    const string& dbName)
 {
    auto iter = dbMap_.find(dbName);
-   if (iter == dbMap_.end())
-   {
-      if (dbName == CONTROL_DB_NAME)
-      {
-         return make_unique<RawIfaceTransaction>(
+   if (iter == dbMap_.end()) {
+      if (dbName == CONTROL_DB_NAME) {
+         return std::make_unique<RawIfaceTransaction>(
             dbEnv_.get(), controlDb_.get(), false);
       }
-
       throw WalletInterfaceException("invalid db name");
    }
-
-   return make_unique<WalletIfaceTransaction>(this, iter->second.get(), false);
+   return std::make_unique<WalletIfaceTransaction>(this, iter->second.get(), false);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -337,8 +334,8 @@ void WalletDBInterface::loadSeed(shared_ptr<WalletHeader> headerPtr)
 
 ////////////////////////////////////////////////////////////////////////////////
 MasterKeyStruct WalletDBInterface::initWalletHeaderObject(
-   std::shared_ptr<WalletHeader> headerPtr, SecureBinaryData passphrase,
-   const std::chrono::milliseconds& unlockTime)
+   std::shared_ptr<WalletHeader> headerPtr,
+   Armory::Passphrase::Params& params)
 {
    /*
    Setup master and top encryption key.
@@ -366,7 +363,7 @@ MasterKeyStruct WalletDBInterface::initWalletHeaderObject(
    setup master key kdf even if we end up not using it, user may
    add a passphrase later
    */
-   mks.kdf_ = std::make_shared<KeyDerivationFunction_Romix>(unlockTime);
+   mks.kdf_ = std::make_shared<KeyDerivationFunction_Romix>(params.unlockMs);
    headerPtr->defaultKdfId_ = mks.kdf_->getId();
 
    /*
@@ -395,9 +392,10 @@ MasterKeyStruct WalletDBInterface::initWalletHeaderObject(
    encrypt master encryption key with passphrase if present, otherwise use
    default key
    */
-   if (!passphrase.empty()) {
+   if (!params.passphrase.empty()) {
       //create encryption key from passphrase and kdf
-      auto topEncryptionKey = std::make_unique<ClearTextEncryptionKey>(passphrase);
+      auto topEncryptionKey = std::make_unique<ClearTextEncryptionKey>(
+         params.passphrase);
       topEncryptionKey->deriveKey(mks.kdf_);
       auto topEncryptionKeyId = topEncryptionKey->getId(mks.kdf_->getId());
 
@@ -457,22 +455,23 @@ MasterKeyStruct WalletDBInterface::initWalletHeaderObject(
 
 ////////////////////////////////////////////////////////////////////////////////
 shared_ptr<WalletHeader_Control> WalletDBInterface::setupControlDB(
-   const OpenFileParams& params)
+   const CreateFileParams& params)
 {
+   openControlDb();
+
    //create control meta object
    auto headerPtr = std::make_shared<WalletHeader_Control>();
    headerPtr->walletID_ = CONTROL_DB_NAME;
-   SecureBinaryData controlPass;
-   if (params.controlPassFunc) {
-      controlPass = params.controlPassFunc({});
-   }
-
-   if (controlPass.empty()) {
+   MasterKeyStruct keyStruct;
+   try {
+      auto paramsCopy = params.setCtrlPassObj.get();
+      keyStruct = std::move(initWalletHeaderObject(headerPtr, paramsCopy));
+   } catch (const std::exception&) {
       LOGWARN << "No control passphrase provided!";
       LOGWARN << "The public data in this wallet will not be encrypted";
+      Armory::Passphrase::Params defaultParams{250ms, 0, {}};
+      keyStruct = std::move(initWalletHeaderObject(headerPtr, defaultParams));
    }
-   auto keyStruct = initWalletHeaderObject(headerPtr,
-      std::move(controlPass), params.controlUnlock);
 
    //setup controlDB decrypted data container
    auto decryptedData = std::make_shared<DecryptedDataContainer>(
@@ -491,7 +490,8 @@ shared_ptr<WalletHeader_Control> WalletDBInterface::setupControlDB(
    This will be the second out of 3 calls to the passphrase lambda during
    wallet creation.
    */
-   decryptedData->setPassphrasePromptLambda(params.controlPassFunc);
+   decryptedData->setPassphrasePromptLambda(
+      params.setCtrlPassObj.getUnlockFunc());
 
    {
       //create encrypted seed object
@@ -510,7 +510,6 @@ shared_ptr<WalletHeader_Control> WalletDBInterface::setupControlDB(
       BinaryWriter seedKey;
       seedKey.put_uint32_t(WALLET_SEED_KEY);
       auto seedVal = encrSeed->serialize();
-      //NOTE: review this, why is there a seed in control db?
       tx->insert(seedKey.getData(), seedVal);
 
       //write meta ptr to disk
@@ -541,15 +540,17 @@ void WalletDBInterface::addHeader(std::shared_ptr<WalletHeader> headerPtr)
    auto lock = unique_lock<mutex>(setupMutex_);
 
    auto iter = headerMap_.find(headerPtr->walletID_);
-   if (iter != headerMap_.end())
+   if (iter != headerMap_.end()) {
       throw WalletInterfaceException("header already in map");
-
-   if (dbMap_.size() + 2 > dbCount_)
+   }
+   if (dbMap_.size() + 2 > dbCount_) {
       throw WalletInterfaceException("dbCount is too low");
+   }
 
-   auto&& dbName = headerPtr->getDbName();
-   if (dbName.size() == 0)
+   auto dbName = headerPtr->getDbName();
+   if (dbName.empty()) {
       throw WalletInterfaceException("empty dbname");
+   }
 
    auto& rootEncrKey =
       decryptedData_->getClearTextAssetData(controlSeed_.get());
@@ -624,22 +625,22 @@ void WalletDBInterface::openDbEnv(bool fileExists)
 void WalletDBInterface::openEnv()
 {
    openDbEnv(true);
-
-   for (auto& dbPtr : dbMap_)
+   for (auto& dbPtr : dbMap_) {
       dbPtr.second->reset(dbEnv_.get());
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 void WalletDBInterface::closeEnv()
 {
-   if (controlDb_ != nullptr)
-   {
+   if (controlDb_ != nullptr) {
       controlDb_->close();
       controlDb_.reset();
    }
 
-   for (auto& dbPtr : dbMap_)
+   for (auto& dbPtr : dbMap_) {
       dbPtr.second->close();
+   }
 
    dbEnv_->close();
    dbEnv_.reset();
@@ -670,11 +671,12 @@ void WalletDBInterface::setDbCount(unsigned count, bool doLock)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void WalletDBInterface::lockControlContainer(const PassphraseLambda& passLbd)
+void WalletDBInterface::lockControlContainer(
+   const Passphrase::UnlockFunc& passLbd)
 {
-   if (controlLock_ != nullptr)
+   if (controlLock_ != nullptr) {
       throw WalletInterfaceException("control container already locked");
-   
+   }
    controlLock_ = make_unique<ReentrantLock>(decryptedData_.get());
    decryptedData_->setPassphrasePromptLambda(passLbd);
 }
@@ -682,17 +684,17 @@ void WalletDBInterface::lockControlContainer(const PassphraseLambda& passLbd)
 ////////////////////////////////////////////////////////////////////////////////
 void WalletDBInterface::unlockControlContainer()
 {
-   if (controlLock_ == nullptr)
+   if (controlLock_ == nullptr) {
       throw WalletInterfaceException("control container isn't locked");
-
+   }
    decryptedData_->resetPassphraseLambda();
    controlLock_.reset();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 void WalletDBInterface::changeControlPassphrase(
-   const std::function<SecureBinaryData(void)>& newPassLbd,
-   const PassphraseLambda& passLbd)
+   Passphrase::SetNew& newPassObj,
+   const Passphrase::UnlockFunc& passLbd)
 {
    try {
       openControlDb();
@@ -741,7 +743,7 @@ void WalletDBInterface::changeControlPassphrase(
    decryptedData_->encryptEncryptionKey(
       masterKeyId,
       currentKdfId, defaultKdfId,
-      newPassLbd
+      newPassObj
    );
 
    //clear the lambda
@@ -752,10 +754,10 @@ void WalletDBInterface::changeControlPassphrase(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void WalletDBInterface::eraseControlPassphrase(const PassphraseLambda& passLbd)
+void WalletDBInterface::eraseControlPassphrase(
+   const Passphrase::UnlockFunc& passLbd)
 {
-   try
-   {
+   try {
       openControlDb();
 
       /*
@@ -763,9 +765,7 @@ void WalletDBInterface::eraseControlPassphrase(const PassphraseLambda& passLbd)
       instantiated with the db's shared_ptr, which is not cleaned up
       after the controldb is shut down.
       */
-   }
-   catch (WalletInterfaceException&)
-   {
+   } catch (const WalletInterfaceException&) {
       //control db is already opened, nothing to do
    }
 

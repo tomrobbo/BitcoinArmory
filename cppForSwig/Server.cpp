@@ -11,6 +11,7 @@
 #include "ArmoryConfig.h"
 #include "BDM_Server.h"
 #include "BIP15x_Handshake.h"
+#include "Wallets/AuthorizedPeers.h"
 
 using namespace Armory::Threading;
 using namespace Armory::Wallets;
@@ -207,14 +208,12 @@ int WebSocketServer::callback(struct lws *wsi,
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-void WebSocketServer::initAuthPeers(const PassphraseLambda& passLbd)
+void WebSocketServer::initAuthPeers(const IO::ReadOnlyFileParams& params)
 {
    //init auth peer object
    auto instance = getInstance();
    if (!Armory::Config::NetworkSettings::ephemeralPeers()) {
-      std::string peerFilename(SERVER_AUTH_PEER_FILENAME);
-      instance->authorizedPeers_ = std::make_shared<AuthorizedPeers>(
-         Armory::Config::getDataDir(), peerFilename, passLbd);
+      instance->authorizedPeers_ = std::make_shared<AuthorizedPeers>(params);
    } else {
       instance->authorizedPeers_ = std::make_shared<AuthorizedPeers>();
    }

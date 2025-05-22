@@ -9,7 +9,7 @@
 
 #include <memory>
 #include "../../SecureBinaryData.h"
-#include "../../Wallets/PassphraseLambda.h"
+#include "../../Wallets/GetPassphrase.h"
 
 namespace Armory
 {
@@ -17,6 +17,11 @@ namespace Armory
    {
       class AssetWallet;
       class AssetWallet_Single;
+
+      namespace IO
+      {
+         struct CreateWalletParams;
+      }
    }
 
    namespace Bridge
@@ -67,8 +72,7 @@ namespace Armory
          LMDBWalletInfo(const std::filesystem::path&,
             std::shared_ptr<Wallets::AssetWallet>);
 
-         void unlockControlHeader(const PassphraseLambda&);
-
+         void unlockControlHeader(const Passphrase::UnlockFunc&);
          const std::string& walletId(void) const override;
          const std::string& name(void) const override;
          std::shared_ptr<Wallets::AssetWallet>&& moveWltPtr(void);
@@ -168,7 +172,8 @@ namespace Armory
          const std::string& getID(void) const;
          const std::string& getLabel(void) const;
          std::shared_ptr<Armory::Wallets::AssetWallet_Single> migrate(
-            const PassphraseLambda&) const;
+            const Passphrase::UnlockFunc&,
+            const Wallets::IO::CreateWalletParams&) const;
 
          //static
          static void verifyChecksum(const BinaryDataRef&, const BinaryDataRef&);
@@ -182,6 +187,10 @@ namespace Armory
 
       public:
          A135FileInfo(std::shared_ptr<Armory135Header>);
+
+         std::shared_ptr<Armory::Wallets::AssetWallet_Single> migrate(
+            const Passphrase::UnlockFunc&,
+            const Wallets::IO::CreateWalletParams&) const;
 
          const std::string& walletId(void) const override;
          const std::string& name(void) const override;

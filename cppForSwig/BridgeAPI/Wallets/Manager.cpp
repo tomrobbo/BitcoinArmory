@@ -190,7 +190,7 @@ void WalletManager::addAllAccounts(std::shared_ptr<Wallets::AssetWallet> wltPtr)
 ////////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<WalletContainer> WalletManager::createNewWallet(
    const SecureBinaryData& extraEntropy,
-   const Wallets::IO::CreationParams& params)
+   const Wallets::IO::CreateWalletParams& params)
 {
    auto root = CryptoPRNG::generateRandom(32);
    if (!extraEntropy.empty()) {
@@ -251,7 +251,7 @@ void WalletManager::deleteWallet(const std::string& wltId)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void WalletManager::loadWallet(const Wallets::IO::OpenFileParams& params)
+void WalletManager::loadWallet(const Wallets::IO::ReadOnlyFileParams& params)
 {
    auto wltPtr = Wallets::AssetWallet::loadMainWalletFromFile(params);
    addAllAccounts(wltPtr);
@@ -285,7 +285,7 @@ WalletManager::listWallets()
    for (const auto& wltPath : walletPaths) {
       try {
          auto wltPtr = Wallets::AssetWallet::loadMainWalletFromFile(
-            Wallets::IO::OpenFileParams{wltPath});
+            Wallets::IO::ReadOnlyFileParams{wltPath, {}});
          walletFiles_.emplace(wltPath.stem().string(),
             std::make_shared<LMDBWalletInfo>(wltPath, wltPtr));
       } catch (const Wallets::Encryption::DecryptedDataContainerException& e) {
@@ -333,7 +333,7 @@ WalletManager::listWallets()
 
 /////////
 void WalletManager::unlockControlHeader(const std::string& path,
-   const PassphraseLambda& lbd)
+   const Passphrase::UnlockFunc& lbd)
 {
    //sanity checks
    if (path.empty() || lbd == nullptr) {
@@ -354,16 +354,42 @@ void WalletManager::unlockControlHeader(const std::string& path,
 }
 
 /////////
+void WalletManager::migrateWallet(const std::string& path,
+   const Passphrase::UnlockFunc& lbd,
+   const Wallets::IO::CreateWalletParams& params)
+{
+   //sanity checks
+   if (path.empty() || lbd == nullptr) {
+      throw std::runtime_error("tried to unlock control header with empty id/lambda");
+   }
+
+   auto iter = walletFiles_.find(path);
+   if (iter == walletFiles_.end()) {
+      throw std::runtime_error("this file is not a known wallet: " + path);
+   }
+
+   auto infoObj = std::dynamic_pointer_cast<A135FileInfo>(iter->second);
+   if (infoObj == nullptr) {
+      throw std::runtime_error("invalid wallet info type");
+   }
+
+   auto wltPtr = infoObj->migrate(lbd, params);
+   auto migratedPath = wltPtr->getDbFilename();
+   walletFiles_.emplace(migratedPath.stem().string(),
+      std::make_shared<LMDBWalletInfo>(migratedPath, wltPtr));
+}
+
+/////////
 bool WalletManager::stageWallet(const std::string& walletId, bool stage)
 {
    for (auto& knownFile : walletFiles_) {
-      if (knownFile.second->walletId() == walletId) {
-         try {
+      try {
+         if (knownFile.second->walletId() == walletId) {
             knownFile.second->setStaged(stage);
             return true;
-         } catch (const std::exception&) {
-            return false;
          }
+      } catch (const std::exception&) {
+         continue;
       }
    }
    return false;

@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2019-2024, goatpig                                          //
+//  Copyright (C) 2019-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -14,9 +14,9 @@
 #include "PassphrasePrompt.h"
 #include "Wallets/Seeds/Backups.h"
 
-
 using namespace Armory;
 using namespace Armory::Bridge;
+using namespace std::chrono_literals;
 
 uint32_t BridgePassphrasePrompt::referenceCounter_ = 1;
 
@@ -37,7 +37,7 @@ Seeds::PromptReply BridgePassphrasePrompt::processFeedRequest(
    if (ids.empty()) {
       //exit condition
       cleanup();
-      return {};
+      return {false};
    }
 
    //cycle the promise & future
@@ -105,11 +105,11 @@ void BridgePassphrasePrompt::cleanup()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-PassphraseLambda BridgePassphrasePrompt::getLambda()
+Passphrase::UnlockFunc BridgePassphrasePrompt::getLambda()
 {
    return [this](const std::set<Wallets::EncryptionKeyId>& ids)->SecureBinaryData
    {
       auto reply = processFeedRequest(ids);
-      return std::move(reply.privPass);
+      return std::move(reply.passParams.passphrase);
    };
 }

@@ -461,7 +461,7 @@ FileUtils::FileCopy::FileCopy(const fs::path& path, size_t offset)
       }
       lseek(fd, offset_, SEEK_SET);
 #endif
-      if (offset_ > size) {
+      if (offset_ >= size) {
          throw std::runtime_error("offset is too large");
       }
 

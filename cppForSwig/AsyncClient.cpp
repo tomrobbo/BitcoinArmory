@@ -367,12 +367,12 @@ void BlockDataViewer::addPublicKey(const SecureBinaryData& pubkey)
 ///////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<BlockDataViewer> BlockDataViewer::getNewBDV(
    const std::string& addr, const std::string& port,
-   const std::filesystem::path& datadir,
-   const PassphraseLambda& passLbd, bool ephemeralPeers, bool oneWayAuth,
+   const Armory::Wallets::IO::ReadOnlyFileParams& params,
+   bool ephemeralPeers, bool oneWayAuth,
    std::shared_ptr<RemoteCallback> callbackPtr)
 {
    //create socket object
-   auto sockptr = std::make_shared<WebSocketClient>(addr, port, datadir, passLbd,
+   auto sockptr = std::make_shared<WebSocketClient>(addr, port, params,
       ephemeralPeers, oneWayAuth, callbackPtr);
 
    //instantiate bdv object

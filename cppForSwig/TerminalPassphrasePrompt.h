@@ -11,7 +11,7 @@
 
 #include "SecureBinaryData.h"
 #include "Wallets/WalletIdTypes.h"
-#include "Wallets/PassphraseLambda.h"
+#include "Wallets/GetPassphrase.h"
 
 class TerminalPassphrasePrompt
 {
@@ -30,13 +30,13 @@ private:
    }
 
    SecureBinaryData prompt(
-      const std::set<Armory::Wallets::EncryptionKeyId>& idSet);
+      const std::set<Armory::Wallets::EncryptionKeyId>&);
    SecureBinaryData promptForPassphrase(
-      const std::set<Armory::Wallets::EncryptionKeyId>& idSet);
-   SecureBinaryData promptNewPass();
+      const std::set<Armory::Wallets::EncryptionKeyId>&);
+   SecureBinaryData promptNewPass(void);
 
    static void setEcho(bool);
 
 public:
-   static PassphraseLambda getLambda(const std::string&);
+   static Armory::Passphrase::UnlockFunc getLambda(const std::string&);
 };

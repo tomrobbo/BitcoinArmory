@@ -14,7 +14,7 @@
 #include "AssetEncryption.h"
 #include "ReentrantLock.h"
 #include "BinaryData.h"
-#include "PassphraseLambda.h"
+#include "GetPassphrase.h"
 
 #define ENCRYPTIONKEY_PREFIX        0xC0
 #define ENCRYPTIONKEY_PREFIX_TEMP   0xCC
@@ -112,7 +112,7 @@ namespace Armory
                std::shared_ptr<EncryptionKey>> encryptedKeys_;
 
          private:
-            PassphraseLambda getPassphraseLambda_;
+            Passphrase::UnlockFunc getPassphraseLambda_;
 
          private:
             std::unique_ptr<ClearTextEncryptionKey> deriveEncryptionKey(
@@ -164,13 +164,13 @@ namespace Armory
             void deleteFromDisk(std::shared_ptr<IO::DBIfaceTransaction>,
                const BinaryData&);
 
-            void setPassphrasePromptLambda(const PassphraseLambda&);
+            void setPassphrasePromptLambda(const Passphrase::UnlockFunc&);
             void resetPassphraseLambda(void);
 
             void encryptEncryptionKey(
                const EncryptionKeyId&,
                const KdfId&, const KdfId&, //kdf in, out
-               const std::function<SecureBinaryData(void)>&, bool replace=true);
+               Passphrase::SetNew&, bool replace=true);
             void eraseEncryptionKey(const EncryptionKeyId&, const KdfId&);
 
             void lockOther(std::shared_ptr<DecryptedDataContainer> other);

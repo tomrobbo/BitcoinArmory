@@ -336,7 +336,7 @@ WalletContainer::getUpdatedAddressMap()
 
 ////////////////////////////////////////////////////////////////////////////////
 std::unique_ptr<Seeds::WalletBackup> WalletContainer::getBackupStrings(
-   const PassphraseLambda& passLbd) const
+   const Passphrase::UnlockFunc& passLbd) const
 {
    auto wltSingle = std::dynamic_pointer_cast<Wallets::AssetWallet_Single>(wallet_);
    if (wltSingle == nullptr) {

@@ -8,7 +8,7 @@
 #pragma once
 
 #include "../Wallets/WalletIdTypes.h"
-#include "../Wallets/PassphraseLambda.h"
+#include "../Wallets/GetPassphrase.h"
 
 namespace AsyncClient
 {
@@ -114,7 +114,7 @@ namespace Armory
          std::map<BinaryData, std::shared_ptr<AddressEntry>> getUpdatedAddressMap();
 
          std::unique_ptr<Seeds::WalletBackup> getBackupStrings(
-            const PassphraseLambda&) const;
+            const Passphrase::UnlockFunc&) const;
 
          void setComment(const std::string&, const std::string&);
          void setLabels(const std::string&, const std::string&);

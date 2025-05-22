@@ -35,9 +35,10 @@ static struct lws_protocols protocols[] =
 
 ////////////////////////////////////////////////////////////////////////////////
 WebSocketClient::WebSocketClient(const std::string& addr,
-   const std::string& port, const std::filesystem::path& datadir,
-   const PassphraseLambda& passLbd, bool ephemeralPeers,
-   bool oneWayAuth, std::shared_ptr<RemoteCallback> cbPtr) :
+   const std::string& port,
+   const Wallets::IO::ReadOnlyFileParams& params,
+   bool ephemeralPeers, bool oneWayAuth,
+   std::shared_ptr<RemoteCallback> cbPtr) :
    SocketPrototype(addr, port, false),
    servName_(addr_ + ":" + port_), callbackPtr_(cbPtr)
 {
@@ -46,9 +47,8 @@ WebSocketClient::WebSocketClient(const std::string& addr,
    contextPtr_.store(0, std::memory_order_release);
 
    if (!ephemeralPeers) {
-      std::string filename(CLIENT_AUTH_PEER_FILENAME);
-      authPeers_ = std::make_shared<Wallets::AuthorizedPeers>(
-         datadir, filename, passLbd);
+      //std::string filename(CLIENT_AUTH_PEER_FILENAME);
+      authPeers_ = std::make_shared<Wallets::AuthorizedPeers>(params);
    } else {
       authPeers_ = std::make_shared<Wallets::AuthorizedPeers>();
    }
