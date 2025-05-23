@@ -1546,7 +1546,6 @@ protected:
 
 };
 
-
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BinaryDataTest, Constructor)
 {
@@ -2448,7 +2447,6 @@ TEST_F(BinaryDataRefTest, Equality)
    EXPECT_FALSE(bdr4_!=bd4_);
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 TEST(BitReadWriteTest, Writer8)
@@ -2484,7 +2482,6 @@ TEST(BitReadWriteTest, Writer8)
    EXPECT_EQ( bitp.getBitsUsed(), 8ULL);
    EXPECT_EQ( bitp.getBinaryData(), READHEX("a3"));
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 TEST(BitReadWriteTest, Writer16)
@@ -2525,7 +2522,6 @@ TEST(BitReadWriteTest, Writer16)
    EXPECT_EQ( bitp.getBitsUsed(), 16ULL);
    EXPECT_EQ( bitp.getBinaryData(), READHEX("a303"));
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 TEST(BitReadWriteTest, Writer32)
@@ -2584,7 +2580,6 @@ TEST(BitReadWriteTest, Reader16)
    EXPECT_EQ(   bitu.getBits(8), 3);
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 TEST(BitReadWriteTest, Reader32)
 {
@@ -2603,7 +2598,7 @@ TEST(BitReadWriteTest, Reader64)
 TEST(BinaryReadWriteTest, Writer)
 {
    BinaryData out = READHEX("01""0100""013200aa""ff00ff00ff00ff00"
-                            "ab""fdffff""fe013200aa""ffff00ff00ff00ff00");
+      "ab""fdffff""fe013200aa""ffff00ff00ff00ff00");
 
    BinaryWriter bw;
    bw.put_uint8_t(1);                       EXPECT_EQ(bw.getSize(), 1ULL);
@@ -2623,7 +2618,7 @@ TEST(BinaryReadWriteTest, Writer)
 TEST(BinaryReadWriteTest, WriterEndian)
 {
    BinaryData out = READHEX("01""0100""013200aa""ff00ff00ff00ff00"
-                            "ab""fdffff""fe013200aa""ffff00ff00ff00ff00");
+      "ab""fdffff""fe013200aa""ffff00ff00ff00ff00");
 
    BinaryWriter bw;
    bw.put_uint8_t(1);                          EXPECT_EQ(bw.getSize(), 1ULL);
@@ -2654,7 +2649,7 @@ TEST(BinaryReadWriteTest, WriterEndian)
 TEST(BinaryReadWriteTest, Reader)
 {
    BinaryData in = READHEX("01""0100""013200aa""ff00ff00ff00ff00"
-                           "ab""fdffff""fe013200aa""ffff00ff00ff00ff00");
+      "ab""fdffff""fe013200aa""ffff00ff00ff00ff00");
 
    BinaryReader br(in);
    EXPECT_EQ(br.get_uint8_t(), 1ULL);
@@ -2681,17 +2676,17 @@ TEST(BinaryReadWriteTest, Reader)
 TEST(BinaryReadWriteTest, ReaderEndian)
 {
    BinaryData in = READHEX("01""0100""013200aa""ff00ff00ff00ff00"
-                           "ab""fdffff""fe013200aa""ffff00ff00ff00ff00");
+      "ab""fdffff""fe013200aa""ffff00ff00ff00ff00");
 
    BinaryReader br(in);
    auto val8 = br.get_uint8_t();
-   EXPECT_EQ(val8, 1);                       
+   EXPECT_EQ(val8, 1);
 
    auto val16 = br.get_uint16_t(LE);
-   EXPECT_EQ(val16, 1);   
+   EXPECT_EQ(val16, 1);
 
    auto val32 = br.get_uint32_t(LE);
-   EXPECT_EQ(val32, 0xaa003201);   
+   EXPECT_EQ(val32, 0xaa003201);
 
    auto val64 = br.get_uint64_t(LE);
    EXPECT_EQ(val64, 0x00ff00ff00ff00ffULL);
@@ -3165,7 +3160,6 @@ TEST_F(BtcUtilsTest, TxOutScriptID_Multisig)
    EXPECT_EQ(BtcUtils::getTxOutScrAddr(script, scrType), unique );
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BtcUtilsTest, TxOutScriptID_MultiList)
 {
@@ -3240,7 +3234,6 @@ TEST_F(BtcUtilsTest, TxInScriptID_StdCompr)
    EXPECT_EQ(BtcUtils::getTxInAddr(script, prevHash, scrType), a160);
    EXPECT_EQ(BtcUtils::getTxInAddrFromType(script,  scrType), a160);
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BtcUtilsTest, TxInScriptID_Coinbase)
@@ -3318,7 +3311,6 @@ TEST_F(BtcUtilsTest, TxInScriptID_SpendMultisig)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BtcUtilsTest, TxInScriptID_SpendP2SH)
 {
-
    // Spending P2SH output as above:  fd16d6bbf1a3498ca9777b9d31ceae883eb8cb6ede1fafbdd218bae107de66fe (TxIn: 1, 219 B)
    // Leading 0x00 byte is required due to a bug in OP_CHECKMULTISIG
    BinaryData script = READHEX(
@@ -4259,7 +4251,6 @@ TEST_F(StoredBlockObjTest, SHeaderUnserialize)
    EXPECT_EQ(   sbh_.stxMap_.size(), 0ULL);
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(StoredBlockObjTest, SHeaderDBSerFull_H)
 {
@@ -4283,9 +4274,6 @@ TEST_F(StoredBlockObjTest, SHeaderDBSerFull_B1)
 {
    // ARMORY_DB_FULL means no merkle string (cause all Tx are in the DB
    // so the merkle tree would be redundant.
-//    DBUtils::setArmoryDbType(ARMORY_DB_FULL);
-//    DBUtils::setDbPruneType(DB_PRUNE_NONE);
-
    sbh_.blockHeight_      = 65535;
    sbh_.duplicateID_      = 1;
    sbh_.merkle_           = READHEX("deadbeef");
@@ -4415,7 +4403,6 @@ TEST_F(StoredBlockObjTest, STxUnserUnfrag)
    EXPECT_EQ(   stx.stxoMap_[0].txOutIndex_, 0);
    EXPECT_EQ(   stx.stxoMap_[1].txOutIndex_, 1);
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(StoredBlockObjTest, STxUnserFragged)
@@ -4600,9 +4587,6 @@ TEST_F(StoredBlockObjTest, STxOutUnserialize)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(StoredBlockObjTest, STxOutSerDBValue_1)
 {
-//    DBUtils::setArmoryDbType(ARMORY_DB_FULL);
-//    DBUtils::setDbPruneType(DB_PRUNE_NONE);
-
    StoredTxOut stxo0;
 
    stxo0.unserialize(rawTxOut0_);
@@ -4623,9 +4607,6 @@ TEST_F(StoredBlockObjTest, STxOutSerDBValue_1)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(StoredBlockObjTest, STxOutSerDBValue_2)
 {
-//    DBUtils::setArmoryDbType(ARMORY_DB_FULL);
-//    DBUtils::setDbPruneType(DB_PRUNE_NONE);
-
    StoredTxOut stxo0;
    stxo0.unserialize(rawTxOut0_);
    stxo0.txVersion_ = 1;
@@ -4645,9 +4626,6 @@ TEST_F(StoredBlockObjTest, STxOutSerDBValue_2)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(StoredBlockObjTest, STxOutSerDBValue_3)
 {
-//    DBUtils::setArmoryDbType(ARMORY_DB_FULL);
-//    DBUtils::setDbPruneType(DB_PRUNE_NONE);
-
    StoredTxOut stxo0;
    stxo0.unserialize(rawTxOut0_);
    stxo0.txVersion_ = 1;
@@ -4668,7 +4646,7 @@ TEST_F(StoredBlockObjTest, STxOutSerDBValue_3)
 TEST_F(StoredBlockObjTest, STxOutUnserDBValue_1)
 {
    BinaryData input = READHEX( "0400ac4c8bd5000000001976a9148dce8946f1c7763b"
-                               "b60ea5cf16ef514cbed0633b88ac");
+      "b60ea5cf16ef514cbed0633b88ac");
    StoredTxOut stxo;
    stxo.unserializeDBValue(input);
 
@@ -4688,8 +4666,8 @@ TEST_F(StoredBlockObjTest, STxOutUnserDBValue_1)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(StoredBlockObjTest, STxOutUnserDBValue_2)
 {
-   BinaryData input = READHEX( "0500ac4c8bd5000000001976a9148dce8946f1c7763b"
-                               "b60ea5cf16ef514cbed0633b88ac01a086017f000f00");
+   BinaryData input = READHEX("0500ac4c8bd5000000001976a9148dce8946f1c7763b"
+      "b60ea5cf16ef514cbed0633b88ac01a086017f000f00");
    StoredTxOut stxo;
    stxo.unserializeDBValue(input);
 
@@ -4709,8 +4687,8 @@ TEST_F(StoredBlockObjTest, STxOutUnserDBValue_2)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(StoredBlockObjTest, STxOutUnserDBValue_3)
 {
-   BinaryData input = READHEX( "0680ac4c8bd5000000001976a9148dce8946f1c7763b"
-                               "b60ea5cf16ef514cbed0633b88ac");
+   BinaryData input = READHEX("0680ac4c8bd5000000001976a9148dce8946f1c7763b"
+      "b60ea5cf16ef514cbed0633b88ac");
    StoredTxOut stxo;
    stxo.unserializeDBValue(input);
 
@@ -4743,15 +4721,12 @@ TEST_F(StoredBlockObjTest, SHeaderFullBlock)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(StoredBlockObjTest, SUndoDataSer)
 {
-//    DBUtils::setArmoryDbType(ARMORY_DB_FULL);
-//    DBUtils::setDbPruneType(DB_PRUNE_NONE);
-
    BinaryData arbHash  = READHEX("11112221111222111122222211112222"
-                                 "11112221111222111122211112221111");
+      "11112221111222111122211112221111");
    BinaryData op0_str  = READHEX("aaaabbbbaaaabbbbaaaabbbbaaaabbbb"
-                                 "aaaabbbbaaaabbbbaaaabbbbaaaabbbb");
+      "aaaabbbbaaaabbbbaaaabbbbaaaabbbb");
    BinaryData op1_str  = READHEX("ffffbbbbffffbbbbffffbbbbffffbbbb"
-                                 "ffffbbbbffffbbbbffffbbbbffffbbbb");
+      "ffffbbbbffffbbbbffffbbbbffffbbbb");
 
    
    StoredUndoData sud;
@@ -4804,29 +4779,16 @@ TEST_F(StoredBlockObjTest, SUndoDataSer)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(StoredBlockObjTest, SUndoDataUnser)
 {
-//    DBUtils::setArmoryDbType(ARMORY_DB_FULL);
-//    DBUtils::setDbPruneType(DB_PRUNE_NONE);
-
    BinaryData arbHash  = READHEX("11112221111222111122222211112222"
-                                 "11112221111222111122211112221111");
+      "11112221111222111122211112221111");
    BinaryData op0_str  = READHEX("aaaabbbbaaaabbbbaaaabbbbaaaabbbb"
-                                 "aaaabbbbaaaabbbbaaaabbbbaaaabbbb");
+      "aaaabbbbaaaabbbbaaaabbbbaaaabbbb");
    BinaryData op1_str  = READHEX("ffffbbbbffffbbbbffffbbbbffffbbbb"
-                                 "ffffbbbbffffbbbbffffbbbbffffbbbb");
+      "ffffbbbbffffbbbbffffbbbbffffbbbb");
    OutPoint op0(op0_str, 1);
    OutPoint op1(op1_str, 2);
 
-   //BinaryData sudToUnser = READHEX( 
-      //"1111222111122211112222221111222211112221111222111122211112221111"
-      //"0200000024111122211112221111222222111122221111222111122211112221"
-      //"111222111105000000ac4c8bd5000000001976a9148dce8946f1c7763bb60ea5"
-      //"cf16ef514cbed0633b88ac241111222111122211112222221111222211112221"
-      //"11122211112221111222111105000000002f6859000000001976a9146a59ac0e"
-      //"8f553f292dfe5e9f3aaa1da93499c15e88ac02000000aaaabbbbaaaabbbbaaaa"
-      //"bbbbaaaabbbbaaaabbbbaaaabbbbaaaabbbbaaaabbbb01000000ffffbbbbffff"
-      //"bbbbffffbbbbffffbbbbffffbbbbffffbbbbffffbbbbffffbbbb02000000");
-
-   BinaryData sudToUnser = READHEX( 
+   BinaryData sudToUnser = READHEX(
       "1111222111122211112222221111222211112221111222111122211112221111"
       "02000000240186a0020011000511112221111222111122222211112222111122"
       "2111122211112221111222111105000000ac4c8bd5000000001976a9148dce89"
@@ -4961,11 +4923,11 @@ TEST_F(StoredBlockObjTest, SHeadHgtListSer)
    baseHHL.height_ = 123000;
    baseHHL.dupAndHashList_.resize(0);
    BinaryData hash0 = READHEX("aaaabbbbaaaabbbbaaaabbbbaaaabbbb"
-                              "aaaabbbbaaaabbbbaaaabbbbaaaabbbb");
+      "aaaabbbbaaaabbbbaaaabbbbaaaabbbb");
    BinaryData hash1 = READHEX("2222bbbb2222bbbb2222bbbb2222bbbb"
-                              "2222bbbb2222bbbb2222bbbb2222bbbb");
+      "2222bbbb2222bbbb2222bbbb2222bbbb");
    BinaryData hash2 = READHEX("2222ffff2222ffff2222ffff2222ffff"
-                              "2222ffff2222ffff2222ffff2222ffff");
+      "2222ffff2222ffff2222ffff2222ffff");
 
    uint8_t dup0 = 0;
    uint8_t dup1 = 1;
@@ -5020,7 +4982,6 @@ TEST_F(StoredBlockObjTest, SHeadHgtListSer)
    expectOut.put_uint8_t(dup2); expectOut.put_BinaryData(hash2);
    EXPECT_EQ(testHHL.serializeDBValue(), expectOut.getData());
 
-
    // Test writing with three entries, with preferred
    expectOut.reset();
    testHHL = baseHHL;
@@ -5039,11 +5000,11 @@ TEST_F(StoredBlockObjTest, SHeadHgtListSer)
 TEST_F(StoredBlockObjTest, SHeadHgtListUnser)
 {
    BinaryData hash0 = READHEX("aaaabbbbaaaabbbbaaaabbbbaaaabbbb"
-                              "aaaabbbbaaaabbbbaaaabbbbaaaabbbb");
+      "aaaabbbbaaaabbbbaaaabbbbaaaabbbb");
    BinaryData hash1 = READHEX("2222bbbb2222bbbb2222bbbb2222bbbb"
-                              "2222bbbb2222bbbb2222bbbb2222bbbb");
+      "2222bbbb2222bbbb2222bbbb2222bbbb");
    BinaryData hash2 = READHEX("2222ffff2222ffff2222ffff2222ffff"
-                              "2222ffff2222ffff2222ffff2222ffff");
+      "2222ffff2222ffff2222ffff2222ffff");
 
    vector<BinaryData> tests;
    tests.push_back( READHEX(
@@ -6653,12 +6614,12 @@ protected:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(KdfTests, Romix)
+TEST_F(KdfTests, Romix_TargetTime)
 {
    auto targetUnlock = 2000ms;
 
    //create a KDF object
-   KeyDerivationFunction_Romix kdfRom(targetUnlock);
+   KeyDerivationFunction_Romix kdfRom(targetUnlock, 0);
    EXPECT_GE(kdfRom.memTarget(), 8092);
 
    //derive key with it, check it takes over 2sec
@@ -6714,6 +6675,69 @@ TEST_F(KdfTests, Romix)
       EXPECT_LE(diff.count(), targetUnlock.count() + 1000);
    }
    kdfRom3.prettyPrint();
+}
+
+////////
+TEST_F(KdfTests, Romix_TargetMemory)
+{
+   //128MB target, no time target
+   KeyDerivationFunction_Romix kdfRom(0ms, 128);
+   EXPECT_EQ(kdfRom.memTarget(), 128 * 1024 * 1024);
+
+   auto keyToDerive = SecureBinaryData::fromString("0123456789AB");
+   {
+      auto start = chrono::system_clock::now();
+      auto derivedKey = kdfRom.deriveKey(keyToDerive);
+      auto end = chrono::system_clock::now();
+
+      EXPECT_NE(derivedKey, keyToDerive);
+      auto diff = end - start;
+      EXPECT_GE(diff, 2000ms) << diff.count();
+   }
+
+   //4MB target and 2000ms target
+   KeyDerivationFunction_Romix kdfRom2(2000ms, 4);
+   EXPECT_GE(kdfRom2.memTarget(), 4 * 1024 * 1024);
+
+   {
+      auto start = chrono::system_clock::now();
+      auto derivedKey = kdfRom2.deriveKey(keyToDerive);
+      auto end = chrono::system_clock::now();
+
+      EXPECT_NE(derivedKey, keyToDerive);
+      auto diff = end - start;
+      EXPECT_GE(diff, 2000ms) << diff.count();
+      EXPECT_LE(diff, 3000ms) << diff.count();
+   }
+
+   //16MB target and 2000ms target
+   KeyDerivationFunction_Romix kdfRom3(2000ms, 16);
+   EXPECT_GE(kdfRom3.memTarget(), 16 * 1024 * 1024);
+
+   {
+      auto start = chrono::system_clock::now();
+      auto derivedKey = kdfRom3.deriveKey(keyToDerive);
+      auto end = chrono::system_clock::now();
+
+      EXPECT_NE(derivedKey, keyToDerive);
+      auto diff = end - start;
+      EXPECT_GE(diff, 2000ms) << diff.count();
+      EXPECT_LE(diff, 4000ms) << diff.count();
+   }
+
+   //512MB target, no time target
+   KeyDerivationFunction_Romix kdfRom4(0ms, 512);
+   EXPECT_EQ(kdfRom4.memTarget(), 256 * 1024 * 1024);
+
+   {
+      auto start = chrono::system_clock::now();
+      auto derivedKey = kdfRom4.deriveKey(keyToDerive);
+      auto end = chrono::system_clock::now();
+
+      EXPECT_NE(derivedKey, keyToDerive);
+      auto diff = end - start;
+      EXPECT_GE(diff, 4000ms) << diff.count();
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

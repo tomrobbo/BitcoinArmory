@@ -363,7 +363,8 @@ MasterKeyStruct WalletDBInterface::initWalletHeaderObject(
    setup master key kdf even if we end up not using it, user may
    add a passphrase later
    */
-   mks.kdf_ = std::make_shared<KeyDerivationFunction_Romix>(params.unlockMs);
+   mks.kdf_ = std::make_shared<KeyDerivationFunction_Romix>(
+      params.unlockMs, params.memTargetMB);
    headerPtr->defaultKdfId_ = mks.kdf_->getId();
 
    /*

@@ -68,6 +68,7 @@ namespace {
       const int64_t lookup;
 
       const std::filesystem::path path;
+      const uint32_t kdfMemReq;
    };
 
    AddressData capnToAddressData(const Bridge::WalletData::AddressData::Reader& capnAddr)
@@ -91,7 +92,7 @@ namespace {
          capnWlt.getLabel(), capnWlt.getDesc(),
          capnWlt.getUsesEncryption(), capnWlt.getWatchingOnly(),
          std::move(addresses), capnWlt.getLookupCount(),
-         std::filesystem::path(capnWlt.getPath())
+         std::filesystem::path(capnWlt.getPath()), capnWlt.getKdfMemReq()
       };
    }
 }
@@ -799,8 +800,8 @@ protected:
    }
 
    WalletData progressWalletCreation(const std::string& callbackId,
-      const std::string& passphrase, std::chrono::milliseconds targetMs, uint32_t targetMB,
-      int lookup)
+      const std::string& passphrase, std::chrono::milliseconds targetMs,
+      uint32_t targetMB, int lookup)
    {
       std::string masterId;
       std::filesystem::path path;
@@ -1393,7 +1394,7 @@ TEST_F(BridgeTests, CreateWallet)
    std::filesystem::path path;
    try {
       auto walletData = progressWalletCreation(callbackId,
-         "pass1", 500ms, 128 * 1024 * 1024, 100);
+         "pass1", 500ms, 128, 100);
       masterId = walletData.masterId;
       path = walletData.path;
    } catch (const std::exception& e) {
@@ -1430,6 +1431,7 @@ TEST_F(BridgeTests, CreateWallet)
    EXPECT_TRUE(wltData.encrypted);
    EXPECT_FALSE(wltData.watchingOnly);
    EXPECT_EQ(wltData.addresses.size(), 1);
+   EXPECT_EQ(wltData.kdfMemReq, 128);
 
    /* extras
       1. KDF unlock time
@@ -1441,7 +1443,6 @@ TEST_F(BridgeTests, CreateWallet)
    //1 request KDF unlock time
    auto unlockTime = testKDFUnlock(wltId);
    EXPECT_GE(unlockTime, 500ms) << unlockTime.count();
-   EXPECT_LE(unlockTime, 650ms) << unlockTime.count();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

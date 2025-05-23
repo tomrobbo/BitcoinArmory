@@ -59,40 +59,32 @@ const SecureBinaryData& KdfRomix::getSalt() const
 
 ////////////////////////////////////////////////////////////////////////////////
 void KdfRomix::computeKdfParams(
-   const std::chrono::milliseconds& targetCompute,
-   uint32_t maxMemReqts, bool verbose)
+   std::chrono::milliseconds targetCompute,
+   uint32_t minMemReqtsB, bool verbose)
 {
    // Create a random salt, even though this is probably unnecessary;
    // the variation in numIter and memReqts is probably effective enough
    salt_ = CryptoPRNG::generateRandom(32);
 
-   // If target compute is 0s, then this method really only generates
-   // a random salt, and sets the other params to default minimum.
-   if (targetCompute <= 4ms) {
-      numIterations_ = 1;
-      memoryReqtBytes_ = 1024;
-      return;
-   }
-
-   // Here, we pick the largest memory reqt that allows the executing system
-   // to compute the KDF is less than the target time. A maximum can be
-   // specified, in case the target system is likely to be memory-limited
-   // more than compute-speed limited
-
    //12 bytes test key
    auto testKey = SecureBinaryData::fromString("- Test Key -");
 
-   // Start the search for a memory value at 1kB
-   memoryReqtBytes_ = 1024;
-   std::chrono::milliseconds approx{0};
-   while (approx <= targetCompute / 4 && memoryReqtBytes_ < maxMemReqts) {
-      memoryReqtBytes_ *= 2;
-      sequenceCount_ = memoryReqtBytes_ / hashOutputBytes;
+   // Start the search for a memory value at 1kB or higher
+   memoryReqtBytes_ = std::max(minMemReqtsB, uint32_t(DEFAULT_KDF_START_MEMORY_B));
+   memoryReqtBytes_ = std::min(memoryReqtBytes_, uint32_t(KDF_MAX_MEMORY_B));
 
+   std::chrono::milliseconds approx{0};
+   while (true) {
+      sequenceCount_ = memoryReqtBytes_ / hashOutputBytes;
       auto start = std::chrono::system_clock::now();
       testKey = DeriveKey_OneIter(testKey);
       auto end = std::chrono::system_clock::now();
       approx = std::chrono::duration_cast<std::chrono::milliseconds>(end-start);
+
+      if (approx > targetCompute / 4 || memoryReqtBytes_ >= KDF_MAX_MEMORY_B) {
+         break;
+      }
+      memoryReqtBytes_ *= 2;
    }
 
    // Recompute here, in case we didn't enter the search above
@@ -117,7 +109,6 @@ void KdfRomix::computeKdfParams(
       }
       numTest *= 2;
    }
-
 
    uint64_t perIterMSec = allIters.count() / numTest;
    numIterations_ = (uint32_t)(targetCompute.count() / (perIterMSec + 1));
@@ -303,15 +294,15 @@ std::shared_ptr<KeyDerivationFunction> KeyDerivationFunction::deserialize(
 // KeyDerivationFunction_Romix
 ////////////////////////////////////////////////////////////////////////////////
 KeyDerivationFunction_Romix::KeyDerivationFunction_Romix(
-   const std::chrono::milliseconds& unlockTime) :
-   KeyDerivationFunction(), salt_((initialize(unlockTime)))
+   const std::chrono::milliseconds& unlockTime, uint32_t memTargetMB) :
+   KeyDerivationFunction(), salt_(initialize(unlockTime, memTargetMB))
 {}
 
 ////
 KeyDerivationFunction_Romix::KeyDerivationFunction_Romix(
-   unsigned iterations, unsigned memTarget, SecureBinaryData salt) :
+   unsigned iterations, unsigned memTargetBytes, SecureBinaryData salt) :
    KeyDerivationFunction(),
-   iterations_(iterations), memTarget_(memTarget), salt_(std::move(salt))
+   iterations_(iterations), memTargetBytes_(memTargetBytes), salt_(std::move(salt))
 {}
 
 ////
@@ -324,7 +315,7 @@ KdfId KeyDerivationFunction_Romix::computeID() const
    BinaryWriter bw;
    bw.put_BinaryData(salt_);
    bw.put_uint32_t(iterations_);
-   bw.put_uint32_t(memTarget_);
+   bw.put_uint32_t(memTargetBytes_);
 
    BinaryData bd(32);
    CryptoSHA2::getHash256(bw.getData(), bd.getPtr());
@@ -333,12 +324,12 @@ KdfId KeyDerivationFunction_Romix::computeID() const
 
 ////////////////////////////////////////////////////////////////////////////////
 BinaryData KeyDerivationFunction_Romix::initialize(
-   const std::chrono::milliseconds& unlockTime)
+   const std::chrono::milliseconds& unlockTime, uint32_t memTargetMB)
 {
    KdfRomix kdf;
-   kdf.computeKdfParams(unlockTime);
+   kdf.computeKdfParams(unlockTime, memTargetMB * 1024 * 1024);
    iterations_ = kdf.getNumIterations();
-   memTarget_ = kdf.getMemoryReqtBytes();
+   memTargetBytes_ = kdf.getMemoryReqtBytes();
    return kdf.getSalt();
 }
 
@@ -346,7 +337,7 @@ BinaryData KeyDerivationFunction_Romix::initialize(
 SecureBinaryData KeyDerivationFunction_Romix::deriveKey(
    const SecureBinaryData& rawKey) const
 {
-   KdfRomix kdfObj{memTarget_, iterations_, salt_};
+   KdfRomix kdfObj{memTargetBytes_, iterations_, salt_};
    return kdfObj.DeriveKey(rawKey);
 }
 
@@ -357,7 +348,7 @@ BinaryData KeyDerivationFunction_Romix::serialize() const
    bw.put_uint32_t(KDF_ROMIX_VERSION);
    bw.put_uint16_t(KDF_ROMIX_PREFIX);
    bw.put_uint32_t(iterations_);
-   bw.put_uint32_t(memTarget_);
+   bw.put_uint32_t(memTargetBytes_);
    bw.put_var_int(salt_.getSize());
    bw.put_BinaryData(salt_);
 
@@ -386,14 +377,14 @@ bool KeyDerivationFunction_Romix::isSame(const KeyDerivationFunction* kdf) const
    }
 
    return iterations_ == kdfromix->iterations_ &&
-      memTarget_ == kdfromix->memTarget_ &&
+      memTargetBytes_ == kdfromix->memTargetBytes_ &&
       salt_ == kdfromix->salt_;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 unsigned KeyDerivationFunction_Romix::memTarget() const
 {
-   return memTarget_;
+   return memTargetBytes_;
 }
 
 ////////
@@ -407,7 +398,7 @@ void KeyDerivationFunction_Romix::prettyPrint() const
 {
    std::cout << "KDF Parameters:" << std::endl;
    std::cout << "   HashFunction : " << "sha512" << std::endl;
-   std::cout << "   Memory/thread: " << memTarget_ << " bytes" << std::endl;
+   std::cout << "   Memory/thread: " << memTargetBytes_ << " bytes" << std::endl;
    std::cout << "   NumIterations: " << iterations_ << std::endl;
    std::cout << "   Salt         : " << salt_.toHexStr() << std::endl;
 }

@@ -197,14 +197,13 @@ namespace
       bool usesEncryption = wallet->isMasterRecordEncrypted();
       capnWallet.setUsesEncryption(usesEncryption);
       if (usesEncryption) {
-         uint32_t kdfMem = 0;
          auto kdfPtr = wallet->getDefaultKdf();
          auto kdfRomix = std::dynamic_pointer_cast<
             Wallets::Encryption::KeyDerivationFunction_Romix>(kdfPtr);
          if (kdfRomix != nullptr) {
-            kdfMem = kdfRomix->memTarget();
+            uint32_t kdfMem = kdfRomix->memTarget() / 1024 / 1024;
+            capnWallet.setKdfMemReq(kdfMem);
          }
-         capnWallet.setKdfMemReq(kdfMem);
       }
 
       /* comments */
@@ -1566,7 +1565,8 @@ void CppBridge::createWallet(SecureBinaryData extraEntropy,
 
    auto paramsCopy = std::make_unique<Wallets::IO::CreateWalletParams>(
       params.folder,
-      Passphrase::SetNew{setPassFunc}, Passphrase::SetNew(),
+      Passphrase::SetNew{setPassFunc},
+      Passphrase::SetNew(250ms, 0, SecureBinaryData{}),
       getWalletProgressLbd(this, callbackId),
       params.lookup, params.label, params.description
    );

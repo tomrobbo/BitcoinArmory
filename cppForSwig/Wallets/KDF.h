@@ -17,12 +17,19 @@
 #include "SecureBinaryData.h"
 #include "WalletIdTypes.h"
 
-// We will look for a high memory value to use in the KDF
-// But as a safety check, we should probably put a cap
-// on how much memory the KDF can use -- 32 MB is good
-// If a KDF uses 32 MB of memory, it is undeniably easier
-// to compute on a CPU than a GPU.
-#define DEFAULT_KDF_MAX_MEMORY 128*1024*1024
+/* We will look for a high memory value to use in the KDF
+   But as a safety check, we should probably put a cap
+   on how much memory the KDF can use -- 32 MB is good
+   If a KDF uses 32 MB of memory, it is undeniably easier
+   to compute on a CPU than a GPU.
+
+Update:
+   Set the ceiling to 256MB. computeKdfParams now takes a floor value
+   and caps at the ceiling
+*/
+
+#define DEFAULT_KDF_START_MEMORY_B 1024
+#define KDF_MAX_MEMORY_B 256 * 1024 * 1024
 
 namespace Armory
 {
@@ -57,8 +64,8 @@ namespace Armory
             KdfRomix(void);
             KdfRomix(uint32_t, uint32_t, const SecureBinaryData&);
 
-            void computeKdfParams(const std::chrono::milliseconds&,
-               uint32_t maxMemReqtsBytes=DEFAULT_KDF_MAX_MEMORY,
+            void computeKdfParams(std::chrono::milliseconds,
+               uint32_t maxMemReqtsBytes,
                bool verbose=false);
             void usePrecomputedKdfParams(uint32_t, uint32_t,
                const SecureBinaryData&);
@@ -100,17 +107,18 @@ namespace Armory
          private:
             mutable KdfId id_;
             unsigned iterations_;
-            unsigned memTarget_;
+            unsigned memTargetBytes_;
 
             //NOTE: consider cycling salt per kdf, even though this is likely unnecessary
             const BinaryData salt_;
 
          private:
             KdfId computeID(void) const;
-            BinaryData initialize(const std::chrono::milliseconds&);
+            BinaryData initialize(const std::chrono::milliseconds&, uint32_t);
 
          public:
-            KeyDerivationFunction_Romix(const std::chrono::milliseconds&);
+            KeyDerivationFunction_Romix(const std::chrono::milliseconds&,
+               uint32_t memTargetMB/*=DEFAULT_KDF_START_MEMORY_MB*/);
             KeyDerivationFunction_Romix(unsigned, unsigned, SecureBinaryData);
             ~KeyDerivationFunction_Romix(void) override;
 
