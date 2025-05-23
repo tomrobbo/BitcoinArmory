@@ -1515,7 +1515,8 @@ bool RestorePrompt::needsReply() const
 {
    switch (promptType)
    {
-      case RestorePromptType::Passphrases:
+      case RestorePromptType::ControlPassphrase:
+      case RestorePromptType::PrivatePassphrase:
       case RestorePromptType::Id:
          return true;
 

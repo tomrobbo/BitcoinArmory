@@ -833,6 +833,9 @@ protected:
                {
                   case Bridge::Notification::WalletCreation::SET_CTRL_PASS:
                   {
+                     if (notifCount++ != 1) {
+                        throw std::runtime_error("count != 1");
+                     }
                      capnp::MallocMessageBuilder message;
                      auto toBridge = message.initRoot<Bridge::ToBridge>();
                      auto notifReply = toBridge.initNotification();
@@ -849,6 +852,9 @@ protected:
 
                   case Bridge::Notification::WalletCreation::SET_PRIV_PASS:
                   {
+                     if (notifCount++ != 3) {
+                        throw std::runtime_error("count != 3");
+                     }
                      capnp::MallocMessageBuilder message;
                      auto toBridge = message.initRoot<Bridge::ToBridge>();
                      auto notifReply = toBridge.initNotification();
@@ -886,8 +892,8 @@ protected:
 
                   case Bridge::Notification::WalletProgress::INIT_FILE:
                   {
-                     if (notifCount++ != 1) {
-                        throw std::runtime_error("count != 1");
+                     if (notifCount++ != 2) {
+                        throw std::runtime_error("count != 2");
                      }
                      masterId = wltNotif.getInitFile();
                      break;
@@ -895,8 +901,8 @@ protected:
 
                   case Bridge::Notification::WalletProgress::READ_FILE:
                   {
-                     if (notifCount++ != 2) {
-                        throw std::runtime_error("count != 2");
+                     if (notifCount++ != 4) {
+                        throw std::runtime_error("count != 4");
                      }
                      if (wltNotif.getReadFile() != masterId) {
                         throw std::runtime_error("masterId mismatch");
@@ -906,8 +912,8 @@ protected:
 
                   case Bridge::Notification::WalletProgress::CREATE_ACCOUNT:
                   {
-                     if (notifCount++ != 3) {
-                        throw std::runtime_error("count != 3");
+                     if (notifCount++ != 5) {
+                        throw std::runtime_error("count != 5");
                      }
                      EXPECT_EQ(wltNotif.getCreateAccount(), "Armory Legacy");
                      break;
@@ -915,8 +921,8 @@ protected:
 
                   case Bridge::Notification::WalletProgress::EXTEND_CHAIN:
                   {
-                     if (notifCount++ != 4) {
-                        throw std::runtime_error("count != 4");
+                     if (notifCount++ != 6) {
+                        throw std::runtime_error("count != 6");
                      }
                      auto extendNotif = wltNotif.getExtendChain();
                      EXPECT_EQ(extendNotif.getTotal(), lookup);
@@ -941,7 +947,7 @@ protected:
          }
       }
 
-      if (notifCount != 5) {
+      if (notifCount != 7) {
          throw std::runtime_error("unexpected notif count");
       }
 

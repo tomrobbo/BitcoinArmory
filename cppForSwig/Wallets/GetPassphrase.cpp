@@ -71,7 +71,7 @@ const Params& SetNew::get() const
       }
 
       params_ = std::move(setNewPassphrase_());
-      if (params_->passphrase.empty()) {
+      if (params_ == nullptr || params_->passphrase.empty()) {
          throw std::runtime_error("passphrase was not set");
       }
    }

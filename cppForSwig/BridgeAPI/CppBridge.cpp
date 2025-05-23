@@ -442,6 +442,50 @@ namespace
             return WalletBackup::Type::UNKNOWN;
       }
    }
+
+   std::function<std::unique_ptr<Passphrase::Params>(void)> getSetPassFunc(
+      CppBridge* bridgePtr, const std::string& callbackId, bool priv)
+   {
+      return [bridgePtr, callbackId, priv]()->std::unique_ptr<Passphrase::Params>
+      {
+         auto counterBd = bridgePtr->generateRandom(4);
+         auto notifCounter = *(uint32_t*)counterBd.getPtr();
+
+         //create set passphrase notif
+         capnp::MallocMessageBuilder notifMessage;
+         auto fromBridge = notifMessage.initRoot<FromBridge>();
+         auto notif = fromBridge.initNotification();
+         notif.setCallbackId(callbackId);
+         notif.setCounter(notifCounter);
+         auto wltCrt = notif.initWalletCreation();
+         if (priv) {
+            wltCrt.setSetPrivPass();
+         } else {
+            wltCrt.setSetCtrlPass();
+         }
+         auto notifSerialized = serializeCapnp(notifMessage);
+
+         //reply handler
+         auto prom = std::make_shared<std::promise<Seeds::PromptReply>>();
+         auto fut = prom->get_future();
+         auto replyLbd = [prom](const Seeds::PromptReply& reply)->bool
+         {
+            prom->set_value(reply);
+            return true;
+         };
+
+         //push prompt to caller
+         ServerPushWrapper wrapper{notifCounter, replyLbd, std::move(notifSerialized)};
+         bridgePtr->callbackWriter(wrapper);
+
+         //wait on reply
+         auto reply = std::move(fut.get());
+         if (!reply.success) {
+            return nullptr;
+         }
+         return std::make_unique<Passphrase::Params>(reply.passParams);
+      };
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1001,7 +1045,14 @@ void CppBridge::restoreWallet(
                break;
             }
 
-            case Seeds::RestorePromptType::Passphrases:
+            case Seeds::RestorePromptType::ControlPassphrase:
+            {
+               auto wltCreation = notifCapnp.initWalletCreation();
+               wltCreation.setSetCtrlPass();
+               break;
+            }
+
+            case Seeds::RestorePromptType::PrivatePassphrase:
             {
                auto wltCreation = notifCapnp.initWalletCreation();
                wltCreation.setSetPrivPass();
@@ -1061,12 +1112,22 @@ void CppBridge::restoreWallet(
          }
       };
 
-      auto setNewPassFunc = [callback]()->std::unique_ptr<Passphrase::Params>
+      auto setNewCtrlFunc = [callback]()->std::unique_ptr<Passphrase::Params>
       {
          auto reply = callback(Seeds::RestorePrompt{
-            Seeds::RestorePromptType::Passphrases});
+            Seeds::RestorePromptType::ControlPassphrase});
          if (!reply.success) {
-            nullptr;
+            return nullptr;
+         }
+         return std::make_unique<Passphrase::Params>(reply.passParams);
+      };
+
+      auto setNewPrivFunc = [callback]()->std::unique_ptr<Passphrase::Params>
+      {
+         auto reply = callback(Seeds::RestorePrompt{
+            Seeds::RestorePromptType::PrivatePassphrase});
+         if (!reply.success) {
+            return nullptr;
          }
          return std::make_unique<Passphrase::Params>(reply.passParams);
       };
@@ -1080,8 +1141,8 @@ void CppBridge::restoreWallet(
          auto progFunc = getWalletProgressLbd(this, callbackId);
          Wallets::IO::CreateWalletParams params{
             tempDir,
-            Passphrase::SetNew{setNewPassFunc},
-            Passphrase::SetNew{setNewPassFunc},
+            Passphrase::SetNew{setNewPrivFunc},
+            Passphrase::SetNew{setNewCtrlFunc},
             progFunc,
             0 //address lookup
          };
@@ -1527,46 +1588,13 @@ void CppBridge::createWallet(SecureBinaryData extraEntropy,
    Wallets::IO::CreateWalletParams params, const std::string& callbackId,
    MessageId refId)
 {
-   auto setPassFunc = [this, callbackId]()->std::unique_ptr<Passphrase::Params>
-   {
-      auto counterBd = fortuna_.generateRandom(4);
-      auto notifCounter = *(uint32_t*)counterBd.getPtr();
-
-      //create set passphrase notif
-      capnp::MallocMessageBuilder notifMessage;
-      auto fromBridge = notifMessage.initRoot<FromBridge>();
-      auto notif = fromBridge.initNotification();
-      notif.setCallbackId(callbackId);
-      notif.setCounter(notifCounter);
-      auto wltCrt = notif.initWalletCreation();
-      wltCrt.setSetPrivPass();
-      auto notifSerialized = serializeCapnp(notifMessage);
-
-      //reply handler
-      auto prom = std::make_shared<std::promise<Seeds::PromptReply>>();
-      auto fut = prom->get_future();
-      auto replyLbd = [prom](const Seeds::PromptReply& reply)->bool
-      {
-         prom->set_value(reply);
-         return true;
-      };
-
-      //push prompt to caller
-      ServerPushWrapper wrapper{notifCounter, replyLbd, std::move(notifSerialized)};
-      callbackWriter(wrapper);
-
-      //wait on reply
-      auto reply = std::move(fut.get());
-      if (!reply.success) {
-         return nullptr;
-      }
-      return std::make_unique<Passphrase::Params>(reply.passParams);
-   };
+   auto setCtrlPassFunc = getSetPassFunc(this, callbackId, false);
+   auto setPrivPassFunc = getSetPassFunc(this, callbackId, true);
 
    auto paramsCopy = std::make_unique<Wallets::IO::CreateWalletParams>(
       params.folder,
-      Passphrase::SetNew{setPassFunc},
-      Passphrase::SetNew(250ms, 0, SecureBinaryData{}),
+      Passphrase::SetNew{setPrivPassFunc},
+      Passphrase::SetNew(setCtrlPassFunc),
       getWalletProgressLbd(this, callbackId),
       params.lookup, params.label, params.description
    );

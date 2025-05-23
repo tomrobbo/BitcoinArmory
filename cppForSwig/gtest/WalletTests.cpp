@@ -9217,7 +9217,12 @@ TEST_F(BackupTests, BackupStrings_Legacy)
       capnp::MallocMessageBuilder reply;
       switch (prompt.promptType)
       {
-         case RestorePromptType::Passphrases:
+         case RestorePromptType::ControlPassphrase:
+            return PromptReply{true, false,
+               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newCtrl)}
+            };
+
+         case RestorePromptType::PrivatePassphrase:
             return PromptReply{true, false,
                Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)}
             };
@@ -9307,7 +9312,12 @@ TEST_F(BackupTests, BackupStrings_Legacy_Armory200a)
    {
       switch (prompt.promptType)
       {
-         case RestorePromptType::Passphrases:
+         case RestorePromptType::ControlPassphrase:
+            return PromptReply{true, false,
+               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newCtrl)}
+            };
+
+         case RestorePromptType::PrivatePassphrase:
             return PromptReply{true, false,
                Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)}
             };
@@ -9399,7 +9409,12 @@ TEST_F(BackupTests, BackupStrings_Legacy_SecurePrint)
    {
       switch (prompt.promptType)
       {
-         case RestorePromptType::Passphrases:
+         case RestorePromptType::ControlPassphrase:
+            return PromptReply{true, false,
+               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newCtrl)}
+            };
+
+         case RestorePromptType::PrivatePassphrase:
             return PromptReply{true, false,
                Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)}
             };
@@ -9665,7 +9680,12 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode)
    {
       switch (prompt.promptType)
       {
-         case RestorePromptType::Passphrases:
+         case RestorePromptType::ControlPassphrase:
+            return PromptReply{true, false,
+               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newCtrl)}
+            };
+
+         case RestorePromptType::PrivatePassphrase:
             return PromptReply{true, false,
                Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)}
             };
@@ -9816,7 +9836,12 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode_SecurePrint)
    {
       switch (prompt.promptType)
       {
-         case RestorePromptType::Passphrases:
+         case RestorePromptType::ControlPassphrase:
+            return PromptReply{true, false,
+               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newCtrl)},
+            };
+
+         case RestorePromptType::PrivatePassphrase:
             return PromptReply{true, false,
                Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)},
             };
@@ -9933,7 +9958,12 @@ TEST_F(BackupTests, BackupStrings_BIP32)
    {
       switch (prompt.promptType)
       {
-         case RestorePromptType::Passphrases:
+         case RestorePromptType::ControlPassphrase:
+            return PromptReply{true, false,
+               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newCtrl)}
+            };
+
+         case RestorePromptType::PrivatePassphrase:
             return PromptReply{true, false,
                Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)}
             };
@@ -10026,7 +10056,12 @@ TEST_F(BackupTests, BackupStrings_BIP32_Virgin)
    {
       switch (prompt.promptType)
       {
-         case RestorePromptType::Passphrases:
+         case RestorePromptType::ControlPassphrase:
+            return PromptReply{true, false,
+               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newCtrl)},
+            };
+
+         case RestorePromptType::PrivatePassphrase:
             return PromptReply{true, false,
                Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)},
             };
@@ -10101,7 +10136,12 @@ TEST_F(BackupTests, BackupStrings_BIP32_FromBase58)
    {
       switch (prompt.promptType)
       {
-         case RestorePromptType::Passphrases:
+         case RestorePromptType::ControlPassphrase:
+            return PromptReply{true, false,
+               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newCtrl)},
+            };
+
+         case RestorePromptType::PrivatePassphrase:
             return PromptReply{true, false,
                Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)},
             };
@@ -10207,7 +10247,12 @@ TEST_F(BackupTests, BackupStrings_BIP39)
    {
       switch (prompt.promptType)
       {
-         case RestorePromptType::Passphrases:
+         case RestorePromptType::ControlPassphrase:
+            return PromptReply{true, false,
+               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newCtrl)}
+            };
+
+         case RestorePromptType::PrivatePassphrase:
             return PromptReply{true, false,
                Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)}
             };
@@ -10274,7 +10319,12 @@ TEST_F(BackupTests, BackupStrings_BIP39)
    {
       switch (prompt.promptType)
       {
-         case RestorePromptType::Passphrases:
+         case RestorePromptType::ControlPassphrase:
+            return PromptReply{true, false,
+               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newCtrl2)}
+            };
+
+         case RestorePromptType::PrivatePassphrase:
             return PromptReply{true, false,
                Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass2)}
             };

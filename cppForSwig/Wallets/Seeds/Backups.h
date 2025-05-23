@@ -262,13 +262,14 @@ namespace Armory
          DecryptError = 5,
 
          //requesting wallet privkey & control passphrases
-         Passphrases = 6,
+         ControlPassphrase = 6,
+         PrivatePassphrase = 7,
 
          //present restored wallet's id
-         Id = 7,
+         Id = 8,
 
          //unknown wallet type
-         TypeError = 8,
+         TypeError = 9,
       };
 
       struct RestorePrompt

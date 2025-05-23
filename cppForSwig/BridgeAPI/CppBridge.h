@@ -270,7 +270,6 @@ namespace Armory
             uint32_t, MessageId) const;
          void getBlockTimeByHeight(uint32_t, MessageId) const;
          void getFeeSchedule(const std::string&, MessageId) const;
-         SecureBinaryData generateRandom(size_t) const;
 
          //custom callback handlers
          void callbackWriter(ServerPushWrapper&);
@@ -289,6 +288,7 @@ namespace Armory
          void writeToClient(BinaryData&) const;
          void setWriteLambda(
             const std::function<void(std::unique_ptr<WritePayload_Bridge>)>&);
+         SecureBinaryData generateRandom(size_t) const;
       };
    }; //namespace Bridge
 }; //namespace Armory
