@@ -464,8 +464,7 @@ class PyBtcWallet(object):
 
    #############################################################################
    @staticmethod
-   def createNewWallet(replyCallback: callable, callbackId: str, passphrase=None,
-      kdfTargSec=DEFAULT_COMPUTE_TIME_TARGET, kdfMaxMem=DEFAULT_MAXMEM_LIMIT,
+   def createNewWallet(replyCallback: callable, callbackId: str,
       shortLabel: str='', longLabel: str='', extraEntropy: bytes=None):
 
       """
@@ -495,14 +494,9 @@ class PyBtcWallet(object):
       """
       LOGINFO('***Creating new deterministic wallet')
 
-      kdfMs = int(kdfTargSec * 1000)
-      kdfMem = int(kdfMaxMem / (1024**2))
       addrPoolSize = 10 if USE_TESTNET or USE_REGTEST else CLI_OPTIONS.keypool
-
-      walletId = TheBridge.utils.createWallet(
+      TheBridge.utils.createWallet(
          addrPoolSize,
-         passphrase, kdfMs, kdfMem,
-         "", 250, 16,
          shortLabel, longLabel, extraEntropy,
          callbackId, replyCallback
       )
@@ -1531,7 +1525,7 @@ class PyBtcWallet(object):
       self.watchingOnly = payload.watchingOnly
       self.addressTypes = payload.addressTypes
       self.defaultAddressType = payload.defaultAddressType
-      self.kdfMemoryReq = payload.kdfMemReq
+      self.kdfMemoryReq = payload.kdfMemReq * (1024**2)
 
       #addrMap and chainIndexMap
       for addr in payload.addressData:

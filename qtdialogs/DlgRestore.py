@@ -234,9 +234,55 @@ class DlgRestoreSingle(ArmoryDialog, ServerPush):
       )
 
    #############################################################################
+   def setPassphrase(self, isPriv):
+      packet = self.getNewPacket()
+      passPacket = packet.init("walletCreation")
+      if isPriv:
+         if self.chkEncrypt.isChecked():
+            dlgPasswd = DlgChangePassphrase(self, self.main)
+            if dlgPasswd.exec_():
+               packet.success = True
+
+               #passphrase
+               passPacket.passphrase = str(dlgPasswd.edtPasswd1.text())
+
+               #unlock target in milliseconds
+               privKdfTargetMs = int(self.advancedOptionsTab.getKdfSec() * 1000)
+               if privKdfTargetMs <= 0:
+                  privKdfTargetMs = 2000
+               passPacket.kdfTargetMs = privKdfTargetMs
+
+               #memory target in MB
+               privKdfTargetMem = int(self.advancedOptionsTab.getKdfBytes() / (1024**2))
+               if privKdfTargetMem <= 0:
+                  privKdfTargetMem = 128
+               passPacket.kdfTargetMB = privKdfTargetMem
+            else:
+               QtWidgets.QMessageBox.critical(self, self.tr('Cannot Encrypt'), \
+                  self.tr('You requested your restored wallet be encrypted, but no '
+                  'valid passphrase was supplied. Aborting wallet recovery.'), \
+                  QtWidgets.QMessageBox.Ok)
+               packet.success = False
+               self.reject()
+      else:
+         packet.success = True
+         passPacket.passphrase = ""
+         passPacket.kdfTargetMs = 250
+         passPacket.kdfTargetMB = 0
+      self.reply()
+
+   ########
    def processCallback(self, payload):
       if payload.which() == 'cleanup':
          TheBDM.unregisterPrompt(self.callbackId)
+         return
+
+      elif payload.which() == 'walletCreation':
+         notif = payload.walletCreation
+         if notif.which() == 'setCtrlPass':
+            self.setPassphrase(False)
+         elif notif.which() == 'setPrivPass':
+            self.setPassphrase(True)
          return
 
       elif payload.which() == 'walletProgress':
@@ -315,26 +361,6 @@ class DlgRestoreSingle(ArmoryDialog, ServerPush):
          self.reject()
          return
 
-      elif which == 'getPassphrases':
-         #prompts user to set private keys password
-         #TODO: add UI for control pass submission
-         reply = self.getNewPacket()
-         passwd = []
-         if self.chkEncrypt.isChecked():
-            dlgPasswd = DlgChangePassphrase(self, self.main)
-            if dlgPasswd.exec_():
-               reply.success = True
-               reply.init('passphrases', 1)
-               reply.passphrases[0] = str(dlgPasswd.edtPasswd1.text())
-            else:
-               QtWidgets.QMessageBox.critical(self, self.tr('Cannot Encrypt'), \
-                  self.tr('You requested your restored wallet be encrypted, but no '
-                  'valid passphrase was supplied. Aborting wallet recovery.'), \
-                  QtWidgets.QMessageBox.Ok)
-               reply.success = False
-               self.reject()
-         self.reply()
-
       elif which == "failure":
          QtWidgets.QMessageBox.critical(self, self.tr('Failure'), self.tr(
             f'Backup process failed with error:\n\n{restorePayload.failure}\n. Aborting.'), \
@@ -381,14 +407,6 @@ class DlgRestoreSingle(ArmoryDialog, ServerPush):
          #add secureprint passphrase if this backup is encrypted
          spPass = str(self.editSecurePrint.text()).strip()
 
-      privKdfTargetMs = int(self.advancedOptionsTab.getKdfSec() * 1000)
-      if privKdfTargetMs <= 0:
-         privKdfTargetMs = 2000
-
-      privKdfTargetMem = int(self.advancedOptionsTab.getKdfBytes() / (1024**2))
-      if privKdfTargetMem <= 0:
-         privKdfTargetMem = 128
-
       '''
       verifyBackupString is a method that will trigger multiple callbacks
       during the course of its execution. Unlike a password request callback
@@ -415,7 +433,6 @@ class DlgRestoreSingle(ArmoryDialog, ServerPush):
 
       TheBridge.utils.restoreWallet(
          root, chaincode, spPass,
-         privKdfTargetMs, privKdfTargetMem, 250, 16,
          self.callbackId, handleReplyCb)
 
       '''

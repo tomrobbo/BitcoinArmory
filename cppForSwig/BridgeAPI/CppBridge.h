@@ -209,7 +209,6 @@ namespace Armory
          void restoreWallet(
             const std::vector<std::string_view>&,
             const std::string_view&,
-            std::chrono::milliseconds, std::chrono::milliseconds,
             const std::string_view&, MessageId);
 
          //ledgers

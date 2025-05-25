@@ -1043,13 +1043,7 @@ namespace
             auto callbackIdCapnp = walletRequest.getCallbackId();
             std::string_view callbackId{callbackIdCapnp.begin(), callbackIdCapnp.size()};
 
-            std::chrono::milliseconds privUnlockTarget{
-               walletRequest.getPrivKdfTargetMs()};
-            std::chrono::milliseconds ctrlUnlockTarget{
-               walletRequest.getCtrlKdfTargetMs()};
-
             bridge->restoreWallet(lines, spPass,
-               privUnlockTarget, ctrlUnlockTarget,
                callbackId, referenceId);
             break;
          }

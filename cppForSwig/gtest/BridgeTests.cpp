@@ -1080,7 +1080,6 @@ protected:
          auto restoreWltReq = request.initRestoreWallet();
 
          restoreWltReq.setCallbackId(callbackId);
-         restoreWltReq.setPrivKdfTargetMs(300);
 
          auto rootLines = restoreWltReq.initRoot(2);
          rootLines.set(0, lines[0]);
@@ -1466,7 +1465,7 @@ TEST_F(BridgeTests, RestoreWallet_Legacy)
    //restore the wallet
    auto restoreData = restoreWallet(lines, walletId,
       Bridge::WalletBackup::Type::LEGACY135_A,
-      passphrase, 300ms, 0, false, 500);
+      passphrase, 300ms, 32, false, 500);
 
    //get the wallet data & validate it
    auto wltData = getWalletData(walletId);
@@ -1479,11 +1478,11 @@ TEST_F(BridgeTests, RestoreWallet_Legacy)
    EXPECT_FALSE(wltData.watchingOnly);
    EXPECT_EQ(wltData.addresses.size(), 1);
    EXPECT_EQ(wltData.lookup, 500);
+   EXPECT_EQ(wltData.kdfMemReq, 32);
 
    //request KDF unlock time
    auto unlockTime = testKDFUnlock(walletId);
    EXPECT_GE(unlockTime, 300ms) << unlockTime.count();
-   EXPECT_LE(unlockTime, 450ms) << unlockTime.count();
 
    //grab backup strings via callback
    {
@@ -1605,7 +1604,7 @@ TEST_F(BridgeTests, RestoreMerge)
    std::filesystem::path path;
    try {
       auto walletData = progressWalletCreation(callbackId,
-         passphrase, 500ms, 128 * 1024 * 1024, lookup);
+         passphrase, 500ms, 128, lookup);
       masterId = walletData.masterId;
       path = walletData.path;
    } catch (const std::exception& e) {
@@ -1643,6 +1642,7 @@ TEST_F(BridgeTests, RestoreMerge)
    EXPECT_FALSE(wltData.watchingOnly);
    EXPECT_EQ(wltData.addresses.size(), 1);
    EXPECT_EQ(wltData.lookup, lookup);
+   EXPECT_EQ(wltData.kdfMemReq, 128);
 
    //grab 3 addresses
    std::vector<AddressData> addresses;

@@ -584,12 +584,6 @@ struct UtilsRequest {
       chaincode         @1 : List(Text);
       spPass            @2 : Text;
       callbackId        @3 : Text;
-
-      privKdfTargetMs   @4 : UInt32;
-      privKdfTargetMB   @5 : UInt32;
-
-      ctrlKdfTargetMs   @6 : UInt32;
-      ctrlKdfTargetMB   @7 : UInt32;
    }
 
    union {

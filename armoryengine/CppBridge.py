@@ -553,35 +553,21 @@ class BlockchainUtils(ProtoWrapper):
 
    #############################################################################
    def createWallet(self, addrPoolSize: int,
-      privPass: str, privKdfMs: int, privKdfMem: int,
-      ctrlPass: str, ctrlKdfMs: int, ctrlKdfMem: int,
       shortLabel: str, longLabel: str, extraEntropy: bytes,
       callbackId: str, successCb: callable):
       packet = Bridge.ToBridge.new_message()
-      method = packet.init("utils").init("createWallet")
 
+      method = packet.init("utils").init("createWallet")
       method.callbackId = callbackId
       method.lookup = addrPoolSize
-
-      method.privPassphrase = privPass
-      method.privKdfTargetMs = privKdfMs
-      method.privKdfTargetMB = privKdfMem
-
-      method.ctrlPassphrase = ctrlPass
-      method.ctrlKdfTargetMs = ctrlKdfMs
-      method.ctrlKdfTargetMB = ctrlKdfMem
-
       method.label = shortLabel
       method.description = longLabel
       if extraEntropy is not None:
          method.extraEntropy = extraEntropy
-
       self.send(packet, callback=successCb)
 
    #############################################################################
    def restoreWallet(self, root: list[str], chaincode: list[str], spPass: str,
-      privKdfTargetMs: int, privKdfTargetMem: int,
-      ctrlKdfTargetMs: int, ctrlKdftargetMem: int,
       callbackId: str, successCb: callable):
       restoreStruct = Bridge.UtilsRequest.RestoreWalletStruct.new_message()
       restoreStruct.callbackId = callbackId
@@ -601,12 +587,6 @@ class BlockchainUtils(ProtoWrapper):
       #passphrase
       if spPass:
          restoreStruct.spPass = spPass
-
-      #kdf params
-      restoreStruct.privKdfTargetMs = privKdfTargetMs
-      restoreStruct.privKdfTargetMB = privKdfTargetMem
-      restoreStruct.ctrlKdfTargetMs = ctrlKdfTargetMs
-      restoreStruct.ctrlKdfTargetMB = ctrlKdftargetMem
 
       packet = Bridge.ToBridge.new_message()
       utilsRequest = packet.init("utils")

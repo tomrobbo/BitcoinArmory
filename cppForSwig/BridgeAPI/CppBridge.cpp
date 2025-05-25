@@ -959,8 +959,6 @@ void CppBridge::createBackupStringForWallet(const std::string& wltId,
 void CppBridge::restoreWallet(
    const std::vector<std::string_view>& lines_sv,
    const std::string_view& spPass_sv,
-   std::chrono::milliseconds privUnlockTarget,
-   std::chrono::milliseconds ctrlUnlockTarget,
    const std::string_view& callbackId, MessageId refId)
 {
    //NOTE: easy16 only for now, will need a dedicated call for BIP39
@@ -975,18 +973,10 @@ void CppBridge::restoreWallet(
    */
 
    auto backup = Seeds::Backup_Easy16::fromLines(lines_sv, spPass_sv);
-   if (privUnlockTarget == 0ms) {
-      privUnlockTarget = 2000ms;
-   }
-   if (ctrlUnlockTarget == 0ms) {
-      ctrlUnlockTarget = 250ms;
-   }
 
    //
    auto restoreLbd = [
-      this, refId,
-      callbackId=std::string{callbackId},
-      privUnlockTarget, ctrlUnlockTarget](
+      this, refId, callbackId=std::string{callbackId}](
       std::unique_ptr<Seeds::Backup_Easy16> backup)
    {
       auto createCallbackMessage = [callbackId](

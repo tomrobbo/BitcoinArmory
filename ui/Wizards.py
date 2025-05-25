@@ -77,14 +77,34 @@ class ArmoryWizardPage(QtWidgets.QWizardPage):
 
 ################################################################################
 class CreateWalletNotifHandler(ServerPush):
-   def __init__(self, walletCreateFrame):
+   def __init__(self, page):
       ServerPush.__init__(self)
-      self.frame = walletCreateFrame
+      self.wizard = page.wizard
+      self.frame = page.pageFrame
+
+   def replyWithPassphrase(self, targetMs, targetMB, passphrase):
+      packet = self.getNewPacket()
+      reply = packet.init('walletCreation')
+      reply.passphrase = passphrase
+      reply.kdfTargetMs = targetMs
+      reply.kdfTargetMB = targetMB
+      packet.success = True
+      self.reply()
 
    def parseProtoPacket(self, payload):
       if payload.which() == 'cleanup':
          TheBDM.unregisterPrompt(self.callbackId)
          self.frame.setDone()
+         return
+
+      elif payload.which() == 'walletCreation':
+         notif = payload.walletCreation
+         if notif.which() == 'setCtrlPass':
+            self.wizard.setControlPassphrase(self.replyWithPassphrase)
+         elif notif.which() == 'setPrivPass':
+            self.wizard.setPrivatePassphrase(self.replyWithPassphrase)
+         else:
+            return
 
       elif payload.which() == 'walletProgress':
          notif = payload.walletProgress
@@ -101,6 +121,8 @@ class CreateWalletNotifHandler(ServerPush):
             chainProg = notif.extendChain
             self.frame.updateProgress("extending address chain: "
                f"{chainProg.current}/{chainProg.total}")
+         else:
+            return
 
 ################################ Wallet Wizard #################################
 # Wallet Wizard has these pages:
@@ -226,6 +248,16 @@ class WalletWizard(ArmoryWizard):
             return None
       return super(WalletWizard, self).done(event)
 
+   def setControlPassphrase(self, callback):
+      callback(250, 0, "")
+
+   def setPrivatePassphrase(self, callback):
+      #i hate python
+      self.passphrase = self.verifyPassphrasePage.pageFrame.getPassphrase()
+      kdfMs = int(self.walletCreationPage.pageFrame.getKdfSec() * 1000)
+      kdfMB = int(self.walletCreationPage.pageFrame.getKdfBytes() / 1024**2)
+      callback(kdfMs, kdfMB, self.passphrase)
+
    def createNewWalletFromWizard(self):
       entropy = None
       if self.walletCreationPage.isManualEntropy():
@@ -245,13 +277,9 @@ class WalletWizard(ArmoryWizard):
       def finalizeCb(reply):
          TheSignalExecution.executeMethod(finalizeInner, reply)
 
-      self.passphrase = self.verifyPassphrasePage.pageFrame.getPassphrase()
-      handler = CreateWalletNotifHandler(self.walletProgressPage.pageFrame)
+      handler = CreateWalletNotifHandler(self.walletProgressPage)
       PyBtcWallet().createNewWallet(
          replyCallback=finalizeCb, callbackId=handler.callbackId,
-         passphrase=self.passphrase,
-         kdfTargSec=self.walletCreationPage.pageFrame.getKdfSec(),
-         kdfMaxMem=self.walletCreationPage.pageFrame.getKdfBytes(),
          shortLabel=self.walletCreationPage.pageFrame.getName(),
          longLabel=self.walletCreationPage.pageFrame.getDescription(),
          extraEntropy=entropy)
