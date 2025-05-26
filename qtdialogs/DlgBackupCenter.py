@@ -642,12 +642,13 @@ class DlgPrintBackup(ArmoryDialog):
          # The last scene printed is what's displayed now.  Set the combo box
          self.comboPageNum.setCurrentIndex(self.comboPageNum.count() - 1)
          if self.chkSecurePrint.isChecked():
+            textBlue = htmlColor('TextBlue')
             QtWidgets.QMessageBox.warning(self, self.tr('SecurePrint Code'), self.tr(
                u'<br><b>You must write your SecurePrint\u200b\u2122 '
                'code on each sheet of paper you just printed!</b> '
                'Write it in the red box in upper-right corner '
                u'of each printed page. <br><br>SecurePrint\u200b\u2122 code: '
-               f'<font color="{htmlColor('TextBlue')}" '
+               f'<font color="{textBlue}" '
                f'size=5><b>{self.randpass.toBinStr()}</b></font> <br><br> '
                '<b>NOTE: the above code <u>is</u> case-sensitive!</b>'),
                QtWidgets.QMessageBox.Ok)
@@ -730,7 +731,8 @@ class DlgPrintBackup(ArmoryDialog):
          ])
          baseID = self.fragData['FragIDStr']
          fragNum = printData + 1
-         fragID = f'<b>{baseID}-<font color="{htmlColor('TextBlue')}">#{fragNum}</font></b>'
+         textBlue = htmlColor('TextBlue')
+         fragID = f'<b>{baseID}-<font color="{textBlue}">#{fragNum}</font></b>'
          self.scene.moveCursor(15, 0)
          suf = 'c' if self.noNeedChaincode else 'a'
          colRect, rowHgt = self.scene.drawColumn([
@@ -741,11 +743,13 @@ class DlgPrintBackup(ArmoryDialog):
 
       ## Display warning about unprotected key data ##
       if self.doPrintFrag:
+         textBlue = htmlColor('TextBlue')
+         thisFragData = self.fragData['FragIDStr']
          warnMsg = self.tr(
-            f'Any subset of <font color="{htmlColor('TextBlue')}"><b>'
+            f'Any subset of <font color="{textBlue}"><b>'
             f'{str(self.fragData['M'])}</b></font> fragments with this '
-            f'ID (<font color="{htmlColor('TextBlue')}">'
-            f'<b>{self.fragData['FragIDStr']}</b></font>) are sufficient '
+            f'ID (<font color="{textBlue}">'
+            f'<b>{thisFragData}</b></font>) are sufficient '
             'to recover all the coins contained in this wallet. '
             'To optimize the physical security of your wallet, please '
             'store the fragments in different locations.')
