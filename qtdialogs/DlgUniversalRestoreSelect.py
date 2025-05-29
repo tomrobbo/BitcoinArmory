@@ -103,6 +103,6 @@ class DlgUniversalRestoreSelect(ArmoryDialog):
          self.accept()
          dlg = DlgRestoreWOData(self.parent, self.main, doTest)
          if dlg.exec_():
-            LOGINFO('Watching-Only Wallet Restore Complete! Will ask for a' \
-                    'rescan.')
+            LOGINFO('Watching-Only Wallet Restore Complete! Will ask for a'
+               'rescan.')
             self.main.addWalletToApplication(dlg.newWallet)

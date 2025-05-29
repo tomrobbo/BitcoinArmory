@@ -311,7 +311,7 @@ class DlgShowKeys(ArmoryDialog):
          return ' '.join(binHexPieces)
 
 
-      lblDescr = QRichLabel(self.tr(f'Key Data for address: <b>%s</b>' % self.addr.getAddressString()))
+      lblDescr = QRichLabel(self.tr('Key Data for address: <b>%s</b>' % self.addr.getAddressString()))
 
       lbls = []
 

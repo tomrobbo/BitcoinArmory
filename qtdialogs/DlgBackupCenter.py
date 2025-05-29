@@ -745,9 +745,10 @@ class DlgPrintBackup(ArmoryDialog):
       if self.doPrintFrag:
          textBlue = htmlColor('TextBlue')
          thisFragData = self.fragData['FragIDStr']
+         mCount = str(self.fragData['M'])
          warnMsg = self.tr(
             f'Any subset of <font color="{textBlue}"><b>'
-            f'{str(self.fragData['M'])}</b></font> fragments with this '
+            f'{mCount}</b></font> fragments with this '
             f'ID (<font color="{textBlue}">'
             f'<b>{thisFragData}</b></font>) are sufficient '
             'to recover all the coins contained in this wallet. '

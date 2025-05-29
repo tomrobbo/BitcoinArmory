@@ -664,7 +664,7 @@ class WalletProgressFrame(ArmoryFrame):
 
    def setDone(self):
       self.isDone = True
-      self.progressTxt += f" - done!<br>"
+      self.progressTxt += " - done!<br>"
       self.updateText()
 
    def updateText(self):

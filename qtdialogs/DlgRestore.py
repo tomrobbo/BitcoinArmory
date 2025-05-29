@@ -1020,7 +1020,6 @@ class DlgRestoreFragged(ArmoryDialog):
 
 ################################################################################
 class DlgEnterOneFrag(ArmoryDialog):
-
    def __init__(self, parent, main, fragList=[], wltType=UNKNOWN, securePrintCode=None):
       super(DlgEnterOneFrag, self).__init__(parent, main)
       self.fragData = []
@@ -1150,7 +1149,6 @@ class DlgEnterOneFrag(ArmoryDialog):
       self.layout().setSizeConstraint(QtWidgets.QLayout.SetFixedSize)
       self.changeType(self.backupTypeButtonGroup.checkedId())
 
-
    #############################################################################
    def changeType(self, sel):
       #            |-- X --| |-- Y --| |-- F --|
@@ -1171,8 +1169,6 @@ class DlgEnterOneFrag(ArmoryDialog):
       for i in range(12):
          self.prfxList[i].setVisible(visList[i] == 1)
          self.edtList[ i].setVisible(visList[i] == 1)
-
-
 
    #############################################################################
    def destroyFragData(self):
@@ -1496,7 +1492,6 @@ class DlgRestoreWOData(ArmoryDialog):
          fillAddrPoolProgress.exec_(self.newWallet.fillAddressPool, nPool)
 
       self.accept()
-
 
 ################################################################################
 class DlgEnterSecurePrintCode(ArmoryDialog):

@@ -887,9 +887,6 @@ class LedgerDispSortProxy(QtCore.QSortFilterProxyModel):
       def getInt(idx, col):
          return int(self.sourceModel().ledger[idx.row()][col])
 
-
-      #LEDGERCOLS  = enum('NumConf', 'UnixTime', 'DateStr', 'TxDir', 'WltName', 'Comment', \
-                        #'Amount', 'isOther', 'WltID', 'TxHash', 'toSelf', 'DoubleSpend')
       if thisCol==COL.NumConf:
          lConf = getInt(idxLeft,  COL.NumConf)
          rConf = getInt(idxRight, COL.NumConf)
