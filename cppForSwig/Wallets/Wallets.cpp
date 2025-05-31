@@ -65,7 +65,7 @@ std::shared_ptr<IO::WalletDBInterface> AssetWallet::createIface(
    passphrase. Private keys use a different passphrase, with its own prompt.
    */
    if (prog) {
-      auto prg = std::make_unique<Progress::CreateFile>(params.filePath);
+      auto prg = std::make_unique<Progress::CreateWalletFile>(params.filePath);
       prog(std::move(prg));
    }
    auto iface = std::make_shared<IO::WalletDBInterface>();
@@ -1454,7 +1454,7 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::initWalletDb(
    uint32_t seedFingerprint)
 {
    if (params.progressFunc) {
-      auto prg = std::make_unique<Progress::InitFile>(masterID);
+      auto prg = std::make_unique<Progress::InitWalletFile>(masterID);
       params.progressFunc(std::move(prg));
    }
 
@@ -1556,7 +1556,7 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::initWalletDb(
 
    //init walletptr from file
    if (params.progressFunc) {
-      auto prg = std::make_unique<Progress::ReadFile>(masterID);
+      auto prg = std::make_unique<Progress::ReadWalletFile>(masterID);
       params.progressFunc(std::move(prg));
    }
    walletPtr->readFromFile();
@@ -1577,7 +1577,7 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::initWalletDbWithPubRoot(
    }
 
    if (params.progressFunc) {
-      auto prg = std::make_unique<Progress::InitFile>(masterID);
+      auto prg = std::make_unique<Progress::InitWalletFile>(masterID);
       params.progressFunc(std::move(prg));
    }
 
@@ -1628,7 +1628,7 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::initWalletDbWithPubRoot(
 
    //init walletptr from file
    if (params.progressFunc) {
-      auto prg = std::make_unique<Progress::ReadFile>(masterID);
+      auto prg = std::make_unique<Progress::ReadWalletFile>(masterID);
       params.progressFunc(std::move(prg));
    }
    walletPtr->readFromFile();

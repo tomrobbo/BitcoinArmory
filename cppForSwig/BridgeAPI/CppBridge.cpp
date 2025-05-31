@@ -336,9 +336,9 @@ namespace
 
          switch (statePtr->type())
          {
-            case Wallets::Progress::StateEnum::CreateFile:
+            case Wallets::Progress::StateEnum::CreateWalletFile:
             {
-               auto stateCf = dynamic_cast<Wallets::Progress::CreateFile*>(
+               auto stateCf = dynamic_cast<Wallets::Progress::CreateWalletFile*>(
                   statePtr.get());
                if (stateCf != nullptr) {
                   prog.setCreateFile(stateCf->path().filename().string());
@@ -346,9 +346,9 @@ namespace
                break;
             }
 
-            case Wallets::Progress::StateEnum::InitFile:
+            case Wallets::Progress::StateEnum::InitWalletFile:
             {
-               auto stateInit = dynamic_cast<Wallets::Progress::InitFile*>(
+               auto stateInit = dynamic_cast<Wallets::Progress::InitWalletFile*>(
                   statePtr.get());
                if (stateInit != nullptr) {
                   prog.setInitFile(stateInit->masterId());
@@ -356,9 +356,9 @@ namespace
                break;
             }
 
-            case Wallets::Progress::StateEnum::ReadFile:
+            case Wallets::Progress::StateEnum::ReadWalletFile:
             {
-               auto stateRead = dynamic_cast<Wallets::Progress::ReadFile*>(
+               auto stateRead = dynamic_cast<Wallets::Progress::ReadWalletFile*>(
                   statePtr.get());
                if (stateRead != nullptr) {
                   prog.setReadFile(stateRead->masterId());

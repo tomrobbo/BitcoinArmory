@@ -3910,14 +3910,14 @@ TEST_F(WalletsTest, CreateCloseOpen_Test)
       ++count;
       switch (notif->type())
       {
-         case Progress::StateEnum::CreateFile:
+         case Progress::StateEnum::CreateWalletFile:
          {
             //there should be no prev state
             ASSERT_EQ(progState, nullptr);
 
             //save notif
             progState = std::shared_ptr<Progress::State>(notif.release());
-            auto cfState = std::dynamic_pointer_cast<Progress::CreateFile>(progState);
+            auto cfState = std::dynamic_pointer_cast<Progress::CreateWalletFile>(progState);
             ASSERT_NE(cfState, nullptr);
 
             //validate wallet path
@@ -3925,15 +3925,15 @@ TEST_F(WalletsTest, CreateCloseOpen_Test)
             break;
          }
 
-         case Progress::StateEnum::InitFile:
+         case Progress::StateEnum::InitWalletFile:
          {
             //prev state should be CreateFile
             ASSERT_NE(progState, nullptr);
-            ASSERT_EQ(progState->type(), Progress::StateEnum::CreateFile);
+            ASSERT_EQ(progState->type(), Progress::StateEnum::CreateWalletFile);
 
             //save notif
             progState = std::shared_ptr<Progress::State>(notif.release());
-            auto initState = std::dynamic_pointer_cast<Progress::InitFile>(progState);
+            auto initState = std::dynamic_pointer_cast<Progress::InitWalletFile>(progState);
             ASSERT_NE(initState, nullptr);
 
             //validate master id
@@ -3941,15 +3941,15 @@ TEST_F(WalletsTest, CreateCloseOpen_Test)
             break;
          }
 
-         case Progress::StateEnum::ReadFile:
+         case Progress::StateEnum::ReadWalletFile:
          {
             //prev state should be InitFile
             ASSERT_NE(progState, nullptr);
-            ASSERT_EQ(progState->type(), Progress::StateEnum::InitFile);
+            ASSERT_EQ(progState->type(), Progress::StateEnum::InitWalletFile);
 
             //save notif
             progState = std::shared_ptr<Progress::State>(notif.release());
-            auto readState = std::dynamic_pointer_cast<Progress::ReadFile>(progState);
+            auto readState = std::dynamic_pointer_cast<Progress::ReadWalletFile>(progState);
             ASSERT_NE(readState, nullptr);
 
             //validate master id
@@ -3961,7 +3961,7 @@ TEST_F(WalletsTest, CreateCloseOpen_Test)
          {
             //prev state should be ReadFile
             ASSERT_NE(progState, nullptr);
-            ASSERT_EQ(progState->type(), Progress::StateEnum::ReadFile);
+            ASSERT_EQ(progState->type(), Progress::StateEnum::ReadWalletFile);
 
             //save notif
             progState = std::shared_ptr<Progress::State>(notif.release());
@@ -3975,7 +3975,7 @@ TEST_F(WalletsTest, CreateCloseOpen_Test)
 
          case Progress::StateEnum::ExtendChain:
          {
-            //prev state should be ReadFile
+            //prev state should be CreateAccount
             ASSERT_NE(progState, nullptr);
             ASSERT_EQ(progState->type(), Progress::StateEnum::CreateAccount);
 

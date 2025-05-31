@@ -240,7 +240,9 @@ ADD_EXECUTABLE(CppBridge
     BridgeAPI/CppBridge.cpp
     BridgeAPI/PassphrasePrompt.cpp
     BridgeAPI/ProtoCommandParser.cpp
-    BridgeAPI/WalletManager.cpp
+    BridgeAPI/Wallets/Loader.cpp
+    BridgeAPI/Wallets/Container.cpp
+    BridgeAPI/Wallets/Manager.cpp
 )
 
 SET_TARGET_PROPERTIES(CppBridge
