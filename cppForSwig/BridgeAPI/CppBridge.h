@@ -168,6 +168,8 @@ namespace Armory
          void unlockControlHeader(const std::string&, const std::string&,
             MessageId);
          bool stageWallet(const std::string&, bool);
+         void migrateWallet(const std::string&,
+            const std::string&, MessageId);
          BinaryData loadWallets(MessageId);
 
          //wallet setup
@@ -210,6 +212,7 @@ namespace Armory
             const std::vector<std::string_view>&,
             const std::string_view&,
             const std::string_view&, MessageId);
+         void importWallet(const std::filesystem::path&, MessageId);
 
          //ledgers
          const std::string& getLedgerDelegateId(void);

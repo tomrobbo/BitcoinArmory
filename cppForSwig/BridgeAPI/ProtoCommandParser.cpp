@@ -248,6 +248,15 @@ namespace
             break;
          }
 
+         case WalletManagerRequest::MIGRATE_WALLET:
+         {
+            auto migrateReq = request.getMigrateWallet();
+            const std::string walletId(migrateReq.getWalletPath());
+            const std::string callbackId(migrateReq.getCallbackId());
+            bridge->migrateWallet(walletId, callbackId, referenceId);
+            break;
+         }
+
          default:
             capnp::MallocMessageBuilder message;
             auto fromBridge = message.initRoot<FromBridge>();
@@ -1045,6 +1054,13 @@ namespace
 
             bridge->restoreWallet(lines, spPass,
                callbackId, referenceId);
+            break;
+         }
+
+         case UtilsRequest::IMPORT_WALLET:
+         {
+            std::filesystem::path importPath(request.getImportWallet());
+            bridge->importWallet(importPath, referenceId);
             break;
          }
 

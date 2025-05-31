@@ -341,7 +341,7 @@ namespace
                auto stateCf = dynamic_cast<Wallets::Progress::CreateFile*>(
                   statePtr.get());
                if (stateCf != nullptr) {
-                  prog.setCreateFile(stateCf->path().stem().string());
+                  prog.setCreateFile(stateCf->path().filename().string());
                }
                break;
             }
@@ -639,6 +639,62 @@ void CppBridge::unlockControlHeader(const std::string& path,
 bool CppBridge::stageWallet(const std::string& walletId, bool stage)
 {
    return wltManager_->stageWallet(walletId, stage);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void CppBridge::migrateWallet(const std::string& walletId,
+   const std::string& callbackId, MessageId refId)
+{
+   auto migrateLbd = [this]
+   (const std::string& wltId, const std::string& callbackId, MessageId refId)
+   {
+      //prepare reply
+      capnp::MallocMessageBuilder message;
+      auto fromBridge = message.initRoot<FromBridge>();
+      auto reply = fromBridge.initReply();
+      reply.setReferenceId(refId);
+      auto mgrReply = reply.initWalletManager();
+
+      //set passphrase functions
+      auto setCtrlPassFunc = getSetPassFunc(this, callbackId, false);
+      auto setPrivPassFunc = getSetPassFunc(this, callbackId, true);
+
+      //creation params for the wallet receiving the migration
+      Wallets::IO::CreateWalletParams params{
+         wltManager_->getWalletDir(),
+         Passphrase::SetNew{setPrivPassFunc},
+         Passphrase::SetNew{setCtrlPassFunc},
+         getWalletProgressLbd(this, callbackId), 0
+      };
+
+      //function to unlock private keys in the origin wallet
+      auto passPromptObj = std::make_shared<BridgePassphrasePrompt>(
+         callbackId, [this](ServerPushWrapper wrapper) {
+            this->callbackWriter(wrapper);
+      });
+      auto unlockLbd = passPromptObj->getLambda();
+
+      try {
+         auto resultId = wltManager_->migrateWallet(wltId, unlockLbd, params);
+         sendCleanup(this, callbackId);
+
+         auto mgrReply = reply.initWalletManager();
+         mgrReply.setMigrateWallet(resultId);
+         reply.setSuccess(true);
+      } catch (const std::exception& e) {
+         sendCleanup(this, callbackId);
+         reply.setSuccess(false);
+         reply.setError(e.what());
+      }
+
+      auto response = serializeCapnp(message);
+      this->writeToClient(response);
+   };
+
+   std::thread thr(migrateLbd, walletId, callbackId, refId);
+   if (thr.joinable()) {
+      thr.detach();
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1241,6 +1297,71 @@ void CppBridge::restoreWallet(
    if (worker.joinable()) {
       worker.detach();
    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void CppBridge::importWallet(const std::filesystem::path& path, MessageId msgId)
+{
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   reply.setReferenceId(msgId);
+
+   try {
+      auto wltInfo = wltManager_->importFile(path);
+      auto utilsReply = reply.initUtils();
+      auto importReply = utilsReply.initImportWallet();
+
+      importReply.setWalletId(wltInfo->walletId());
+      importReply.setLabel(wltInfo->name());
+      switch (wltInfo->state())
+      {
+         case WalletLoadState::Legacy:
+         {
+            //set the union
+            importReply.setLegacy();
+
+            //cast the info ptr
+            auto legacyInfo = std::dynamic_pointer_cast<A135FileInfo>(wltInfo);
+            if (legacyInfo == nullptr) {
+               throw std::runtime_error("failed to grab legacy wallet info");
+            }
+
+            //fill up the rest of the data
+            importReply.setDescription(legacyInfo->description());
+            importReply.setWatchingOnly(legacyInfo->isWatchingOnly());
+            importReply.setEncrypted(legacyInfo->isEncrypted());
+            importReply.setTimestamp(legacyInfo->timestamp());
+            importReply.setHighestUsedIndex(legacyInfo->highestUsedIndex());
+            importReply.setAddressCount(legacyInfo->addressCount());
+            importReply.setKdfMem(legacyInfo->kdfMem());
+            importReply.setSeedVersion(legacyInfo->version());
+            break;
+         }
+
+         case WalletLoadState::Encrypted:
+         {
+            break;
+         }
+
+         case WalletLoadState::Ready:
+         {
+            importReply.setReady();
+            break;
+         }
+
+         default:
+            throw std::runtime_error("unexpected file state");
+      }
+
+      reply.setSuccess(true);
+   } catch (const std::exception& e) {
+      reply.setSuccess(false);
+      reply.setError(e.what());
+   }
+
+   auto payload = serializeCapnp(message);
+   writeToClient(payload);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

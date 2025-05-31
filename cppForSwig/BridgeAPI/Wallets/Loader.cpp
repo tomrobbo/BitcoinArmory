@@ -146,6 +146,47 @@ std::shared_ptr<Wallets::AssetWallet_Single> A135FileInfo::migrate(
    return a135Ptr_->migrate(passLbd, params);
 }
 
+////////
+bool A135FileInfo::isEncrypted() const
+{
+   return a135Ptr_->isEncrypted_;
+}
+
+bool A135FileInfo::isWatchingOnly() const
+{
+   return a135Ptr_->watchingOnly_;
+}
+
+uint32_t A135FileInfo::kdfMem() const
+{
+   return a135Ptr_->kdfMem_;
+}
+
+int64_t A135FileInfo::highestUsedIndex() const
+{
+   return a135Ptr_->highestUsedIndex_;
+}
+
+size_t A135FileInfo::addressCount() const
+{
+   return a135Ptr_->addrMap_.size();
+}
+
+const std::string& A135FileInfo::description() const
+{
+   return a135Ptr_->labelDescription_;
+}
+
+uint64_t A135FileInfo::timestamp() const
+{
+   return a135Ptr_->timestamp_;
+}
+
+uint32_t A135FileInfo::version() const
+{
+   return a135Ptr_->version_;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 //// Armory135Header
@@ -375,7 +416,7 @@ std::shared_ptr<Wallets::AssetWallet_Single> Armory135Header::migrate(
          {
             while (true) {
                //prompt for passphrase
-               auto passphrase = passLbd({});
+               auto passphrase = passLbd({Wallets::EncryptionKeyId{}});
                if (passphrase.empty()) {
                   return {};
                }
@@ -404,9 +445,6 @@ std::shared_ptr<Wallets::AssetWallet_Single> Armory135Header::migrate(
          };
          decryptedRoot = std::move(decryptPrivKey(passLbd, rootAddrObj));
       }
-
-      //cleanup
-      passLbd({});
    }
 
    //create wallet
@@ -488,7 +526,6 @@ std::shared_ptr<Wallets::AssetWallet_Single> Armory135Header::migrate(
    }
    return wallet;
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 //

@@ -1255,8 +1255,7 @@ void LMDBBlockDatabase::setValidDupIDForHeight(uint32_t blockHgt, uint8_t dup,
       }
    }
 
-   std::map<unsigned, uint8_t> updateMap;
-   updateMap[blockHgt] = dup;
+   std::map<unsigned, uint8_t> updateMap{{blockHgt, dup}};
    validDupByHeight_.update(updateMap);
 }
 

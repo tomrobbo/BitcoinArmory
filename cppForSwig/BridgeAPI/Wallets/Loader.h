@@ -132,6 +132,8 @@ namespace Armory
       ////////////////////////////////////////////////////////////////////////////////
       class Armory135Header
       {
+         friend class A135FileInfo;
+
       private:
          //file system
          const std::filesystem::path path_;
@@ -139,7 +141,7 @@ namespace Armory
          //meta data
          std::string walletID_;
          uint32_t version_ = UINT32_MAX;
-         uint64_t timestamp_ = UINT32_MAX;
+         uint64_t timestamp_ = UINT64_MAX;
 
          std::string labelName_;
          std::string labelDescription_;
@@ -163,6 +165,9 @@ namespace Armory
 
       private:
          void parseFile(void);
+         std::shared_ptr<Armory::Wallets::AssetWallet_Single> migrate(
+            const Passphrase::UnlockFunc&,
+            const Wallets::IO::CreateWalletParams&) const;
 
       public:
          Armory135Header(const std::filesystem::path&);
@@ -171,9 +176,6 @@ namespace Armory
          bool isInitialized(void) const;
          const std::string& getID(void) const;
          const std::string& getLabel(void) const;
-         std::shared_ptr<Armory::Wallets::AssetWallet_Single> migrate(
-            const Passphrase::UnlockFunc&,
-            const Wallets::IO::CreateWalletParams&) const;
 
          //static
          static void verifyChecksum(const BinaryDataRef&, const BinaryDataRef&);
@@ -194,6 +196,15 @@ namespace Armory
 
          const std::string& walletId(void) const override;
          const std::string& name(void) const override;
+
+         bool isEncrypted(void) const;
+         bool isWatchingOnly(void) const;
+         uint32_t kdfMem(void) const;
+         int64_t highestUsedIndex(void) const;
+         size_t addressCount(void) const;
+         const std::string& description(void) const;
+         uint64_t timestamp(void) const;
+         uint32_t version(void) const;
       };
    } //namespace Bridge
 } //namespace Armory
