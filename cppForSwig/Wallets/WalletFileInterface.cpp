@@ -610,7 +610,13 @@ void WalletDBInterface::setDbCount(unsigned count)
 void WalletDBInterface::openDbEnv(bool fileExists)
 {
    if (FileUtils::fileExists(path_, 0) != fileExists) {
-      throw WalletInterfaceException("[openEnv] file flag mismatch");
+      if (!fileExists) {
+         throw WalletInterfaceException(
+            "[openEnv] trying to create a file that already exists");
+      } else {
+         throw WalletInterfaceException(
+            "[openEnv] trying to read a file that does not exists");
+      }
    }
 
    if (dbEnv_ != nullptr) {

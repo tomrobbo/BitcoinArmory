@@ -8,6 +8,7 @@
 import enum
 from armoryengine.ArmoryUtils import LOGINFO, LOGWARN, LOGERROR
 from armoryengine.PyBtcWallet import PyBtcWallet
+from armoryengine.CppBridge import TheBridge
 
 ################################################################################
 class WalletTypes(enum.Enum):
@@ -88,6 +89,18 @@ class WalletMap(object):
             'id' : wallet.dbId,
             'visible' : True
          })
+
+   def migrateWallet(self, path, callbackId, cbFunc):
+      def wrapperFunc(capnReply):
+         if capnReply.success == False:
+            cbFunc(False, capnReply.error)
+         else:
+            #load the wallet
+            raise Exception("IMPLEMENT ME 1")
+
+            #trigger the caller cb
+            cbFunc(True, None)
+      TheBridge.wltManager.migrateWallet(path, callbackId, wrapperFunc)
 
    def unloadWallet(self, wltId: str, accId: str=None):
       dbIds = []

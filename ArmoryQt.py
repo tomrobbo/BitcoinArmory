@@ -92,6 +92,7 @@ from qtdialogs.DlgHelpAbout import DlgHelpAbout
 from qtdialogs.MsgBoxCustom import MsgBoxCustom
 from qtdialogs.MsgBoxWithDNAA import MsgBoxWithDNAA
 from qtdialogs.DlgUniversalRestoreSelect import DlgUniversalRestoreSelect
+from qtdialogs.DlgWalletMigration import DlgWalletMigration
 
 from ui.QtExecuteSignal import TheSignalExecution
 from armorymodels import AllWalletsDispModel, AllWalletsCheckboxDelegate, \
@@ -2732,8 +2733,6 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
          'the middle of an existing blockchain scan.  Please wait for '
          'the scan to finish.  ') + extraMsg, QtWidgets.QMessageBox.Ok)
 
-
-
    #############################################################################
    def execImportWallet(self):
       bdm = TheBDM.getState()
@@ -2746,34 +2745,34 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
 
       DlgUniversalRestoreSelect(self, self).exec_()
 
-
    #############################################################################
    def execGetImportWltName(self):
-      fn = self.getFileLoad('Import Wallet File')
-      if not os.path.exists(fn):
+      filePath = self.getFileLoad('Import Wallet File')
+      if not os.path.exists(filePath):
          return
 
-      wlt = PyBtcWallet().readWalletFile(fn, verifyIntegrity=False)
-      wltID = wlt.uniqueIDB58
-      wlt = None
+      try:
+         #try to import the wallet
+         wltData = TheBridge.utils.importWallet(filePath)
 
-      if wltID in self.walletMap:
+         #is it legacy or modern?
+         if wltData.which() == 'legacy':
+            #this is a legacy wallet, offer to migrate it
+            migrateDlg = DlgWalletMigration(self, self, filePath, wltData)
+            migrateDlg.exec_()
+         elif wltData.which() == 'locked':
+            #wallet control header is locked, offer to unlock
+            pass
+         elif wltData.which() == 'ready':
+            #wallet is ready to be loaded, present its content to the user
+            pass
+
+      except Exception as e:
          QtWidgets.QMessageBox.warning(self, self.tr('Duplicate Wallet!'), self.tr(
             'You selected a wallet that has the same ID as one already '
             'in your wallet (%s)!  If you would like to import it anyway, '
             'please delete the duplicate wallet in Armory, first.' % wltID), \
             QtWidgets.QMessageBox.Ok)
-         return
-
-      fname = self.getUniqueWalletFilename(fn)
-      newpath = os.path.join(ARMORY_HOME_DIR, fname)
-
-      LOGINFO('Copying imported wallet to: %s', newpath)
-      shutil.copy(fn, newpath)
-      newWlt = PyBtcWallet().readWalletFile(newpath)
-      newWlt.fillAddressPool()
-
-      self.addWalletToApplication(newWlt)
 
    #############################################################################
    def digitalBackupWarning(self):

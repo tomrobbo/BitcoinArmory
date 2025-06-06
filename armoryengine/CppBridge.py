@@ -335,14 +335,14 @@ class BridgeSocket(object):
                replyHandler = self.responseDict[referenceId]
                del self.responseDict[referenceId]
 
-               #fill the promise & release lock
+               #release lock & fill the promise
                self.rwLock.release()
-
                if isinstance(replyHandler, PyPromFut):
                   replyHandler.setVal(reply)
-
                elif isinstance(replyHandler, CallbackWrapper):
                   replyHandler.execute(reply)
+               else:
+                  LOGWARN(f"unexpected callback type: {type(replyHandler)}")
 
             elif protoPayload.which() == "notification":
                callbackData = protoPayload.notification
@@ -593,6 +593,16 @@ class BlockchainUtils(ProtoWrapper):
       utilsRequest.restoreWallet = restoreStruct
       self.send(packet, callback=successCb)
 
+   #############################################################################
+   def importWallet(self, walletPath):
+      packet = Bridge.ToBridge.new_message()
+      utilsRequest = packet.init("utils")
+      utilsRequest.importWallet = walletPath
+
+      fut = self.send(packet)
+      reply = fut.getVal()
+      return reply.utils.importWallet
+
 ################################################################################
 class WalletManagerWrapper(ProtoWrapper):
    #############################################################################
@@ -629,6 +639,14 @@ class WalletManagerWrapper(ProtoWrapper):
       fut = self.send(packet)
       reply = fut.getVal(nothrow=True)
       return reply
+
+   ####
+   def migrateWallet(self, walletPath: str, callbackId: str, callbackFunc: callable):
+      packet = Bridge.ToBridge.new_message()
+      request = packet.init("walletManager").init("migrateWallet")
+      request.walletPath = walletPath
+      request.callbackId = callbackId
+      self.send(packet, callback=callbackFunc)
 
 ################################################################################
 class BridgeWalletWrapper(ProtoWrapper):
