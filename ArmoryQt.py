@@ -1102,13 +1102,13 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
       source3 = bytes()
       try:
          screen = QtWidgets.QApplication.primaryScreen()
-         pixDesk = screen.grabWindow(QtWidgets.QApplication.desktop().winId())
+         pixDesk = screen.grabWindow(0)
          pixRaw = QtCore.QByteArray()
          pixBuf = QtCore.QBuffer(pixRaw)
          pixBuf.open(QtCore.QIODevice.WriteOnly)
          pixDesk.save(pixBuf, 'PNG')
          source3 = bytes(pixBuf.buffer())
-      except:
+      except Exception as e:
          LOGEXCEPT('Third source of entropy (desktop screenshot) failed')
 
       if len(source3)==0:

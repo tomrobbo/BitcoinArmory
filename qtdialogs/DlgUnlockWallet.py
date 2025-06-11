@@ -120,6 +120,9 @@ class DlgUnlockWallet(ArmoryDialog):
       self.redrawKeys()
       self.encryptionKeyIds = []
 
+      self.edtPasswd.textChanged.connect(self.updateUnlockButton)
+      self.updateUnlockButton()
+
    #############################################################################
    def toggleOSD(self, *args):
       isChk = self.btnShowOSD.isChecked()
@@ -268,8 +271,13 @@ class DlgUnlockWallet(ArmoryDialog):
 
    #############################################################################
    def recycle(self):
-      QtWidgets.QMessageBox.critical(self, self.tr('Invalid Passphrase'), \
-         self.tr('That passphrase is not correct!'), QtWidgets.QMessageBox.Ok)
+      if getattr(self, '_suppressUnlockError', False):
+         self.close()
+         return
+      QtWidgets.QMessageBox.critical(
+         self, self.tr('Unlock Failed'),
+         self.tr('Incorrect passphrase for wallet migration. Please try again.')
+      )
       self.edtPasswd.setText('')
 
    #############################################################################
@@ -287,8 +295,9 @@ class DlgUnlockWallet(ArmoryDialog):
    #############################################################################
    def rejectPassphrase(self):
       self.edtPasswd.setText('')
-      self.reply("")
-      self.reject()
+      # Only prompt the parent; do not reply or reject yet
+      if hasattr(self.parent, 'handleUnlockCancelForWatchOnly'):
+         self.parent.handleUnlockCancelForWatchOnly(self)
 
    #############################################################################
    def accept(self):
@@ -302,7 +311,9 @@ class DlgUnlockWallet(ArmoryDialog):
 
    #############################################################################
    def reply(self, passphrase):
-      raise Exception("override me")
+      if passphrase == "":
+         self._suppressUnlockError = True
+      self.accept()  # Close the dialog on success
 
    #############################################################################
    def setIds(self, ids):
@@ -319,6 +330,10 @@ class DlgUnlockWallet(ArmoryDialog):
          #failure
          self.recycle()
          self.show()
+
+   def updateUnlockButton(self):
+      # Minimal password length, adjust as needed
+      self.btnAccept.setEnabled(len(self.edtPasswd.text()) >= 4)
 
 ################################################################################
 class UnlockWalletHandler(ServerPush, DlgUnlockWallet):
@@ -343,3 +358,26 @@ class UnlockWalletHandler(ServerPush, DlgUnlockWallet):
       packet.success = bool(len(passphrase) != 0)
       packet.unlockRequest = passphrase
       super().reply()
+
+################################################################################
+class DlgUnlockMigratingWallet(DlgUnlockWallet):
+    def __init__(self, parent, main):
+        super().__init__(wltID=parent._walletData.walletId, parent=parent, main=main, unlockMsg="Unlock Wallet To Migrate")
+        self._passphrase = None
+        self._suppressUnlockError = False
+
+    def recycle(self):
+        if getattr(self, '_suppressUnlockError', False):
+            self.close()
+            return
+        QtWidgets.QMessageBox.critical(
+            self, self.tr('Unlock Failed'),
+            self.tr('Incorrect passphrase for wallet migration. Please try again.')
+        )
+        self.edtPasswd.setText('')
+
+    def rejectPassphrase(self):
+        self.edtPasswd.setText('')
+        # Only prompt the parent; do not reply or reject yet
+        if hasattr(self.parent, 'handleUnlockCancelForWatchOnly'):
+            self.parent.handleUnlockCancelForWatchOnly(self)

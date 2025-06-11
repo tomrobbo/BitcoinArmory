@@ -95,11 +95,12 @@ class WalletMap(object):
          if capnReply.success == False:
             cbFunc(False, capnReply.error)
          else:
-            #load the wallet
-            raise Exception("IMPLEMENT ME 1")
-
-            #trigger the caller cb
-            cbFunc(True, None)
+            try:
+               self.parent.loadWallets()  # This reloads all wallets, registering the new one
+               dbId = capnReply.walletManager.migrateWallet
+               cbFunc(True, dbId)
+            except Exception as e:
+               cbFunc(False, str(e))
       TheBridge.wltManager.migrateWallet(path, callbackId, wrapperFunc)
 
    def unloadWallet(self, wltId: str, accId: str=None):
