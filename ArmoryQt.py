@@ -1108,7 +1108,7 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
          pixBuf.open(QtCore.QIODevice.WriteOnly)
          pixDesk.save(pixBuf, 'PNG')
          source3 = bytes(pixBuf.buffer())
-      except Exception as e:
+      except:
          LOGEXCEPT('Third source of entropy (desktop screenshot) failed')
 
       if len(source3)==0:

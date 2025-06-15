@@ -24,6 +24,7 @@ class DlgUnlockWallet(ArmoryDialog):
    def __init__(self, wltID, parent=None, main=None, unlockMsg='Unlock'):
       super(DlgUnlockWallet, self).__init__(parent, main)
       self.wltID = wltID
+      self._suppressUnlockError = False
 
       ##### Upper layout
       lblDescr = QtWidgets.QLabel(
@@ -271,7 +272,7 @@ class DlgUnlockWallet(ArmoryDialog):
 
    #############################################################################
    def recycle(self):
-      if getattr(self, '_suppressUnlockError', False):
+      if self._suppressUnlockError:
          self.close()
          return
       QtWidgets.QMessageBox.critical(
@@ -296,8 +297,9 @@ class DlgUnlockWallet(ArmoryDialog):
    def rejectPassphrase(self):
       self.edtPasswd.setText('')
       # Only prompt the parent; do not reply or reject yet
-      if hasattr(self.parent, 'handleUnlockCancelForWatchOnly'):
-         self.parent.handleUnlockCancelForWatchOnly(self)
+      self._suppressUnlockError = True
+      self.parent.handleUnlockCancelForWatchOnly(self)
+      
 
    #############################################################################
    def accept(self):
@@ -311,9 +313,7 @@ class DlgUnlockWallet(ArmoryDialog):
 
    #############################################################################
    def reply(self, passphrase):
-      if passphrase == "":
-         self._suppressUnlockError = True
-      self.accept()  # Close the dialog on success
+      raise Exception("override me")
 
    #############################################################################
    def setIds(self, ids):
@@ -331,6 +331,7 @@ class DlgUnlockWallet(ArmoryDialog):
          self.recycle()
          self.show()
 
+   #############################################################################
    def updateUnlockButton(self):
       # Minimal password length, adjust as needed
       self.btnAccept.setEnabled(len(self.edtPasswd.text()) >= 4)
@@ -367,7 +368,7 @@ class DlgUnlockMigratingWallet(DlgUnlockWallet):
         self._suppressUnlockError = False
 
     def recycle(self):
-        if getattr(self, '_suppressUnlockError', False):
+        if self._suppressUnlockError == True:
             self.close()
             return
         QtWidgets.QMessageBox.critical(
@@ -377,7 +378,6 @@ class DlgUnlockMigratingWallet(DlgUnlockWallet):
         self.edtPasswd.setText('')
 
     def rejectPassphrase(self):
-        self.edtPasswd.setText('')
-        # Only prompt the parent; do not reply or reject yet
-        if hasattr(self.parent, 'handleUnlockCancelForWatchOnly'):
-            self.parent.handleUnlockCancelForWatchOnly(self)
+       self.edtPasswd.setText('') 
+       # Only prompt the parent; do not reply or reject yet
+       self.parent.handleUnlockCancelForWatchOnly(self)
