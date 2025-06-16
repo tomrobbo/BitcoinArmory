@@ -12,7 +12,7 @@ from ui.Wizards import SetPassphrasePage, VerifyPassphrasePage, WalletProgressPa
 
 from qtdialogs.qtdefines import QtWidgets, QtCore, QRichLabel, HLINE
 from qtdialogs.ArmoryDialog import ArmoryDialog
-from qtdialogs.DlgUnlockWallet import DlgUnlockWallet
+from qtdialogs.DlgUnlockWallet import DlgUnlockWallet, DlgUnlockMigratingWallet
 from qtdialogs.DlgChangePassphrase import DlgChangePassphrase
 from armorycolors import htmlColor
 
@@ -69,27 +69,6 @@ def createSubtextLabel(text):
    return lbl
 
 ################################################################################
-class DlgUnlockMigratingWallet(DlgUnlockWallet):
-   '''
-   Wraps around DlgUnlockWallet to handle the unlock
-   of legacy wallets at migration
-   '''
-   def __init__(self, parent, main):
-      DlgUnlockWallet.__init__(self,
-         wltID=parent._walletData.walletId,
-         parent=parent, main=main,
-         unlockMsg="Unlock Wallet To Migrate")
-
-   def reply(self, passphrase):
-      # Store the passphrase in the parent immediately after unlock
-      self.parent._unlockedPassphrase = passphrase
-      packet = self.parent.getNewPacket()
-      packet.unlockRequest = passphrase
-      packet.success = True
-      self.parent.reply()
-      self.done(0)  # Close the unlock dialog immediately after unlock
-
-################################################################################
 class DlgWalletMigration(ArmoryDialog, ServerPush):
    """
    Dialog for migrating a legacy wallet to the new format.
@@ -102,15 +81,9 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       self.dlgUnlock = None
       self.reusePassphrase = False
       self._doneBtn = None
-      self._resultWidget = None
       self._resultLabel = None
       self._migration_complete = False
       self._migration_failed = False
-
-      self.btnCancel = QtWidgets.QPushButton(self.tr('Cancel'))
-      self.btnCancel.setSizePolicy(QtWidgets.QSizePolicy.Minimum,
-         QtWidgets.QSizePolicy.Minimum)
-      self.buttonSize = self.btnCancel.sizeHint()
 
       self.subtextFontSize = 10
       self.listFontSize = 9
@@ -315,6 +288,7 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       # Ignore unlock requests if migration is already complete
       if self._migration_complete:
          return
+      # Always use DlgUnlockMigratingWallet for migration unlock dialogs
       if not self.dlgUnlock:
          self.dlgUnlock = DlgUnlockMigratingWallet(
             parent=self, main=self.main)
