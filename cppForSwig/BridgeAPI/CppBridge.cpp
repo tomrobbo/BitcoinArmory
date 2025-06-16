@@ -8,7 +8,8 @@
 
 #include "CppBridge.h"
 #include "BridgeSocket.h"
-#include "TerminalPassphrasePrompt.h"
+#include "Wallets/Manager.h"
+#include "BlockchainDbClient.h"
 #include "PassphrasePrompt.h"
 #include "../AsyncClient.h"
 #include "../Wallets/Seeds/Backups.h"
@@ -35,14 +36,13 @@ enum CppBridgeState
    CppBridge_Registered
 };
 
-#define BRIDGE_CALLBACK_BDM         "bdm_callback"
-#define BRIDGE_CALLBACK_PROGRESS    "progress"
-#define DISCONNECTED_CALLBACK_ID    "disconnected"
-
 #define PROTO_ASSETID_PREFIX 0xAFu
 
 namespace
 {
+   PRNG_Fortuna fortuna;
+
+   ////
    BinaryData serializeCapnp(capnp::MallocMessageBuilder& msg)
    {
       auto flat = capnp::messageToFlatArray(msg);
@@ -245,17 +245,6 @@ namespace
          capnAddrs.set(i++, capnp::Data::Builder(
             (uint8_t*)scrAddr.getPtr(), scrAddr.getSize()
          ));
-      }
-   }
-
-   void ledgersToCapnp(
-      const std::vector<std::shared_ptr<DBClientClasses::LedgerEntry>>& ledgers,
-      Codec::Types::TxLedger::Builder& txLedger)
-   {
-      auto capnLedgers = txLedger.initLedgers(ledgers.size());
-      for (unsigned i=0; i<ledgers.size(); i++) {
-         auto capnLedger = capnLedgers[i];
-         ledgerToCapnp(*ledgers[i], capnLedger);
       }
    }
 
@@ -495,9 +484,6 @@ namespace
 ////////////////////////////////////////////////////////////////////////////////
 CppBridge::CppBridge() :
    path_(Config::getDataDir()),
-   dbAddr_(Config::NetworkSettings::dbIP()),
-   dbPort_(Config::NetworkSettings::dbPort()),
-   dbOneWayAuth_(Config::NetworkSettings::oneWayAuth()),
    dbOffline_(Config::NetworkSettings::isOffline())
 {
    wltManager_ = std::make_shared<WalletManager>(path_);
@@ -520,7 +506,6 @@ void CppBridge::reset()
       bdvPtr_->unregisterFromDB();
    }
    bdvPtr_.reset();
-   callbackPtr_.reset();
 }
 
 bool CppBridge::isOffline() const
@@ -764,105 +749,74 @@ bool CppBridge::deleteWallet(const std::string& wltId)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void CppBridge::setupDB()
+void CppBridge::setupDB(MessageId refId)
 {
+   /*
+   * should call this method from a dedicated thread
+   */
+   LOGINFO << "connecting to ArmoryDB";
+
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   reply.setReferenceId(refId);
+
    if (dbOffline_) {
       LOGWARN << "attempt to connect to DB in offline mode, ignoring";
+      reply.setError("cannot setup db offline mode");
+      reply.setSuccess(false);
+      auto response = serializeCapnp(message);
+      this->writeToClient(response);
       return;
    }
 
-   auto lbd = [this](void)->void
-   {
-      //sanity check
-      if (bdvPtr_ != nullptr) {
-         return;
-      }
-
-      if (wltManager_ == nullptr) {
-         throw std::runtime_error("wallet manager is not initialized");
-      }
-
-      /***
-      The bridge feeds a RemoteCallback object to the WebSocketClient object
-      that bdvPtr_ wraps around. On pushes from ArmoryDB, the wsclient passes
-      the packets to the RemoteCallback.
-
-      Most of the push actions require pushing the data up the chain, to the
-      client. The pushNotif lambda deals with that.
-
-      The handler is very simple for now: either pass a capnp message along
-      to the client or call updateStateFromDB.
-      ***/
-      auto pushNotif = [this](BridgeNotifStruct notif)->void
-      {
-         switch (notif.type)
-         {
-            case BridgeNotifType::PUSH:
-               if (notif.packet.empty()) {
-                  throw std::runtime_error("empty packet in push notif!");
-               }
-               this->writeToClient(notif.packet);
-               return;
-
-            case BridgeNotifType::UPDATE:
-               if (notif.lbd == nullptr) {
-                  throw std::runtime_error("notif lbd is not set!");
-               }
-               this->wltManager_->updateStateFromDB(notif.lbd);
-               return;
-
-            default:
-               throw std::runtime_error("invalid pushNotif type");
-         }
-      };
-
-      //setup bdv obj
-      callbackPtr_ = std::make_shared<BridgeCallback>(pushNotif);
-      bdvPtr_ = AsyncClient::BlockDataViewer::getNewBDV(
-         dbAddr_, dbPort_,
-         Wallets::IO::ReadOnlyFileParams {
-            path_ / CLIENT_AUTH_PEER_FILENAME,
-            TerminalPassphrasePrompt::getLambda("db identification key")
-         },
-         true, dbOneWayAuth_, callbackPtr_
-      );
-
-      //TODO: set gui prompt to accept server pubkeys
-      bdvPtr_->setCheckServerKeyPromptLambda(
-         [](const BinaryData&, const std::string&)->bool
-         { return true; }
-      );
-
-      //set bdvPtr in wallet manager
-      wltManager_->setBdvPtr(bdvPtr_);
-
-      //connect to db
-      try {
-         bdvPtr_->connectToRemote();
-         bdvPtr_->registerWithDB(
-            Config::BitcoinSettings::getMagicBytes().toHexStr());
-
-         //notify setup is done
-         callbackPtr_->notifySetupDone();
-      } catch (const std::exception& e) {
-         LOGERR << "failed to connect to db with error: " << e.what();
-      }
-   };
-
-   std::thread thr(lbd);
-   if (thr.joinable()) {
-      thr.join(); //set back to detach
+   if (bdvPtr_ != nullptr) {
+      LOGWARN << "already connected to db!";
+      reply.setError("already connected to db!");
+      reply.setSuccess(false);
+      auto response = serializeCapnp(message);
+      this->writeToClient(response);
+      return;
    }
+
+   if (wltManager_ == nullptr) {
+      LOGERR << "null wallet manager!";
+      reply.setError("null wallet manager!");
+      reply.setSuccess(false);
+      auto response = serializeCapnp(message);
+      this->writeToClient(response);
+      return;
+   }
+
+   //do we have to spawn the db?
+   if (Config::NetworkSettings::automateDb()) {
+      spawnDb();
+   }
+
+   //connect to db
+   bdvPtr_ = setupClientConnection(path_,
+      [this](BinaryData& data){writeToClient(data);},
+      wltManager_);
+
+   //reply to caller
+   reply.setSuccess(true);
+   auto response = serializeCapnp(message);
+   this->writeToClient(response);
+}
+
+////
+void CppBridge::goOnline()
+{
+   wltManager_->goOnline();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 void CppBridge::registerWallets()
 {
    wltManager_->registerWallets();
-   callbackPtr_->notifySetupRegistrationDone();
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////
 void CppBridge::registerWallet(const std::string& wltId,
    const Wallets::AddressAccountId& accId, bool isNew)
 {
@@ -872,16 +826,7 @@ void CppBridge::registerWallet(const std::string& wltId,
    }
 
    try {
-      auto dbId = wltManager_->registerWallet(wltId, accId, isNew);
-      auto finalLbd = [cbPtr = callbackPtr_, dbId]()
-      {
-         cbPtr->notifyRefresh(std::set<std::string>{dbId});
-      };
-      auto lbd = [wltMgr = wltManager_, finalLbd] ()
-      {
-         wltMgr->updateStateFromDB(finalLbd);
-      };
-      callbackPtr_->registerRefreshCallback(dbId, lbd);
+      wltManager_->registerWallet(wltId, accId, isNew);
    } catch (const std::exception& e) {
       LOGERR << "failed to register wallet with error: " << e.what();
    }
@@ -1131,7 +1076,7 @@ void CppBridge::restoreWallet(
          const Seeds::RestorePrompt& prompt)->Seeds::PromptReply
       {
          if (prompt.needsReply()) {
-            auto counterBd = fortuna_.generateRandom(4);
+            auto counterBd = fortuna.generateRandom(4);
             auto notifCounter = *(uint32_t*)counterBd.getPtr();
             auto message = createCallbackMessage(prompt, notifCounter);
 
@@ -2176,7 +2121,7 @@ void CppBridge::setupNewCoinSelectionInstance(const std::string& wltId,
    unsigned height, MessageId msgId)
 {
    auto wltContainer = wltManager_->getWalletContainer(wltId, accId);
-   auto csId = fortuna_.generateRandom(6).toHexStr();
+   auto csId = fortuna.generateRandom(6).toHexStr();
    auto insertIter = csMap_.emplace(csId,
       std::shared_ptr<CoinSelection::CoinSelectionInstance>()).first;
    auto csPtr = &insertIter->second;
@@ -2327,7 +2272,7 @@ void CppBridge::getUTXOs(const std::string& wltId,
 ////////////////////////////////////////////////////////////////////////////////
 BinaryData CppBridge::initNewSigner(MessageId msgId)
 {
-   auto id = fortuna_.generateRandom(6).toHexStr();
+   auto id = fortuna.generateRandom(6).toHexStr();
    signerMap_.emplace(std::make_pair(id,
       std::make_shared<CppBridgeSignerStruct>(
          [this](const std::string& wltId)->auto {
@@ -2472,7 +2417,7 @@ CallbackHandler CppBridge::getCallbackHandler(uint32_t id)
 ////////////////////////////////////////////////////////////////////////////////
 SecureBinaryData CppBridge::generateRandom(size_t count) const
 {
-   return fortuna_.generateRandom(count);
+   return fortuna.generateRandom(count);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2526,230 +2471,6 @@ void CppBridge::getUnlockTime(const std::string& walletId, MessageId refId)
    if (thr.joinable()) {
       thr.detach();
    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-////
-////  BridgeCallback
-////
-////////////////////////////////////////////////////////////////////////////////
-void BridgeCallback::registerRefreshCallback(const std::string& id,
-   const std::function<void(void)>& callback)
-{
-   std::unique_lock<std::mutex> lock(idMutex_);
-   if (idCallbacks_.find(id) != idCallbacks_.end()) {
-      throw std::runtime_error(
-         "we already have a refresh callback for this id: " + id);
-   }
-   idCallbacks_.emplace(id, callback);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void BridgeCallback::processRefreshCallbacks(std::set<std::string>& ids)
-{
-   std::unique_lock<std::mutex> lock(idMutex_);
-   if (idCallbacks_.empty()) {
-      return;
-   }
-
-   auto iter = ids.begin();
-   while (iter != ids.end()) {
-      auto cbIter = idCallbacks_.find(*iter);
-      if (cbIter != idCallbacks_.end()) {
-         auto thr = std::thread(cbIter->second);
-         if (thr.joinable()) {
-            thr.detach();
-         }
-         idCallbacks_.erase(cbIter);
-         ids.erase(iter++);
-      } else {
-         ++iter;
-      }
-   }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void BridgeCallback::run(BdmNotification notif)
-{
-   switch (notif.action)
-   {
-      case BDMAction_NewBlock:
-      {
-         auto lbd = [pushLbd = pushNotifLbd_, height = notif.height]()
-         {
-            capnp::MallocMessageBuilder message;
-            auto fromBridge = message.initRoot<FromBridge>();
-            auto capnNotif = fromBridge.initNotification();
-            capnNotif.setNewBlock(height);
-            capnNotif.setCallbackId(BRIDGE_CALLBACK_BDM);
-            pushLbd({BridgeNotifType::PUSH, serializeCapnp(message)});
-         };
-
-         pushNotifLbd_({BridgeNotifType::UPDATE, {}, lbd});
-         break;
-      }
-
-      case BDMAction_Ready:
-      {
-         auto lbd = [pushLbd = pushNotifLbd_, height = notif.height]()
-         {
-            capnp::MallocMessageBuilder message;
-            auto fromBridge = message.initRoot<FromBridge>();
-            auto capnNotif = fromBridge.initNotification();
-            capnNotif.setReady(height);
-            capnNotif.setCallbackId(BRIDGE_CALLBACK_BDM);
-            pushLbd({BridgeNotifType::PUSH, serializeCapnp(message)});
-         };
-
-         pushNotifLbd_({BridgeNotifType::UPDATE, {}, lbd});
-         break;
-      }
-
-      case BDMAction_ZC:
-      {
-         capnp::MallocMessageBuilder message;
-         auto fromBridge = message.initRoot<FromBridge>();
-         auto capnNotif = fromBridge.initNotification();
-         capnNotif.setCallbackId(BRIDGE_CALLBACK_BDM);
-
-         auto capnZCs = capnNotif.initZeroConfs();
-         ledgersToCapnp(notif.ledgers, capnZCs);
-
-         pushNotifLbd_({BridgeNotifType::PUSH, serializeCapnp(message)});
-         break;
-      }
-
-      case BDMAction_InvalidatedZC:
-      {
-         //notify zc
-         break;
-      }
-
-      case BDMAction_Refresh:
-      {
-         processRefreshCallbacks(notif.ids);
-         if (notif.ids.empty()) {
-            return;
-         }
-         notifyRefresh(notif.ids);
-         break;
-      }
-
-      case BDMAction_NodeStatus:
-      {
-         capnp::MallocMessageBuilder message;
-         auto fromBridge = message.initRoot<FromBridge>();
-         auto capnNotif = fromBridge.initNotification();
-         capnNotif.setCallbackId(BRIDGE_CALLBACK_BDM);
-
-         auto capnNode = capnNotif.initNodeStatus();
-         nodeStatusToCapnp(notif.nodeStatus, capnNode);
-
-         pushNotifLbd_({BridgeNotifType::PUSH, serializeCapnp(message)});
-         break;
-      }
-
-      case BDMAction_BDV_Error:
-      {
-         //notify error
-         LOGINFO << "bdv error:";
-         LOGINFO << "  code: " << notif.error.errCode_;
-         LOGINFO << "  data: " << notif.error.errData_.toHexStr();
-
-         capnp::MallocMessageBuilder message;
-         auto fromBridge = message.initRoot<FromBridge>();
-         auto capnNotif = fromBridge.initNotification();
-         capnNotif.setCallbackId(BRIDGE_CALLBACK_BDM);
-         capnNotif.setError(notif.error.errorStr_);
-
-         pushNotifLbd_({BridgeNotifType::PUSH, serializeCapnp(message)});
-         break;
-      }
-
-      default:
-         return;
-   }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void BridgeCallback::progress(
-   BDMPhase phase,
-   const std::vector<std::string> &walletIdVec,
-   float progress, unsigned secondsRem,
-   unsigned progressNumeric)
-{
-   capnp::MallocMessageBuilder message;
-   auto fromBridge = message.initRoot<FromBridge>();
-   auto capnNotif = fromBridge.initNotification();
-   auto capnProgress = capnNotif.initScanProgress();
-   capnNotif.setCallbackId(BRIDGE_CALLBACK_PROGRESS);
-
-   capnProgress.setPhase((uint32_t)phase);
-   capnProgress.setProgress(progress);
-   capnProgress.setTime(secondsRem);
-   capnProgress.setNumericProgress(progressNumeric);
-
-   if (!walletIdVec.empty()) {
-      auto capnIds = capnProgress.initIds(walletIdVec.size());
-      for (unsigned i=0; i<walletIdVec.size(); i++) {
-         capnIds.set(i, walletIdVec[i]);
-      }
-   }
-
-   pushNotifLbd_({BridgeNotifType::PUSH, serializeCapnp(message)});
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void BridgeCallback::notifySetupDone()
-{
-   capnp::MallocMessageBuilder message;
-   auto fromBridge = message.initRoot<FromBridge>();
-   auto capnNotif = fromBridge.initNotification();
-   capnNotif.setSetupDone();
-   capnNotif.setCallbackId(BRIDGE_CALLBACK_BDM);
-
-   pushNotifLbd_({BridgeNotifType::PUSH, serializeCapnp(message)});
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void BridgeCallback::notifySetupRegistrationDone()
-{
-   capnp::MallocMessageBuilder message;
-   auto fromBridge = message.initRoot<FromBridge>();
-   auto capnNotif = fromBridge.initNotification();
-   capnNotif.setRegisterDone();
-   capnNotif.setCallbackId(BRIDGE_CALLBACK_BDM);
-
-   pushNotifLbd_({BridgeNotifType::PUSH, serializeCapnp(message)});
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void BridgeCallback::notifyRefresh(const std::set<std::string>& ids)
-{
-   capnp::MallocMessageBuilder message;
-   auto fromBridge = message.initRoot<FromBridge>();
-   auto capnNotif = fromBridge.initNotification();
-   capnNotif.setCallbackId(BRIDGE_CALLBACK_BDM);
-
-   auto capnIds = capnNotif.initRefresh(ids.size());
-   unsigned i=0;
-   for (const auto& id : ids) {
-      capnIds.set(i++, id);
-   }
-
-   pushNotifLbd_({BridgeNotifType::PUSH, serializeCapnp(message)});
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void BridgeCallback::disconnected()
-{
-   capnp::MallocMessageBuilder message;
-   auto fromBridge = message.initRoot<FromBridge>();
-   auto capnNotif = fromBridge.initNotification();
-   capnNotif.setDisconnected();
-   capnNotif.setCallbackId(BRIDGE_CALLBACK_BDM);
-
-   pushNotifLbd_({BridgeNotifType::PUSH, serializeCapnp(message)});
 }
 
 ////////////////////////////////////////////////////////////////////////////////

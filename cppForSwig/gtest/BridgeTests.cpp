@@ -7,13 +7,17 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <cstdlib>
+#include <queue>
 
 #include "TestUtils.h"
 #include "../Wallets/WalletFileInterface.h"
 #include "../Wallets/Seeds/Seeds.h"
+#include "../Wallets/AuthorizedPeers.h"
 #include "../BridgeAPI/CppBridge.h"
 #include "../BridgeAPI/BridgeSocket.h"
 #include "../BridgeAPI/ProtoCommandParser.h"
+#include "../BridgeAPI/Wallets/Manager.h"
+#include "../BridgeAPI/BlockchainDbClient.h"
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
@@ -95,8 +99,36 @@ namespace {
          std::filesystem::path(capnWlt.getPath()), capnWlt.getKdfMemReq()
       };
    }
+
+   struct NotifQueue
+   {
+      std::queue<BinaryData> queue;
+      std::mutex mu;
+      std::condition_variable cv;
+
+      void push_back(BinaryData& data)
+      {
+         std::unique_lock<std::mutex> lock(mu);
+         queue.emplace(std::move(data));
+         cv.notify_all();
+      }
+
+      BinaryData pop()
+      {
+         std::unique_lock<std::mutex> lock(mu);
+         while (queue.empty()) {
+            cv.wait(lock);
+         }
+
+         auto data = std::move(queue.front());
+         queue.pop();
+         return data;
+      }
+   };
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// WalletManagerTests
 ////////////////////////////////////////////////////////////////////////////////
 class WalletManagerTests : public ::testing::Test
 {
@@ -431,6 +463,268 @@ TEST_F(WalletManagerTests, Migrate_Reject)
    }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// WalletManagerWebsocketsTests
+////////////////////////////////////////////////////////////////////////////////
+class WalletManagerWebsocketsTests : public ::testing::Test
+{
+protected:
+   void initBDM()
+   {
+      theBDMt_ = new BlockDataManagerThread();
+      iface_ = theBDMt_->bdm()->getIFace();
+   }
+
+   void createWallet()
+   {
+      IO::CreateWalletParams params{
+         homedir_,
+         Armory::Passphrase::SetNew{1ms, 0, {}},
+         Armory::Passphrase::SetNew{1ms, 0, {}},
+         nullptr, 0
+      };
+
+      //create empty WO wallet
+      auto wltWO = AssetWallet_Single::createBlank("walletWO1", params);
+      wltWO->setupImportAccount();
+
+      auto pubKeyB = CryptoECDSA().ComputePublicKey(TestChain::privKeyAddrB);
+      wltWO->importPublicKey(pubKeyB, AddressEntryType(
+         AddressEntryType_P2PKH | AddressEntryType_Uncompressed));
+
+      auto pubKeyC = CryptoECDSA().ComputePublicKey(TestChain::privKeyAddrC);
+      wltWO->importPublicKey(pubKeyC, AddressEntryType(
+         AddressEntryType_P2PKH | AddressEntryType_Uncompressed));
+
+      auto pubKeyD = CryptoECDSA().ComputePublicKey(TestChain::privKeyAddrD);
+      wltWO->importPublicKey(pubKeyD, AddressEntryType(
+         AddressEntryType_P2PKH | AddressEntryType_Uncompressed));
+
+      auto pubKeyE = CryptoECDSA().ComputePublicKey(TestChain::privKeyAddrE);
+      wltWO->importPublicKey(pubKeyE, AddressEntryType(
+         AddressEntryType_P2PKH | AddressEntryType_Uncompressed));
+   }
+
+   virtual void SetUp()
+   {
+      FileUtils::removeDirectory(blkdir_);
+      FileUtils::removeDirectory(homedir_);
+      FileUtils::removeDirectory(ldbdir_);
+
+      FileUtils::createDirectory(blkdir_ / "blocks");
+      FileUtils::createDirectory(homedir_);
+      FileUtils::createDirectory(ldbdir_);
+
+      DBSettings::setServiceType(SERVICE_UNITTEST_WITHWS);
+
+      // Put the first 5 blocks into the blkdir
+      blk0dat_ = FileUtils::getBlkFilename(blkdir_ / "blocks", 0);
+      TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
+
+      Armory::Config::parseArgs({
+         "--datadir=./fakehomedir",
+         "--dbdir=./ldbtestdir",
+         "--satoshi-datadir=./blkfiletest",
+         "--db-type=DB_FULL",
+         "--thread-count=3",
+         "--public"},
+         Armory::Config::ProcessType::DB);
+
+      startupBIP151CTX();
+      startupBIP150CTX(4);
+
+      //setup auth peers for server and client
+      authPeersPassLbd_ = [](const std::set<EncryptionKeyId>&)->SecureBinaryData
+      {
+         return {};
+      };
+
+      auto createWltLbd = []()->std::unique_ptr<Armory::Passphrase::Params>
+      {
+         return std::make_unique<Armory::Passphrase::Params>(
+            1ms, 0, SecureBinaryData{});
+      };
+
+      Armory::Wallets::AuthorizedPeers::createWallet({
+         homedir_ / SERVER_AUTH_PEER_FILENAME, {createWltLbd}});
+      Armory::Wallets::AuthorizedPeers serverPeers(
+         {homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+
+      Armory::Wallets::AuthorizedPeers::createWallet({
+         homedir_ / CLIENT_AUTH_PEER_FILENAME, {createWltLbd}});
+      Armory::Wallets::AuthorizedPeers clientPeers(
+         {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_});
+
+      //share public keys between client and server
+      auto& serverPubkey = serverPeers.getOwnPublicKey();
+
+      std::stringstream serverAddr;
+      serverAddr << "127.0.0.1:" << NetworkSettings::dbPort();
+      clientPeers.addPeer(serverPubkey, serverAddr.str());
+
+      serverPubkey_ = BinaryData(serverPubkey.pubkey, 33);
+      serverAddr_ = serverAddr.str();
+
+      createWallet();
+      initBDM();
+      auto nodePtr = std::dynamic_pointer_cast<NodeUnitTest>(
+         NetworkSettings::bitcoinNodes().first);
+      nodePtr->setIface(theBDMt_->bdm()->getIFace());
+      hexMagicBytes = BitcoinSettings::getMagicBytes().toHexStr();
+   }
+
+   /////////////////////////////////////////////////////////////////////////////
+   virtual void TearDown()
+   {
+      WebSocketServer::shutdown();
+      WebSocketServer::waitOnShutdown();
+      theBDMt_->shutdown();
+
+      delete theBDMt_;
+      theBDMt_ = nullptr;
+
+      FileUtils::removeDirectory(blkdir_);
+      FileUtils::removeDirectory(homedir_);
+      FileUtils::removeDirectory(ldbdir_);
+      Armory::Config::reset();
+   }
+
+   /////////////////////////////////////////////////////////////////////////////
+   BlockDataManagerThread *theBDMt_;
+   Armory::Passphrase::UnlockFunc authPeersPassLbd_;
+   LMDBBlockDatabase* iface_;
+
+   std::filesystem::path blkdir_{"./blkfiletest"sv};
+   std::filesystem::path homedir_{"./fakehomedir"sv};
+   std::filesystem::path ldbdir_{"./ldbtestdir"sv};
+   std::filesystem::path blk0dat_;
+
+   BinaryData serverPubkey_;
+   std::string serverAddr_;
+   std::string hexMagicBytes;
+};
+
+////
+TEST_F(WalletManagerWebsocketsTests, Connect)
+{
+   //list wallets
+   auto mgr = std::make_shared<Armory::Bridge::WalletManager>(homedir_);
+   auto theList = mgr->listWallets();
+   ASSERT_EQ(theList.size(), 1);
+   const std::string& wltId = theList.begin()->second->walletId();
+   mgr->loadWallets();
+
+   NotifQueue queue;
+   auto notifFunc = [&queue](BinaryData notifData)
+   {
+      queue.push_back(notifData);
+   };
+
+   WebSocketServer::initAuthPeers({
+      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+   WebSocketServer::start(theBDMt_->bdm(), true);
+
+   //create bdv ptr, connect to db
+   Armory::Bridge::setupClientConnection(homedir_, notifFunc, mgr);
+
+   //expecting setupDone notif
+   {
+      auto notifBd = queue.pop();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(notifBd.getPtr()),
+         notifBd.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+      auto fromBridge = reader.getRoot<Bridge::FromBridge>();
+      auto notif = fromBridge.getNotification();
+      ASSERT_EQ(notif.which(), Bridge::Notification::SETUP_DONE);
+   }
+
+   //register wallet
+   mgr->registerWallets();
+
+   //expecting registerDone notif
+   {
+      auto notifBd = queue.pop();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(notifBd.getPtr()),
+         notifBd.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+      auto fromBridge = reader.getRoot<Bridge::FromBridge>();
+      auto notif = fromBridge.getNotification();
+      ASSERT_EQ(notif.which(), Bridge::Notification::REGISTER_DONE);
+   }
+
+   //start blockchain db & go online
+   theBDMt_->start(DBSettings::initMode());
+   mgr->goOnline();
+
+   //expecting ready notif
+   int newBlockVal = 0;
+   bool run = true;
+   while (run) {
+      auto notifBd = queue.pop();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(notifBd.getPtr()),
+         notifBd.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+      auto fromBridge = reader.getRoot<Bridge::FromBridge>();
+      auto notif = fromBridge.getNotification();
+
+      switch (notif.which()) {
+         case Bridge::Notification::READY:
+         {
+            run = false;
+            break;
+         }
+
+         case Bridge::Notification::SCAN_PROGRESS:
+            break;
+
+         case Bridge::Notification::NEW_BLOCK:
+         {
+            newBlockVal = notif.getNewBlock();
+            break;
+         }
+
+         default:
+            ASSERT_TRUE(false) << (int)notif.which();
+      }
+   }
+
+   //check wallet balances
+   try {
+      auto wltCont = mgr->getWalletContainer(wltId);
+      ASSERT_NE(wltCont, nullptr);
+
+      auto addrBalances = wltCont->getAddrBalanceMap();
+      ASSERT_EQ(addrBalances.size(), 4);
+
+      auto balB = addrBalances.at(TestChain::scrAddrB);
+      EXPECT_EQ(balB[0], 70 * COIN);
+      EXPECT_EQ(balB[1], 20 * COIN);
+      EXPECT_EQ(balB[2], 70 * COIN);
+
+      auto balC = addrBalances.at(TestChain::scrAddrC);
+      EXPECT_EQ(balC[0], 20 * COIN);
+      EXPECT_EQ(balC[1], 20 * COIN);
+      EXPECT_EQ(balC[2], 20 * COIN);
+
+      auto balD = addrBalances.at(TestChain::scrAddrD);
+      EXPECT_EQ(balD[0], 65 * COIN);
+      EXPECT_EQ(balD[1], 15 * COIN);
+      EXPECT_EQ(balD[2], 65 * COIN);
+
+      auto balE = addrBalances.at(TestChain::scrAddrE);
+      EXPECT_EQ(balE[0], 30 * COIN);
+      EXPECT_EQ(balE[1], 30 * COIN);
+      EXPECT_EQ(balE[2], 30 * COIN);
+  } catch (const std::exception&) {
+      ASSERT_TRUE(false);
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// BridgeTests
 ////////////////////////////////////////////////////////////////////////////////
 using MsgPtr = std::unique_ptr<Armory::Bridge::WritePayload_Bridge>;
 
@@ -2127,7 +2421,7 @@ GTEST_API_ int main(int argc, char **argv)
    std::cout << "Running main() from gtest_main.cc\n";
 
    SETLOGLEVEL(LogLvlDebug);
-   //LOGENABLESTDOUT();
+   LOGENABLESTDOUT();
    LOGDISABLESTDOUT();
 
    testing::InitGoogleTest(&argc, argv);

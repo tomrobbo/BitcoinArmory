@@ -82,16 +82,17 @@ namespace
 
          case BlockchainServiceRequest::SETUP_DB:
          {
-            bridge->setupDB();
-            break;
+            std::thread thr([bridge, referenceId]{
+               bridge->setupDB(referenceId);});
+            if (thr.joinable()) {
+               thr.detach();
+            }
+            return true;
          }
 
          case BlockchainServiceRequest::GO_ONLINE:
          {
-            if (bridge->bdvPtr() == nullptr) {
-               throw std::runtime_error("null bdv ptr");
-            }
-            bridge->bdvPtr()->goOnline();
+            bridge->goOnline();
             break;
          }
 

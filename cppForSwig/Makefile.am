@@ -75,7 +75,9 @@ CPPBRIDGE_SOURCE_FILES = BridgeAPI/CppBridge.cpp \
 	BridgeAPI/PassphrasePrompt.cpp \
 	BridgeAPI/Wallets/Container.cpp \
 	BridgeAPI/Wallets/Loader.cpp \
-	BridgeAPI/Wallets/Manager.cpp
+	BridgeAPI/Wallets/Manager.cpp \
+	BridgeAPI/Wallets/Notifications.cpp \
+	BridgeAPI/BlockchainDbClient.cpp
 
 LIBTREZORCRYPTO_SOURCE_FILES = $(LIBBTC_LIBDIR)/src/trezor-crypto/bip39.c \
 	$(LIBBTC_LIBDIR)/src/trezor-crypto/pbkdf2.c \

@@ -634,6 +634,7 @@ bool NetworkSettings::useCookie_ = false;
 bool NetworkSettings::ephemeralPeers_;
 bool NetworkSettings::oneWayAuth_ = false;
 bool NetworkSettings::offline_ = false;
+bool NetworkSettings::automateDb_ = false;
 
 std::string NetworkSettings::cookie_;
 BinaryData NetworkSettings::uiPublicKey_;
@@ -661,6 +662,8 @@ void NetworkSettings::processArgs(
    iter = args.find("armorydb-ip");
    if (iter != args.end()) {
       dbIP_ = SettingsUtils::stripQuotes(iter->second);
+   } else {
+      dbIP_ = "127.0.0.1";
    }
 
    iter = args.find("satoshi-port");
@@ -710,6 +713,12 @@ void NetworkSettings::processArgs(
    iter = args.find("offline");
    if (iter != args.end()) {
       offline_ = true;
+   }
+
+   //automateDb
+   iter = args.find("automateDb");
+   if (iter != args.end()) {
+      automateDb_ = true;
    }
 
    //ui pubkey

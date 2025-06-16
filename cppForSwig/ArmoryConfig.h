@@ -190,6 +190,7 @@ namespace Armory
          static bool oneWayAuth_;
 
          static bool offline_;
+         static bool automateDb_;
          static std::string cookie_;
 
          static BinaryData uiPublicKey_;
@@ -221,6 +222,7 @@ namespace Armory
          static bool ephemeralPeers(void) { return ephemeralPeers_; }
          static bool oneWayAuth(void) { return oneWayAuth_; }
          static bool isOffline(void) { return offline_; }
+         static bool automateDb(void) { return automateDb_; }
 
          static BinaryData uiPublicKey(void) { return uiPublicKey_; }
          static void injectUiPubkey(BinaryData&);
