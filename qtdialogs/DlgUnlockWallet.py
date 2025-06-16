@@ -270,6 +270,12 @@ class DlgUnlockWallet(ArmoryDialog):
       self.redrawKeys()
 
    #############################################################################
+   def recycle(self):
+      QtWidgets.QMessageBox.critical(self, self.tr('Invalid Passphrase'), \
+         self.tr('That passphrase is not correct!'), QtWidgets.QMessageBox.Ok)
+      self.edtPasswd.setText('')
+
+   #############################################################################
    def completed(self):
       self.edtPasswd.setText('')
       self.accept()
@@ -282,20 +288,15 @@ class DlgUnlockWallet(ArmoryDialog):
       passphraseStr = ''
 
    #############################################################################
-   def rejectPassphrase(self):
-      self.edtPasswd.setText('')
-      # Only prompt the parent; do not reply or reject yet
-      self.parent.handleUnlockCancelForWatchOnly(self)
-
-   #############################################################################
    def accept(self):
       self.edtPasswd.setText('')
       super().accept()
 
    #############################################################################
-   def reject(self):
+   def rejectPassphrase(self):
       self.edtPasswd.setText('')
-      super().reject()
+      self.reply("")
+      self.reject()
 
    #############################################################################
    def reply(self, passphrase):
@@ -345,36 +346,3 @@ class UnlockWalletHandler(ServerPush, DlgUnlockWallet):
       packet.success = bool(len(passphrase) != 0)
       packet.unlockRequest = passphrase
       super().reply()
-
-################################################################################
-class DlgUnlockMigratingWallet(DlgUnlockWallet):
-   """
-   Unlock dialog specifically for wallet migration. Handles migration-specific logic.
-   """
-   def __init__(self, parent, main):
-      super(DlgUnlockMigratingWallet, self).__init__(
-         wltID=parent._walletData.walletId,
-         parent=parent, main=main,
-         unlockMsg="Unlock Wallet To Migrate")
-      # Add any other migration-specific members here
-
-   # Place migration-specific methods here, e.g.:
-   def reply(self, passphrase):
-      self.parent._unlockedPassphrase = passphrase
-      packet = self.parent.getNewPacket()
-      packet.unlockRequest = passphrase
-      packet.success = True
-      self.parent.reply()
-      self.done(0)  # Close the unlock dialog immediately after unlock
-
-   def recycle(self):
-      QtWidgets.QMessageBox.critical(
-         self, self.tr('Unlock Failed'),
-         self.tr('Incorrect passphrase for wallet migration. Please try again.')
-      )
-      self.edtPasswd.setText('')
-
-   def rejectPassphrase(self):
-      self.edtPasswd.setText('') 
-      # Only prompt the parent; do not reply or reject yet
-      self.parent.handleUnlockCancelForWatchOnly(self)

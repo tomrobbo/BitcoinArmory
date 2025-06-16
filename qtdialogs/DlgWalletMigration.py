@@ -12,23 +12,11 @@ from ui.Wizards import SetPassphrasePage, VerifyPassphrasePage, WalletProgressPa
 
 from qtdialogs.qtdefines import QtWidgets, QtCore, QRichLabel, HLINE
 from qtdialogs.ArmoryDialog import ArmoryDialog
-from qtdialogs.DlgUnlockWallet import DlgUnlockWallet, DlgUnlockMigratingWallet
+from qtdialogs.DlgUnlockWallet import DlgUnlockWallet
 from qtdialogs.DlgChangePassphrase import DlgChangePassphrase
 from armorycolors import htmlColor
 
 # --- Constants for UI layout ---
-MARGIN_LEFT = 14
-MARGIN_TOP = 6
-MARGIN_RIGHT = 14
-MARGIN_BOTTOM = 8
-SPACING_TOP = 2
-SPACING_TITLE_TO_SUBTITLE = 2
-SPACING_SUBTITLE_TO_LINE = 6
-SPACING_LINE_TO_FORM = 14
-SPACING_FORM_TO_LINE2 = 14
-SPACING_AFTER_LINE2 = 16
-PASS_FIELD_HEIGHT = 24
-PASS_FIELD_WIDTH = 24
 GRID_H_SPACING = 10
 GRID_V_SPACING = 6
 
@@ -69,6 +57,46 @@ def createSubtextLabel(text):
    return lbl
 
 ################################################################################
+class DlgUnlockMigratingWallet(DlgUnlockWallet):
+   """
+   Unlock dialog specifically for wallet migration. Handles migration-specific logic.
+   """
+   def __init__(self, parent, main):
+      super(DlgUnlockMigratingWallet, self).__init__(
+         wltID=parent.walletData.walletId,
+         parent=parent, main=main,
+         unlockMsg="Unlock Wallet To Migrate")
+      self.passphrase = None
+
+   def reply(self, passphrase):
+      self.passphrase = passphrase
+      packet = self.parent.getNewPacket()
+      packet.unlockRequest = passphrase
+      packet.success = True
+      self.parent.reply()
+
+   def getPassphrase(self):
+      if not self.passphrase:
+         raise Exception("do not have passphrase for migrated wallet!")
+      return self.passphrase
+
+   def recycle(self):
+      QtWidgets.QMessageBox.critical(
+         self, self.tr('Unlock Failed'),
+         self.tr('Incorrect passphrase for wallet migration. Please try again.')
+      )
+      self.edtPasswd.setText('')
+
+   def rejectPassphrase(self):
+      if self.parent.handleUnlockCancelForWatchOnly():
+         super().rejectPassphrase()
+      else:
+         packet = self.parent.getNewPacket()
+         packet.success = False
+         self.parent.reply()
+         self.reject()
+
+################################################################################
 class DlgWalletMigration(ArmoryDialog, ServerPush):
    """
    Dialog for migrating a legacy wallet to the new format.
@@ -76,45 +104,64 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
    def __init__(self, parent, main, wltPath, walletData):
       ServerPush.__init__(self)
       ArmoryDialog.__init__(self, parent, main)
-      self._walletPath = wltPath
-      self._walletData = walletData
+
+      self._initMemberVariables(wltPath, walletData)
+      self._setupCancelButton()
+      self._initWizardPages()
+      self._setupPageLayouts()
+      self._setupMainLayout()
+      self._connectSignals()
+
+   def _initMemberVariables(self, wltPath, walletData):
+      self.walletPath = wltPath
+      self.walletData = walletData
       self.dlgUnlock = None
       self.reusePassphrase = False
-      self._doneBtn = None
-      self._resultLabel = None
-      self._migration_complete = False
-      self._migration_failed = False
-
+      self.doneBtn = None
+      self.resultLabel = None
+      self.errorLabel = None
+      self.migrationComplete = False
+      self.migrationFailed = False
       self.subtextFontSize = 10
       self.listFontSize = 9
+      self.wired = False
+      self.newPassphrase = None
 
-      #page 1
+   def _setupCancelButton(self):
+      self.btnCancel = QtWidgets.QPushButton(self.tr('Cancel'))
+      self.btnCancel.setSizePolicy(QtWidgets.QSizePolicy.Minimum,
+         QtWidgets.QSizePolicy.Minimum)
+      self.buttonSize = self.btnCancel.sizeHint()
+
+   def _initWizardPages(self):
       self.page1 = self.setupPage1()
-
-      # Instantiate wizard pages for migration
       self.setPassphrasePage = SetPassphrasePage(self)
       self.verifyPassphrasePage = VerifyPassphrasePage(self)
       self.walletProgressPage = WalletProgressPage(self)
 
-      # Create and add Done button to the progress page
-      self._doneBtn = QtWidgets.QPushButton(self.tr('Done'))
-      self._doneBtn.setEnabled(False)  # Initially disabled
-      self._doneBtn.clicked.connect(self.close)
+   def _setupPageLayouts(self):
+      self._setupProgressPage()
+      self._setupPassphrasePage()
+      self._setupVerifyPage()
+
+   def _setupProgressPage(self):
+      self.doneBtn = QtWidgets.QPushButton(self.tr('Done'))
+      self.doneBtn.setEnabled(False)
+      self.doneBtn.clicked.connect(self.close)
       btnLayout = QtWidgets.QHBoxLayout()
       btnLayout.addStretch(1)
-      btnLayout.addWidget(self._doneBtn)
-      # Store the button layout for later use
-      self._doneBtnLayout = btnLayout
+      btnLayout.addWidget(self.doneBtn)
       self.walletProgressPage.pageFrame.layout().addLayout(btnLayout)
 
-      # Add NEXT button to setPassphrasePage
+   def _setupPassphrasePage(self):
       nextBtn = QtWidgets.QPushButton(self.tr('Next'))
       nextBtn.setEnabled(False)
       nextBtn.clicked.connect(self.nextFromSetPassphrase)
-      set_layout = self.setPassphrasePage.pageFrame.layout()
-      set_layout.addWidget(nextBtn, alignment=QtCore.Qt.AlignRight)
+      setLayout = self.setPassphrasePage.pageFrame.layout()
+      setLayout.addWidget(nextBtn, alignment=QtCore.Qt.AlignRight)
+      self._setupPassphraseValidation(nextBtn)
 
-      # Wire up passphrase validation to enable/disable Next button
+   def _setupPassphraseValidation(self, nextBtn):
       def enableNextBtn():
          pw1 = self.setPassphrasePage.pageFrame.editPasswd1.text()
          pw2 = self.setPassphrasePage.pageFrame.editPasswd2.text()
@@ -124,20 +171,19 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
                return True
             except Exception:
                return False
-         nextBtn.setEnabled(bool(pw1) and pw1 == pw2 and len(
-            pw1) >= 5 and isASCII(pw1) and isASCII(pw2))
+         nextBtn.setEnabled(bool(pw1) and pw1 == pw2 and len(pw1) >= 5 
+            and isASCII(pw1) and isASCII(pw2))
       self.setPassphrasePage.pageFrame.passphraseCallback = enableNextBtn
-      # Call once to set initial state
       enableNextBtn()
 
-      # Add DONE button to VerifyPassphrasePage
+   def _setupVerifyPage(self):
       doneBtn = QtWidgets.QPushButton(self.tr('Done'))
       doneBtn.clicked.connect(self.nextFromVerifyPassphrase)
-      verify_layout = self.verifyPassphrasePage.pageFrame.layout()
-      row = verify_layout.rowCount()
-      verify_layout.addWidget(doneBtn, row, 1, alignment=QtCore.Qt.AlignRight)
-      
-      #layout
+      verifyLayout = self.verifyPassphrasePage.pageFrame.layout()
+      row = verifyLayout.rowCount()
+      verifyLayout.addWidget(doneBtn, row, 1, alignment=QtCore.Qt.AlignRight)
+
+   def _setupMainLayout(self):
       self.stack = QtWidgets.QStackedLayout()
       self.stack.addWidget(self.page1)
       self.stack.addWidget(self.setPassphrasePage)
@@ -151,15 +197,9 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       self.stack.setCurrentIndex(0)
       self.setFixedSize(self.sizeHint())
 
-      # Connect signals directly
+   def _connectSignals(self):
       self.btnNext.clicked.connect(self.proceedWithMigration)
       self.btnCancel.clicked.connect(self.reject)
-
-      # Track passphrase for reuse
-      self._unlockedPassphrase = None
-      self._newPassphrase = None
-
-      self._wired = False
 
    #############################################################################
    def setupGridAndMinWidth(self, grid, labelTexts):
@@ -225,32 +265,32 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       grid.setColumnStretch(1, 0)
       row = 0
       grid.addWidget(styledLabel(self.tr('Wallet ID:')), row, 0, QtCore.Qt.AlignLeft)
-      grid.addWidget(styledValue(self._walletData.walletId), row, 1, QtCore.Qt.AlignLeft)
+      grid.addWidget(styledValue(self.walletData.walletId), row, 1, QtCore.Qt.AlignLeft)
       row += 1
       grid.addWidget(styledLabel(self.tr('Wallet Type:')), row, 0, QtCore.Qt.AlignLeft)
-      grid.addWidget(styledValue(self._walletData.which()), row, 1, QtCore.Qt.AlignLeft)
+      grid.addWidget(styledValue(self.walletData.which()), row, 1, QtCore.Qt.AlignLeft)
       row += 1
       grid.addWidget(styledLabel(self.tr('Version:')), row, 0, QtCore.Qt.AlignLeft)
-      grid.addWidget(styledValue(self._walletData.seedVersion), row, 1, QtCore.Qt.AlignLeft)
+      grid.addWidget(styledValue(self.walletData.seedVersion), row, 1, QtCore.Qt.AlignLeft)
       row += 1
-      if self._walletData.watchingOnly:
+      if self.walletData.watchingOnly:
          grid.addWidget(styledLabel(self.tr('Watching-only:')), row, 0, QtCore.Qt.AlignLeft)
          grid.addWidget(styledValue(self.tr('Yes')), row, 1, QtCore.Qt.AlignLeft)
          row += 1
       else:
          grid.addWidget(styledLabel(self.tr('Encrypted:')), row, 0, QtCore.Qt.AlignLeft)
          grid.addWidget(styledValue(self.tr('Yes') 
-            if self._walletData.encrypted else self.tr('No')), row, 1, QtCore.Qt.AlignLeft)
+            if self.walletData.encrypted else self.tr('No')), row, 1, QtCore.Qt.AlignLeft)
          row += 1
       grid.addWidget(styledLabel(self.tr('Label:')), row, 0, QtCore.Qt.AlignLeft)
-      grid.addWidget(styledValue(self._walletData.label), row, 1, QtCore.Qt.AlignLeft)
+      grid.addWidget(styledValue(self.walletData.label), row, 1, QtCore.Qt.AlignLeft)
       row += 1
       grid.addWidget(styledLabel(self.tr('Description:')), row, 0, QtCore.Qt.AlignLeft)
-      grid.addWidget(styledValue(self._walletData.description), row, 1, QtCore.Qt.AlignLeft)
+      grid.addWidget(styledValue(self.walletData.description), row, 1, QtCore.Qt.AlignLeft)
       row += 1
       grid.addWidget(styledLabel(self.tr('Address & use count:')), row, 0, QtCore.Qt.AlignLeft)
       grid.addWidget(styledValue(
-         f'{self._walletData.addressCount}, {self._walletData.highestUsedIndex}'
+         f'{self.walletData.addressCount}, {self.walletData.highestUsedIndex}'
          ), row, 1, QtCore.Qt.AlignLeft)
       row += 1
       vbox.addLayout(grid)
@@ -286,7 +326,7 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
    #############################################################################
    def processUnlockRequest(self, ids):
       # Ignore unlock requests if migration is already complete
-      if self._migration_complete:
+      if self.migrationComplete:
          return
       # Always use DlgUnlockMigratingWallet for migration unlock dialogs
       if not self.dlgUnlock:
@@ -352,48 +392,50 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
    ####
    def processCallback(self, payload):
       if payload.which() == 'cleanup':
-         self._migration_complete = True
+         self.migrationComplete = True
          if self.dlgUnlock:
             self.dlgUnlock.close()
             self.dlgUnlock = None
          self.stack.setCurrentWidget(self.walletProgressPage)
          self.walletProgressPage.pageFrame.progressBar.hide()
-         
+
          # Create and show result label
-         self._resultLabel = QtWidgets.QLabel("")
-         self._resultLabel.setAlignment(QtCore.Qt.AlignHCenter)
-         self._resultLabel.setStyleSheet(
+         self.resultLabel = QtWidgets.QLabel("")
+         self.resultLabel.setAlignment(QtCore.Qt.AlignHCenter)
+         self.resultLabel.setStyleSheet(
             "font-size: 11pt; font-weight: bold; color: %s;" % (
-               htmlColor('TextRed') if self._migration_failed else '#00FF00') +
+               htmlColor('TextRed') if self.migrationFailed else '#00FF00') +
             "background: transparent; border: none;")
-         if self._migration_failed:
-            self._resultLabel.setText(
-               f"Migration of Wallet {self._walletData.walletId} was failed!")
+         if self.migrationFailed:
+            self.resultLabel.setText(
+               f"Migration of Wallet {self.walletData.walletId} was failed!")
+
             # Show backend error message below the FAILURE label
             errorMsg = getattr(payload, 'errorMessage', None)
             if errorMsg:
-               self._errorLabel = QtWidgets.QLabel(errorMsg)
-               self._errorLabel.setAlignment(QtCore.Qt.AlignHCenter)
-               self._errorLabel.setStyleSheet(
+               self.errorLabel = QtWidgets.QLabel(errorMsg)
+               self.errorLabel.setAlignment(QtCore.Qt.AlignHCenter)
+               self.errorLabel.setStyleSheet(
                   "font-size: 8pt; color: %s; background: transparent;" +
                   "border: none;" % htmlColor('TextRed'))
                layout = self.walletProgressPage.pageFrame.layout()
                layout.insertWidget(
-                  layout.count() - 1, self._resultLabel, alignment=QtCore.Qt.AlignHCenter)
+                  layout.count() - 1, self.resultLabel, alignment=QtCore.Qt.AlignHCenter)
                layout.insertWidget(
-                  layout.count() - 1, self._errorLabel, alignment=QtCore.Qt.AlignHCenter)
+                  layout.count() - 1, self.errorLabel, alignment=QtCore.Qt.AlignHCenter)
             else:
                layout = self.walletProgressPage.pageFrame.layout()
                layout.insertWidget(
-                  layout.count() - 1, self._resultLabel, alignment=QtCore.Qt.AlignHCenter)
+                  layout.count() - 1, self.resultLabel, alignment=QtCore.Qt.AlignHCenter)
          else:
-            self._resultLabel.setText(
-               f"Migration of Wallet {self._walletData.walletId} was successful!")
+            self.resultLabel.setText(
+               f"Migration of Wallet {self.walletData.walletId} was successful!")
             layout = self.walletProgressPage.pageFrame.layout()
             layout.insertWidget(
-               layout.count() - 1, self._resultLabel, alignment=QtCore.Qt.AlignHCenter)
+               layout.count() - 1, self.resultLabel, alignment=QtCore.Qt.AlignHCenter)
+
          # Enable the Done button when process completes
-         self._doneBtn.setEnabled(True)
+         self.doneBtn.setEnabled(True)
          return
 
       elif payload.which() == 'unlockRequest':
@@ -404,14 +446,28 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
          # No need to close unlock dialog or get passphrase here; already handled
          notif = payload.walletCreation
          if notif.which() == 'setCtrlPass':
+            # Safely clear passphrase and delete unlock dialog before setting to None
+            if self.dlgUnlock:
+               self.dlgUnlock._passphrase = None
+               self.dlgUnlock.close()
+               del self.dlgUnlock
+               self.dlgUnlock = None
             self.processSetNewPassphrase(False)
          elif notif.which() == 'setPrivPass':
             choice = self.promptPassphraseReuseChoice()
             if choice == 'reuse':
-               # Use the passphrase already stored after unlock
+               # Always retrieve passphrase before closing or deleting the dialog
+               if self.dlgUnlock:
+                  passphrase = self.dlgUnlock.getPassphrase()
+                  self.dlgUnlock._passphrase = None
+                  self.dlgUnlock.close()
+                  del self.dlgUnlock
+                  self.dlgUnlock = None
+               else:
+                  passphrase = ""
                packet = self.getNewPacket()
                reply = packet.init('walletCreation')
-               reply.passphrase = self._unlockedPassphrase
+               reply.passphrase = passphrase
                reply.kdfTargetMs = 2000
                reply.kdfTargetMB = 128
                packet.success = True
@@ -430,8 +486,7 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
                   self.tr('Migration was cancelled or failed. Please try again.')
                )
                packet = self.getNewPacket()
-               reply = packet.init('walletCreation')
-               reply.success = False
+               packet.success = False
                self.reply()
                self.reject()
          return
@@ -477,18 +532,18 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
             self.reject()
 
       self.main.wallets.migrateWallet(
-         self._walletPath,
+         self.walletPath,
          self.callbackId, doneCallback)
 
    ################################################################################
-
-   def accept(self):
-      """Handle dialog acceptance and pass data to wallet creation wizard."""
-      # Check passphrase reuse directly here
-      if self.chkReusePass and self.chkReusePass.isChecked() and self.passEdit:
-         self._walletPassphrase = self.passEdit.text()
-         self._onMigrationComplete()
-      super(DlgWalletMigration, self).accept()
+   def reject(self):
+      if self.migrationComplete:
+         self.accept()
+      else:
+         packet = self.getNewPacket()
+         packet.success = False
+         self.reply()
+         super().reject()
 
    def promptPassphraseReuseChoice(self):
       """Show a modal dialog asking the user to reuse or create a new passphrase."""
@@ -541,15 +596,14 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
    # Connect page completion signals
    def showEvent(self, event):
       super().showEvent(event)
-      # Connect only once
-      if not self._wired:
+      if not self.wired:
+         self.wired = True
          self.setPassphrasePage.pageFrame.editPasswd2.returnPressed.connect(
             self.nextFromSetPassphrase)
          self.verifyPassphrasePage.pageFrame.edtPasswd3.returnPressed.connect(
             self.nextFromVerifyPassphrase)
-         self._wired = True
 
-   def handleUnlockCancelForWatchOnly(self, unlockDlg):
+   def handleUnlockCancelForWatchOnly(self):
       reply = QtWidgets.QMessageBox.question(
          self, self.tr('Create Watching-Only Wallet?'),
          self.tr('Unlock was cancelled. Do you want to create a watching-only wallet instead?'),
@@ -559,16 +613,8 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
          # Show progress page and trigger backend
          self.stack.setCurrentWidget(self.walletProgressPage)
          self.resize(self.stack.currentWidget().sizeHint())
-         unlockDlg.reply("")
+         return True
       else:
-         self.abortMigration()
+         # User does NOT want to create a watching-only wallet: close dialog, do not create wallet
          self.reject()
-
-   def abortMigration(self):
-      packet = self.getNewPacket()
-      reply = packet.init('cleanup')
-      packet.success = False
-      self.reply()
-
-   def onMigrationComplete(self):
-      self.accept()
+         return False
