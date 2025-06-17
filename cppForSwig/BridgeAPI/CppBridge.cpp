@@ -794,12 +794,21 @@ void CppBridge::setupDB(MessageId refId)
    }
 
    //connect to db
-   bdvPtr_ = setupClientConnection(path_,
-      [this](BinaryData& data){writeToClient(data);},
-      wltManager_);
+   try {
+      bdvPtr_ = setupClientConnection(path_,
+         [this](BinaryData& data){writeToClient(data);},
+         wltManager_);
+      if (bdvPtr_ == nullptr) {
+         throw std::runtime_error("failed to instantiate bdv object");
+      }
 
-   //reply to caller
-   reply.setSuccess(true);
+      //reply to caller
+      reply.setSuccess(true);
+   } catch (const std::exception& e) {
+      reply.setSuccess(false);
+      reply.setError(e.what());
+   }
+
    auto response = serializeCapnp(message);
    this->writeToClient(response);
 }

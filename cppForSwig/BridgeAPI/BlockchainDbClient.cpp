@@ -48,17 +48,14 @@ BdvPtr Armory::Bridge::setupClientConnection(
    );
 
    //connect to db
-   try {
-      result->connectToRemote();
-      result->registerWithDB(
-         Config::BitcoinSettings::getMagicBytes().toHexStr());
-
-      //notify setup is done
-      cbPtr->notifySetupDone();
-   } catch (const std::exception& e) {
-      LOGERR << "failed to connect to db with error: " << e.what();
+   if (!result->connectToRemote()) {
+      return nullptr;
    }
+   result->registerWithDB(
+      Config::BitcoinSettings::getMagicBytes().toHexStr());
 
+   //notify setup is done
+   cbPtr->notifySetupDone();
    wltManager->setBdvPtr(result);
    return result;
 }
