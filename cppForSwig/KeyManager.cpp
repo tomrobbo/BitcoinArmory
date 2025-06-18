@@ -144,8 +144,8 @@ int processArgs(std::map<std::string, std::string> args)
    if (!noPass) {
       passLbd = TerminalPassphrasePrompt::getLambda("peers db");
    } else {
-      passLbd = [](const std::set<EncryptionKeyId>&)->SecureBinaryData
-      { return {}; };
+      passLbd = [](const std::set<EncryptionKeyId>&)->Armory::Passphrase::Result
+      { return { {}, true }; };
    }
 
    AuthorizedPeers authPeers(IO::ReadOnlyFileParams{fullpath, passLbd});

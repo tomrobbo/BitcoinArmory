@@ -915,8 +915,8 @@ void CppBridge::createBackupStringForWallet(const std::string& wltId,
          } else {
             backupData = std::move(wltContainer->getBackupStrings(
                [passphrase=std::move(passphrase)]
-               (const std::set<Wallets::EncryptionKeyId>&)->SecureBinaryData
-               { return passphrase; }
+               (const std::set<Wallets::EncryptionKeyId>&)->Passphrase::Result
+               { return { passphrase, true }; }
             ));
          }
       } catch (const std::exception& e) {
@@ -1714,28 +1714,34 @@ void CppBridge::createWallet(SecureBinaryData extraEntropy,
    auto createWltFunc = [this, callbackId,
       extraEntropy=std::move(extraEntropy),
       refId](std::unique_ptr<Wallets::IO::CreateWalletParams> paramPtr) {
-      //create wallet
-      auto wltContainer = wltManager_->createNewWallet(extraEntropy, *paramPtr);
-
-      //callback cleanup
-      sendCleanup(this, callbackId);
-
-      //put first address in use, or the GUI will have nothing to display
-      auto wltPtr = wltContainer->getWalletPtr();
-      auto accPtr = wltContainer->getAddressAccount();
-      accPtr->getNewAddress(wltPtr->getIface());
-
-      //reply to caller
+      //prepare reply
       capnp::MallocMessageBuilder replyMessage;
       auto fromBridge = replyMessage.initRoot<FromBridge>();
       auto reply = fromBridge.initReply();
       reply.setReferenceId(refId);
-      reply.setSuccess(true);
 
-      auto utilsReply = reply.initUtils();
-      auto wltId = wltPtr->getID();
-      utilsReply.setCreateWallet(wltId);
+      try {
+         //create wallet
+         auto wltContainer = wltManager_->createNewWallet(extraEntropy, *paramPtr);
 
+         //put first address in use, or the GUI will have nothing to display
+         auto wltPtr = wltContainer->getWalletPtr();
+         auto accPtr = wltContainer->getAddressAccount();
+         accPtr->getNewAddress(wltPtr->getIface());
+
+         reply.setSuccess(true);
+         auto utilsReply = reply.initUtils();
+         auto wltId = wltPtr->getID();
+         utilsReply.setCreateWallet(wltId);
+      } catch (const std::exception& e) {
+         reply.setSuccess(false);
+         reply.setError(e.what());
+      }
+
+      //callback cleanup
+      sendCleanup(this, callbackId);
+
+      //reply to caller
       auto replySerialized = serializeCapnp(replyMessage);
       this->writeToClient(replySerialized);
    };

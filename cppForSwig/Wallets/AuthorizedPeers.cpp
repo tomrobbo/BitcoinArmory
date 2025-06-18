@@ -65,9 +65,12 @@ AuthorizedPeers::AuthorizedPeers(const IO::ReadOnlyFileParams& params)
    {
       //create & set password lambda
       auto passphrasePrompt = [](const std::set<EncryptionKeyId>&)
-      ->SecureBinaryData
+      ->Passphrase::Result
       {
-         return SecureBinaryData::fromString(PEERS_WALLET_PASSWORD);
+         return {
+            SecureBinaryData::fromString(PEERS_WALLET_PASSWORD),
+            true
+         };
       };
       wallet_->setPassphrasePromptLambda(passphrasePrompt);
 
@@ -604,8 +607,12 @@ void AuthorizedPeers::changeControlPassphrase(const std::filesystem::path& path)
    //change passphrase lambda
    auto changeLbd = [&promptPtr](void)->std::unique_ptr<Passphrase::Params>
    {
-      auto pass = promptPtr({ BinaryData::fromString("change-pass"sv) });
-      return std::make_unique<Passphrase::Params>(250ms, 0, std::move(pass));
+      auto result = promptPtr({ BinaryData::fromString("change-pass"sv) });
+      if (!result.success) {
+         throw std::runtime_error("authdb passphrase change was rejected");
+      }
+      return std::make_unique<Passphrase::Params>(
+         250ms, 0, std::move(result.passphrase));
    };
    Passphrase::SetNew changePassObj{changeLbd};
 

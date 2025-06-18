@@ -416,30 +416,33 @@ std::shared_ptr<Wallets::AssetWallet_Single> Armory135Header::migrate(
          {
             while (true) {
                //prompt for passphrase
-               auto passphrase = passLbd({Wallets::EncryptionKeyId{}});
-               if (passphrase.empty()) {
+               auto result = passLbd({Wallets::EncryptionKeyId{}});
+               if (!result.success) {
+                  throw std::runtime_error("rejected migration");
+               } else if (result.passphrase.empty()) {
+                  //no passphrase, will proceed with WO migration
                   return {};
                }
 
                //kdf it
                Wallets::Encryption::KdfRomix myKdf{
                   kdfMem_, kdfIter_, kdfSalt_};
-               auto derivedPass = myKdf.DeriveKey(passphrase);
+               auto derivedPass = myKdf.DeriveKey(result.passphrase);
 
                //decrypt the privkey
                auto decryptedKey = CryptoAES::DecryptCFB(
                   rootAddrObj.privKey(), derivedPass, rootAddrObj.iv());
 
                //generate pubkey
-               auto computedPubKey =
-                  CryptoECDSA().ComputePublicKey(decryptedKey, false);
+               auto computedPubKey = CryptoECDSA().ComputePublicKey(
+                  decryptedKey, false);
 
                if (rootAddrObj.pubKey() != computedPubKey) {
                   continue;
                }
 
                //compare pubkeys
-               privKeyPass = std::move(passphrase);
+               privKeyPass = std::move(result.passphrase);
                return decryptedKey;
             }
          };
