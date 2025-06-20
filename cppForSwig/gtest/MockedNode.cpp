@@ -333,7 +333,7 @@ std::map<unsigned, BinaryData> NodeUnitTest::mineNewBlock(
       };
 
       auto hookPtr = std::make_shared<BDVNotificationHook>();
-      hookPtr->lambda_ = waitOnNotif;
+      hookPtr->func = waitOnNotif;
 
       //set hook
       bdm->registerOneTimeHook(hookPtr);

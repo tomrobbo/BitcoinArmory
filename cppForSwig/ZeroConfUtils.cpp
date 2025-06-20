@@ -277,9 +277,9 @@ FilteredZeroConfData filterParsedTx(
    const auto& txHash = parsedTx.getTxHash();
 
    auto filter = [&mainAddressMap, bdvCallbacks]
-      (const BinaryData& addr)->pair<bool, std::set<std::string>>
+      (const BinaryData& addr)->pair<bool, std::set<BdvIdKey>>
    {
-      std::pair<bool, std::set<string>> flaggedBDVs;
+      std::pair<bool, std::set<BdvIdKey>> flaggedBDVs;
       flaggedBDVs.first = false;
 
       //Check if this address is being watched before looking for specific BDVs
@@ -305,7 +305,7 @@ FilteredZeroConfData filterParsedTx(
 
    auto insertNewZc = [&result](const BinaryData& sa,
       BinaryData txiokey, std::shared_ptr<TxIOPair> txio,
-      std::set<std::string> flaggedBDVs, bool consumesTxOut)->void
+      std::set<BdvIdKey> flaggedBDVs, bool consumesTxOut)->void
    {
       if (consumesTxOut) {
          result.txOutsSpentByZC_.insert(txiokey);

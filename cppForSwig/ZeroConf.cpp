@@ -458,7 +458,7 @@ void ZeroConfContainer::parseNewZC(ZcActionStruct zcAction)
 
    std::map<BinaryData, std::shared_ptr<ParsedTx>> zcMap;
    std::map<BinaryData, std::shared_ptr<WatcherTxBody>> watcherMap;
-   std::string requestor;
+   BdvIdKey requestor;
 
    switch (zcAction.action_)
    {
@@ -514,8 +514,7 @@ void ZeroConfContainer::parseNewZC(ZcActionStruct zcAction)
 void ZeroConfContainer::parseNewZC(
    map<BinaryData, shared_ptr<ParsedTx>> zcMap,
    shared_ptr<MempoolSnapshot> ss,
-   bool updateDB, bool notify,
-   const std::string& requestor,
+   bool updateDB, bool notify, BdvIdKey requestor,
    std::map<BinaryData, shared_ptr<WatcherTxBody>>& watcherMap)
 {
    std::unique_lock<std::mutex> lock(parserMutex_);
@@ -554,7 +553,7 @@ void ZeroConfContainer::parseNewZC(
    }
 
    bool hasChanges = false;
-   std::map<std::string, ParsedZCData> flaggedBDVs;
+   std::map<BdvIdKey, ParsedZCData> flaggedBDVs;
    std::map<BinaryData, std::shared_ptr<ParsedTx>> invalidatedTx;
 
    //zc logic
@@ -1022,7 +1021,7 @@ unsigned ZeroConfContainer::loadZeroConfMempool(bool clearMempool)
       std::map<BinaryData, std::shared_ptr<WatcherTxBody>> emptyWatcherMap;
       parseNewZC(
          std::move(zcMap), nullptr, false, false,
-         std::string{},
+         UINT64_MAX,
          emptyWatcherMap);
       snapshot_->commitNewZCs();
    }
@@ -1331,7 +1330,7 @@ void ZeroConfContainer::processPayloadTx(
 ///////////////////////////////////////////////////////////////////////////////
 void ZeroConfContainer::broadcastZC(
    const std::vector<BinaryDataRef>& rawZcVec, uint32_t timeout_ms,
-   const ZcBroadcastCallback& cbk, const std::string& bdvID)
+   const ZcBroadcastCallback& cbk, BdvIdKey bdvID)
 {
    auto zcPacket = std::make_shared<ZcBroadcastPacket>();
    zcPacket->hashes_.reserve(rawZcVec.size());
@@ -1359,7 +1358,7 @@ void ZeroConfContainer::broadcastZC(
          auto& hash = zcPacket->hashes_[i];
          if (insertWatcherEntry(
             hash, zcPacket->zcVec_[i],
-            bdvID, std::set<std::string>{})) {
+            bdvID, std::set<BdvIdKey>{})) {
             continue;
          }
 
@@ -1382,7 +1381,7 @@ void ZeroConfContainer::broadcastZC(
 ///////////////////////////////////////////////////////////////////////////////
 bool ZeroConfContainer::insertWatcherEntry(
    const BinaryData& hash, shared_ptr<BinaryData> rawTxPtr,
-   const std::string& bdvID, std::set<std::string> extraRequestors,
+   BdvIdKey bdvID, std::set<BdvIdKey> extraRequestors,
    bool watchEntry)
 {
    //lock
@@ -1443,7 +1442,7 @@ std::shared_ptr<WatcherTxBody> ZeroConfContainer::eraseWatcherEntry(
 std::shared_ptr<ZeroConfBatch> ZeroConfContainer::initiateZcBatch(
    const vector<BinaryData>& zcHashes, unsigned timeout,
    const ZcBroadcastCallback& cbk, bool hasWatcherEntries,
-   const std::string& bdvId)
+   BdvIdKey bdvId)
 {
    return actionQueue_->initiateZcBatch(
       zcHashes, timeout,
@@ -1773,7 +1772,7 @@ BinaryData ZcActionQueue::getNewZCkey()
 shared_ptr<ZeroConfBatch> ZcActionQueue::initiateZcBatch(
    const std::vector<BinaryData>& zcHashes, unsigned timeout,
    const ZcBroadcastCallback& cbk, bool hasWatcherEntries,
-   const std::string& bdvId)
+   BdvIdKey bdvId)
 {
    auto batch = std::make_shared<ZeroConfBatch>(hasWatcherEntries);
    batch->requestor_ = bdvId;

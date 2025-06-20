@@ -146,7 +146,7 @@ public:
    {
       std::function<void()> headersRead, headersUpdated, blockDataLoaded;
    };
-   
+
    bool hasException(void) const { return exceptPtr_ != nullptr; }
    std::exception_ptr getException(void) const { return exceptPtr_; }
 
@@ -184,7 +184,7 @@ public:
    void resetDatabases(ResetDBMode mode);
 
    unsigned getCheckedTxCount(void) const { return checkTransactionCount_; }
-   CoreRPC::NodeStatus getNodeStatus(void) const;
+   std::shared_ptr<CoreRPC::NodeStatus> getNodeStatus(void) const;
    void registerZcCallbacks(std::unique_ptr<ZeroConfCallbacks> ptr)
    {
       zeroConfCont_->setZeroConfCallbacks(std::move(ptr));

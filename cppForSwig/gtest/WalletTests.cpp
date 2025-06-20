@@ -8629,6 +8629,44 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_TRUE(pubkeySet.find(pubkey5_compressed) == pubkeySet.end());
       }
    }
+
+   /* master key checks */
+
+   //set an invalid key
+   auto privKey6 = CryptoPRNG::generateRandom(32);
+   auto pubkey6 = CryptoECDSA().ComputePublicKey(privKey6);
+   auto pubkey6_compressed = CryptoECDSA().CompressPoint(pubkey6);
+
+   btc_pubkey btckey6;
+   btc_pubkey_init(&btckey6);
+   std::memcpy(btckey6.pubkey, pubkey6_compressed.getPtr(), 33);
+   btckey6.compressed = true;
+
+   ASSERT_FALSE(authPeers->setMasterKey(btckey6));
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+
+   //set key1 as master key
+   ASSERT_TRUE(authPeers->setMasterKey(pubkey1_compressed));
+   ASSERT_TRUE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+
+   //set key3 as master key
+   ASSERT_TRUE(authPeers->setMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_TRUE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+
+   //TODO: reload wallet, check persistence
+   authPeers.reset();
+   authPeers = std::make_unique<AuthorizedPeers>(roFileParams);
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_TRUE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+
+   //change master key, reload peers wallet and check again
 }
 
 ////////////////////////////////////////////////////////////////////////////////

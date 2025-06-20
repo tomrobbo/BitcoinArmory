@@ -342,18 +342,20 @@ private:
 protected:
    class ZeroConfCallbacks_Tests : public ZeroConfCallbacks
    {
-      std::set<std::string> hasScrAddr(const BinaryDataRef&) const override
-      { return {}; }
+      std::set<BdvIdKey> hasScrAddr(const BinaryDataRef&) const override
+      {
+         return {};
+      }
 
       void pushZcNotification(
          std::shared_ptr<MempoolSnapshot>,
          std::shared_ptr<KeyAddrMap>,
-         std::map<std::string, ParsedZCData>, //flaggedBDVs
-         const std::string&, //bdvid
+         std::map<BdvIdKey, ParsedZCData>, //flaggedBDVs
+         BdvIdKey, //bdvid
          std::map<BinaryData, std::shared_ptr<WatcherTxBody>>&) override
       {}
 
-      void pushZcError(const std::string&, const BinaryData&,
+      void pushZcError(BdvIdKey, const BinaryData&,
          ArmoryErrorCodes, const std::string&) override
       {}
    };

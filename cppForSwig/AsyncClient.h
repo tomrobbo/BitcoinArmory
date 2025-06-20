@@ -187,14 +187,11 @@ namespace AsyncClient
    {
    private:
       std::string delegateID_;
-      std::string bdvID_;
       std::shared_ptr<SocketPrototype> sock_;
 
    public:
       LedgerDelegate(void) {}
-
-      LedgerDelegate(std::shared_ptr<SocketPrototype>,
-         const std::string&, const std::string&);
+      LedgerDelegate(std::shared_ptr<SocketPrototype>, const std::string&);
 
       void getHistoryPages(uint32_t from, uint32_t to,
          std::function<void(ReturnMessage<
@@ -212,7 +209,6 @@ namespace AsyncClient
       friend class Armory::Bridge::WalletContainer;
 
    private:
-      const std::string bdvID_;
       const std::string walletID_;
       const BinaryData scrAddr_;
       const std::shared_ptr<SocketPrototype> sock_;
@@ -227,9 +223,9 @@ namespace AsyncClient
 
    private:
       ScrAddrObj(const BinaryData& scrAddr, int index) :
-         bdvID_(std::string()), walletID_(std::string()),
+         walletID_({}),
          scrAddr_(scrAddr),
-         sock_(nullptr), 
+         sock_(nullptr),
          fullBalance_(0), spendableBalance_(0), unconfirmedBalance_(0),
          count_(0), index_(index)
       {}
@@ -238,7 +234,7 @@ namespace AsyncClient
       ScrAddrObj(BtcWallet*, const BinaryData&, int index,
          uint64_t, uint64_t, uint64_t, uint32_t);
       ScrAddrObj(std::shared_ptr<SocketPrototype>,
-         const std::string&, const std::string&, const BinaryData&, int index,
+         const std::string&, const BinaryData&, int index,
          uint64_t, uint64_t, uint64_t, uint32_t);
 
       uint64_t getFullBalance(void) const { return fullBalance_; }
@@ -265,7 +261,6 @@ namespace AsyncClient
 
    protected:
       const std::string walletID_;
-      const std::string bdvID_;
       const std::shared_ptr<SocketPrototype> sock_;
       std::string ledgerID_;
 
@@ -323,7 +318,6 @@ namespace AsyncClient
    {
    private:
       const std::shared_ptr<SocketPrototype> sock_;
-      const std::string bdvID_;
 
    public:
       Blockchain(const BlockDataViewer&);
@@ -346,7 +340,7 @@ namespace AsyncClient
       friend class Armory::Bridge::WalletManager;
 
    private:
-      std::string bdvID_;
+      bool registered_ = false;
       std::shared_ptr<SocketPrototype> sock_;
       std::shared_ptr<ClientCache> cache_;
 
@@ -356,10 +350,8 @@ namespace AsyncClient
 
       const BlockDataViewer& operator=(const BlockDataViewer& rhs)
       {
-         bdvID_ = rhs.bdvID_;
          sock_ = rhs.sock_;
          cache_ = rhs.cache_;
-
          return *this;
       }
 
@@ -382,17 +374,16 @@ namespace AsyncClient
       bool hasRemoteDB(void);
 
       //setup
-      const std::string& getID(void) const { return bdvID_; }
       static std::shared_ptr<BlockDataViewer> getNewBDV(
          const std::string& addr, const std::string& port,
          const Armory::Wallets::IO::ReadOnlyFileParams&,
          bool ephemeralPeers, bool oneWayAuth,
          std::shared_ptr<RemoteCallback> callbackPtr);
 
-      void registerWithDB(const std::string& magic_word);
+      void registerWithDB(const std::string&);
       void unregisterFromDB(void);
-      void shutdown(const std::string&);
-      void shutdownNode(const std::string&);
+      void shutdown(void);
+      void shutdownNode(void);
 
       //ledgers
       void updateWalletsLedgerFilter(const std::vector<std::string>& wltIdVec);

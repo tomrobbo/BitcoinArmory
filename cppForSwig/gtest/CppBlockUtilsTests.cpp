@@ -454,7 +454,6 @@ TEST_F(BlockDir, FixBlockDataOffsets)
    //register new address, will trigger scan and detect bad block data
    scraddrs.emplace_back(TestChain::scrAddrD);
    auto bdvID2 = DBTestUtils::registerBDV(clients, BitcoinSettings::getMagicBytes());
-   ASSERT_FALSE(bdvID2.empty());
    DBTestUtils::registerWallet(clients, bdvID2, scraddrs, "wallet2",
       false, false);
 
@@ -485,7 +484,6 @@ TEST_F(BlockDir, FixBlockDataOffsets)
 
    scraddrs.emplace_back(TestChain::scrAddrD);
    auto bdvID3 = DBTestUtils::registerBDV(clients, BitcoinSettings::getMagicBytes());
-   ASSERT_FALSE(bdvID3.empty());
    DBTestUtils::registerWallet(clients, bdvID3, scraddrs, "wallet3",
       false, false);
 
@@ -2142,14 +2140,13 @@ TEST_F(WebSocketTests_1Way, WebSocketStack)
    EXPECT_EQ(spendableBalance, 70 * COIN);
    EXPECT_EQ(unconfirmedBalance, 130 * COIN);
 
-
    //check rekey count
    auto rekeyCount = bdvObj->getRekeyCount();
-   EXPECT_EQ(rekeyCount.first, 4U);
+   EXPECT_EQ(rekeyCount.first, 3U);
    EXPECT_GE(rekeyCount.second, 10U);
 
    //cleanup
-   bdvObj->shutdown(NetworkSettings::cookie());
+   theBDMt_->shutdown();
    WebSocketServer::waitOnShutdown();
 }
 
@@ -2399,14 +2396,7 @@ TEST_F(WebSocketTests_1Way, WebSocketStack_Reconnect)
       bdvObj->unregisterFromDB();
    }
 
-   auto bdvObj2 = AsyncClient::BlockDataViewer::getNewBDV(
-      "127.0.0.1", NetworkSettings::dbPort(),
-      {Armory::Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_},
-      true, true, nullptr);
-   bdvObj2->setCheckServerKeyPromptLambda(pubkeyPrompt);
-   bdvObj2->connectToRemote();
-
-   bdvObj2->shutdown(NetworkSettings::cookie());
+   theBDMt_->shutdown();
    WebSocketServer::waitOnShutdown();
 }
 
@@ -2490,6 +2480,7 @@ protected:
       serverAddr << "127.0.0.1:" << NetworkSettings::dbPort();
       clientPeers.addPeer(serverPubkey, serverAddr.str());
       serverPeers.addPeer(clientPubkey, "127.0.0.1");
+      serverPeers.setMasterKey(clientPubkey);
 
       serverPubkey_ = BinaryData(serverPubkey.pubkey, 33);
       serverAddr_ = serverAddr.str();
@@ -2588,7 +2579,7 @@ TEST_F(WebSocketTests_2Way, GrabAddrLedger_PostReg)
    EXPECT_FALSE(DBTestUtils::getHistoryPage(ledgerDelegate, 0).empty());
 
    //cleanup
-   bdvObj->shutdown(NetworkSettings::cookie());
+   bdvObj->shutdown();
    WebSocketServer::waitOnShutdown();
 }
 
@@ -2736,7 +2727,7 @@ TEST_F(WebSocketTests_2Way, WebSocketStack_ManyZC)
    }
 
    //cleanup
-   bdvObj->shutdown(NetworkSettings::cookie());
+   bdvObj->shutdown();
    WebSocketServer::waitOnShutdown();
 }
 
@@ -2748,7 +2739,6 @@ GTEST_API_ int main(int argc, char **argv)
 {
    #ifdef _MSC_VER
       _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-   
       WSADATA wsaData;
       WORD wVersion = MAKEWORD(2, 0);
       WSAStartup(wVersion, &wsaData);
@@ -2759,6 +2749,7 @@ GTEST_API_ int main(int argc, char **argv)
 
    // Required by libbtc.
    CryptoECDSA::setupContext();
+   //LOGENABLESTDOUT();
 
    testing::InitGoogleTest(&argc, argv);
    int exitCode = RUN_ALL_TESTS();

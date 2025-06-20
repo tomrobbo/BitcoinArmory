@@ -185,19 +185,16 @@ namespace Armory
          static bool customDbPort_;
          static bool customBtcPort_;
 
-         static bool useCookie_;
          static bool ephemeralPeers_;
          static bool oneWayAuth_;
 
          static bool offline_;
          static bool automateDb_;
-         static std::string cookie_;
 
          static BinaryData uiPublicKey_;
 
       private:
          static void createNodes(void);
-         static void createCookie(void);
 
          static void processArgs(
             const std::map<std::string, std::string>&, ProcessType);
@@ -211,21 +208,15 @@ namespace Armory
          static const std::string& dbIP(void);
          static const std::string& rpcPort(void);
 
-         static void randomizeDbPort(void);
-
          static const NodePair& bitcoinNodes(void);
          static RpcPtr rpcNode(void);
 
-         static bool useCookie(void) { return useCookie_; }
-         static const std::string& cookie(void) { return cookie_; }
-         
          static bool ephemeralPeers(void) { return ephemeralPeers_; }
          static bool oneWayAuth(void) { return oneWayAuth_; }
          static bool isOffline(void) { return offline_; }
          static bool automateDb(void) { return automateDb_; }
 
          static BinaryData uiPublicKey(void) { return uiPublicKey_; }
-         static void injectUiPubkey(BinaryData&);
       };
 
       //////////////////////////////////////////////////////////////////////////

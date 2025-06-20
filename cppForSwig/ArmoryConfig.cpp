@@ -104,11 +104,11 @@ void Armory::Config::printHelp(void)
                            always function according to that type.
                            Specifying another type will do nothing. Build a new
                            db to change type.
---cookie                   create a cookie file holding a random authentication
-                           key to allow local clients to make use of elevated
-                           commands, like shutdown. Client and server will make
-                           use of ephemeral peer keys, ignoring the on disk peer
-                           wallet
+--ephemeral                ignores db peer store. Create a cookie file holding
+                           a random authentication keypair instead to allow
+                           local clients to make use of elevated commands, like
+                           shutdown.  Expects client pubkey in envvars under
+                           CALLER_PUBKEY. Enforces 2-way auth.
 --armorydb-port            DB port to connect to.
 --armorydb-ip              DB IP to connect to.
 --clear-mempool            delete all zero confirmation transactions from the DB.
@@ -630,13 +630,11 @@ std::string NetworkSettings::dbPort_;
 std::string NetworkSettings::dbIP_;
 std::string NetworkSettings::rpcPort_;
 
-bool NetworkSettings::useCookie_ = false;
 bool NetworkSettings::ephemeralPeers_;
 bool NetworkSettings::oneWayAuth_ = false;
 bool NetworkSettings::offline_ = false;
 bool NetworkSettings::automateDb_ = false;
 
-std::string NetworkSettings::cookie_;
 BinaryData NetworkSettings::uiPublicKey_;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -728,25 +726,13 @@ void NetworkSettings::processArgs(
    }
 
    //cookie
-   iter = args.find("cookie");
+   iter = args.find("ephemeral");
    if (iter != args.end()) {
-      useCookie_ = true;
       ephemeralPeers_ = true;
    }
 
-   //generate cookie
-   cookie_ = BtcUtils::fortuna_.generateRandom(32).toHexStr();
-
    if (offline_) {
       return;
-   }
-
-   if (useCookie_) {
-      randomizeDbPort();
-      createCookie();
-   } else if (DBSettings::getServiceType() == SERVICE_UNITTEST ||
-      DBSettings::getServiceType() == SERVICE_UNITTEST_WITHWS) {
-      randomizeDbPort();
    }
 
    if (procType == ProcessType::DB) {
@@ -832,28 +818,6 @@ const std::string& NetworkSettings::rpcPort()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void NetworkSettings::randomizeDbPort()
-{
-   if (customDbPort_) {
-      return;
-   }
-
-   //no custom listen port was provided and the db was spawned with a
-   //cookie file, listen port will be randomized
-   srand(time(0));
-   while (true) {
-      auto port = rand() % 15000 + 50000;
-      std::stringstream portss;
-      portss << port;
-
-      if (!SettingsUtils::testConnection("127.0.0.1", portss.str())) {
-         dbPort_ = portss.str();
-         break;
-      }
-   }
-}
-
-////////////////////////////////////////////////////////////////////////////////
 void NetworkSettings::createNodes()
 {
    auto magicBytes = BitcoinSettings::getMagicBytes();
@@ -898,30 +862,6 @@ NetworkSettings::RpcPtr NetworkSettings::rpcNode()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void NetworkSettings::createCookie()
-{
-   //cookie file
-   if (!useCookie_) {
-      return;
-   }
-   if (DBSettings::getServiceType() == SERVICE_UNITTEST ||
-      DBSettings::getServiceType() == SERVICE_UNITTEST_WITHWS) {
-      return;
-   }
-
-   auto cookiePath = fs::path(Armory::Config::getDataDir()) / ".cookie_";
-   std::fstream outStream(cookiePath, std::ios_base::out | std::ios_base::trunc);
-   outStream << cookie_ << std::endl;
-   outStream << dbPort_;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void NetworkSettings::injectUiPubkey(BinaryData& pubkey)
-{
-   uiPublicKey_ = std::move(pubkey);
-}
-
-////////////////////////////////////////////////////////////////////////////////
 void NetworkSettings::reset()
 {
    customDbPort_ = false;
@@ -936,9 +876,6 @@ void NetworkSettings::reset()
    dbIP_.clear();
    rpcPort_.clear();
 
-   cookie_.clear();
-
-   useCookie_ = false;
    ephemeralPeers_ = false;
    oneWayAuth_ = false;
    offline_ = false;

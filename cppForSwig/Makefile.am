@@ -141,6 +141,7 @@ ARMORYDB_SOURCE_FILES = main.cpp
 ARMORYGUI_SOURCE_FILES = TransactionBatch.cpp
 ARMORYCLI_SOURCE_FILES = BDM_mainthread.cpp \
 	BDM_Server.cpp \
+	BDV_Notification.cpp \
 	BIP150_151.cpp \
 	BIP15x_Handshake.cpp \
 	BitcoinP2P.cpp \

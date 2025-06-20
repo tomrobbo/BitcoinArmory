@@ -70,7 +70,7 @@ struct ZeroConfBatchFallbackStruct
 {
    BinaryData txHash_;
    std::shared_ptr<BinaryData> rawTxPtr_;
-   std::set<std::string> extraRequestors_;
+   std::set<BdvIdKey> extraRequestors_;
 
    ArmoryErrorCodes err_;
 };
@@ -102,7 +102,7 @@ struct ZeroConfBatch
    const bool hasWatcherEntries_;
 
    //bdv id
-   std::string requestor_;
+   BdvIdKey requestor_;
 
 public:
    ZeroConfBatch(bool hasWatcherEntries) :
@@ -294,7 +294,7 @@ struct BatchTxMap
    std::map<BinaryData, std::shared_ptr<WatcherTxBody>> watcherMap_;
 
    //bdv id
-   std::string requestor_;
+   BdvIdKey requestor_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -367,8 +367,7 @@ public:
 
    std::shared_ptr<ZeroConfBatch> initiateZcBatch(
       const std::vector<BinaryData>&, unsigned,
-      const ZcBroadcastCallback&, bool,
-      const std::string&);
+      const ZcBroadcastCallback&, bool, uint64_t);
 
    std::shared_future<std::shared_ptr<ZcPurgePacket>> pushNewBlockNotification(
       Blockchain::ReorganizationState);
@@ -461,8 +460,7 @@ private:
    void parseNewZC(
       std::map<BinaryData, std::shared_ptr<ParsedTx>> zcMap,
       std::shared_ptr<MempoolSnapshot>,
-      bool updateDB, bool notify,
-      const std::string&,
+      bool updateDB, bool notify, BdvIdKey,
       std::map<BinaryData, std::shared_ptr<WatcherTxBody>>&);
    void finalizePurgePacket(
       ZcActionStruct,
@@ -500,19 +498,18 @@ public:
    //broadcast
    void broadcastZC(const std::vector<BinaryDataRef>& rawzc,
       uint32_t timeout_ms, const ZcBroadcastCallback&,
-      const std::string& bdvID);
+      BdvIdKey);
 
    //broadcast helpers
    bool insertWatcherEntry(
       const BinaryData&, std::shared_ptr<BinaryData>,
-      const std::string&, std::set<std::string>,
+      BdvIdKey, std::set<BdvIdKey>,
       bool watchEntry = true);
    std::shared_ptr<WatcherTxBody> eraseWatcherEntry(const BinaryData&);
 
    std::shared_ptr<ZeroConfBatch> initiateZcBatch(
       const std::vector<BinaryData>&, unsigned,
-      const ZcBroadcastCallback&, bool,
-      const std::string&);
+      const ZcBroadcastCallback&, bool, uint64_t);
    //
 
    //getters

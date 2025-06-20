@@ -112,8 +112,7 @@ int WebSocketServer::callback(struct lws *wsi,
       case LWS_CALLBACK_CLOSED:
       {
          auto instance = WebSocketServer::getInstance();
-         BinaryDataRef bdr((uint8_t*)&session_data->id_, 8);
-         instance->clients_->unregisterBDV(bdr.toHexStr());
+         instance->clients_->unregisterBDV(session_data->id_);
          instance->eraseId(session_data->id_, wsi);
 
          if (instance->pendingWrites_.empty()) {
@@ -215,7 +214,43 @@ void WebSocketServer::initAuthPeers(const IO::ReadOnlyFileParams& params)
    if (!Armory::Config::NetworkSettings::ephemeralPeers()) {
       instance->authorizedPeers_ = std::make_shared<AuthorizedPeers>(params);
    } else {
+      if (Armory::Config::NetworkSettings::oneWayAuth()) {
+         throw std::runtime_error("public and ephemeral are mutually exclusive");
+      }
       instance->authorizedPeers_ = std::make_shared<AuthorizedPeers>();
+
+      //grab spawner pubkey
+      auto callerPubKeyStr = std::string(std::getenv("CALLER_PUBKEY"));
+      auto callerPubKey = SecureBinaryData::CreateFromHex(callerPubKeyStr);
+
+      //check it
+      if (!CryptoECDSA().VerifyPublicKeyValid(callerPubKey)) {
+         throw std::runtime_error("invalid caller pubkey");
+      }
+
+      //inject it
+      std::string serverName{"127.0.0.1:" +
+         Armory::Config::NetworkSettings::dbPort()};
+      instance->authorizedPeers_->addPeer(callerPubKey, std::vector{ serverName });
+
+      //set caller pubkey as master key
+      if (!instance->authorizedPeers_->setMasterKey(callerPubKey)) {
+         throw std::runtime_error("ephemeral peers db setup snafu");
+      }
+
+      //lastly, write own pubkey to cookie file
+      const auto& ownKey = instance->authorizedPeers_->getOwnPublicKey();
+      std::fstream file;
+
+      //on windows, we need to explicitly open the cookie file in binary
+      //for writing, or it will stop at the first null byte
+      file.open(
+         Armory::Config::getDataDir() / "cookie",
+         std::ios::out | std::ios::binary
+      );
+      file.write((const char*)ownKey.pubkey, 33);
+      file.flush();
+      file.close();
    }
 }
 
@@ -675,6 +710,16 @@ void WebSocketServer::updateWriteMap()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+bool WebSocketServer::isMasterKey(const btc_pubkey& pubkey)
+{
+   auto instance = getInstance();
+   if (instance->authorizedPeers_ == nullptr) {
+      return false;
+   }
+   return instance->authorizedPeers_->isMasterKey(pubkey);
+}
+
+///////////////////////////////////////////////////////////////////////////////
 //
 // ClientConnection
 //
@@ -782,16 +827,13 @@ void ClientConnection::processReadQueue(std::shared_ptr<Clients> clients)
          continue;
       }
 
-      BinaryDataRef bdr((uint8_t*)&id_, 8);
-      auto hexID = bdr.toHexStr();
-      auto bdvPtr = clients->get(hexID);
-
       //create payload
-      auto bdv_payload = std::make_shared<BDV_Payload>();
-      bdv_payload->bdvPtr_ = bdvPtr; //can be nullptr
-      bdv_payload->packetData_ = std::move(packetData);
-      bdv_payload->bdvID_ = id_;
-      bdv_payload->hexID = hexID;
+      auto bdvPtr = clients->get(id_);
+      auto bdv_payload = std::make_shared<BDV_Payload>(
+         std::move(packetData),
+         bdvPtr, //can be nullptr
+         id_, bip151Connection_->getChosenAuthPeerKey()
+      );
 
       //queue for clients thread pool to process
       clients->queuePayload(bdv_payload);

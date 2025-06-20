@@ -122,34 +122,32 @@ namespace DBTestUtils
    unsigned getTopBlockHeight(LMDBBlockDatabase*, DB_SELECT);
    BinaryData getTopBlockHash(LMDBBlockDatabase*, DB_SELECT);
 
-   std::string registerBDV(Clients* clients, const BinaryData& magic_word);
-   void goOnline(Clients* clients, const std::string& id);
-   const std::shared_ptr<BDV_Server_Object> getBDV(Clients* clients, const std::string& id);
+   BdvIdKey registerBDV(Clients*, const BinaryData& magic_word);
+   void goOnline(Clients*, BdvIdKey);
+   const std::shared_ptr<BDV_Server_Object> getBDV(Clients*, BdvIdKey);
    
-   void registerWallet(Clients* clients, const std::string& bdvId,
+   void registerWallet(Clients*, BdvIdKey,
       const std::vector<BinaryData>& scrAddrs, const std::string& wltName,
       bool isLockbox, bool waitOnReg);
 
-   std::vector<uint64_t> getBalanceAndCount(Clients* clients,
-      const std::string& bdvId, const std::string& walletId, unsigned blockheight);
-   std::string getLedgerDelegate(Clients* clients, const std::string& bdvId);
+   std::vector<uint64_t> getBalanceAndCount(Clients*,
+      BdvIdKey, const std::string&, unsigned);
+   std::string getLedgerDelegate(Clients*, BdvIdKey);
    std::vector<DBClientClasses::LedgerEntry> getHistoryPage(
-      Clients* clients, const std::string& bdvId,
-      const std::string& delegateId, uint32_t pageId);
+      Clients*, BdvIdKey, const std::string&, uint32_t);
 
    std::tuple<BinaryData, unsigned> waitOnSignal(
-      Clients* clients, const std::string& bdvId, int signal);
+      Clients*, BdvIdKey, int signal);
    void waitOnBDMSignal(std::shared_ptr<BlockDataManager>, BDV_Action);
-   void waitOnBDMReady(Clients* clients, const std::string& bdvId);
+   void waitOnBDMReady(Clients*, BdvIdKey);
    void waitOnBDMError(std::shared_ptr<BlockDataManager>);
 
-   std::tuple<BinaryData, unsigned> waitOnNewBlockSignal(Clients* clients, const std::string& bdvId);
+   std::tuple<BinaryData, unsigned> waitOnNewBlockSignal(Clients*, BdvIdKey);
    std::pair<std::vector<DBClientClasses::LedgerEntry>, std::set<BinaryData>>
-      waitOnNewZcSignal(Clients* clients, const std::string& bdvId);
-   void waitOnWalletRefresh(Clients* clients, const std::string& bdvId,
-      const std::string& wltId);
-   void triggerNewBlockNotification(BlockDataManagerThread* bdmt);
-   void mineNewBlock(BlockDataManagerThread* bdmt, const BinaryData& h160,
+      waitOnNewZcSignal(Clients*, BdvIdKey);
+   void waitOnWalletRefresh(Clients*, BdvIdKey, const std::string&);
+   void triggerNewBlockNotification(BlockDataManagerThread*);
+   void mineNewBlock(BlockDataManagerThread*, const BinaryData& h160,
       unsigned count);
 
    struct ZcVector
@@ -167,26 +165,23 @@ namespace DBTestUtils
       void clear(void) { zcVec_.clear(); }
    };
 
-   void pushNewZc(BlockDataManagerThread* bdmt, const ZcVector& zcVec, bool stage = false);
+   void pushNewZc(BlockDataManagerThread*, const ZcVector&, bool stage = false);
    void setNextZcPushDelay(unsigned);
    std::pair<BinaryData, BinaryData> getAddrAndPubKeyFromPrivKey(
       BinaryData privKey, bool compressed = false);
 
-   Tx getTxByHash(Clients* clients, const std::string bdvId,
-      const BinaryData& txHash);
-   std::vector<UTXO> getUtxoForAddress(Clients* clients, const std::string bdvId, 
-      const BinaryData& addr, bool withZc);
+   Tx getTxByHash(Clients*, BdvIdKey, const BinaryData&);
+   std::vector<UTXO> getUtxoForAddress(Clients*, BdvIdKey, const BinaryData&, bool);
 
-   void addTxioToSsh(StoredScriptHistory&, 
+   void addTxioToSsh(StoredScriptHistory&,
       const std::map<BinaryDataRef, std::shared_ptr<const TxIOPair>>&);
    void prettyPrintSsh(StoredScriptHistory& ssh);
    LedgerEntry getLedgerEntryFromWallet(std::shared_ptr<BtcWallet>, const BinaryData&);
    LedgerEntry getLedgerEntryFromAddr(ScrAddrObj*, const BinaryData&);
-
    void updateWalletsLedgerFilter(
-      Clients*, const std::string&, const std::vector<std::string> &);
+      Clients*, BdvIdKey, const std::vector<std::string> &);
 
-   BinaryData processCommand(Clients*, const std::string&, BinaryData);
+   BinaryData processCommand(Clients*, BdvIdKey, BinaryData);
 
    /////////////////////////////////////////////////////////////////////////////
    AsyncClient::LedgerDelegate getLedgerDelegate(

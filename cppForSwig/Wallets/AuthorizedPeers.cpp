@@ -560,7 +560,7 @@ void AuthorizedPeers::addPeerRootKey(
    }
    if (wallet_ == nullptr) {
       auto descPair = make_pair(description, 0);
-      peerRootKeys_.insert(make_pair(key, descPair));
+      peerRootKeys_.emplace(key, descPair);
       return;
    }
 
@@ -641,4 +641,55 @@ AuthPeersLambdas AuthorizedPeers::getAuthPeersLambdas(
    };
 
    return AuthPeersLambdas(getMap, getPrivKey, getAuthSet);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+bool AuthorizedPeers::setMasterKey(const btc_pubkey& pubkey)
+{
+   SecureBinaryData keySbd{pubkey.pubkey, pubkey.compressed ? 33u : 65u};
+   return setMasterKey(keySbd);
+}
+
+////
+bool AuthorizedPeers::setMasterKey(const SecureBinaryData& pubkey)
+{
+   if (masterKey_ == pubkey) {
+      return true;
+   }
+
+   if (!CryptoECDSA().VerifyPublicKeyValid(pubkey)) {
+      //not a valid pubkey
+      return false;
+   }
+
+   if (keySet_.find(pubkey) == keySet_.end()) {
+      //master key isn't known to peers store, ignore
+      return false;
+   }
+
+   //TODO: set in wallet
+
+   //set locally
+   masterKey_ = pubkey;
+   return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+bool AuthorizedPeers::isMasterKey(const btc_pubkey& pubkey) const
+{
+   if (masterKey_.empty()) {
+      return false;
+   }
+
+   BinaryDataRef keyRef{pubkey.pubkey, pubkey.compressed ? 33u : 65u};
+   return masterKey_ == keyRef;
+}
+
+////
+bool AuthorizedPeers::isMasterKey(const SecureBinaryData& pubkey) const
+{
+   if (masterKey_.empty()) {
+      return false;
+   }
+   return masterKey_ == pubkey;
 }
