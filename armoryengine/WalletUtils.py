@@ -147,7 +147,7 @@ class WalletMap(object):
 
          wltLoaded = True
          if dbId in self._walletMap:
-            LOGWARN('***WARNING: Duplicate wallet detected, %s', wallet.walletId)
+            LOGWARN('***WARNING: Duplicate wallet detected, %s', wltLoad.walletId)
             wo1 = self._walletMap[dbId].watchingOnly
             wo2 = wltLoad.watchingOnly
             fpath = wltLoad.walletPath
