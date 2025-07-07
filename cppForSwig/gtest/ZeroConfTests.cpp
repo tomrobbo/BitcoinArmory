@@ -5192,7 +5192,7 @@ protected:
       std::stringstream serverAddr;
       serverAddr << "127.0.0.1:" << NetworkSettings::dbPort();
       clientPeers.addPeer(serverPubkey, serverAddr.str());
-      serverPeers.addPeer(clientPubkey, "127.0.0.1");
+      //serverPeers.addPeer(clientPubkey, "127.0.0.1");
 
       wallet1id = "wallet1";
       initBDM();

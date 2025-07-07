@@ -2146,7 +2146,7 @@ TEST_F(WebSocketTests_1Way, WebSocketStack)
    EXPECT_GE(rekeyCount.second, 10U);
 
    //cleanup
-   theBDMt_->shutdown();
+   WebSocketServer::shutdown();
    WebSocketServer::waitOnShutdown();
 }
 
@@ -2396,7 +2396,7 @@ TEST_F(WebSocketTests_1Way, WebSocketStack_Reconnect)
       bdvObj->unregisterFromDB();
    }
 
-   theBDMt_->shutdown();
+   WebSocketServer::shutdown();
    WebSocketServer::waitOnShutdown();
 }
 

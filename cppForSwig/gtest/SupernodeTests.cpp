@@ -2179,7 +2179,7 @@ protected:
       std::stringstream serverAddr;
       serverAddr << "127.0.0.1:" << NetworkSettings::dbPort();
       clientPeers.addPeer(serverPubkey, serverAddr.str());
-      serverPeers.addPeer(clientPubkey, "127.0.0.1");
+      //serverPeers.addPeer(clientPubkey, "127.0.0.1");
 
       wallet1id = "wallet1";
 
@@ -3296,15 +3296,8 @@ TEST_F(WebSocketTests, WebSocketStack_ManyLargeWallets)
    }
 
    //cleanup
-   auto bdvObj2 = AsyncClient::BlockDataViewer::getNewBDV(
-      "127.0.0.1", NetworkSettings::dbPort(), IO::ReadOnlyFileParams{
-         homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_},
-      NetworkSettings::ephemeralPeers(), true, nullptr);
-   bdvObj2->addPublicKey(serverPubkey);
-   bdvObj2->connectToRemote();
-   bdvObj2->shutdown();
+   WebSocketServer::shutdown();
    WebSocketServer::waitOnShutdown();
-
    EXPECT_EQ(theBDMt_->bdm()->zeroConfCont()->getMatcherMapSize(), 0U);
 
    theBDMt_->shutdown();
@@ -3566,13 +3559,7 @@ TEST_F(WebSocketTests, WebSocketStack_AddrOpLoop)
    }
 
    //cleanup
-   auto bdvObj2 = AsyncClient::BlockDataViewer::getNewBDV(
-      "127.0.0.1", NetworkSettings::dbPort(),
-      {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_},
-      NetworkSettings::ephemeralPeers(), true, nullptr);
-   bdvObj2->addPublicKey(serverPubkey);
-   bdvObj2->connectToRemote();
-   bdvObj2->shutdown();
+   WebSocketServer::shutdown();
    WebSocketServer::waitOnShutdown();
 
    EXPECT_EQ(theBDMt_->bdm()->zeroConfCont()->getMatcherMapSize(), 0U);
@@ -3717,14 +3704,7 @@ TEST_F(WebSocketTests, WebSocketStack_CombinedCalls)
    }
 
    //cleanup
-   auto bdvObj2 = AsyncClient::BlockDataViewer::getNewBDV(
-      "127.0.0.1", NetworkSettings::dbPort(),
-      {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_},
-      NetworkSettings::ephemeralPeers(), true, nullptr);
-   bdvObj2->addPublicKey(serverPubkey);
-   bdvObj2->connectToRemote();
-
-   bdvObj2->shutdown();
+   WebSocketServer::shutdown();
    WebSocketServer::waitOnShutdown();
 
    EXPECT_EQ(theBDMt_->bdm()->zeroConfCont()->getMatcherMapSize(), 0ULL);
@@ -4030,14 +4010,7 @@ TEST_F(WebSocketTests, WebSocketStack_UnregisterAddresses)
    }
 
    //cleanup
-   auto bdvObj2 = AsyncClient::BlockDataViewer::getNewBDV(
-      "127.0.0.1", NetworkSettings::dbPort(),
-      {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_},
-      NetworkSettings::ephemeralPeers(), true, nullptr);
-   bdvObj2->addPublicKey(serverPubkey);
-   bdvObj2->connectToRemote();
-
-   bdvObj2->shutdown();
+   WebSocketServer::shutdown();
    WebSocketServer::waitOnShutdown();
 
    EXPECT_EQ(theBDMt_->bdm()->zeroConfCont()->getMatcherMapSize(), 0ULL);
@@ -4411,14 +4384,7 @@ TEST_F(WebSocketTests, WebSocketStack_DynamicReorg)
    bdvObj->unregisterFromDB();
 
    //cleanup
-   auto bdvObj2 = AsyncClient::BlockDataViewer::getNewBDV(
-      "127.0.0.1", NetworkSettings::dbPort(),
-      {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_},
-      NetworkSettings::ephemeralPeers(), true, nullptr);
-   bdvObj2->addPublicKey(serverPubkey);
-   bdvObj2->connectToRemote();
-
-   bdvObj2->shutdown();
+   WebSocketServer::shutdown();
    WebSocketServer::waitOnShutdown();
 
    EXPECT_EQ(theBDMt_->bdm()->zeroConfCont()->getMatcherMapSize(), 0U);
@@ -4870,14 +4836,7 @@ TEST_F(WebSocketTests, WebSocketStack_GetTxByHash)
    bdvObj->unregisterFromDB();
 
    //cleanup
-   auto bdvObj2 = AsyncClient::BlockDataViewer::getNewBDV(
-      "127.0.0.1", NetworkSettings::dbPort(),
-      {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_},
-      NetworkSettings::ephemeralPeers(), true, nullptr);
-   bdvObj2->addPublicKey(serverPubkey);
-   bdvObj2->connectToRemote();
-
-   bdvObj2->shutdown();
+   WebSocketServer::shutdown();
    WebSocketServer::waitOnShutdown();
 
    EXPECT_EQ(theBDMt_->bdm()->zeroConfCont()->getMatcherMapSize(), 0U);
@@ -5334,14 +5293,7 @@ TEST_F(WebSocketTests, WebSocketStack_GetSpentness)
    }
 
    //cleanup
-   auto bdvObj2 = AsyncClient::BlockDataViewer::getNewBDV(
-      "127.0.0.1", NetworkSettings::dbPort(),
-      {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_},
-      NetworkSettings::ephemeralPeers(), true, nullptr);
-   bdvObj2->addPublicKey(serverPubkey);
-   bdvObj2->connectToRemote();
-
-   bdvObj2->shutdown();
+   WebSocketServer::shutdown();
    WebSocketServer::waitOnShutdown();
 
    EXPECT_EQ(theBDMt_->bdm()->zeroConfCont()->getMatcherMapSize(), 0U);
