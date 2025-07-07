@@ -975,7 +975,7 @@ void WalletIfaceTransaction::closeTx()
    for (unsigned i=0; i < insertVec_.size(); i++) {
       auto dataPtr = insertVec_[i];
 
-      //is this operation is the last for this data key?
+      //is this operation the last for this data key?
       auto effectIter = keyToDataMap_.find(dataPtr->key_);
       if (effectIter == keyToDataMap_.end()) {
          throw WalletInterfaceException(

@@ -8659,7 +8659,7 @@ TEST_F(WalletMetaDataTest, AuthPeers)
    ASSERT_TRUE(authPeers->isMasterKey(pubkey3_compressed));
    ASSERT_FALSE(authPeers->isMasterKey(btckey6));
 
-   //TODO: reload wallet, check persistence
+   //reload wallet, check persistence
    authPeers.reset();
    authPeers = std::make_unique<AuthorizedPeers>(roFileParams);
    ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
@@ -8667,6 +8667,68 @@ TEST_F(WalletMetaDataTest, AuthPeers)
    ASSERT_FALSE(authPeers->isMasterKey(btckey6));
 
    //change master key, reload peers wallet and check again
+   ASSERT_TRUE(authPeers->setMasterKey(pubkey1_compressed));
+   ASSERT_TRUE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+
+   authPeers.reset();
+   authPeers = std::make_unique<AuthorizedPeers>(roFileParams);
+   ASSERT_TRUE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+
+   //delete key1, check it's not master key anymore
+   authPeers->eraseKey(pubkey1_compressed);
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+
+   //reload wallet, check key1 isnt master key
+   authPeers.reset();
+   authPeers = std::make_unique<AuthorizedPeers>(roFileParams);
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+
+   //TODO: re-add key1, check it isnt master key
+   authPeers->addPeer(pubkey1, "1.1.1.1", "0123::4567::89ab::cdef::", "test.com");
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+
+   //reload, check key1 isnt master key
+   authPeers.reset();
+   authPeers = std::make_unique<AuthorizedPeers>(roFileParams);
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+
+   //set key3 as master
+   ASSERT_TRUE(authPeers->setMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_TRUE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+
+   //reload & check
+   authPeers.reset();
+   authPeers = std::make_unique<AuthorizedPeers>(roFileParams);
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_TRUE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+
+   //erase master key
+   authPeers->eraseMasterKey();
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+
+   //reload & check
+   authPeers.reset();
+   authPeers = std::make_unique<AuthorizedPeers>(roFileParams);
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

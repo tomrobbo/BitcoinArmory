@@ -231,7 +231,7 @@ void WebSocketServer::initAuthPeers(const IO::ReadOnlyFileParams& params)
       //inject it
       std::string serverName{"127.0.0.1:" +
          Armory::Config::NetworkSettings::dbPort()};
-      instance->authorizedPeers_->addPeer(callerPubKey, std::vector{ serverName });
+      instance->authorizedPeers_->addPeer(callerPubKey, serverName);
 
       //set caller pubkey as master key
       if (!instance->authorizedPeers_->setMasterKey(callerPubKey)) {

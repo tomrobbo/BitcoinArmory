@@ -132,6 +132,7 @@ namespace Armory
          const btc_pubkey& getOwnPublicKey(void) const;
          bool setMasterKey(const btc_pubkey&);
          bool setMasterKey(const SecureBinaryData&);
+         void eraseMasterKey(void);
          bool isMasterKey(const btc_pubkey&) const;
          bool isMasterKey(const SecureBinaryData&) const;
 
