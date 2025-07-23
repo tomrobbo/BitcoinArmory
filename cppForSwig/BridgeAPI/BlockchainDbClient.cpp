@@ -16,11 +16,32 @@
 #include "../Wallets/IOHeader.h"
 #include "../AsyncClient.h"
 
+#include "spawn.h"
+#include <random>
+
 using namespace Armory::Bridge;
+using namespace std::string_view_literals;
 
 ////////////////////////////////////////////////////////////////////////////////
 bool Armory::Bridge::spawnDb()
 {
+   //get full path to armorydb
+   const std::filesystem::path armoryDbPath{};
+
+   //setup ephemeral authPeers
+
+   //generate random db port
+   uint32_t port = (rand() % 10000) + 50000;
+   auto portStr = std::to_string(port);
+
+   //setup argv
+   char* argv[] = {
+      armoryDbPath.string().data(),
+      (char*)"--ephemeral"sv.data(),
+      std::string{"--dbPort=" + portStr}.data(),
+      (char*)nullptr
+   };
+
    throw std::runtime_error("[spawnDb] implement me");
 }
 

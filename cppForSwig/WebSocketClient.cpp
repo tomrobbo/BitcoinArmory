@@ -47,7 +47,6 @@ WebSocketClient::WebSocketClient(const std::string& addr,
    contextPtr_.store(0, std::memory_order_release);
 
    if (!ephemeralPeers) {
-      //std::string filename(CLIENT_AUTH_PEER_FILENAME);
       authPeers_ = std::make_shared<Wallets::AuthorizedPeers>(params);
    } else {
       authPeers_ = std::make_shared<Wallets::AuthorizedPeers>();
