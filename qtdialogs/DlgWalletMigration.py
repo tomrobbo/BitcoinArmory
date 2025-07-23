@@ -10,10 +10,9 @@ from armoryengine.CppBridge import ServerPush
 from ui.QtExecuteSignal import TheSignalExecution
 from ui.Wizards import SetPassphrasePage, VerifyPassphrasePage, WalletProgressPage
 
-from qtdialogs.qtdefines import QtWidgets, QtCore, QRichLabel, HLINE
+from qtdialogs.qtdefines import QtWidgets, QtCore, QRichLabel, HLINE, AdvancedOptionsFrame
 from qtdialogs.ArmoryDialog import ArmoryDialog
 from qtdialogs.DlgUnlockWallet import DlgUnlockWallet
-from qtdialogs.DlgChangePassphrase import DlgChangePassphrase
 from armorycolors import htmlColor
 
 # --- Constants for UI layout ---
@@ -95,16 +94,9 @@ class DlgUnlockMigratingWallet(DlgUnlockWallet):
    def rejectPassphrase(self):
       """Handle cancellation of passphrase entry."""
       if self.parent.handleUnlockCancelForWatchOnly():
-         super().rejectPassphrase()
-      else:
-         packet = self.parent.getNewPacket()
-         packet.unlockRequest = ""  # required even on failure
-         packet.success = False
-         self.parent.reply()
-         # flag parent as failed; parent.reject will be called from its own logic
-         self.parent.migrationFailed = True
-         # close this unlock dialog
-         self.reject()
+         # The parent dialog handled the logic for Yes/No. This dialog's
+         # only remaining job is to close itself.
+         super().reject()
 
 ################################################################################
 class DlgWalletMigration(ArmoryDialog, ServerPush):
@@ -125,7 +117,6 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       self.walletPath = wltPath
       self.walletData = walletData
       self.dlgUnlock = None
-      self.reusePassphrase = False
       self.usingWizardPassphrase = False
       self.storedPassphrase = None
       self.doneBtn = None
@@ -133,6 +124,7 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       self.errorLabel = None
       self.migrationComplete = False
       self.migrationFailed = False
+      self.migrationStarted = False
       self.wired = False
       self.newPassphrase = None
       self.cancellationSent = False
@@ -175,12 +167,35 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       # Add cancel button for passphrase page
       cancelBtn = QtWidgets.QPushButton(self.tr('Cancel'))
       cancelBtn.clicked.connect(self.cancelPassphraseSetup)
-      
+
+      # Create tab widget for passphrase page
+      tabWidget = QtWidgets.QTabWidget()
+
+      # Add the original passphrase frame as the first tab
+      tabWidget.addTab(self.setPassphrasePage.pageFrame, self.tr("Set Passphrase"))
+
+      # Add the KDF options as the second tab
+      self.advancedOptionsTab = AdvancedOptionsFrame(self, self.main)
+      tabWidget.addTab(self.advancedOptionsTab, self.tr("Advanced Options"))
+
+      # Replace the original layout with the tabbed layout
+      originalLayout = self.setPassphrasePage.layout()
+      if originalLayout:
+         # Clear the existing layout
+         while originalLayout.count():
+            originalLayout.takeAt(0)
+         originalLayout.addWidget(tabWidget)
+      else:
+         # Create new layout if none exists
+         newLayout = QtWidgets.QVBoxLayout()
+         newLayout.addWidget(tabWidget)
+         self.setPassphrasePage.setLayout(newLayout)
+
       # Create button layout
       btnLayout = self.createButtonLayout(cancelBtn, nextBtn)
 
-      setLayout = self.setPassphrasePage.pageFrame.layout()
-      setLayout.addLayout(btnLayout)
+      # Add button layout to the main page layout
+      self.setPassphrasePage.layout().addLayout(btnLayout)
       self.setupPassphraseValidation(nextBtn)
 
    def setupPassphraseValidation(self, nextBtn):
@@ -203,7 +218,7 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       """Set up the passphrase verification page"""
       doneBtn = QtWidgets.QPushButton(self.tr('Done'))
       doneBtn.clicked.connect(self.nextFromVerifyPassphrase)
-      
+
       # Add cancel button for verify page
       cancelBtn = QtWidgets.QPushButton(self.tr('Cancel'))
       cancelBtn.clicked.connect(self.cancelPassphraseSetup)
@@ -234,7 +249,7 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
    def connectSignals(self):
       """Connect all signals to their handlers."""
       self.btnNext.clicked.connect(self.proceedWithMigration)
-      self.btnCancel.clicked.connect(super().reject)
+      self.btnCancel.clicked.connect(self.reject)
 
    ####
    def createButtonLayout(self, *buttons):
@@ -360,7 +375,7 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       self.dlgUnlock = None
 
    ####
-   def processSetNewPassphrase(self, isPriv):
+   def processSetNewPassphrase(self, isPriv, reusePassphrase=False):
       """Process the request to set a new passphrase."""
       packet = self.getNewPacket()
       passPacket = packet.init("walletCreation")
@@ -371,60 +386,43 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
             # User went through wizard to create new passphrase
             packet.success = True
             passPacket.passphrase = self.newPassphrase
-            passPacket.kdfTargetMs = 2000
-            passPacket.kdfTargetMB = 128
+
+            # Get KDF parameters from the advanced options tab
+            kdfSec = self.advancedOptionsTab.getKdfSec()
+            if kdfSec <= 0:
+               kdfSec = 2.0  # Default fallback
+            passPacket.kdfTargetMs = int(kdfSec * 1000)
+
+            kdfBytes = self.advancedOptionsTab.getKdfBytes()
+            if kdfBytes <= 0:
+               kdfBytes = 128 * 1024 * 1024  # Default fallback (128 MB)
+            passPacket.kdfTargetMB = int(kdfBytes / (1024**2))
+
             # Clean up wizard state
             self.usingWizardPassphrase = False
             self.newPassphrase = None
-         elif self.reusePassphrase:
+         elif reusePassphrase:
             # user wants to reuse old passphrase, feed that instead
+            if not self.storedPassphrase:
+               raise Exception("Reuse passphrase requested but no passphrase stored")
+
             packet.success = True
+            passPacket.passphrase = self.storedPassphrase
             passPacket.kdfTargetMs = 2000
             passPacket.kdfTargetMB = 128
 
-            # Use stored passphrase from unlock dialog
-            if self.storedPassphrase:
-               passPacket.passphrase = self.storedPassphrase
-            elif self.dlgUnlock:
-               passPacket.passphrase = self.dlgUnlock.getPassphrase()
-               self.dlgUnlock.close()
-               del self.dlgUnlock
-               self.dlgUnlock = None
-            else:
-               # This should not happen - no passphrase available
-               raise Exception("Cannot reuse passphrase - no passphrase stored or available")
-            # Clean up reuse state and stored passphrase
-            self.reusePassphrase = False
+            # Clean up stored passphrase
             self.storedPassphrase = None
          else:
-            # Show DlgChangePassphrase for direct passphrase entry
-            dlgPasswd = DlgChangePassphrase(self, self.main)
-            if dlgPasswd.exec_():
-               packet.success = True
-
-               # passphrase
-               passPacket.passphrase = str(dlgPasswd.edtPasswd1.text())
-
-               # unlock target in milliseconds
-               privKdfTargetMs = int(dlgPasswd.advancedOptionsTab.getKdfSec() * 1000)
-               if privKdfTargetMs <= 0:
-                  privKdfTargetMs = 2000
-               passPacket.kdfTargetMs = privKdfTargetMs
-
-               # memory target in MB
-               privKdfTargetMem = int(dlgPasswd.advancedOptionsTab.getKdfBytes() / (1024**2))
-               if privKdfTargetMem <= 0:
-                  privKdfTargetMem = 128
-               passPacket.kdfTargetMB = privKdfTargetMem
-            else:
-               self.reject()
-               return
+            # This should never happen - we should always have either wizard or reuse mode
+            raise Exception("processSetNewPassphrase called without wizard or reuse mode")
       else:
          # control passphrase, return empty for now
          packet.success = True
          passPacket.passphrase = ""
          passPacket.kdfTargetMs = 250
          passPacket.kdfTargetMB = 0
+
       self.reply()
 
    ####
@@ -473,9 +471,6 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
             layout.insertWidget(
                layout.count() - 1, self.resultLabel, alignment=QtCore.Qt.AlignHCenter)
 
-            # Reload wallets to refresh the UI and show the newly migrated wallet
-            self.main.loadWallets()
-
          # Enable the Done button when process completes
          self.doneBtn.setEnabled(True)
          return
@@ -491,7 +486,7 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
             # Store passphrase before cleaning up unlock dialog for potential reuse
             if self.dlgUnlock:
                self.storedPassphrase = self.dlgUnlock.getPassphrase()
-               self.dlgUnlock.close()
+               self.dlgUnlock.accept()
                del self.dlgUnlock
                self.dlgUnlock = None
             self.processSetNewPassphrase(False)
@@ -499,8 +494,7 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
             choice = self.promptPassphraseReuseChoice()
             if choice == 'reuse':
                # User chose to reuse old passphrase
-               self.reusePassphrase = True
-               self.processSetNewPassphrase(True)
+               self.processSetNewPassphrase(True, reusePassphrase=True)
                self.stack.setCurrentWidget(self.walletProgressPage)
                self.resize(self.stack.currentWidget().sizeHint())
             elif choice == 'new':
@@ -551,6 +545,9 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       Ask bridge to migrate the wallet, notifications will be sent
       to overloaded parseProtoPacket (from ServerPush parent class)
       """
+      # Mark migration as started
+      self.migrationStarted = True
+      
       def doneCallback(success, error):
          if success:
             # Do not reload wallets or close the dialog here; wait for onMigrationComplete
@@ -571,9 +568,12 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       """Handle dialog rejection (cancel button or close)."""
       if self.migrationComplete:
          self.accept()
+      elif not self.migrationStarted:
+         # Migration hasn't started yet (Page 1) - just close dialog
+         super().reject()
       else:
+         # Migration has started but not completed - send cancellation signal
          self.migrationFailed = True
-         # Send cancellation signal to backend if migration is not complete and we haven't already sent one
          if not self.cancellationSent:
             packet = self.getNewPacket()
             packet.init("walletCreation")
@@ -639,22 +639,36 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
 
    ####
    def handleUnlockCancelForWatchOnly(self):
-      """Handle cancellation of unlock dialog for watching-only wallet creation."""
+      """
+      Handle cancellation of unlock dialog for watching-only wallet creation.
+
+      This method is the master controller for the unlock-cancellation flow.
+      It returns True in all cases to signify to the caller that the logic
+      has been handled and the caller's only responsibility is to close.
+      """
       reply = QtWidgets.QMessageBox.question(
          self, self.tr('Create Watching-Only Wallet?'),
          self.tr(
-            'Migration was cancelled. Do you want to create a watching-only wallet instead?'),
+            'Wallet was not unlocked. Do you want to create a watching-only wallet instead?'),
          QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
       )
       if reply == QtWidgets.QMessageBox.Yes:
-         # Show progress page and trigger backend
+         # User wants watching-only. Trigger the backend's default behavior
+         # by sending a failed unlock reply.
+         packet = self.getNewPacket()
+         packet.unlockRequest = ""
+         packet.success = False
+         self.reply()
+
+         # Switch to the progress page to show the creation process.
          self.stack.setCurrentWidget(self.walletProgressPage)
          self.resize(self.stack.currentWidget().sizeHint())
          return True
       else:
-         # User does NOT want to create a watching-only wallet: close dialog, do not create wallet
-         super().reject()
-         return False
+         # User does NOT want to create a watching-only wallet.
+         # Authoritatively reject the entire migration.
+         self.reject()
+         return True
 
    ####
    def cancelPassphraseSetup(self):
