@@ -295,8 +295,9 @@ WalletManager::listWallets()
          continue;
       }
 
-      //ignore peer files
-      if (path.extension() == ".peers") {
+      //ignore certain obvious extensions
+      const auto& extension = path.extension();
+      if (extension == ".peers" || extension == ".txt" || extension == ".log") {
          continue;
       }
 

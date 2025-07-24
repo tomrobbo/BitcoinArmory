@@ -8,9 +8,12 @@
 
 from armoryengine.CppBridge import ServerPush
 from ui.QtExecuteSignal import TheSignalExecution
-from ui.Wizards import SetPassphrasePage, VerifyPassphrasePage, WalletProgressPage
+from ui.Wizards import SetPassphrasePage, VerifyPassphrasePage, \
+   WalletProgressPage
 
-from qtdialogs.qtdefines import QtWidgets, QtCore, QRichLabel, HLINE, AdvancedOptionsFrame
+from qtpy import QtCore, QtWidgets
+from qtdialogs.qtdefines import QRichLabel, HLINE, \
+   AdvancedOptionsFrame
 from qtdialogs.ArmoryDialog import ArmoryDialog
 from qtdialogs.DlgUnlockWallet import DlgUnlockWallet
 from armorycolors import htmlColor
@@ -63,7 +66,7 @@ def createSubtextLabel(text):
 class DlgUnlockMigratingWallet(DlgUnlockWallet):
    """Unlock dialog specifically for wallet migration."""
    def __init__(self, parent, main):
-      super(DlgUnlockMigratingWallet, self).__init__(
+      super().__init__(
          wltID=parent.walletData.walletId,
          parent=parent, main=main,
          unlockMsg="Unlock Wallet To Migrate")
@@ -82,14 +85,6 @@ class DlgUnlockMigratingWallet(DlgUnlockWallet):
       if not self.passphrase:
          raise Exception("do not have passphrase for migrated wallet!")
       return self.passphrase
-
-   def recycle(self):
-      """Show error message when unlock fails and reset the passphrase field."""
-      QtWidgets.QMessageBox.critical(
-         self, self.tr('Unlock Failed'),
-         self.tr('Incorrect passphrase for wallet migration. Please try again.')
-      )
-      self.edtPasswd.setText('')
 
    def rejectPassphrase(self):
       """Handle cancellation of passphrase entry."""
@@ -209,7 +204,7 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
                return True
             except Exception:
                return False
-         nextBtn.setEnabled(bool(pw1) and pw1 == pw2 and len(pw1) >= 5 
+         nextBtn.setEnabled(bool(pw1) and pw1 == pw2 and len(pw1) >= 5 \
             and isASCII(pw1) and isASCII(pw2))
       self.setPassphrasePage.pageFrame.passphraseCallback = enableNextBtn
       enableNextBtn()
@@ -362,6 +357,7 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       # Ignore unlock requests if migration is already complete
       if self.migrationComplete:
          return
+
       # Always use DlgUnlockMigratingWallet for migration unlock dialogs
       if not self.dlgUnlock:
          self.dlgUnlock = DlgUnlockMigratingWallet(
@@ -547,7 +543,7 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       """
       # Mark migration as started
       self.migrationStarted = True
-      
+
       def doneCallback(success, error):
          if success:
             # Do not reload wallets or close the dialog here; wait for onMigrationComplete
@@ -587,11 +583,11 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       msgBox = QtWidgets.QMessageBox(self)
       msgBox.setWindowTitle(self.tr('Passphrase Options'))
       msgBox.setText(self.tr(
-         'Would you like to reuse your old passphrase or create a new one for the migrated wallet?'))
+         'Would you like to reuse your current passphrase or set a new one for the migrated wallet?'))
       reuseBtn = msgBox.addButton(self.tr(
-         'Reuse Old Passphrase'), QtWidgets.QMessageBox.AcceptRole)
+         'Reuse Passphrase'), QtWidgets.QMessageBox.AcceptRole)
       newBtn = msgBox.addButton(self.tr(
-         'Create New Passphrase'), QtWidgets.QMessageBox.ActionRole)
+         'Set New Passphrase'), QtWidgets.QMessageBox.ActionRole)
       cancelBtn = msgBox.addButton(self.tr(
          'Cancel'), QtWidgets.QMessageBox.RejectRole)
       msgBox.setDefaultButton(reuseBtn)
