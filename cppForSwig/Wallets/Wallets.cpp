@@ -163,7 +163,7 @@ std::string AssetWallet::getMainWalletID(
       std::string idStr{dataRef.toCharPtr(), dataRef.getSize()};
       return idStr;
    } catch (const IO::NoEntryInWalletException&) {
-      LOGERR << "main wallet ID is not set!";
+      LOGERR << "main wallet ID is not set in file: " << iface->getFilename();
       throw WalletException("main wallet ID is not set!");
    }
 }
@@ -188,7 +188,6 @@ void AssetWallet::checkMasterID(const std::string& masterID)
       /*
       Grab ID from disk, check it matches arg.
       */
-
       auto fromDisk = getMasterID(iface_);
 
       //sanity check

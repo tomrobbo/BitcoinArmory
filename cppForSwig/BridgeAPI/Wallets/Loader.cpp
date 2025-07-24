@@ -209,6 +209,11 @@ bool Armory135Header::isInitialized() const
    return version_ != UINT32_MAX;
 }
 
+int32_t Armory135Header::errorCode() const
+{
+   return errorCode_;
+}
+
 const std::string& Armory135Header::getID() const
 {
    return walletID_;
@@ -237,7 +242,7 @@ void Armory135Header::verifyChecksum(
 void Armory135Header::parseFile()
 {
    /*
-   Simply return on any failure, the version_ field will not be initialized 
+   Simply return on any failure, the version_ field will not be initialized
    until the whole header is parsed and checksums pass
    */
 
@@ -250,6 +255,7 @@ void Armory135Header::parseFile()
       //file type
       auto fileTypeStr = brr.get_BinaryData(8);
       if (fileTypeStr != BinaryData::fromString(WALLET_135_HEADER, 8)) {
+         errorCode_ = A135_ERROR_NOTAWALLET;
          return;
       }
 
@@ -259,6 +265,7 @@ void Armory135Header::parseFile()
       //magic bytes
       auto magicBytes = brr.get_BinaryData(4);
       if (magicBytes != Config::BitcoinSettings::getMagicBytes()) {
+         errorCode_ = A135_ERROR_MAGICBYTE;
          return;
       }
 
@@ -373,6 +380,7 @@ void Armory135Header::parseFile()
    } catch (const std::exception& e) {
       LOGWARN << "failed to load legacy wallet at " << path_.string() << " with error: ";
       LOGWARN << "   " << e.what();
+      errorCode_ = A135_ERROR_CUSTOM;
       return;
    }
 

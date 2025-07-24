@@ -264,16 +264,20 @@ void WalletManager::loadAFile(const std::filesystem::path& path)
    try {
       auto wltPtr = Wallets::AssetWallet::loadMainWalletFromFile(
       Wallets::IO::ReadOnlyFileParams{path, {}});
-      walletFiles_.emplace(path.filename().string(),
-         std::make_shared<LMDBWalletInfo>(path, wltPtr));
+      walletFiles_.emplace(
+         path.filename().string(),
+         std::make_shared<LMDBWalletInfo>(path, wltPtr)
+      );
    } catch (const Wallets::Encryption::DecryptedDataContainerException& e) {
       //could not decrypt wallet control header, track as encrypted wallet
-      LOGDEBUG << "could not open wallet with decryption error: " << e.what();
-      walletFiles_.emplace(path.filename().string(),
-         std::make_shared<LMDBWalletInfo>(path, nullptr));
-   } catch (const std::exception& e) {
-      LOGERR << "failed to load file " << path.string()
-         << " with error:" << e.what();
+      std::string errStr{
+         "failed to open wallet \"" + path.string() +
+         "\" with decryption error: " + e.what()};
+      LOGDEBUG << errStr;
+      walletFiles_.emplace(
+         path.filename().string(),
+         std::make_shared<LMDBWalletInfo>(path, nullptr)
+      );
    }
 }
 
@@ -285,7 +289,16 @@ WalletManager::listWallets()
    std::vector<std::filesystem::path> walletPaths, a135Paths;
    for (const auto& dirEntry : std::filesystem::directory_iterator{path_} ) {
       const auto& path = dirEntry.path();
-      const auto& extension = path.extension();
+
+      //ignore folders
+      if (FileUtils::isDir(path)) {
+         continue;
+      }
+
+      //ignore peer files
+      if (path.extension() == ".peers") {
+         continue;
+      }
 
       //ignore this file if we've parsed it before
       auto iter = walletFiles_.find(path.filename().string());
@@ -293,17 +306,28 @@ WalletManager::listWallets()
          continue;
       }
 
-      if (extension == ".lmdb") {
-         walletPaths.emplace_back(path);
-      } else if (extension == ".wallet") {
-         a135Paths.emplace_back(path);
+      //ignore LMDB lock files
+      auto filename = path.filename().string();
+      if (filename.size() > 5) {
+         if (std::memcmp(filename.data() + filename.size() - 5,
+            "-lock", 5) == 0) {
+            continue;
+         }
       }
+
+      //track file for parsing
+      walletPaths.emplace_back(path);
    }
 
    //read the potential wallet files
    ReentrantLock lock(this);
    for (const auto& wltPath : walletPaths) {
-      loadAFile(wltPath);
+      try {
+         loadAFile(wltPath);
+      } catch (const std::exception&) {
+         //couldnt load the file, maybe it's a legacy wallet?
+         a135Paths.emplace_back(wltPath);
+      }
    }
 
    //parse the potential armory 1.35 wallet files
@@ -315,15 +339,16 @@ WalletManager::listWallets()
 
       //an armory v1.35 wallet was loaded, check if we need to
       //migrate it to v3.x
-      auto& id = a135->getID();
-      auto iter = wallets_.find(id);
+      auto iter = wallets_.find(a135->getID());
       if (iter != wallets_.end()) {
          continue;
       }
 
       //no equivalent v3.x wallet loaded, add it to the list
-      walletFiles_.emplace(wltPath.filename().string(),
-         std::make_shared<A135FileInfo>(a135));
+      walletFiles_.emplace(
+         wltPath.filename().string(),
+         std::make_shared<A135FileInfo>(a135)
+      );
    }
 
    std::map<std::string, std::shared_ptr<WalletFileInfo>> result;
@@ -347,31 +372,32 @@ std::shared_ptr<WalletFileInfo> WalletManager::importFile(
 {
    //lock container and try to load the file
    ReentrantLock lock(this);
-   loadAFile(path);
+   try {
+      loadAFile(path);
+   } catch (const std::exception&) {
+      //potentially a legacy wallet
+      auto a135 = std::make_shared<Armory135Header>(path);
+      if (a135->isInitialized()) {
+         auto idIter = wallets_.find(a135->getID());
+         if (idIter != wallets_.end()) {
+            throw std::runtime_error("this legacy wallet is already loaded");
+         }
+
+         walletFiles_.emplace(
+            path.filename().string(),
+            std::make_shared<A135FileInfo>(a135)
+         );
+      } else if (a135->errorCode() == A135_ERROR_MAGICBYTE) {
+         throw std::runtime_error(
+            "this legacy wallet is not for this network!");
+      }
+   }
 
    //if the file is loaded, it will be in files map
    auto fileIter = walletFiles_.find(path.filename().string());
    if (fileIter == walletFiles_.end()) {
-      //failed to load the file, this could be a legacy wallet
-      auto a135 = std::make_shared<Armory135Header>(path);
-      if (a135->isInitialized()) {
-         auto& id = a135->getID();
-         auto idIter = wallets_.find(id);
-         if (idIter != wallets_.end()) {
-            throw std::runtime_error("this wallet is already loaded");
-         }
-
-         fileIter = walletFiles_.emplace(path.filename().string(),
-            std::make_shared<A135FileInfo>(a135)).first;
-      }
-   }
-
-   //check files map again
-   if (fileIter == walletFiles_.end()) {
       throw std::runtime_error("file isn't a wallet");
    }
-
-   //we got this far, something was loaded
    return fileIter->second;
 }
 

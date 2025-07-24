@@ -2768,10 +2768,10 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
             pass
 
       except Exception as e:
-         QtWidgets.QMessageBox.warning(self, self.tr('Duplicate Wallet!'), self.tr(
-            'You selected a wallet that has the same ID as one already '
-            'in your wallet (%s)!  If you would like to import it anyway, '
-            'please delete the duplicate wallet in Armory, first.' % wltID), \
+         QtWidgets.QMessageBox.warning(self, self.tr('Import Error!'),
+            self.tr(
+               f"Failed to import file <i>\"{filePath}\"</i>"
+               f" with the following error: <b>{str(e)}</b>"),
             QtWidgets.QMessageBox.Ok)
 
    #############################################################################
