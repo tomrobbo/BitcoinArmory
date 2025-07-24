@@ -163,7 +163,7 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       cancelBtn = QtWidgets.QPushButton(self.tr('Cancel'))
       cancelBtn.clicked.connect(self.cancelPassphraseSetup)
 
-      # Create tab widget for passphrase page
+      # Create tab widget
       tabWidget = QtWidgets.QTabWidget()
 
       # Add the original passphrase frame as the first tab
@@ -173,24 +173,15 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       self.advancedOptionsTab = AdvancedOptionsFrame(self, self.main)
       tabWidget.addTab(self.advancedOptionsTab, self.tr("Advanced Options"))
 
-      # Replace the original layout with the tabbed layout
-      originalLayout = self.setPassphrasePage.layout()
-      if originalLayout:
-         # Clear the existing layout
-         while originalLayout.count():
-            originalLayout.takeAt(0)
-         originalLayout.addWidget(tabWidget)
-      else:
-         # Create new layout if none exists
-         newLayout = QtWidgets.QVBoxLayout()
-         newLayout.addWidget(tabWidget)
-         self.setPassphrasePage.setLayout(newLayout)
-
       # Create button layout
       btnLayout = self.createButtonLayout(cancelBtn, nextBtn)
 
-      # Add button layout to the main page layout
-      self.setPassphrasePage.layout().addLayout(btnLayout)
+      # Add both tab widget and buttons directly to the page's layout
+      # WITHOUT calling setLayout (which would destroy existing widgets)
+      pageLayout = self.setPassphrasePage.layout()
+      pageLayout.addWidget(tabWidget)
+      pageLayout.addLayout(btnLayout)
+
       self.setupPassphraseValidation(nextBtn)
 
    def setupPassphraseValidation(self, nextBtn):
@@ -217,7 +208,7 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       # Add cancel button for verify page
       cancelBtn = QtWidgets.QPushButton(self.tr('Cancel'))
       cancelBtn.clicked.connect(self.cancelPassphraseSetup)
-      
+
       # Create button layout
       btnLayout = self.createButtonLayout(cancelBtn, doneBtn)
 
@@ -255,6 +246,22 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       for btn in buttons:
          btnLayout.addWidget(btn)
       return btnLayout
+
+   def createFailureLabel(self, message):
+      """Create and display a failure label with consistent styling."""
+      self.resultLabel = QtWidgets.QLabel(message)
+      self.resultLabel.setAlignment(QtCore.Qt.AlignHCenter)
+      self.resultLabel.setStyleSheet(
+         f"font-size: 11pt; font-weight: bold; color: {htmlColor('TextRed')};"
+         f"background: transparent; border: none;")
+      layout = self.walletProgressPage.pageFrame.layout()
+      layout.insertWidget(
+         layout.count() - 1, self.resultLabel, alignment=QtCore.Qt.AlignHCenter)
+
+   def navigateToProgressPage(self):
+      """Navigate to the progress page and resize the dialog."""
+      self.stack.setCurrentWidget(self.walletProgressPage)
+      self.resize(self.stack.currentWidget().sizeHint())
 
    def setupPage1(self):
       """Sets up the first page (wallet details) of the migration dialog"""
@@ -365,7 +372,7 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
          self.dlgUnlock.finished.connect(self.onUnlockDialogClosed)
       self.dlgUnlock.setIds(ids)
 
-   def onUnlockDialogClosed(self, result):
+   def onUnlockDialogClosed(self):
       """Clean up unlock dialog resources when it's closed."""
       # Ensure dlgUnlock is reset after dialog is closed
       self.dlgUnlock = None
@@ -433,15 +440,8 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
          self.walletProgressPage.pageFrame.progressBar.hide()
 
          # Create and show result label
-         self.resultLabel = QtWidgets.QLabel("")
-         self.resultLabel.setAlignment(QtCore.Qt.AlignHCenter)
-         self.resultLabel.setStyleSheet(
-            f"font-size: 11pt; font-weight: bold; color: {htmlColor(
-               'TextRed') if self.migrationFailed else '#00FF00'};"
-            f"background: transparent; border: none;")
          if self.migrationFailed:
-            self.resultLabel.setText(
-               f"Migration of Wallet {self.walletData.walletId} failed!")
+            self.createFailureLabel(f"Migration of Wallet {self.walletData.walletId} failed!")
 
             # Show backend error message below the FAILURE label
             errorMsg = getattr(payload, 'errorMessage', None)
@@ -453,16 +453,13 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
                   f"border: none;")
                layout = self.walletProgressPage.pageFrame.layout()
                layout.insertWidget(
-                  layout.count() - 1, self.resultLabel, alignment=QtCore.Qt.AlignHCenter)
-               layout.insertWidget(
                   layout.count() - 1, self.errorLabel, alignment=QtCore.Qt.AlignHCenter)
-            else:
-               layout = self.walletProgressPage.pageFrame.layout()
-               layout.insertWidget(
-                  layout.count() - 1, self.resultLabel, alignment=QtCore.Qt.AlignHCenter)
          else:
-            self.resultLabel.setText(
-               f"Migration of Wallet {self.walletData.walletId} was successful!")
+            self.resultLabel = QtWidgets.QLabel(f"Migration of Wallet {self.walletData.walletId} was successful!")
+            self.resultLabel.setAlignment(QtCore.Qt.AlignHCenter)
+            self.resultLabel.setStyleSheet(
+               f"font-size: 11pt; font-weight: bold; color: '#00FF00';"
+               f"background: transparent; border: none;")
             layout = self.walletProgressPage.pageFrame.layout()
             layout.insertWidget(
                layout.count() - 1, self.resultLabel, alignment=QtCore.Qt.AlignHCenter)
@@ -491,8 +488,7 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
             if choice == 'reuse':
                # User chose to reuse old passphrase
                self.processSetNewPassphrase(True, reusePassphrase=True)
-               self.stack.setCurrentWidget(self.walletProgressPage)
-               self.resize(self.stack.currentWidget().sizeHint())
+               self.navigateToProgressPage()
             elif choice == 'new':
                # User chose to create a new passphrase via wizard
                self.usingWizardPassphrase = True
@@ -619,8 +615,7 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
 
       # Passphrase verification successful, now process it through the standard flow
       self.processSetNewPassphrase(True)
-      self.stack.setCurrentWidget(self.walletProgressPage)
-      self.resize(self.stack.currentWidget().sizeHint())
+      self.navigateToProgressPage()
 
    ####
    def showEvent(self, event):
@@ -649,20 +644,19 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
          QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
       )
       if reply == QtWidgets.QMessageBox.Yes:
-         # User wants watching-only. Trigger the backend's default behavior
-         # by sending a failed unlock reply.
+         # User wants watching-only. Send successful reply with empty passphrase
+         # to trigger the backend's watching-only migration path.
          packet = self.getNewPacket()
          packet.unlockRequest = ""
-         packet.success = False
+         packet.success = True
          self.reply()
 
          # Switch to the progress page to show the creation process.
-         self.stack.setCurrentWidget(self.walletProgressPage)
-         self.resize(self.stack.currentWidget().sizeHint())
+         self.navigateToProgressPage()
          return True
       else:
          # User does NOT want to create a watching-only wallet.
-         # Authoritatively reject the entire migration.
+         # Reject the entire migration.
          self.reject()
          return True
 
@@ -680,15 +674,7 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       self.walletProgressPage.pageFrame.progressBar.hide()
       # Show failure message
       if not self.resultLabel:
-         self.resultLabel = QtWidgets.QLabel(
-            f"Migration of Wallet {self.walletData.walletId} failed!")
-         self.resultLabel.setAlignment(QtCore.Qt.AlignHCenter)
-         self.resultLabel.setStyleSheet(
-            f"font-size: 11pt; font-weight: bold; color: {htmlColor('TextRed')};"
-            f"background: transparent; border: none;")
-         layout = self.walletProgressPage.pageFrame.layout()
-         layout.insertWidget(
-            layout.count() - 1, self.resultLabel, alignment=QtCore.Qt.AlignHCenter)
+         self.createFailureLabel(f"Migration of Wallet {self.walletData.walletId} failed!")
       self.doneBtn.setEnabled(True)
 
    ####
