@@ -308,25 +308,57 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       grid.addWidget(styledLabel(self.tr('Version:')), row, 0, QtCore.Qt.AlignLeft)
       grid.addWidget(styledValue(self.walletData.seedVersion), row, 1, QtCore.Qt.AlignLeft)
       row += 1
+
+      # Determine security status
       if self.walletData.watchingOnly:
-         grid.addWidget(styledLabel(self.tr('Watching-only:')), row, 0, QtCore.Qt.AlignLeft)
-         grid.addWidget(styledValue(self.tr('Yes')), row, 1, QtCore.Qt.AlignLeft)
-         row += 1
+         securityStatus = self.tr('Watching-only')
+      elif self.walletData.encrypted:
+         securityStatus = self.tr('Encrypted')
       else:
-         grid.addWidget(styledLabel(self.tr('Encrypted:')), row, 0, QtCore.Qt.AlignLeft)
-         grid.addWidget(styledValue(self.tr('Yes') 
-            if self.walletData.encrypted else self.tr('No')), row, 1, QtCore.Qt.AlignLeft)
-         row += 1
+         securityStatus = self.tr('No Encryption')
+
+      grid.addWidget(styledLabel(self.tr('Security:')), row, 0, QtCore.Qt.AlignLeft)
+      grid.addWidget(styledValue(securityStatus), row, 1, QtCore.Qt.AlignLeft)
+      row += 1
       grid.addWidget(styledLabel(self.tr('Label:')), row, 0, QtCore.Qt.AlignLeft)
       grid.addWidget(styledValue(self.walletData.label), row, 1, QtCore.Qt.AlignLeft)
       row += 1
       grid.addWidget(styledLabel(self.tr('Description:')), row, 0, QtCore.Qt.AlignLeft)
       grid.addWidget(styledValue(self.walletData.description), row, 1, QtCore.Qt.AlignLeft)
       row += 1
-      grid.addWidget(styledLabel(self.tr('Address & use count:')), row, 0, QtCore.Qt.AlignLeft)
-      grid.addWidget(styledValue(
-         f'{self.walletData.addressCount}, {self.walletData.highestUsedIndex}'
-         ), row, 1, QtCore.Qt.AlignLeft)
+
+      # Address count with N/A handling for invalid values
+      addressCount = self.walletData.addressCount
+      if addressCount is None or addressCount <= 0:
+         addressCountDisplay = self.tr('N/A')
+      else:
+         addressCountDisplay = str(addressCount)
+
+      grid.addWidget(styledLabel(self.tr('Address count:')), row, 0, QtCore.Qt.AlignLeft)
+      grid.addWidget(styledValue(addressCountDisplay), row, 1, QtCore.Qt.AlignLeft)
+      row += 1
+
+      # Top used address with N/A handling for invalid values
+      highestUsedIndex = self.walletData.highestUsedIndex
+      if highestUsedIndex is None or highestUsedIndex < 0:
+         highestUsedIndexDisplay = self.tr('N/A')
+      else:
+         highestUsedIndexDisplay = str(highestUsedIndex)
+
+      grid.addWidget(styledLabel(self.tr('Top used address:')), row, 0, QtCore.Qt.AlignLeft)
+      grid.addWidget(styledValue(highestUsedIndexDisplay), row, 1, QtCore.Qt.AlignLeft)
+      row += 1
+
+      # Last used timestamp with N/A handling for invalid values
+      lastUsedTimestamp = getattr(self.walletData, 'timestamp', None)
+      if lastUsedTimestamp is None or lastUsedTimestamp <= 0:
+         lastUsedDisplay = self.tr('N/A')
+      else:
+         from armoryengine.ArmoryUtils import unixTimeToFormatStr
+         lastUsedDisplay = unixTimeToFormatStr(lastUsedTimestamp, '%Y/%m/%d %H:%M')
+
+      grid.addWidget(styledLabel(self.tr('Last used:')), row, 0, QtCore.Qt.AlignLeft)
+      grid.addWidget(styledValue(lastUsedDisplay), row, 1, QtCore.Qt.AlignLeft)
       row += 1
       vbox.addLayout(grid)
       groupBox.setLayout(vbox)
@@ -350,7 +382,14 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
    def createPage1Buttons(self):
       """Creates the button row for page 1 based on wallet type and encryption."""
       # Create all buttons here to ensure they exist before being added
-      self.btnNext = QtWidgets.QPushButton(self.tr('Next'))
+
+      # Set button text based on wallet type
+      if self.walletData.which() == 'legacy':
+         nextButtonText = self.tr('Migrate')
+      else:
+         nextButtonText = self.tr('Import')
+
+      self.btnNext = QtWidgets.QPushButton(nextButtonText)
       self.btnCancel = QtWidgets.QPushButton(self.tr('Cancel'))
 
       btnFrame1 = QtWidgets.QHBoxLayout()
