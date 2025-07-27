@@ -7,6 +7,7 @@
 ##############################################################################
 
 from armoryengine.CppBridge import ServerPush
+from armoryengine.ArmoryUtils import unixTimeToFormatStr
 from ui.QtExecuteSignal import TheSignalExecution
 from ui.Wizards import SetPassphrasePage, VerifyPassphrasePage, \
    WalletProgressPage
@@ -349,13 +350,11 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       grid.addWidget(styledValue(highestUsedIndexDisplay), row, 1, QtCore.Qt.AlignLeft)
       row += 1
 
-      # Last used timestamp with N/A handling for invalid values
-      lastUsedTimestamp = getattr(self.walletData, 'timestamp', None)
-      if lastUsedTimestamp is None or lastUsedTimestamp <= 0:
+       # Last used timestamp with N/A handling for invalid values
+      try:
+         lastUsedDisplay = unixTimeToFormatStr(self.walletData.timestamp, '%Y/%m/%d %H:%M')
+      except:
          lastUsedDisplay = self.tr('N/A')
-      else:
-         from armoryengine.ArmoryUtils import unixTimeToFormatStr
-         lastUsedDisplay = unixTimeToFormatStr(lastUsedTimestamp, '%Y/%m/%d %H:%M')
 
       grid.addWidget(styledLabel(self.tr('Last used:')), row, 0, QtCore.Qt.AlignLeft)
       grid.addWidget(styledValue(lastUsedDisplay), row, 1, QtCore.Qt.AlignLeft)
