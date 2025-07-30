@@ -578,16 +578,9 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
 
       def doneCallback(success, error):
          if success:
-            # Do not reload wallets or close the dialog here;
-            # wait for onMigrationComplete instead
-            pass
+            self.migrationComplete = True
          else:
-            def showErrorDialog():
-               self.migrationFailed = True
-               QtWidgets.QMessageBox.critical(
-                  self, self.tr('Migration Failed'), error)
-               self.reject()
-            TheSignalExecution.executeMethod(showErrorDialog)
+            self.migrationFailed = True
 
       self.main.wallets.migrateWallet(
          self.walletPath,
