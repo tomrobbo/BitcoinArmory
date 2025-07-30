@@ -5161,9 +5161,10 @@ protected:
          Armory::Config::ProcessType::DB);
 
       //setup auth peers for server and client
-      authPeersPassLbd_ = [](const std::set<EncryptionKeyId>&)->SecureBinaryData
+      authPeersPassLbd_ = [](const std::set<EncryptionKeyId>&)
+      ->Armory::Passphrase::Result
       {
-         return SecureBinaryData::fromString("authpeerpass");
+         return { SecureBinaryData::fromString("authpeerpass"), true };
       };
 
       auto createWltLbd = []()->std::unique_ptr<Armory::Passphrase::Params>

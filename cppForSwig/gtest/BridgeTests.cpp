@@ -198,14 +198,14 @@ TEST_F(WalletManagerTests, ListStageLoad)
    {
       try {
          mgr.unlockControlHeader(walletFiles[2].filename().string(), [](
-            const std::set<EncryptionKeyId>&)->SecureBinaryData {
-               return SecureBinaryData::fromString("controlpass3");
+            const std::set<EncryptionKeyId>&)->Armory::Passphrase::Result {
+               return { SecureBinaryData::fromString("controlpass3"), true };
             }
          );
 
          mgr.unlockControlHeader(walletFiles[3].filename().string(), [](
-            const std::set<EncryptionKeyId>&)->SecureBinaryData {
-               return SecureBinaryData::fromString("controlpass4");
+            const std::set<EncryptionKeyId>&)->Armory::Passphrase::Result {
+               return { SecureBinaryData::fromString("controlpass4"), true };
             }
          );
       } catch (const std::exception& e) {
@@ -214,18 +214,18 @@ TEST_F(WalletManagerTests, ListStageLoad)
 
       unsigned count = 0;
       auto failUnlockLbd = [&count](
-         const std::set<EncryptionKeyId>&)->SecureBinaryData {
+         const std::set<EncryptionKeyId>&)->Armory::Passphrase::Result {
          if (count++ < 2) {
-            return BtcUtils::fortuna_.generateRandom(10);
+            return { BtcUtils::fortuna_.generateRandom(10), true };
          }
          //give up after 2 tries
-         return {};
+         return { {}, false };
       };
       try {
          mgr.unlockControlHeader(walletFiles[1].filename().string(), failUnlockLbd);
          ASSERT_TRUE(false);
       } catch (const Encryption::DecryptedDataContainerException& e) {
-         ASSERT_EQ(e.what(), std::string{"empty passphrase"}) << e.what();
+         ASSERT_EQ(e.what(), std::string{"unlock request rejected"}) << e.what();
       }
    }
 
@@ -316,9 +316,10 @@ TEST_F(WalletManagerTests, Migrate_Legacy)
    }
 
    //migrate the wallet
-   auto passFunc = [](const std::set<EncryptionKeyId>&)->SecureBinaryData
+   auto passFunc = [](const std::set<EncryptionKeyId>&)
+   ->Armory::Passphrase::Result
    {
-      return SecureBinaryData::fromString("testnet");
+      return { SecureBinaryData::fromString("testnet"), true };
    };
    mgr.migrateWallet(wltPath.filename().string(), passFunc,
       IO::CreateWalletParams{
@@ -376,6 +377,57 @@ TEST_F(WalletManagerTests, Migrate_Legacy)
       //TODO: check addresses
    } catch (const std::exception& e) {
       ASSERT_TRUE(false) << e.what();
+   }
+
+   //TODO: check backup string, with version (should be 1.35c)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(WalletManagerTests, Migrate_Reject)
+{
+   //copy test legacy wallet to datadir
+   const auto& wltId = "28m472Xbm"sv;
+   std::string fileName = std::string{"armory_"sv} +
+      std::string{wltId} +
+      std::string{"_.wallet"sv};
+   const std::filesystem::path wltPath{fileName};
+   std::filesystem::copy(
+      "input_files/legacy.wallet"sv,
+      homedir_ / wltPath
+   );
+
+   //list wallets
+   Armory::Bridge::WalletManager mgr{homedir_};
+   auto theList = mgr.listWallets();
+   ASSERT_EQ(theList.size(), 1);
+
+   //sanity check
+   {
+      auto iter = theList.find(wltPath.filename().string());
+      ASSERT_NE(iter, theList.end());
+      EXPECT_EQ(iter->second->state(), Armory::Bridge::WalletLoadState::Legacy);
+      EXPECT_EQ(iter->second->walletId(), wltId);
+      EXPECT_FALSE(iter->second->staged());
+   }
+
+   //reject the unlock
+   auto passFunc = [](const std::set<EncryptionKeyId>&)
+   ->Armory::Passphrase::Result
+   {
+      return { SecureBinaryData::fromString("testnet"), false };
+   };
+
+   try {
+      mgr.migrateWallet(wltPath.filename().string(), passFunc,
+         IO::CreateWalletParams{
+            homedir_,
+            {1ms, 0, {}},
+            {1ms, 0, {}},
+            nullptr, 0
+         });
+      ASSERT_TRUE(false);
+   } catch (const std::exception& e) {
+      EXPECT_EQ(e.what(), std::string{"rejected migration"});
    }
 }
 
@@ -654,7 +706,7 @@ protected:
          }
 
          std::string errorStr = rpcReply.getError();
-         if (errorStr != "empty passphrase") {
+         if (errorStr != std::string{"unlock request rejected"}) {
             return -7;
          }
       }
@@ -863,12 +915,17 @@ protected:
                      capnp::MallocMessageBuilder message;
                      auto toBridge = message.initRoot<Bridge::ToBridge>();
                      auto notifReply = toBridge.initNotification();
-                     notifReply.setSuccess(true);
                      notifReply.setCounter(counter);
-                     auto capnWalletCreation = notifReply.initWalletCreation();
-                     capnWalletCreation.setPassphrase(passphrase);
-                     capnWalletCreation.setKdfTargetMs(targetMs.count());
-                     capnWalletCreation.setKdfTargetMB(targetMB);
+
+                     if (passphrase.empty()) {
+                        notifReply.setSuccess(false);
+                     } else {
+                        notifReply.setSuccess(true);
+                        auto capnWalletCreation = notifReply.initWalletCreation();
+                        capnWalletCreation.setPassphrase(passphrase);
+                        capnWalletCreation.setKdfTargetMs(targetMs.count());
+                        capnWalletCreation.setKdfTargetMB(targetMB);
+                     }
 
                      auto rawReq = serializeCapnp(message);
                      pushRequest(rawReq);
@@ -899,6 +956,14 @@ protected:
                   {
                      if (notifCount++ != 2) {
                         throw std::runtime_error("count != 2");
+                     }
+
+                     auto fullPath = std::filesystem::path{"./fakehomedir"} / path;
+                     if (!FileUtils::fileExists(fullPath, 0)) {
+                        fullPath = std::filesystem::path{"./fakehomedir/temp"} / path;
+                        if (!FileUtils::fileExists(fullPath, 0)) {
+                           throw std::runtime_error("wallet path is invalid!");
+                        }
                      }
                      masterId = wltNotif.getInitFile();
                      break;
@@ -952,7 +1017,7 @@ protected:
          }
       }
 
-      if (notifCount != 7) {
+      if (!passphrase.empty() && notifCount != 7) {
          throw std::runtime_error("unexpected notif count");
       }
 
@@ -1456,6 +1521,55 @@ TEST_F(BridgeTests, CreateWallet)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+TEST_F(BridgeTests, CreateWallet_Reject)
+{
+   //create the wallet
+   auto refId = rand();
+   auto callbackId = BtcUtils::fortuna_.generateRandom(10).toHexStr();
+
+   capnp::MallocMessageBuilder message;
+   auto toBridge = message.initRoot<Bridge::ToBridge>();
+   toBridge.setReferenceId(refId);
+   auto request = toBridge.initUtils();
+   auto createWltReq = request.initCreateWallet();
+
+   createWltReq.setCallbackId(callbackId);
+   createWltReq.setLookup(100);
+   createWltReq.setLabel("labl");
+   createWltReq.setDescription("desc");
+
+   auto rawReq = serializeCapnp(message);
+   pushRequest(rawReq);
+
+   //handle progress notifs
+   try {
+      auto walletData = progressWalletCreation(callbackId,
+         std::string{}, 500ms, 128, 100);
+      ASSERT_FALSE(walletData.masterId.empty());
+      ASSERT_FALSE(walletData.path.empty());
+
+      //check file is cleaned up
+      EXPECT_FALSE(FileUtils::fileExists(
+         std::filesystem::path{"./fakehomedir"} / walletData.path, 0));
+   } catch (const std::exception& e) {
+      ASSERT_TRUE(false) << e.what();
+   }
+
+   //validate reply
+   auto result = waitOnReply();
+   kj::ArrayPtr<const capnp::word> words(
+      reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+      result->data.getSize() / sizeof(capnp::word));
+   capnp::FlatArrayMessageReader reader(words);
+   auto fromBridge = reader.getRoot<Bridge::FromBridge>();
+   auto reply = fromBridge.getReply();
+   ASSERT_FALSE(reply.getSuccess());
+   ASSERT_EQ(reply.getReferenceId(), refId);
+   std::string errorStr = reply.getError();
+   EXPECT_EQ(errorStr, std::string{"passphrase request was rejected"});
+}
+
+////////////////////////////////////////////////////////////////////////////////
 TEST_F(BridgeTests, RestoreWallet_Legacy)
 {
    const std::string walletId{"292AxMD9H"};
@@ -1894,7 +2008,7 @@ TEST_F(BridgeTests, ImportWallet_Legacy)
    EXPECT_EQ(wltReply.getKdfMem(), 32 * 1024 * 1024);
 
    //version
-   EXPECT_EQ(wltReply.getSeedVersion(), 13500000);
+   EXPECT_EQ(wltReply.getSeedVersion(), "1.35");
 
    /* check wallet was imported to the manager */
    try {

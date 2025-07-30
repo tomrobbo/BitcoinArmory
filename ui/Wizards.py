@@ -140,6 +140,7 @@ class WalletWizard(ArmoryWizard):
       self.setOption(QtWidgets.QWizard.HaveFinishButtonOnEarlyPages, on=True)
       self.setOption(QtWidgets.QWizard.IgnoreSubTitles, on=True)
       self.passphrase = None
+      self.reuse_passphrase = False  # New flag for migration reuse
 
       self.walletCreationId, \
          self.manualEntropyId, \
@@ -188,7 +189,20 @@ class WalletWizard(ArmoryWizard):
       ])
 
    def initializePage(self, *args, **kwargs):
-      if self.currentPage() == self.verifyPassphrasePage:
+      if getattr(self, 'reuse_passphrase', False):
+         if self.currentPage() == self.setPassphrasePage:
+            pf1 = self.setPassphrasePage.pageFrame.editPasswd1.text()
+            pf2 = self.setPassphrasePage.pageFrame.editPasswd2.text()
+            if pf1 and pf2:
+               # Set the internal passphrase value for the verify page
+               self.verifyPassphrasePage.setPassphrase(pf1)
+               QtCore.QTimer.singleShot(0, self.next)
+         elif self.currentPage() == self.verifyPassphrasePage:
+            pf3 = self.verifyPassphrasePage.pageFrame.edtPasswd3.text()
+            if pf3:
+               self.verifyPassphrasePage.setPassphrase(pf3)
+               QtCore.QTimer.singleShot(0, self.next)
+      elif self.currentPage() == self.verifyPassphrasePage:
          self.verifyPassphrasePage.setPassphrase(
             self.setPassphrasePage.pageFrame.getPassphrase())
       elif self.hasCWOWPage and self.currentPage() == self.createWOWPage:
@@ -377,6 +391,9 @@ class SetPassphrasePage(ArmoryWizardPage):
       return self.pageFrame.checkPassphrase(False)
 
    def nextId(self):
+      if getattr(self.wizard, 'reuse_passphrase', False):
+         # Skip verify passphrase page
+         return self.wizard.walletProgressId
       return self.wizard.verifyPassphraseId
 
 ########
@@ -399,6 +416,9 @@ class VerifyPassphrasePage(ArmoryWizardPage):
       return result
 
    def nextId(self):
+      if getattr(self.wizard, 'reuse_passphrase', False):
+         # Skip directly to progress page
+         return self.wizard.walletProgressId
       return self.wizard.walletProgressId
 
 ########

@@ -579,12 +579,12 @@ std::unique_ptr<ClearTextEncryptionKey> DecryptedDataContainer::promptPassphrase
    }
 
    while (true) {
-      auto passphrase = getPassphraseLambda_(keySet);
-      if (passphrase.empty()) {
-         throw DecryptedDataContainerException("empty passphrase");
+      auto result = getPassphraseLambda_(keySet);
+      if (!result.success) {
+         throw DecryptedDataContainerException("unlock request rejected");
       }
 
-      auto keyPtr = std::make_unique<ClearTextEncryptionKey>(passphrase);
+      auto keyPtr = std::make_unique<ClearTextEncryptionKey>(result.passphrase);
       for (auto& keyPair : keyMap) {
          keyPtr = std::move(deriveEncryptionKey(std::move(keyPtr), keyPair.second));
          if (keyPair.first == keyPtr->getId(keyPair.second)) {

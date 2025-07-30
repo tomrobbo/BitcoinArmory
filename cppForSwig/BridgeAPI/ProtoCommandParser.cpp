@@ -251,9 +251,10 @@ namespace
          case WalletManagerRequest::MIGRATE_WALLET:
          {
             auto migrateReq = request.getMigrateWallet();
-            const std::string walletId(migrateReq.getWalletPath());
+            const std::filesystem::path walletId(migrateReq.getWalletPath());
             const std::string callbackId(migrateReq.getCallbackId());
-            bridge->migrateWallet(walletId, callbackId, referenceId);
+            bridge->migrateWallet(walletId.filename().string(),
+               callbackId, referenceId);
             break;
          }
 

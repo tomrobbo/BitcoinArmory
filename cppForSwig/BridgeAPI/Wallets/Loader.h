@@ -11,6 +11,11 @@
 #include "../../SecureBinaryData.h"
 #include "../../Wallets/GetPassphrase.h"
 
+#define A135_NOERROR          0
+#define A135_ERROR_NOTAWALLET -1
+#define A135_ERROR_MAGICBYTE  -2
+#define A135_ERROR_CUSTOM     -3
+
 namespace Armory
 {
    namespace Wallets
@@ -142,6 +147,7 @@ namespace Armory
          std::string walletID_;
          uint32_t version_ = UINT32_MAX;
          uint64_t timestamp_ = UINT64_MAX;
+         int32_t errorCode_ = INT32_MAX;
 
          std::string labelName_;
          std::string labelDescription_;
@@ -174,6 +180,7 @@ namespace Armory
 
          const std::filesystem::path& path(void) const;
          bool isInitialized(void) const;
+         int errorCode(void) const;
          const std::string& getID(void) const;
          const std::string& getLabel(void) const;
 
@@ -204,7 +211,7 @@ namespace Armory
          size_t addressCount(void) const;
          const std::string& description(void) const;
          uint64_t timestamp(void) const;
-         uint32_t version(void) const;
+         std::string version(void) const;
       };
    } //namespace Bridge
 } //namespace Armory

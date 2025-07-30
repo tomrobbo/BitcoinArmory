@@ -1849,9 +1849,10 @@ protected:
       startupBIP150CTX(4);
 
       //setup auth peers for server and client
-      authPeersPassLbd_ = [](const std::set<EncryptionKeyId>&)->SecureBinaryData
+      authPeersPassLbd_ = [](const std::set<EncryptionKeyId>&)
+      ->Armory::Passphrase::Result
       {
-         return {};
+         return { {}, true };
       };
 
       auto createWltLbd = []()->std::unique_ptr<Armory::Passphrase::Params>
@@ -2459,9 +2460,10 @@ protected:
       startupBIP150CTX(4);
 
       //setup auth peers for server and client
-      authPeersPassLbd_ = [](const std::set<EncryptionKeyId>&)->SecureBinaryData
+      authPeersPassLbd_ = [](const std::set<EncryptionKeyId>&)
+      ->Armory::Passphrase::Result
       {
-         return {};
+         return { {}, true };
       };
 
       auto createWltLbd = []()->std::unique_ptr<Armory::Passphrase::Params>

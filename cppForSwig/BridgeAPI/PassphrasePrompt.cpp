@@ -107,9 +107,10 @@ void BridgePassphrasePrompt::cleanup()
 ////////////////////////////////////////////////////////////////////////////////
 Passphrase::UnlockFunc BridgePassphrasePrompt::getLambda()
 {
-   return [this](const std::set<Wallets::EncryptionKeyId>& ids)->SecureBinaryData
+   return [this](const std::set<Wallets::EncryptionKeyId>& ids)
+   ->Passphrase::Result
    {
       auto reply = processFeedRequest(ids);
-      return std::move(reply.passParams.passphrase);
+      return { std::move(reply.passParams.passphrase), reply.success };
    };
 }

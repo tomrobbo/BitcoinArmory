@@ -120,6 +120,9 @@ class DlgUnlockWallet(ArmoryDialog):
       self.redrawKeys()
       self.encryptionKeyIds = []
 
+      self.edtPasswd.textChanged.connect(self.updateUnlockButton)
+      self.updateUnlockButton()
+
    #############################################################################
    def toggleOSD(self, *args):
       isChk = self.btnShowOSD.isChecked()
@@ -285,20 +288,15 @@ class DlgUnlockWallet(ArmoryDialog):
       passphraseStr = ''
 
    #############################################################################
-   def rejectPassphrase(self):
-      self.edtPasswd.setText('')
-      self.reply("")
-      self.reject()
-
-   #############################################################################
    def accept(self):
       self.edtPasswd.setText('')
       super().accept()
 
    #############################################################################
-   def reject(self):
+   def rejectPassphrase(self):
       self.edtPasswd.setText('')
-      super().reject()
+      self.reply("")
+      self.reject()
 
    #############################################################################
    def reply(self, passphrase):
@@ -319,6 +317,11 @@ class DlgUnlockWallet(ArmoryDialog):
          #failure
          self.recycle()
          self.show()
+
+   #############################################################################
+   def updateUnlockButton(self):
+      # Minimal password length, adjust as needed
+      self.btnAccept.setEnabled(len(self.edtPasswd.text()) >= 4)
 
 ################################################################################
 class UnlockWalletHandler(ServerPush, DlgUnlockWallet):

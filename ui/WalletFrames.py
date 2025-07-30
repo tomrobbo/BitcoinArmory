@@ -67,7 +67,7 @@ class LockboxSelectFrame(ArmoryFrame):
          lbl.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop)
          lbl.setText('<b>' + str(lbls[i].text()) + '</b>')
          layoutDetails.addWidget(lbl, i+1, 0)
-         
+
       # LockboxID
       self.dispID = QRichLabel(spendFromLBID)
 
@@ -534,37 +534,71 @@ class SetPassphraseFrame(ArmoryFrame):
    def __init__(self, parent, main, initLabel='', passphraseCallback=None):
       super(SetPassphraseFrame, self).__init__(parent, main)
       self.passphraseCallback = passphraseCallback
-      layout = QtWidgets.QGridLayout()
+      layout = QtWidgets.QVBoxLayout()
+      layout.setContentsMargins(20, 20, 20, 20)
+      layout.setSpacing(16)
+
+      # Instruction label
       lblDlgDescr = QtWidgets.QLabel(self.tr(
          'Please enter a passphrase for wallet encryption.\n\n'
          'A good passphrase consists of at least 10 or more\n'
          'random letters, or 6 or more random words.\n'))
       lblDlgDescr.setWordWrap(True)
-      layout.addWidget(lblDlgDescr, 0, 0, 1, 2)
+      lblDlgDescr.setStyleSheet('font-size: 10pt; font-weight: normal;')
+      layout.addWidget(lblDlgDescr)
+
+      # Group box for passphrase fields
+      groupBox = QtWidgets.QGroupBox(self.tr("Set Passphrase"))
+      groupBoxLayout = QtWidgets.QGridLayout()
+
       lblPwd1 = QtWidgets.QLabel(self.tr("New Passphrase:"))
       self.editPasswd1 = QtWidgets.QLineEdit()
       self.editPasswd1.setEchoMode(QtWidgets.QLineEdit.Password)
       self.editPasswd1.setMinimumWidth(MIN_PASSWD_WIDTH(self))
+      # Show/hide button for passwd1
+      self.showPassBtn1 = QtWidgets.QPushButton()
+      self.showPassBtn1.setCheckable(True)
+      self.showPassBtn1.setText("👁")
+      self.showPassBtn1.setFixedWidth(28)
+      self.showPassBtn1.setToolTip(self.tr("Show/hide passphrase"))
+      self.showPassBtn1.toggled.connect(
+         lambda checked: self.editPasswd1.setEchoMode(
+            QtWidgets.QLineEdit.Normal if checked else QtWidgets.QLineEdit.Password)
+      )
 
       lblPwd2 = QtWidgets.QLabel(self.tr("Again:"))
       self.editPasswd2 = QtWidgets.QLineEdit()
       self.editPasswd2.setEchoMode(QtWidgets.QLineEdit.Password)
       self.editPasswd2.setMinimumWidth(MIN_PASSWD_WIDTH(self))
+      # Show/hide button for passwd2
+      self.showPassBtn2 = QtWidgets.QPushButton()
+      self.showPassBtn2.setCheckable(True)
+      self.showPassBtn2.setText("👁")
+      self.showPassBtn2.setFixedWidth(28)
+      self.showPassBtn2.setToolTip(self.tr("Show/hide passphrase"))
+      self.showPassBtn2.toggled.connect(
+         lambda checked: self.editPasswd2.setEchoMode(
+            QtWidgets.QLineEdit.Normal if checked else QtWidgets.QLineEdit.Password)
+      )
 
-      layout.addWidget(lblPwd1, 1, 0)
-      layout.addWidget(lblPwd2, 2, 0)
-      layout.addWidget(self.editPasswd1, 1, 1)
-      layout.addWidget(self.editPasswd2, 2, 1)
+      groupBoxLayout.addWidget(lblPwd1, 0, 0)
+      groupBoxLayout.addWidget(self.editPasswd1, 0, 1)
+      groupBoxLayout.addWidget(self.showPassBtn1, 0, 2)
+      groupBoxLayout.addWidget(lblPwd2, 1, 0)
+      groupBoxLayout.addWidget(self.editPasswd2, 1, 1)
+      groupBoxLayout.addWidget(self.showPassBtn2, 1, 2)
+      groupBox.setLayout(groupBoxLayout)
+      layout.addWidget(groupBox)
 
+      # Feedback label with icon
       self.lblMatches = QtWidgets.QLabel(' ' * 20)
       self.lblMatches.setTextFormat(QtCore.Qt.RichText)
-      layout.addWidget(self.lblMatches, 3, 1)
+      self.lblMatches.setStyleSheet('font-size: 10pt; font-weight: normal;')
+      layout.addWidget(self.lblMatches, alignment=QtCore.Qt.AlignHCenter)
+
       self.setLayout(layout)
       self.editPasswd1.textChanged.connect(self.checkPassphrase)
       self.editPasswd2.textChanged.connect(self.checkPassphrase)
-
-      # These help us collect entropy as the user goes through the wizard
-      # to be used for wallet creation
       self.main.registerWidgetActivateTime(self)
 
    # This function is multi purpose. It updates the screen and validates the passphrase
@@ -574,22 +608,25 @@ class SetPassphraseFrame(ArmoryFrame):
       p2 = self.editPasswd2.text()
       goodColor = htmlColor('TextGreen')
       badColor = htmlColor('TextRed')
-      if not isASCII(str(p1)) or \
-         not isASCII(str(p2)):
+      if not isASCII(str(p1)) or not isASCII(str(p2)):
          if sideEffects:
-            self.lblMatches.setText(self.tr('<font color=%s><b>Passphrase is non-ASCII!</b></font>' % badColor))
+            self.lblMatches.setText(self.tr(
+               '<span style="color:%s;">&#10008; <b>Passphrase is non-ASCII!</b></span>' % badColor))
          result = False
       elif not p1 == p2:
          if sideEffects:
-            self.lblMatches.setText(self.tr('<font color=%s><b>Passphrases do not match!</b></font>' % badColor))
+            self.lblMatches.setText(self.tr(
+               '<span style="color:%s;">&#10008; <b>Passphrases do not match!</b></span>' % badColor))
          result = False
       elif len(p1) < 5:
          if sideEffects:
-            self.lblMatches.setText(self.tr('<font color=%s><b>Passphrase is too short!</b></font>' % badColor))
+            self.lblMatches.setText(self.tr(
+               '<span style="color:%s;">&#10008; <b>Passphrase is too short!</b></span>' % badColor))
          result = False
       if sideEffects:
          if result:
-            self.lblMatches.setText(self.tr('<font color=%s><b>Passphrases match!</b></font>' % goodColor))
+            self.lblMatches.setText(self.tr(
+               '<span style="color:%s;">&#10004; <b>Passphrases match!</b></span>' % goodColor))
          if self.passphraseCallback:
             self.passphraseCallback()
       return result
@@ -649,28 +686,54 @@ class VerifyPassphraseFrame(ArmoryFrame):
 class WalletProgressFrame(ArmoryFrame):
    def __init__(self, parent, main, initLabel=''):
       super(WalletProgressFrame, self).__init__(parent, main)
-
       self.isDone = False
-      self.progressTxt = "Progressing...<br><br>"
-      self.lblProg = QRichLabel(self.progressTxt)
 
-      layout = QtWidgets.QGridLayout()
-      layout.addWidget(self.lblProg, 0, 0, 4, 1)
+      # Main layout
+      layout = QtWidgets.QVBoxLayout()
+      layout.setSpacing(32)
+      layout.setContentsMargins(40, 40, 40, 40)
+
+      # Progress steps as a QListWidget inside a QGroupBox
+      self.progressGroup = QtWidgets.QGroupBox()
+      self.progressGroup.setTitle(self.tr("Progress"))
+      groupLayout = QtWidgets.QVBoxLayout()
+      groupLayout.setContentsMargins(12, 12, 12, 12)
+      groupLayout.setSpacing(4)
+      self.progressList = QtWidgets.QListWidget()
+      self.progressList.setStyleSheet(
+         "font-size: 10pt; background: transparent; border-radius: 8px; border: none;")
+      self.progressList.setSpacing(4)
+      self.progressList.setFrameShape(QtWidgets.QFrame.NoFrame)
+      groupLayout.addWidget(self.progressList)
+      self.progressGroup.setLayout(groupLayout)
+      self.progressGroup.setStyleSheet("QGroupBox { font-size: 11pt; font-weight: bold; }" +
+         "QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 3px 0 3px; }")
+      layout.addWidget(self.progressGroup)
+
+      # QProgressBar (indeterminate, below progress table, full width)
+      self.progressBar = QtWidgets.QProgressBar()
+      self.progressBar.setRange(0, 0)
+      self.progressBar.setFixedHeight(18)
+      self.progressBar.setTextVisible(False)
+      self.progressBar.setStyleSheet("QProgressBar { border: none; background: transparent; }")
+      self.progressBar.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+      layout.addWidget(self.progressBar)
+
       self.setLayout(layout)
 
    def updateProgress(self, line):
-      self.progressTxt += f" - {line}<br>"
-      self.updateText()
+      # Add a new item with a pending icon
+      item = QtWidgets.QListWidgetItem("⏳" + line)
+      self.progressList.addItem(item)
+      self.progressList.scrollToBottom()
 
    def setDone(self):
       self.isDone = True
-      self.progressTxt += " - done!<br>"
-      self.updateText()
-
-   def updateText(self):
-      def update():
-         self.lblProg.setText(self.progressTxt)
-      TheSignalExecution.executeMethod(update)
+      def update_bar():
+         if self.progressBar is not None and self.progressBar.parent() is not None:
+            self.progressBar.setRange(0, 1)
+            self.progressBar.setValue(0)
+      TheSignalExecution.executeMethod(update_bar)
 
 ################################################################################
 class WalletBackupFrame(ArmoryFrame):

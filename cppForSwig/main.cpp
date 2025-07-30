@@ -84,9 +84,12 @@ int main(int argc, char* argv[])
          LOGINFO << "not peers db, creating one...";
          auto passWrapper = [&passLbd]()->std::unique_ptr<Armory::Passphrase::Params>
          {
-            auto passphrase = passLbd({});
+            auto result = passLbd({});
+            if (!result.success) {
+               throw std::runtime_error("auth db unlock was rejected");
+            }
             return std::make_unique<Armory::Passphrase::Params>(
-               250ms, 0, std::move(passphrase));
+               250ms, 0, std::move(result.passphrase));
          };
          Armory::Wallets::IO::CreateFileParams params{serverPeersFile, {passWrapper}};
          Armory::Wallets::AuthorizedPeers::createWallet(params);

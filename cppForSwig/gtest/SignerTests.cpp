@@ -5777,9 +5777,9 @@ TEST_F(SignerTest, SpendTest_BIP32_Accounts)
       AddressEntryType(AddressEntryType_P2SH | AddressEntryType_P2WPKH));
 
    auto passphraseLbd = [&passphrase]
-      (const std::set<EncryptionKeyId>&)->SecureBinaryData
+      (const std::set<EncryptionKeyId>&)->Armory::Passphrase::Result
    {
-      return passphrase;
+      return { passphrase, true };
    };
    assetWlt->setPassphrasePromptLambda(passphraseLbd);
 
@@ -5968,9 +5968,9 @@ TEST_F(SignerTest, SpendTest_BIP32_Accounts)
       {
          auto passlbd = [passphrase]
             (const std::set<EncryptionKeyId>&)
-            ->SecureBinaryData
+            ->Armory::Passphrase::Result
          {
-            return passphrase;
+            return { passphrase, true };
          };
 
          assetWlt->setPassphrasePromptLambda(passlbd);
@@ -6217,9 +6217,9 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Armory135)
       //sign, verify then broadcast
       {
          auto passlbd = [passphrase]
-            (const std::set<EncryptionKeyId>&)->SecureBinaryData
+            (const std::set<EncryptionKeyId>&)->Armory::Passphrase::Result
          {
-            return passphrase;
+            return { passphrase, true };
          };
 
          assetWlt->setPassphrasePromptLambda(passlbd);
@@ -6467,9 +6467,9 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_BIP32)
       //sign, verify then broadcast
       {
          auto passlbd = [passphrase]
-            (const std::set<EncryptionKeyId>&)->SecureBinaryData
+            (const std::set<EncryptionKeyId>&)->Armory::Passphrase::Result
          {
-            return passphrase;
+            return { passphrase, true };
          };
 
          assetWlt->setPassphrasePromptLambda(passlbd);
@@ -6553,9 +6553,9 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Salted)
    saltedAccType->setMain(true);
 
    auto passphraseLbd = [&passphrase]
-      (const std::set<EncryptionKeyId>&)->SecureBinaryData
+      (const std::set<EncryptionKeyId>&)->Armory::Passphrase::Result
    {
-      return passphrase;
+      return { passphrase, true };
    };
    assetWlt->setPassphrasePromptLambda(passphraseLbd);
 
@@ -6741,9 +6741,9 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Salted)
       {
          auto passlbd = [passphrase]
             (const std::set<EncryptionKeyId>&)
-            ->SecureBinaryData
+            ->Armory::Passphrase::Result
          {
-            return passphrase;
+            return { passphrase, true };
          };
 
          assetWlt->setPassphrasePromptLambda(passlbd);
@@ -6825,9 +6825,9 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_ECDH)
    ecdhAccType->setMain(true);
 
    auto passphraseLbd = [&passphrase]
-      (const std::set<EncryptionKeyId>&)->SecureBinaryData
+      (const std::set<EncryptionKeyId>&)->Armory::Passphrase::Result
    {
-      return passphrase;
+      return { passphrase, true };
    };
 
    //add salted account
@@ -7019,9 +7019,9 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_ECDH)
       //sign, verify then broadcast
       {
          auto passlbd = [passphrase]
-            (const std::set<EncryptionKeyId>&)->SecureBinaryData
+            (const std::set<EncryptionKeyId>&)->Armory::Passphrase::Result
          {
-            return passphrase;
+            return { passphrase, true };
          };
 
          assetWlt->setPassphrasePromptLambda(passlbd);

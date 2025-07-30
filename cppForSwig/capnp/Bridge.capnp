@@ -607,9 +607,9 @@ struct UtilsReply {
       watchingOnly         @3 : Bool;
       encrypted            @4 : Bool;
       timestamp            @5 : UInt64;
-      highestUsedIndex     @6 : UInt32;
+      highestUsedIndex     @6 : Int64;
       addressCount         @7 : UInt32;
-      seedVersion          @8 : UInt32;
+      seedVersion          @8 : Text;
       kdfMem               @9 : UInt32;
 
       union {

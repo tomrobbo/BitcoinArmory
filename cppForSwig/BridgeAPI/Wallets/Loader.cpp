@@ -182,9 +182,16 @@ uint64_t A135FileInfo::timestamp() const
    return a135Ptr_->timestamp_;
 }
 
-uint32_t A135FileInfo::version() const
+std::string A135FileInfo::version() const
 {
-   return a135Ptr_->version_;
+   switch (a135Ptr_->version_)
+   {
+      case 13500000:
+         return {"1.35"};
+
+      default:
+         return {"N/A"};
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -207,6 +214,11 @@ const std::filesystem::path& Armory135Header::path() const
 bool Armory135Header::isInitialized() const
 {
    return version_ != UINT32_MAX;
+}
+
+int32_t Armory135Header::errorCode() const
+{
+   return errorCode_;
 }
 
 const std::string& Armory135Header::getID() const
@@ -237,7 +249,7 @@ void Armory135Header::verifyChecksum(
 void Armory135Header::parseFile()
 {
    /*
-   Simply return on any failure, the version_ field will not be initialized 
+   Simply return on any failure, the version_ field will not be initialized
    until the whole header is parsed and checksums pass
    */
 
@@ -250,6 +262,7 @@ void Armory135Header::parseFile()
       //file type
       auto fileTypeStr = brr.get_BinaryData(8);
       if (fileTypeStr != BinaryData::fromString(WALLET_135_HEADER, 8)) {
+         errorCode_ = A135_ERROR_NOTAWALLET;
          return;
       }
 
@@ -259,6 +272,7 @@ void Armory135Header::parseFile()
       //magic bytes
       auto magicBytes = brr.get_BinaryData(4);
       if (magicBytes != Config::BitcoinSettings::getMagicBytes()) {
+         errorCode_ = A135_ERROR_MAGICBYTE;
          return;
       }
 
@@ -373,6 +387,7 @@ void Armory135Header::parseFile()
    } catch (const std::exception& e) {
       LOGWARN << "failed to load legacy wallet at " << path_.string() << " with error: ";
       LOGWARN << "   " << e.what();
+      errorCode_ = A135_ERROR_CUSTOM;
       return;
    }
 
@@ -416,30 +431,33 @@ std::shared_ptr<Wallets::AssetWallet_Single> Armory135Header::migrate(
          {
             while (true) {
                //prompt for passphrase
-               auto passphrase = passLbd({Wallets::EncryptionKeyId{}});
-               if (passphrase.empty()) {
+               auto result = passLbd({Wallets::EncryptionKeyId{}});
+               if (!result.success) {
+                  throw std::runtime_error("rejected migration");
+               } else if (result.passphrase.empty()) {
+                  //no passphrase, will proceed with WO migration
                   return {};
                }
 
                //kdf it
                Wallets::Encryption::KdfRomix myKdf{
                   kdfMem_, kdfIter_, kdfSalt_};
-               auto derivedPass = myKdf.DeriveKey(passphrase);
+               auto derivedPass = myKdf.DeriveKey(result.passphrase);
 
                //decrypt the privkey
                auto decryptedKey = CryptoAES::DecryptCFB(
                   rootAddrObj.privKey(), derivedPass, rootAddrObj.iv());
 
                //generate pubkey
-               auto computedPubKey =
-                  CryptoECDSA().ComputePublicKey(decryptedKey, false);
+               auto computedPubKey = CryptoECDSA().ComputePublicKey(
+                  decryptedKey, false);
 
                if (rootAddrObj.pubKey() != computedPubKey) {
                   continue;
                }
 
                //compare pubkeys
-               privKeyPass = std::move(passphrase);
+               privKeyPass = std::move(result.passphrase);
                return decryptedKey;
             }
          };
@@ -454,6 +472,16 @@ std::shared_ptr<Wallets::AssetWallet_Single> Armory135Header::migrate(
       wallet = Wallets::AssetWallet_Single::createFromPublicRoot_Armory135(
          pubKeyCopy, chaincodeCopy, newParams);
    } else {
+      /*
+      Derive chaincode from the clear text root. If it matches the
+      chaincode from file, this is a 1.35c root (deterministic chaincode)
+      */
+      auto derivedCc = BtcUtils::computeChainCode_Armory135(decryptedRoot);
+      if (derivedCc == chaincodeCopy) {
+         //deterministic chaincode, clear it
+         chaincodeCopy.clear();
+      }
+
       std::unique_ptr<Seeds::ClearTextSeed> seed(
          new Seeds::ClearTextSeed_Armory135(
             decryptedRoot, chaincodeCopy
@@ -548,10 +576,9 @@ void Armory135Address::parseFromRef(const BinaryDataRef& bdr)
 
    //address flags
    auto addrFlags = brrScrAddr.get_uint64_t();
-   hasPrivKey_ = addrFlags & 0x0000000000000001;
-   hasPubKey_  = addrFlags & 0x0000000000000002;
-
-   isEncrypted_ = addrFlags & 0x0000000000000004;
+   hasPrivKey_    = addrFlags & 0x0000000000000001;
+   hasPubKey_     = addrFlags & 0x0000000000000002;
+   isEncrypted_   = addrFlags & 0x0000000000000004;
 
    //chaincode
    chaincode_ = brrScrAddr.get_BinaryData(32);

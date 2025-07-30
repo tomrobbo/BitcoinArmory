@@ -163,7 +163,7 @@ std::string AssetWallet::getMainWalletID(
       std::string idStr{dataRef.toCharPtr(), dataRef.getSize()};
       return idStr;
    } catch (const IO::NoEntryInWalletException&) {
-      LOGERR << "main wallet ID is not set!";
+      LOGERR << "main wallet ID is not set in file: " << iface->getFilename();
       throw WalletException("main wallet ID is not set!");
    }
 }
@@ -188,7 +188,6 @@ void AssetWallet::checkMasterID(const std::string& masterID)
       /*
       Grab ID from disk, check it matches arg.
       */
-
       auto fromDisk = getMasterID(iface_);
 
       //sanity check
@@ -1466,14 +1465,22 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::initWalletDb(
    IO::MasterKeyStruct masterKeyStruct;
    try {
       auto paramsCopy = params.setPrivPassObj.get();
-      masterKeyStruct = std::move(IO::WalletDBInterface::initWalletHeaderObject(
-         headerPtr, paramsCopy));
-   } catch (const std::runtime_error&) {
+      if (paramsCopy.passphrase.empty()) {
       LOGWARN << "!! No private passphrase provided !!";
       LOGWARN << "!! Private keys in this wallet will not be encrypted !!";
-      Passphrase::Params defaultParams{2000ms, 0, {}};
-      masterKeyStruct = std::move(IO::WalletDBInterface::initWalletHeaderObject(
-         headerPtr, defaultParams));
+         Passphrase::Params defaultParams{2000ms, 0, {}};
+         masterKeyStruct = std::move(IO::WalletDBInterface::initWalletHeaderObject(
+            headerPtr, defaultParams));
+      } else {
+         masterKeyStruct = std::move(IO::WalletDBInterface::initWalletHeaderObject(
+            headerPtr, paramsCopy));
+      }
+   } catch (const std::exception& e) {
+      //user rejected password request, cleanup and rethrow
+      auto path = iface->getFilename();
+      iface->shutdown();
+      std::filesystem::remove(path);
+      throw WalletException(e.what());
    }
 
    //copy cipher to cycle the IV then encrypt the private root
