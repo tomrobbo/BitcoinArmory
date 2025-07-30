@@ -92,7 +92,7 @@ class DlgUnlockMigratingWallet(DlgUnlockWallet):
       if self.parent.handleUnlockCancelForWatchOnly():
          # The parent dialog handled the logic for Yes/No. This dialog's
          # only remaining job is to close itself.
-         super().reject()
+         self.reject()
 
 ################################################################################
 class DlgWalletMigration(ArmoryDialog, ServerPush):
@@ -113,7 +113,6 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       self.walletPath = wltPath
       self.walletData = walletData
       self.dlgUnlock = None
-      self.usingWizardPassphrase = False
       self.storedPassphrase = None
       self.doneBtn = None
       self.resultLabel = None
@@ -330,7 +329,7 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
 
       # Address count with N/A handling for invalid values
       addressCount = self.walletData.addressCount
-      if addressCount is None or addressCount <= 0:
+      if addressCount is None or addressCount < 0:
          addressCountDisplay = self.tr('N/A')
       else:
          addressCountDisplay = str(addressCount)
@@ -350,13 +349,13 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       grid.addWidget(styledValue(highestUsedIndexDisplay), row, 1, QtCore.Qt.AlignLeft)
       row += 1
 
-       # Last used timestamp with N/A handling for invalid values
+      # Last used timestamp with N/A handling for invalid values
       try:
          lastUsedDisplay = unixTimeToFormatStr(self.walletData.timestamp, '%Y/%m/%d %H:%M')
       except:
          lastUsedDisplay = self.tr('N/A')
 
-      grid.addWidget(styledLabel(self.tr('Last used:')), row, 0, QtCore.Qt.AlignLeft)
+      grid.addWidget(styledLabel(self.tr('Last Modified:')), row, 0, QtCore.Qt.AlignLeft)
       grid.addWidget(styledValue(lastUsedDisplay), row, 1, QtCore.Qt.AlignLeft)
       row += 1
       vbox.addLayout(grid)
@@ -412,7 +411,6 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
 
    def onUnlockDialogClosed(self):
       """Clean up unlock dialog resources when it's closed."""
-      # Ensure dlgUnlock is reset after dialog is closed
       self.dlgUnlock = None
 
    ####
@@ -422,8 +420,8 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       passPacket = packet.init("walletCreation")
 
       if isPriv:
-         # private passphrase, do we reuse old one or get a fresh one?
-         if self.usingWizardPassphrase:
+         # private keys passphrase, do we reuse old one or get a fresh one?
+         if reusePassphrase == False:
             # User went through wizard to create new passphrase
             packet.success = True
             passPacket.passphrase = self.newPassphrase
@@ -440,9 +438,8 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
             passPacket.kdfTargetMB = int(kdfBytes / (1024**2))
 
             # Clean up wizard state
-            self.usingWizardPassphrase = False
             self.newPassphrase = None
-         elif reusePassphrase:
+         else:
             # user wants to reuse old passphrase, feed that instead
             if not self.storedPassphrase:
                raise Exception("Reuse passphrase requested but no passphrase stored")
@@ -454,9 +451,6 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
 
             # Clean up stored passphrase
             self.storedPassphrase = None
-         else:
-            # This should never happen - we should always have either wizard or reuse mode
-            raise Exception("processSetNewPassphrase called without wizard or reuse mode")
       else:
          # control passphrase, return empty for now
          packet.success = True
@@ -479,7 +473,8 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
 
          # Create and show result label
          if self.migrationFailed:
-            self.createFailureLabel(f"Migration of Wallet {self.walletData.walletId} failed!")
+            self.createFailureLabel(
+               f"Migration of Wallet {self.walletData.walletId} failed!")
 
             # Show backend error message below the FAILURE label
             errorMsg = getattr(payload, 'errorMessage', None)
@@ -487,20 +482,24 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
                self.errorLabel = QtWidgets.QLabel(errorMsg)
                self.errorLabel.setAlignment(QtCore.Qt.AlignHCenter)
                self.errorLabel.setStyleSheet(
-                  f"font-size: 8pt; color: {htmlColor('TextRed')}; background: transparent;"
-                  f"border: none;")
+                  f"font-size: 8pt; color: {htmlColor('TextRed')};"
+                  "background: transparent;"
+                  "border: none;")
                layout = self.walletProgressPage.pageFrame.layout()
                layout.insertWidget(
-                  layout.count() - 1, self.errorLabel, alignment=QtCore.Qt.AlignHCenter)
+                  layout.count() - 1, self.errorLabel,
+                  alignment=QtCore.Qt.AlignHCenter)
          else:
-            self.resultLabel = QtWidgets.QLabel(f"Migration of Wallet {self.walletData.walletId} was successful!")
+            self.resultLabel = QtWidgets.QLabel(
+               f"Migration of Wallet {self.walletData.walletId} was successful!")
             self.resultLabel.setAlignment(QtCore.Qt.AlignHCenter)
             self.resultLabel.setStyleSheet(
-               f"font-size: 11pt; font-weight: bold; color: '#00FF00';"
-               f"background: transparent; border: none;")
+               "font-size: 11pt; font-weight: bold; color: '#00FF00';"
+               "background: transparent; border: none;")
             layout = self.walletProgressPage.pageFrame.layout()
             layout.insertWidget(
-               layout.count() - 1, self.resultLabel, alignment=QtCore.Qt.AlignHCenter)
+               layout.count() - 1, self.resultLabel,
+               alignment=QtCore.Qt.AlignHCenter)
 
          # Enable the Done button when process completes
          self.doneBtn.setEnabled(True)
@@ -529,7 +528,6 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
                self.navigateToProgressPage()
             elif choice == 'new':
                # User chose to create a new passphrase via wizard
-               self.usingWizardPassphrase = True
                self.setPassphrasePage.pageFrame.editPasswd1.clear()
                self.setPassphrasePage.pageFrame.editPasswd2.clear()
                self.stack.setCurrentWidget(self.setPassphrasePage)
@@ -537,8 +535,8 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
             else:
                QtWidgets.QMessageBox.critical(
                   self,
-                  self.tr('Migration Failed'),
-                  self.tr('Migration was cancelled or failed. Please try again.')
+                  self.tr('Migration Error'),
+                  self.tr('Migration was cancelled or failed!')
                )
                self.reject()
          return
@@ -580,12 +578,14 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
 
       def doneCallback(success, error):
          if success:
-            # Do not reload wallets or close the dialog here; wait for onMigrationComplete
+            # Do not reload wallets or close the dialog here;
+            # wait for onMigrationComplete instead
             pass
          else:
             def showErrorDialog():
                self.migrationFailed = True
-               QtWidgets.QMessageBox.critical(self, self.tr('Migration Failed'), error)
+               QtWidgets.QMessageBox.critical(
+                  self, self.tr('Migration Failed'), error)
                self.reject()
             TheSignalExecution.executeMethod(showErrorDialog)
 
@@ -613,11 +613,14 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
 
    ####
    def promptPassphraseReuseChoice(self):
-      """Show a modal dialog asking the user to reuse or create a new passphrase."""
+      """
+      Show a modal dialog asking the user to reuse or create a new passphrase.
+      """
       msgBox = QtWidgets.QMessageBox(self)
       msgBox.setWindowTitle(self.tr('Passphrase Options'))
       msgBox.setText(self.tr(
-         'Would you like to reuse your current passphrase or set a new one for the migrated wallet?'))
+         'Would you like to reuse your current passphrase'
+         ' or set a new one for the migrated wallet?'))
       reuseBtn = msgBox.addButton(self.tr(
          'Reuse Passphrase'), QtWidgets.QMessageBox.AcceptRole)
       newBtn = msgBox.addButton(self.tr(
@@ -647,12 +650,12 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       verifyPass = self.verifyPassphrasePage.pageFrame.edtPasswd3.text()
       if verifyPass != self.newPassphrase:
          QtWidgets.QMessageBox.critical(self, self.tr('Invalid Passphrase'),
-            self.tr(
-               'You entered your confirmation passphrase incorrectly!'), QtWidgets.QMessageBox.Ok)
+            self.tr('You entered your confirmation passphrase incorrectly!'),
+            QtWidgets.QMessageBox.Ok)
          return
 
       # Passphrase verification successful, now process it through the standard flow
-      self.processSetNewPassphrase(True)
+      self.processSetNewPassphrase(True, reusePassphrase=False)
       self.navigateToProgressPage()
 
    ####
@@ -678,7 +681,8 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       reply = QtWidgets.QMessageBox.question(
          self, self.tr('Create Watching-Only Wallet?'),
          self.tr(
-            'Wallet was not unlocked. Do you want to create a watching-only wallet instead?'),
+            'Wallet was not unlocked.'
+            ' Do you want to create a watching-only wallet instead?'),
          QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
       )
       if reply == QtWidgets.QMessageBox.Yes:

@@ -378,6 +378,8 @@ TEST_F(WalletManagerTests, Migrate_Legacy)
    } catch (const std::exception& e) {
       ASSERT_TRUE(false) << e.what();
    }
+
+   //TODO: check backup string, with version (should be 1.35c)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2006,7 +2008,7 @@ TEST_F(BridgeTests, ImportWallet_Legacy)
    EXPECT_EQ(wltReply.getKdfMem(), 32 * 1024 * 1024);
 
    //version
-   EXPECT_EQ(wltReply.getSeedVersion(), 13500000);
+   EXPECT_EQ(wltReply.getSeedVersion(), "1.35");
 
    /* check wallet was imported to the manager */
    try {

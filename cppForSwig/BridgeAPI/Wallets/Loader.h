@@ -211,7 +211,7 @@ namespace Armory
          size_t addressCount(void) const;
          const std::string& description(void) const;
          uint64_t timestamp(void) const;
-         uint32_t version(void) const;
+         std::string version(void) const;
       };
    } //namespace Bridge
 } //namespace Armory
