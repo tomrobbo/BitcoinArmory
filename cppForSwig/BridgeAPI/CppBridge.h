@@ -132,12 +132,15 @@ namespace Armory
          BinaryData getWalletPacket(const std::string&,
             Wallets::AddressAccountId, MessageId) const;
 
-         //AsyncClient::BlockDataViewer setup
+         //db setup
          void setupDB(MessageId);
+         void cleanupDb(MessageId);
+         void goOnline(void);
+
+         //wallet registration
          void registerWallets(void);
          void registerWallet(const std::string&,
             const Wallets::AddressAccountId&, bool isNew);
-         void goOnline(void);
          BinaryData getNodeStatus(MessageId);
 
          //balance and counts

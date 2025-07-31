@@ -162,15 +162,6 @@ void WalletManager::setBdvPtr(
    }
 }
 
-////
-void WalletManager::goOnline()
-{
-   if (bdvPtr_ == nullptr) {
-      throw std::runtime_error("null bdv ptr");
-   }
-   bdvPtr_->goOnline();
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 void WalletManager::registerWallets()
 {

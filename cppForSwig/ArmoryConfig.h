@@ -71,7 +71,6 @@ namespace Armory
          std::vector<std::string> keyValToArgv(
             const std::map<std::string, std::string>&);
 
-         std::string portToString(unsigned);
          bool testConnection(const std::string& ip, const std::string& port);
          std::string getPortFromCookie(const std::string& datadir);
          std::string hasLocalDB(const std::string& datadir,
@@ -210,6 +209,7 @@ namespace Armory
 
          static const NodePair& bitcoinNodes(void);
          static RpcPtr rpcNode(void);
+         static void setDbPort(const std::string&);
 
          static bool ephemeralPeers(void) { return ephemeralPeers_; }
          static bool oneWayAuth(void) { return oneWayAuth_; }
@@ -224,11 +224,13 @@ namespace Armory
       {
          friend void Config::parseArgs(
             const std::vector<std::string>&, ProcessType);
+         friend void Config::parseArgs(int, char*[], ProcessType);
          friend void Config::reset(void);
 
       private:
          static std::filesystem::path blkFilePath_;
          static std::filesystem::path dbDir_;
+         static std::filesystem::path own_;
 
       private:
          static void processArgs(
@@ -237,8 +239,10 @@ namespace Armory
 
       public:
          static std::filesystem::path logFilePath(const std::string&);
-         static const std::filesystem::path& blkFilePath(void) { return blkFilePath_; }
-         static const std::filesystem::path& dbDir(void) { return dbDir_; }
+         static const std::filesystem::path& blkFilePath(void);
+         static const std::filesystem::path& dbDir(void);
+         static const std::filesystem::path& runningDir(void);
+         static void setRunningDir(const std::filesystem::path&);
       };
 
       //////////////////////////////////////////////////////////////////////////

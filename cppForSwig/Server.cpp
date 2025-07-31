@@ -215,20 +215,18 @@ void WebSocketServer::initAuthPeers(const IO::ReadOnlyFileParams& params)
       instance->authorizedPeers_ = std::make_shared<AuthorizedPeers>(params);
    } else {
       if (Armory::Config::NetworkSettings::oneWayAuth()) {
-         throw std::runtime_error("public and ephemeral are mutually exclusive");
+         throw std::runtime_error(
+            "--public and --ephemeral are mutually exclusive");
       }
+
+      //setup server with an ephemeral key store
       instance->authorizedPeers_ = std::make_shared<AuthorizedPeers>();
 
-      //grab spawner pubkey
-      auto callerPubKeyStr = std::string(std::getenv("CALLER_PUBKEY"));
+      //grab caller pubkey
+      std::string callerPubKeyStr{std::getenv("CALLER_PUBKEY")};
       auto callerPubKey = SecureBinaryData::CreateFromHex(callerPubKeyStr);
 
-      //check it
-      if (!CryptoECDSA().VerifyPublicKeyValid(callerPubKey)) {
-         throw std::runtime_error("invalid caller pubkey");
-      }
-
-      //inject it
+      //inject caller pubkey in the store
       std::string serverName{"127.0.0.1:" +
          Armory::Config::NetworkSettings::dbPort()};
       instance->authorizedPeers_->addPeer(callerPubKey, serverName);
@@ -238,19 +236,16 @@ void WebSocketServer::initAuthPeers(const IO::ReadOnlyFileParams& params)
          throw std::runtime_error("ephemeral peers db setup snafu");
       }
 
-      //lastly, write own pubkey to cookie file
-      const auto& ownKey = instance->authorizedPeers_->getOwnPublicKey();
-      std::fstream file;
+      //grab shared file descriptor
+      std::string fdStr{std::getenv("KEYFILE_FD")};
+      int fd = std::stoi(fdStr);
 
-      //on windows, we need to explicitly open the cookie file in binary
-      //for writing, or it will stop at the first null byte
-      file.open(
-         Armory::Config::getDataDir() / "cookie",
-         std::ios::out | std::ios::binary
-      );
-      file.write((const char*)ownKey.pubkey, 33);
-      file.flush();
-      file.close();
+      //write own pubkey to file
+      const auto& ownKey = instance->authorizedPeers_->getOwnPublicKey();
+      if (::write(fd, ownKey.pubkey, 33) != 33) {
+         LOGERR << "failed to set server autodb pubkey";
+         exit(-2);
+      }
    }
 }
 
@@ -353,6 +348,7 @@ void WebSocketServer::shutdown()
    try {
       shutdownPromise_.set_value(true);
    } catch (const std::future_error&) {}
+   LOGINFO << "WS server shutdown sequence has completed";
 }
 
 ///////////////////////////////////////////////////////////////////////////////

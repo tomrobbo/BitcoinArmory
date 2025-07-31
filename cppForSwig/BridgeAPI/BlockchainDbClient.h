@@ -21,15 +21,23 @@ class BinaryData;
 
 namespace Armory
 {
+   namespace Wallets
+   {
+      class AuthorizedPeers;
+   }
+
    namespace Bridge
    {
       class WalletManager;
       using BdvPtr = std::shared_ptr<AsyncClient::BlockDataViewer>;
+      extern int autoDbPid;
 
       ////////
-      bool spawnDb(void);
+      std::shared_ptr<Wallets::AuthorizedPeers> spawnDb(void);
+      bool isDbRunning(void);
+
       BdvPtr setupClientConnection(
-         const std::filesystem::path&,
+         std::shared_ptr<Wallets::AuthorizedPeers>,
          const std::function<void(BinaryData&)>&,
          std::shared_ptr<WalletManager>
       );

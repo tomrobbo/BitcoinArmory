@@ -104,11 +104,11 @@ void Armory::Config::printHelp(void)
                            always function according to that type.
                            Specifying another type will do nothing. Build a new
                            db to change type.
---ephemeral                ignores db peer store. Create a cookie file holding
-                           a random authentication keypair instead to allow
-                           local clients to make use of elevated commands, like
-                           shutdown.  Expects client pubkey in envvars under
-                           CALLER_PUBKEY. Enforces 2-way auth.
+--ephemeral                server only. Ignores authorized peer store. Create a
+                           cookie file holding a random authentication keypair
+                           instead to allow local clients to make use of elevated
+                           commands, like shutdown. Expects client pubkey in
+                           envvars under CALLER_PUBKEY. Enforces 2-way auth.
 --armorydb-port            DB port to connect to.
 --armorydb-ip              DB IP to connect to.
 --clear-mempool            delete all zero confirmation transactions from the DB.
@@ -138,6 +138,8 @@ void Armory::Config::parseArgs(int argc, char* argv[], ProcessType procType)
    for (int i=1; i<argc; i++) {
       lines.emplace_back(argv[i], strlen(argv[i]));
    }
+   fs::path own{argv[0]};
+   Armory::Config::Pathing::own_ = fs::absolute(own).parent_path();
    Armory::Config::parseArgs(lines, procType);
 }
 
@@ -306,14 +308,6 @@ std::vector<std::string> SettingsUtils::keyValToArgv(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::string SettingsUtils::portToString(unsigned port)
-{
-   std::stringstream ss;
-   ss << port;
-   return ss.str();
-}
-
-////////////////////////////////////////////////////////////////////////////////
 std::string_view SettingsUtils::stripQuotes(const std::string_view& input)
 {
    if (input.empty()) {
@@ -367,9 +361,23 @@ std::string SettingsUtils::hasLocalDB(
    }
 
    //check db on default port
-   if (SettingsUtils::testConnection(
-      "127.0.0.1", SettingsUtils::portToString(LISTEN_PORT_MAINNET))) {
-      return SettingsUtils::portToString(LISTEN_PORT_MAINNET);
+   std::string defaultPort;
+   switch (BitcoinSettings::getMode())
+   {
+      case NETWORK_MODE_TESTNET:
+         defaultPort = std::to_string(LISTEN_PORT_TESTNET);
+         break;
+
+      case NETWORK_MODE_REGTEST:
+         defaultPort = std::to_string(LISTEN_PORT_REGTEST);
+         break;
+
+      default:
+         defaultPort = std::to_string(LISTEN_PORT_MAINNET);
+   }
+
+   if (SettingsUtils::testConnection("127.0.0.1", defaultPort)) {
+      return defaultPort;
    }
 
    //check for cookie file
@@ -645,9 +653,7 @@ void NetworkSettings::processArgs(
    auto iter = args.find("armorydb-port");
    if (iter != args.end()) {
       dbPort_ = SettingsUtils::stripQuotes(iter->second);
-      int portInt = 0;
-      std::stringstream portSS(dbPort_);
-      portSS >> portInt;
+      int portInt = std::stoi(dbPort_);
 
       if (portInt < 1 || portInt > 65535) {
          std::cout << "Invalid listen port, falling back to default" << std::endl;
@@ -747,50 +753,55 @@ void NetworkSettings::selectNetwork(NETWORK_MODE mode)
    {
       case NETWORK_MODE_MAINNET:
       {
-         rpcPort_ = SettingsUtils::portToString(RPC_PORT_MAINNET);
+         rpcPort_ = std::to_string(RPC_PORT_MAINNET);
 
          if (!customDbPort_) {
-            dbPort_ = SettingsUtils::portToString(LISTEN_PORT_MAINNET);
+            dbPort_ = std::to_string(LISTEN_PORT_MAINNET);
          }
 
          if (!customBtcPort_) {
-            btcPort_ = SettingsUtils::portToString(NODE_PORT_MAINNET);
+            btcPort_ = std::to_string(NODE_PORT_MAINNET);
          }
          break;
       }
 
       case NETWORK_MODE_TESTNET:
       {
-         rpcPort_ = SettingsUtils::portToString(RPC_PORT_TESTNET);
+         rpcPort_ = std::to_string(RPC_PORT_TESTNET);
 
          if (!customDbPort_) {
-            dbPort_ = SettingsUtils::portToString(LISTEN_PORT_TESTNET);
+            dbPort_ = std::to_string(LISTEN_PORT_TESTNET);
          }
 
          if (!customBtcPort_) {
-            btcPort_ = SettingsUtils::portToString(NODE_PORT_TESTNET);
+            btcPort_ = std::to_string(NODE_PORT_TESTNET);
          }
          break;
       }
 
       case NETWORK_MODE_REGTEST:
       {
-         rpcPort_ = SettingsUtils::portToString(RPC_PORT_REGTEST);
+         rpcPort_ = std::to_string(RPC_PORT_REGTEST);
 
          if (!customDbPort_) {
-            dbPort_ = SettingsUtils::portToString(LISTEN_PORT_REGTEST);
+            dbPort_ = std::to_string(LISTEN_PORT_REGTEST);
          }
 
          if (!customBtcPort_) {
-            btcPort_ = SettingsUtils::portToString(NODE_PORT_REGTEST);
+            btcPort_ = std::to_string(NODE_PORT_REGTEST);
          }
          break;
       }
 
       default:
-         LOGERR << "unexpected network mode!";
-         throw std::runtime_error("unxecpted network mode");
+         throw std::runtime_error("unexpected network mode");
    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void NetworkSettings::setDbPort(const std::string& port)
+{
+   dbPort_ = port;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -821,7 +832,6 @@ const std::string& NetworkSettings::rpcPort()
 void NetworkSettings::createNodes()
 {
    auto magicBytes = BitcoinSettings::getMagicBytes();
-
    if (DBSettings::getServiceType() == SERVICE_WEBSOCKET) {
       bitcoinNodes_.first = std::make_shared<BitcoinP2P>(
          "127.0.0.1", btcPort_,
@@ -888,6 +898,7 @@ void NetworkSettings::reset()
 ////////////////////////////////////////////////////////////////////////////////
 fs::path Pathing::blkFilePath_;
 fs::path Pathing::dbDir_;
+fs::path Pathing::own_;
 
 ////////////////////////////////////////////////////////////////////////////////
 void Pathing::processArgs(const std::map<std::string, std::string>& args,
@@ -975,8 +986,8 @@ void Pathing::processArgs(const std::map<std::string, std::string>& args,
 
    if (!NetworkSettings::isOffline()) {
       if (!testPath(blkFilePath_, 2)) {
-         std::string errMsg = blkFilePath_.string() + " is not a valid blockchain data path";
-         throw DbErrorMsg(errMsg); 
+         throw DbErrorMsg({ blkFilePath_.string() +
+            " is not a valid blockchain data path" });
       }
    }
 }
@@ -992,6 +1003,24 @@ void Pathing::reset()
 fs::path Pathing::logFilePath(const std::string& logName)
 {
    return fs::path(getDataDir()) / fs::path(logName + ".txt");
+}
+
+////
+const fs::path& Pathing::blkFilePath()
+{
+   return blkFilePath_;
+}
+
+////
+const fs::path& Pathing::dbDir()
+{
+   return dbDir_;
+}
+
+////
+const fs::path& Pathing::runningDir()
+{
+   return own_;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1040,21 +1069,21 @@ std::vector<BinaryData> Config::File::fleshOutArgs(
    auto keyValMap = SettingsUtils::getKeyValsFromLines(arg_minus_1, '=');
 
    //complete config file path
-   auto configFile_path = fs::path(MAINNET_DEFAULT_DATADIR);
+   auto configFilePath = fs::path(MAINNET_DEFAULT_DATADIR);
    if (keyValMap.find("--testnet") != keyValMap.end()) {
-      configFile_path = TESTNET_DEFAULT_DATADIR;
+      configFilePath = TESTNET_DEFAULT_DATADIR;
    } else if (keyValMap.find("--regtest") != keyValMap.end()) {
-      configFile_path = REGTEST_DEFAULT_DATADIR;
+      configFilePath = REGTEST_DEFAULT_DATADIR;
    }
 
    auto datadir_iter = keyValMap.find("--datadir");
-   if (datadir_iter != keyValMap.end() && datadir_iter->second.size() > 0) {
-      configFile_path = datadir_iter->second;
+   if (datadir_iter != keyValMap.end() && !datadir_iter->second.empty()) {
+      configFilePath = datadir_iter->second;
    }
-   configFile_path = fs::absolute(configFile_path / path);
+   configFilePath = fs::absolute(configFilePath / path);
 
    //process config file
-   Config::File cfile(configFile_path);
+   Config::File cfile(configFilePath);
    if (cfile.keyvalMap_.empty()) {
       return argv;
    }

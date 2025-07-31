@@ -90,6 +90,16 @@ namespace
             return true;
          }
 
+         case BlockchainServiceRequest::CLEANUP_DB:
+         {
+            std::thread thr([bridge, referenceId]{
+               bridge->cleanupDb(referenceId);});
+            if (thr.joinable()) {
+               thr.detach();
+            }
+            return true;
+         }
+
          case BlockchainServiceRequest::GO_ONLINE:
          {
             bridge->goOnline();

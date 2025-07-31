@@ -18,6 +18,7 @@
 #include "../Wallets/WalletIdTypes.h"
 #include "../Wallets/KDF.h"
 #include "../CoinSelection.h"
+#include "../TerminalPassphrasePrompt.h"
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
@@ -789,15 +790,27 @@ void CppBridge::setupDB(MessageId refId)
    }
 
    //do we have to spawn the db?
+   std::shared_ptr<Wallets::AuthorizedPeers> peers = nullptr;
    if (Config::NetworkSettings::automateDb()) {
-      spawnDb();
+      peers = spawnDb();
+   } else {
+      peers = std::make_shared<Wallets::AuthorizedPeers>(
+         Wallets::IO::ReadOnlyFileParams {
+            path_ / CLIENT_AUTH_PEER_FILENAME,
+            TerminalPassphrasePrompt::getLambda("db identification key")
+      });
    }
 
    //connect to db
    try {
-      bdvPtr_ = setupClientConnection(path_,
-         [this](BinaryData& data){writeToClient(data);},
-         wltManager_);
+      if (peers == nullptr) {
+         throw std::runtime_error("failed to setup client peers db");
+      }
+
+      bdvPtr_ = setupClientConnection(
+         peers, [this](BinaryData& data){ writeToClient(data); },
+         wltManager_
+      );
       if (bdvPtr_ == nullptr) {
          throw std::runtime_error("failed to instantiate bdv object");
       }
@@ -814,9 +827,35 @@ void CppBridge::setupDB(MessageId refId)
 }
 
 ////
+void CppBridge::cleanupDb(MessageId refId)
+{
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   reply.setReferenceId(refId);
+
+   if (!Config::NetworkSettings::automateDb()) {
+      reply.setSuccess(false);
+      reply.setError("db is not automated");
+   } else if (bdvPtr_ == nullptr) {
+      reply.setSuccess(false);
+      reply.setError("no connection to db");
+   } else if (autoDbPid == -1) {
+      reply.setSuccess(false);
+      reply.setError("db is not running");
+   } else {
+      bdvPtr_->shutdown();
+      reply.setSuccess(true);
+   }
+
+   auto response = serializeCapnp(message);
+   this->writeToClient(response);
+}
+
+////
 void CppBridge::goOnline()
 {
-   wltManager_->goOnline();
+   bdvPtr_->goOnline();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

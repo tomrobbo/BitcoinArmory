@@ -94,7 +94,6 @@ namespace Armory
          std::shared_ptr<Callback> setupBdvCallback(
             const std::function<void(BinaryData&)>&);
          void setBdvPtr(std::shared_ptr<AsyncClient::BlockDataViewer>);
-         void goOnline(void);
 
          /* utils */
          const std::filesystem::path& getWalletDir(void) const;

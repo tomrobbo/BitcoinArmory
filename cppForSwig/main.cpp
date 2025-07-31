@@ -112,14 +112,13 @@ int main(int argc, char* argv[])
    bdmThread.start(DBSettings::initMode());
    if (!DBSettings::checkChain()) {
       WebSocketServer::start(bdmThread.bdm(), false);
+      LOGINFO << "WS server has shut down" << std::endl;
    } else {
       bdmThread.join();
    }
 
-   //stop all threads and clean up
-   WebSocketServer::shutdown();
+   //shutdown BDM and cleanup crypto contexts
    bdmThread.shutdown();
-
    shutdownBIP151CTX();
    CryptoECDSA::shutdown();
 
