@@ -73,9 +73,7 @@ bool BlockDataManagerThread::shutdown()
       }
    }
 
-   if (pimpl->tID.joinable()) {
-      pimpl->tID.join();
-   }
+   join();
    return true;
 }
 

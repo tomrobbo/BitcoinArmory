@@ -2173,13 +2173,11 @@ protected:
          {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_});
 
       //share public keys between client and server
-      auto& serverPubkey = serverPeers.getOwnPublicKey();
-      auto& clientPubkey = clientPeers.getOwnPublicKey();
+      const auto& serverPubkey = serverPeers.getOwnPublicKey();
 
       std::stringstream serverAddr;
       serverAddr << "127.0.0.1:" << NetworkSettings::dbPort();
       clientPeers.addPeer(serverPubkey, serverAddr.str());
-      //serverPeers.addPeer(clientPubkey, "127.0.0.1");
 
       wallet1id = "wallet1";
 
@@ -3216,10 +3214,9 @@ TEST_F(WebSocketTests, WebSocketStack_ManyLargeWallets)
       auto pCallback = std::make_shared<DBTestUtils::UTCallback>();
       auto bdvObj = AsyncClient::BlockDataViewer::getNewBDV(
          "127.0.0.1", NetworkSettings::dbPort(),
-         IO::ReadOnlyFileParams{
+         std::make_shared<AuthorizedPeers>(IO::ReadOnlyFileParams{
             homedir_ / CLIENT_AUTH_PEER_FILENAME,
-            authPeersPassLbd_},
-         NetworkSettings::ephemeralPeers(), true, //public server
+            authPeersPassLbd_}), true, //public server
          pCallback);
       bdvObj->addPublicKey(serverPubkey);
       ASSERT_TRUE(bdvObj->connectToRemote());
@@ -3350,10 +3347,11 @@ TEST_F(WebSocketTests, WebSocketStack_AddrOpLoop)
 
    {
       auto pCallback = make_shared<DBTestUtils::UTCallback>();
-      auto&& bdvObj = AsyncClient::BlockDataViewer::getNewBDV(
+      auto bdvObj = AsyncClient::BlockDataViewer::getNewBDV(
          "127.0.0.1", NetworkSettings::dbPort(),
-         {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_},
-         NetworkSettings::ephemeralPeers(), true, //public server
+         std::make_shared<AuthorizedPeers>(
+            IO::ReadOnlyFileParams{homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
+         true, //public server
          pCallback);
       bdvObj->addPublicKey(serverPubkey);
       bdvObj->connectToRemote();
@@ -3603,8 +3601,9 @@ TEST_F(WebSocketTests, WebSocketStack_CombinedCalls)
       auto pCallback = make_shared<DBTestUtils::UTCallback>();
       auto bdvObj = AsyncClient::BlockDataViewer::getNewBDV(
          "127.0.0.1", NetworkSettings::dbPort(),
-         {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_},
-         NetworkSettings::ephemeralPeers(), true, //public server
+         std::make_shared<AuthorizedPeers>(
+            IO::ReadOnlyFileParams{homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
+         true, //public server
          pCallback);
       bdvObj->addPublicKey(serverPubkey);
       bdvObj->connectToRemote();
@@ -3748,8 +3747,9 @@ TEST_F(WebSocketTests, WebSocketStack_UnregisterAddresses)
       auto pCallback = make_shared<DBTestUtils::UTCallback>();
       auto bdvObj = AsyncClient::BlockDataViewer::getNewBDV(
          "127.0.0.1", NetworkSettings::dbPort(),
-         {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_},
-         NetworkSettings::ephemeralPeers(), true, //public server
+         std::make_shared<AuthorizedPeers>(
+            IO::ReadOnlyFileParams{homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
+         true, //public server
          pCallback);
       bdvObj->addPublicKey(serverPubkey);
       bdvObj->connectToRemote();
@@ -4048,8 +4048,9 @@ TEST_F(WebSocketTests, WebSocketStack_DynamicReorg)
    auto pCallback = make_shared<DBTestUtils::UTCallback>();
    auto bdvObj = AsyncClient::BlockDataViewer::getNewBDV(
       "127.0.0.1", NetworkSettings::dbPort(),
-      {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_},
-      NetworkSettings::ephemeralPeers(), true, //public server
+      std::make_shared<AuthorizedPeers>(
+         IO::ReadOnlyFileParams{homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
+      true, //public server
       pCallback);
    bdvObj->addPublicKey(serverPubkey);
    bdvObj->connectToRemote();
@@ -4422,8 +4423,9 @@ TEST_F(WebSocketTests, WebSocketStack_GetTxByHash)
    auto pCallback = make_shared<DBTestUtils::UTCallback>();
    auto bdvObj = AsyncClient::BlockDataViewer::getNewBDV(
       "127.0.0.1", NetworkSettings::dbPort(),
-      {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_},
-      NetworkSettings::ephemeralPeers(), true, //public server
+      std::make_shared<AuthorizedPeers>(
+         IO::ReadOnlyFileParams{homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
+      true, //public server
       pCallback);
    bdvObj->addPublicKey(serverPubkey);
    bdvObj->connectToRemote();
@@ -4665,8 +4667,9 @@ TEST_F(WebSocketTests, WebSocketStack_GetTxByHash)
       auto pCallback2 = make_shared<DBTestUtils::UTCallback>();
       auto bdvObj2 = AsyncClient::BlockDataViewer::getNewBDV(
          "127.0.0.1", NetworkSettings::dbPort(),
-         {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_},
-         NetworkSettings::ephemeralPeers(), true, //public server
+         std::make_shared<AuthorizedPeers>(
+            IO::ReadOnlyFileParams{homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
+         true, //public server
          pCallback2);
       bdvObj2->addPublicKey(serverPubkey);
       bdvObj2->connectToRemote();
@@ -4900,10 +4903,11 @@ TEST_F(WebSocketTests, WebSocketStack_GetSpentness)
 
    {
       auto pCallback = make_shared<DBTestUtils::UTCallback>();
-      auto&& bdvObj = AsyncClient::BlockDataViewer::getNewBDV(
+      auto bdvObj = AsyncClient::BlockDataViewer::getNewBDV(
          "127.0.0.1", NetworkSettings::dbPort(),
-         {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_},
-         NetworkSettings::ephemeralPeers(), true, //public server
+         std::make_shared<AuthorizedPeers>(
+            IO::ReadOnlyFileParams{homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
+         true, //public server
          pCallback);
       bdvObj->addPublicKey(serverPubkey);
       bdvObj->connectToRemote();

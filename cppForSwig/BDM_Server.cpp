@@ -1640,7 +1640,7 @@ void Clients::bdvMaintenanceLoop()
       try {
          notifPtr = std::move(outerBDVNotifStack_.pop_front());
       } catch (const Threading::StopBlockingLoop&) {
-         LOGINFO << "Shutting down BDV event loop";
+         LOGINFO << "Exiting BDV event loop";
          break;
       }
 
@@ -1702,12 +1702,8 @@ void Clients::bdvMaintenanceThread()
 ///////////////////////////////////////////////////////////////////////////////
 void Clients::shutdown()
 {
-   std::unique_lock<std::mutex> lock(shutdownMutex_, std::defer_lock);
-   if (!lock.try_lock()) {
-      return;
-   }
-
    /*shutdown sequence*/
+   std::unique_lock<std::mutex> lock(shutdownMutex_);
    if (!run_.load(std::memory_order_relaxed)) {
       return;
    }
@@ -1737,7 +1733,6 @@ void Clients::shutdown()
 
    //exit BDM maintenance thread
    bdm_->shutdown();
-
    for (auto& thr : controlThreads_) {
       if (thr.joinable()) {
          thr.join();
@@ -1836,7 +1831,6 @@ void Clients::notificationThread()
    while (true) {
       bool timedout = true;
       std::shared_ptr<BDV_Notification> notifPtr;
-
       try {
          notifPtr = std::move(bdm_->notificationStack_.pop_front(60s));
          timedout = false;

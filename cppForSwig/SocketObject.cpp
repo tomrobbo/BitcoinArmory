@@ -689,7 +689,7 @@ void PersistentSocket::cleanUpPipes()
 ///////////////////////////////////////////////////////////////////////////////
 bool PersistentSocket::openSocket(bool blocking)
 {
-   if (!addr_.empty() && !port_.empty()) {
+   if (!addr_.empty() && !port_.empty() && readQueue_.isValid()) {
       sockfd_ = SocketPrototype::openSocket(blocking);
    }
    return isValid();
@@ -1150,7 +1150,7 @@ CallbackReturn_CloseBitcoinP2PSocket::CallbackReturn_CloseBitcoinP2PSocket(
 
 void CallbackReturn_CloseBitcoinP2PSocket::callback(const BinaryDataRef&)
 {
-   dataStack_->terminate(nullptr);
+   dataStack_->terminate();
 }
 
 ///////////////////////////////////////////////////////////////////////////////

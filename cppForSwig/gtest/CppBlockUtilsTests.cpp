@@ -30,6 +30,7 @@ protected:
    const std::filesystem::path ldbdir_  = "./ldbtestdir";
    std::filesystem::path blk0dat_;
    std::string wallet1id;
+   std::vector<std::string> args;
 
    /////////////////////////////////////////////////////////////////////////////
    void cleanUp()
@@ -50,7 +51,8 @@ protected:
       FileUtils::createDirectory(ldbdir_);
 
       DBSettings::setServiceType(SERVICE_UNITTEST);
-      Armory::Config::parseArgs({
+
+      args = {
          "--datadir=./fakehomedir",
          "--dbdir=./ldbtestdir",
          "--satoshi-datadir=./blkfiletest",
@@ -58,8 +60,8 @@ protected:
          "--db-type=DB_FULL",
          "--thread-count=3",
          "--rewind-blocks=0",
-         "--public"},
-         Armory::Config::ProcessType::DB);
+         "--public"};
+      Armory::Config::parseArgs(args, Armory::Config::ProcessType::DB);
       DBTestUtils::init();
 
       blk0dat_ = FileUtils::getBlkFilename(blkdir_ / "blocks", 0);
@@ -430,11 +432,11 @@ TEST_F(BlockDir, FixBlockDataOffsets)
    //cleanup
    bdvPtr.reset();
    wlt.reset();
-   clients->shutdown();
    BDMt->shutdown();
-
+   clients->shutdown();
    delete clients;
    delete BDMt;
+   Armory::Config::reset();
 
    /* 2. mangle chain data, append mangled block at the end of the file */
    {
@@ -445,6 +447,8 @@ TEST_F(BlockDir, FixBlockDataOffsets)
    }
 
    //setup BDM
+   DBSettings::setServiceType(SERVICE_UNITTEST);
+   Armory::Config::parseArgs(args, Armory::Config::ProcessType::DB);
    DBTestUtils::init();
    BDMt = new BlockDataManagerThread();
    clients = new Clients(BDMt->bdm());
@@ -461,21 +465,21 @@ TEST_F(BlockDir, FixBlockDataOffsets)
    DBTestUtils::goOnline(clients, bdvID2);
 
    //BDM should warn user and shutdown gracefully
-   DBTestUtils::waitOnBDMError(BDMt->bdm());
    BDMt->join();
 
    //cleanup
    bdvPtr2.reset();
    clients->shutdown();
-   BDMt->shutdown();
-
    delete clients;
    delete BDMt;
+   Armory::Config::reset();
 
    //append the correct 3rd block
    TestUtils::appendBlocks({"3"}, blk0dat_);
 
    /* 3. restart BDM, should fix mangled data and get through scan */
+   DBSettings::setServiceType(SERVICE_UNITTEST);
+   Armory::Config::parseArgs(args, Armory::Config::ProcessType::DB);
    DBTestUtils::init();
    BDMt = new BlockDataManagerThread();
    clients = new Clients(BDMt->bdm());
@@ -1937,8 +1941,9 @@ TEST_F(WebSocketTests_1Way, WebSocketStack)
    auto pCallback = std::make_shared<DBTestUtils::UTCallback>();
    auto bdvObj = AsyncClient::BlockDataViewer::getNewBDV(
       "127.0.0.1", NetworkSettings::dbPort(),
-      {Armory::Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_},
-      NetworkSettings::ephemeralPeers(), true, //public server
+      std::make_shared<AuthorizedPeers>(IO::ReadOnlyFileParams{
+         Armory::Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
+      true, //public server
       pCallback);
    bdvObj->connectToRemote();
    bdvObj->registerWithDB(hexMagicBytes);
@@ -2194,8 +2199,9 @@ TEST_F(WebSocketTests_1Way, WebSocketStack_Reconnect)
       auto pCallback = std::make_shared<DBTestUtils::UTCallback>();
       auto bdvObj = AsyncClient::BlockDataViewer::getNewBDV(
          "127.0.0.1", NetworkSettings::dbPort(),
-         {Armory::Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_},
-         true, true, //public server
+         std::make_shared<AuthorizedPeers>(IO::ReadOnlyFileParams{
+            Armory::Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
+         true, //public server
          pCallback);
       bdvObj->setCheckServerKeyPromptLambda(pubkeyPrompt);
       bdvObj->connectToRemote();
@@ -2318,8 +2324,9 @@ TEST_F(WebSocketTests_1Way, WebSocketStack_Reconnect)
       auto pCallback = std::make_shared<DBTestUtils::UTCallback>();
       auto bdvObj = AsyncClient::BlockDataViewer::getNewBDV(
          "127.0.0.1", NetworkSettings::dbPort(),
-         {Armory::Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_},
-         true, true, //public server
+         std::make_shared<AuthorizedPeers>(IO::ReadOnlyFileParams{
+            Armory::Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
+         true, //public server
          pCallback);
       bdvObj->setCheckServerKeyPromptLambda(pubkeyPrompt);
       bdvObj->connectToRemote();
@@ -2543,8 +2550,9 @@ TEST_F(WebSocketTests_2Way, GrabAddrLedger_PostReg)
    auto pCallback = std::make_shared<DBTestUtils::UTCallback>();
    auto bdvObj = AsyncClient::BlockDataViewer::getNewBDV(
       "127.0.0.1", NetworkSettings::dbPort(),
-      {Armory::Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_},
-      NetworkSettings::ephemeralPeers(), false, //private server
+      std::make_shared<AuthorizedPeers>(IO::ReadOnlyFileParams{
+         Armory::Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
+      false, //private server
       pCallback);
    bdvObj->connectToRemote();
    bdvObj->registerWithDB(hexMagicBytes);
@@ -2596,10 +2604,11 @@ TEST_F(WebSocketTests_2Way, WebSocketStack_ManyZC)
    theBDMt_->start(DBSettings::initMode());
 
    auto pCallback = std::make_shared<DBTestUtils::UTCallback>();
-   auto&& bdvObj = AsyncClient::BlockDataViewer::getNewBDV(
+   auto bdvObj = AsyncClient::BlockDataViewer::getNewBDV(
       "127.0.0.1", NetworkSettings::dbPort(),
-      {Armory::Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_},
-      NetworkSettings::ephemeralPeers(), false, //private server
+      std::make_shared<AuthorizedPeers>(IO::ReadOnlyFileParams{
+         Armory::Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
+      false, //private server
       pCallback);
    bdvObj->connectToRemote();
    bdvObj->registerWithDB(hexMagicBytes);

@@ -506,7 +506,7 @@ namespace DBTestUtils
    void waitOnBDMSignal(std::shared_ptr<BlockDataManager> bdm, BDV_Action action)
    {
       while (true) {
-            try {
+         try {
             auto notif = std::move(bdm->notificationStack_.pop_front());
             if (notif == nullptr) {
                continue;
