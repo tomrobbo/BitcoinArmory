@@ -673,9 +673,10 @@ protected:
       startupBIP150CTX(4);
 
       //setup auth peers for server and client
-      authPeersPassLbd_ = [](const std::set<EncryptionKeyId>&)->SecureBinaryData
+      authPeersPassLbd_ = [](const std::set<EncryptionKeyId>&)
+      ->Armory::Passphrase::Result
       {
-         return {};
+         return { {}, true };
       };
 
       auto createWltLbd = []()->std::unique_ptr<Armory::Passphrase::Params>
@@ -1835,7 +1836,7 @@ TEST_F(BridgeTests, CreateWallet_Reject)
    createWltReq.setDescription("desc");
 
    auto rawReq = serializeCapnp(message);
-   pushRequest(rawReq);
+   pushRequest(bridge_, rawReq);
 
    //handle progress notifs
    try {
@@ -2486,9 +2487,10 @@ protected:
       startupBIP150CTX(4);
 
       //setup auth peers for server and client
-      authPeersPassLbd_ = [](const std::set<EncryptionKeyId>&)->SecureBinaryData
+      authPeersPassLbd_ = [](const std::set<EncryptionKeyId>&)
+      ->Armory::Passphrase::Result
       {
-         return {};
+         return { {}, true };
       };
 
       auto createWltLbd = []()->std::unique_ptr<Armory::Passphrase::Params>
