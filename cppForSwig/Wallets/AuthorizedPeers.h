@@ -68,12 +68,15 @@ namespace Armory
          //<pubkey, sig>
          std::pair<SecureBinaryData, SecureBinaryData> rootSignature_;
 
-         //<pubkey, description>
+         //<pubkey, <description, asset id>>
          std::map<SecureBinaryData,
             std::pair<std::string, unsigned>> peerRootKeys_;
 
-      private:
+         //public key of master ACL; a client that completes a 2-way
+         //AEAD handshake with this key will receive master credentials
+         SecureBinaryData masterKey_;
 
+      private:
          void loadWallet(const IO::ReadOnlyFileParams&);
          void addPeer(const SecureBinaryData&,
             const std::initializer_list<std::string>&);
@@ -88,15 +91,10 @@ namespace Armory
          const std::map<std::string, btc_pubkey>& getPeerNameMap(void) const;
          const std::set<SecureBinaryData>& getPublicKeySet(void) const;
          const SecureBinaryData& getPrivateKey(const BinaryDataRef&) const;
-         
-         const std::map<SecureBinaryData, std::pair<std::string, unsigned>>&
-            getRootKeys(void) const { return peerRootKeys_; }
-         const std::pair<SecureBinaryData, SecureBinaryData>& getRootSig(void) {
-            return rootSignature_; }
 
          /* addPeer:
          input:
-         - pubkey as SecurBinaryData/btc_pubkey. secp256k1 un/compressed
+         - pubkey as SecureBinaryData/btc_pubkey. secp256k1 un/compressed
            public key
          - count as unsigned: number of names as strings, at least 1
          - count names as string/char*
@@ -132,6 +130,11 @@ namespace Armory
          void eraseKey(const btc_pubkey&);
 
          const btc_pubkey& getOwnPublicKey(void) const;
+         bool setMasterKey(const btc_pubkey&);
+         bool setMasterKey(const SecureBinaryData&);
+         void eraseMasterKey(void);
+         bool isMasterKey(const btc_pubkey&) const;
+         bool isMasterKey(const SecureBinaryData&) const;
 
          //takes path to peers db, passphrase lambdas are handled internally
          static void changeControlPassphrase(const std::filesystem::path&);

@@ -10,6 +10,7 @@
 #include <string_view>
 
 #include "Manager.h"
+#include "Notifications.h"
 #include "Wallets/Seeds/Backups.h"
 #include "../PassphrasePrompt.h"
 #include "../Wallets/Seeds/Seeds.h"
@@ -101,6 +102,55 @@ std::shared_ptr<WalletContainer> WalletManager::getWalletContainer(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+std::shared_ptr<Callback> WalletManager::setupBdvCallback(
+   const std::function<void(BinaryData&)>& writeFunc)
+{
+   if (callbackPtr_ != nullptr) {
+      throw std::runtime_error("callback already instantiated!");
+   }
+   /***
+   The bridge feeds a RemoteCallback object to the WebSocketClient object
+   that bdvPtr_ wraps around. On pushes from ArmoryDB, the wsclient passes
+   the packets to the RemoteCallback.
+
+   Most of the push actions require pushing the data up the chain, to the
+   client. The pushNotif lambda deals with that.
+
+   The handler is very simple for now: either pass a capnp message along
+   to the client or call updateStateFromDB.
+   ***/
+   auto pushNotif = [writeFunc, this](NotifStruct notif)->void
+   {
+      switch (notif.type)
+      {
+         case NotifType::PUSH:
+         {
+            if (notif.packet.empty()) {
+               throw std::runtime_error("empty packet in push notif!");
+            }
+            writeFunc(notif.packet);
+            return;
+         }
+
+         case NotifType::UPDATE:
+         {
+            if (notif.lbd == nullptr) {
+               throw std::runtime_error("notif lbd is not set!");
+            }
+            updateStateFromDB(notif.lbd);
+            return;
+         }
+
+         default:
+            throw std::runtime_error("invalid pushNotif type");
+      }
+   };
+
+   callbackPtr_ = std::make_shared<Callback>(pushNotif);
+   return callbackPtr_;
+}
+
+////
 void WalletManager::setBdvPtr(
    std::shared_ptr<AsyncClient::BlockDataViewer> bdvPtr)
 {
@@ -120,10 +170,11 @@ void WalletManager::registerWallets()
          accIt.second->registerWithBDV(false);
       }
    }
+   callbackPtr_->notifySetupRegistrationDone();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-const std::string& WalletManager::registerWallet(const std::string& wltId,
+void WalletManager::registerWallet(const std::string& wltId,
    const Wallets::AddressAccountId& accId, bool isNew)
 {
    auto wltIter = wallets_.find(wltId);
@@ -137,7 +188,14 @@ const std::string& WalletManager::registerWallet(const std::string& wltId,
    }
 
    accIter->second->registerWithBDV(isNew);
-   return accIter->second->getDbId();
+   auto dbId = accIter->second->getDbId();
+   auto lbd = [this, dbId]()
+   {
+      updateStateFromDB([this, dbId](){
+         callbackPtr_->notifyRefresh({dbId});
+      });
+   };
+   callbackPtr_->registerRefreshCallback(dbId, lbd);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -14,7 +14,7 @@
 #include "BDM_mainthread.h"
 #include "BlockDataViewer.h"
 #include "nodeRPC.h"
-#include "BitcoinP2p.h"
+#include "BitcoinP2P.h"
 #include <ctime>
 
 using namespace Armory::Config;
@@ -73,9 +73,7 @@ bool BlockDataManagerThread::shutdown()
       }
    }
 
-   if (pimpl->tID.joinable()) {
-      pimpl->tID.join();
-   }
+   join();
    return true;
 }
 
@@ -196,7 +194,7 @@ try {
       }
    };
 
-   bdm->processNode_->registerNodeStatusLambda(updateNodeStatusLambda);
+   bdm->processNode_->registerNodeStatusCallback(updateNodeStatusLambda);
    bdm->nodeRPC_->registerNodeStatusLambda(updateNodeStatusLambda);
 
    auto newBlockStack = bdm->processNode_->getInvBlockStack();

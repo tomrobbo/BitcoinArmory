@@ -36,7 +36,7 @@
 #include <functional>
 #include "ScrAddrFilter.h"
 #include "nodeRPC.h"
-#include "BitcoinP2p.h"
+#include "BitcoinP2P.h"
 #include "BDV_Notification.h"
 
 #define NUM_BLKS_BATCH_THRESH 30
@@ -119,7 +119,7 @@ private:
 
 public:
    typedef std::function<void(BDMPhase, double,unsigned, unsigned)> ProgressCallback;
-   std::shared_ptr<BitcoinNodeInterface> processNode_, watchNode_;
+   std::shared_ptr<Armory::Node::BitcoinNodeInterface> processNode_, watchNode_;
    std::shared_future<bool> isReadyFuture_;
    mutable std::shared_ptr<CoreRPC::NodeRPCInterface> nodeRPC_;
 
@@ -146,7 +146,7 @@ public:
    {
       std::function<void()> headersRead, headersUpdated, blockDataLoaded;
    };
-   
+
    bool hasException(void) const { return exceptPtr_ != nullptr; }
    std::exception_ptr getException(void) const { return exceptPtr_; }
 
@@ -184,7 +184,7 @@ public:
    void resetDatabases(ResetDBMode mode);
 
    unsigned getCheckedTxCount(void) const { return checkTransactionCount_; }
-   CoreRPC::NodeStatus getNodeStatus(void) const;
+   std::shared_ptr<CoreRPC::NodeStatus> getNodeStatus(void) const;
    void registerZcCallbacks(std::unique_ptr<ZeroConfCallbacks> ptr)
    {
       zeroConfCont_->setZeroConfCallbacks(std::move(ptr));

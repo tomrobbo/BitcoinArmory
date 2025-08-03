@@ -293,6 +293,22 @@ std::unique_ptr<AddressAccount> AddressAccount::make_new(
          break;
       }
 
+      case AccountTypeEnum_Imports:
+      {
+         if (accType->isWatchingOnly()) {
+            auto assetAccount = std::make_shared<AssetAccountData>(
+               AssetAccountTypeEnum_ImportsWO, accType->getOuterAccountID(),
+               nullptr, nullptr, dbName);
+            addressAccountPtr->addAccount(assetAccount);
+         } else {
+            auto assetAccount = std::make_shared<AssetAccountData>(
+               AssetAccountTypeEnum_Imports, accType->getOuterAccountID(),
+               nullptr, nullptr, dbName);
+            addressAccountPtr->addAccount(assetAccount);
+         }
+         break;
+      }
+
       default:
          throw AccountException("unknown account type");
    }
@@ -381,6 +397,20 @@ void AddressAccount::commit(std::shared_ptr<IO::WalletDBInterface> iface)
          case AssetAccountTypeEnum_ECDH:
          {
             aaPtr = std::make_shared<AssetAccount_ECDH>(
+               accDataPair.second);
+            break;
+         }
+
+         case AssetAccountTypeEnum_Imports:
+         {
+            aaPtr = std::make_shared<AssetAccount_Imports>(
+               accDataPair.second);
+            break;
+         }
+
+         case AssetAccountTypeEnum_ImportsWO:
+         {
+            aaPtr = std::make_shared<AssetAccount_ImportsWO>(
                accDataPair.second);
             break;
          }
@@ -735,7 +765,13 @@ void AddressAccount::updateAddressHashMap()
    ReentrantLock lock(this);
    for (auto accountDataPair : accountDataMap_) {
       auto accountPtr = getAccountForID(accountDataPair.first);
-      auto& hashMap = accountPtr->getAddressHashMap(addressTypes_);
+      try {
+         accountPtr->updateAddressHashMap(addressTypes_);
+      } catch (const AccountException&) {
+         accountPtr->updateAddressHashMap(instantiatedAddressTypes_);
+      }
+
+      auto& hashMap = accountPtr->getAddressHashMap();
       if (hashMap.empty()) {
          continue;
       }
@@ -824,6 +860,12 @@ std::unique_ptr<AssetAccount> AddressAccount::getAccountForID(
 
       case AssetAccountTypeEnum_ECDH:
          return std::make_unique<AssetAccount_ECDH>(accData);
+
+      case AssetAccountTypeEnum_Imports:
+         return std::make_unique<AssetAccount_Imports>(accData);
+
+      case AssetAccountTypeEnum_ImportsWO:
+         return std::make_unique<AssetAccount_ImportsWO>(accData);
 
       default:
          throw AccountException("[getAccountForID] unknown asset account type");
@@ -1011,10 +1053,17 @@ void AddressAccount::updateInstantiatedAddressType(
    const AssetId& id, AddressEntryType aeType)
 {
    //sanity check
-   if (aeType != AddressEntryType_Default) {
-      auto typeIter = addressTypes_.find(aeType);
-      if (typeIter == addressTypes_.end())
-         throw AccountException("invalid address type");
+   if (aeType == AddressEntryType_Default) {
+      if (addressTypes_.empty()) {
+         throw AccountException("no default address type for this account");
+      }
+   } else {
+      if (!addressTypes_.empty()) {
+         auto typeIter = addressTypes_.find(aeType);
+         if (typeIter == addressTypes_.end()) {
+            throw AccountException("invalid address type");
+         }
+      }
    }
 
    auto iter = instantiatedAddressTypes_.find(id);

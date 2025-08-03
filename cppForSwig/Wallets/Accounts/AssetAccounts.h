@@ -46,19 +46,19 @@ namespace Armory
 
    namespace Accounts
    {
+      using AssetPtr = std::shared_ptr<Assets::AssetEntry>;
       struct AssetAccountData
       {
       public:
          const AssetAccountTypeEnum type_;
          Wallets::AssetAccountId id_;
 
-         std::shared_ptr<Assets::AssetEntry> root_;
+         AssetPtr root_;
          std::shared_ptr<Assets::DerivationScheme> derScheme_;
 
          const std::string dbName_;
 
-         std::map<Wallets::AssetKeyType,
-            std::shared_ptr<Assets::AssetEntry>> assets_;
+         std::map<Wallets::AssetKeyType, AssetPtr> assets_;
          Wallets::AssetKeyType lastUsedIndex_ = -1;
 
          //<assetID, <address type, prefixed address hash>>
@@ -71,7 +71,7 @@ namespace Armory
          AssetAccountData(
             const AssetAccountTypeEnum,
             const Wallets::AssetAccountId&,
-            std::shared_ptr<Assets::AssetEntry>,
+            AssetPtr,
             std::shared_ptr<Assets::DerivationScheme>,
             const std::string&);
 
@@ -108,13 +108,15 @@ namespace Armory
       class AssetAccount : protected Lockable
       {
          friend class AssetAccount_ECDH;
+         friend class AssetAccount_Imports;
+         friend class AssetAccount_ImportsWO;
          friend class AddressAccount;
 
       private:
          std::shared_ptr<AssetAccountData> data_;
 
       private:
-         size_t writeAssetEntry(std::shared_ptr<Assets::AssetEntry>,
+         size_t writeAssetEntry(AssetPtr,
             std::shared_ptr<Wallets::IO::WalletDBInterface>);
          void updateOnDiskAssets(
             std::shared_ptr<Wallets::IO::WalletDBInterface>);
@@ -134,10 +136,10 @@ namespace Armory
             const std::function<void(int)>&);
          void extendPublicChain(
             std::shared_ptr<Wallets::IO::WalletDBInterface>,
-            std::shared_ptr<Assets::AssetEntry>, int32_t,
+            AssetPtr, int32_t,
             const std::function<void(int)>&);
-         std::vector<std::shared_ptr<Assets::AssetEntry>> extendPublicChain(
-            std::shared_ptr<Assets::AssetEntry>, int32_t, int32_t,
+         std::vector<AssetPtr> extendPublicChain(
+            AssetPtr, int32_t, int32_t,
             const std::function<void(int)>&);
 
          void extendPrivateChain(
@@ -151,17 +153,17 @@ namespace Armory
          void extendPrivateChain(
             std::shared_ptr<Wallets::IO::WalletDBInterface>,
             std::shared_ptr<Wallets::Encryption::DecryptedDataContainer>,
-            std::shared_ptr<Assets::AssetEntry>, int32_t);
-         std::vector<std::shared_ptr<Assets::AssetEntry>> extendPrivateChain(
+            AssetPtr, int32_t);
+         std::vector<AssetPtr> extendPrivateChain(
             std::shared_ptr<Wallets::Encryption::DecryptedDataContainer>,
-            std::shared_ptr<Assets::AssetEntry>,
+            AssetPtr,
             int32_t, int32_t);
 
-         std::shared_ptr<Assets::AssetEntry> getOrSetAssetAtIndex(
+         AssetPtr getOrSetAssetAtIndex(
             std::shared_ptr<Wallets::IO::WalletDBInterface>, unsigned);
-         std::shared_ptr<Assets::AssetEntry> getNewAsset(
+         AssetPtr getNewAsset(
             std::shared_ptr<Wallets::IO::WalletDBInterface>);
-         std::shared_ptr<Assets::AssetEntry> peekNextAsset(
+         AssetPtr peekNextAsset(
             std::shared_ptr<Wallets::IO::WalletDBInterface>);
 
          std::shared_ptr<Assets::Asset_PrivateKey> fillPrivateKey(
@@ -179,21 +181,22 @@ namespace Armory
          int32_t getLastComputedIndex(void) const;
          int32_t getHighestUsedIndex(void) const;
          bool isAssetInUse(const Wallets::AssetId&) const;
-         std::shared_ptr<Assets::AssetEntry> getLastAssetWithPrivateKey(void) const;
+         AssetPtr getLastAssetWithPrivateKey(void) const;
 
-         std::shared_ptr<Assets::AssetEntry> getAssetForID(
+         AssetPtr getAssetForID(
             const Wallets::AssetId&) const;
-         std::shared_ptr<Assets::AssetEntry> getAssetForKey(
+         AssetPtr getAssetForKey(
             const Wallets::AssetKeyType&) const;
          bool isAssetIDValid(const Wallets::AssetId&) const;
 
-         void updateAddressHashMap(const std::set<AddressEntryType>&);
-         const AssetAccountData::AddrHashMapType& getAddressHashMap(
-            const std::set<AddressEntryType>&);
+         virtual void updateAddressHashMap(const std::set<AddressEntryType>&);
+         virtual void updateAddressHashMap(
+            const std::map<Wallets::AssetId, AddressEntryType>&);
+         const AssetAccountData::AddrHashMapType& getAddressHashMap(void) const;
 
          const Wallets::AssetAccountId& getID(void) const;
          const SecureBinaryData& getChaincode(void) const;
-         std::shared_ptr<Assets::AssetEntry> getRoot(void) const;
+         AssetPtr getRoot(void) const;
 
          void extendPublicChain(
             std::shared_ptr<Wallets::IO::WalletDBInterface>, int32_t,
@@ -226,6 +229,51 @@ namespace Armory
          Wallets::AssetKeyType getSaltIndex(
             const SecureBinaryData&) const;
       };
+
+      //////////////////////////////////////////////////////////////////////////
+      class AssetAccount_Imports : public AssetAccount
+      {
+      private:
+         unsigned getLookup(void) const override;
+         AssetAccountTypeEnum type(void) const override;
+
+      public:
+         AssetAccount_Imports(std::shared_ptr<AssetAccountData>);
+
+         //virtuals
+         void updateAddressHashMap(const std::set<AddressEntryType>&) override;
+         void updateAddressHashMap(
+            const std::map<Wallets::AssetId, AddressEntryType>&) override;
+
+         //imports
+         Wallets::AssetId importPrivateKey(
+            std::shared_ptr<Wallets::IO::WalletIfaceTransaction>,
+            std::shared_ptr<Wallets::Encryption::DecryptedDataContainer>,
+            const SecureBinaryData&);
+      };
+
+      //////////////////////////////////////////////////////////////////////////
+      class AssetAccount_ImportsWO : public AssetAccount
+      {
+      private:
+         unsigned getLookup(void) const override;
+         AssetAccountTypeEnum type(void) const override;
+
+      public:
+         AssetAccount_ImportsWO(std::shared_ptr<AssetAccountData>);
+
+         //virtuals
+         void updateAddressHashMap(const std::set<AddressEntryType>&) override;
+         void updateAddressHashMap(
+            const std::map<Wallets::AssetId, AddressEntryType>&) override;
+
+         //imports
+         Wallets::AssetId importPublicKey(
+            std::shared_ptr<Wallets::IO::WalletDBInterface>,
+            SecureBinaryData&);
+         Wallets::AssetId importAddressHash(const SecureBinaryData&);
+      };
+
    }; //namespace Accounts
 }; //namespace Armory
 #endif

@@ -151,11 +151,10 @@ struct FilteredZeroConfData
    std::map<BinaryDataRef, std::shared_ptr<std::set<BinaryDataRef>>> keyToSpentScrAddr_;
    std::map<BinaryDataRef, std::set<BinaryDataRef>> keyToFundedScrAddr_;
 
-   std::map<std::string, ParsedZCData> flaggedBDVs_;
-
+   std::map<uint64_t, ParsedZCData> flaggedBDVs_;
    std::shared_ptr<ParsedTx> txPtr_;
 
-   bool isEmpty(void) const { return scrAddrTxioMap_.size() == 0; }
+   bool isEmpty(void) const { return scrAddrTxioMap_.empty(); }
    bool isValid(void) const;
 };
 

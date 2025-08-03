@@ -48,6 +48,8 @@ namespace Armory
    ////////
    namespace Bridge
    {
+      class Callback;
+
       class WalletManager : public Lockable
       {
       private:
@@ -58,6 +60,8 @@ namespace Armory
             Wallets::AddressAccountId,
             std::shared_ptr<WalletContainer>>> wallets_;
          std::map<std::string, std::shared_ptr<WalletContainer>> walletsByDbId_;
+
+         std::shared_ptr<Callback> callbackPtr_;
          std::shared_ptr<AsyncClient::BlockDataViewer> bdvPtr_;
 
       private:
@@ -85,8 +89,10 @@ namespace Armory
 
          /* db setup */
          void registerWallets(void);
-         const std::string& registerWallet(const std::string&,
+         void registerWallet(const std::string&,
             const Wallets::AddressAccountId&, bool);
+         std::shared_ptr<Callback> setupBdvCallback(
+            const std::function<void(BinaryData&)>&);
          void setBdvPtr(std::shared_ptr<AsyncClient::BlockDataViewer>);
 
          /* utils */

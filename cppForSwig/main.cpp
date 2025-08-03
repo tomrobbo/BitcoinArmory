@@ -49,7 +49,7 @@ int main(int argc, char* argv[])
    auto logFilePath = Pathing::logFilePath(LOG_FILE_NAME).string();
    std::cout << "logging in " << logFilePath << std::endl;
    STARTLOGGING(logFilePath, LogLvlDebug);
-   if (!NetworkSettings::useCookie()) {
+   if (!NetworkSettings::ephemeralPeers()) {
       LOGENABLESTDOUT();
    } else {
       LOGDISABLESTDOUT();
@@ -70,12 +70,19 @@ int main(int argc, char* argv[])
          LOGERR << "ArmoryDB cannot start under these conditions. Shutting down!";
          LOGERR << "Make sure to shutdown the conflicting process" <<
             "before trying again (most likely another ArmoryDB instance)";
-         exit(1);
+         exit(-2);
       }
    }
    LOGINFO << "datadir: " << Armory::Config::getDataDir().string();
 
-   {
+   if (NetworkSettings::ephemeralPeers()) {
+      if (NetworkSettings::oneWayAuth()) {
+         LOGERR << "--ephemeral and --oneWayAuth are mutually exclusive for db";
+         exit(-3);
+      }
+      //initAuthPeers will setup the ephemeral keys
+      WebSocketServer::initAuthPeers({{}, nullptr});
+   } else {
       //setup remote peers db, this will block the init process until
       //peers db is unlocked
       auto serverPeersFile = Armory::Config::getDataDir() / SERVER_AUTH_PEER_FILENAME;
@@ -105,14 +112,13 @@ int main(int argc, char* argv[])
    bdmThread.start(DBSettings::initMode());
    if (!DBSettings::checkChain()) {
       WebSocketServer::start(bdmThread.bdm(), false);
+      LOGINFO << "WS server has shut down" << std::endl;
    } else {
       bdmThread.join();
    }
 
-   //stop all threads and clean up
-   WebSocketServer::shutdown();
+   //shutdown BDM and cleanup crypto contexts
    bdmThread.shutdown();
-
    shutdownBIP151CTX();
    CryptoECDSA::shutdown();
 

@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2016-2024, goatpig.                                         //
+//  Copyright (C) 2016-2025, goatpig.                                         //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -722,7 +722,7 @@ namespace {
    ////
    std::unique_ptr<capnp::MessageBuilder> parseStaticRequest(
       StaticRequest::Reader& request, unsigned msgId, Clients* clients,
-      const std::string& bdvId)
+      BdvIdKey bdvId, const btc_pubkey& pubkey)
    {
       auto result = std::make_unique<capnp::MallocMessageBuilder>();
       auto reply = result->initRoot<Codec::BDV::Reply>();
@@ -734,10 +734,9 @@ namespace {
       {
          case StaticRequest::Which::SHUTDOWN:
          {
-            std::string theirCookie = request.getCookie();
-            const auto& thisCookie = Armory::Config::NetworkSettings::cookie();
-            if (thisCookie.empty() || thisCookie != theirCookie) {
-               //we do not inform the caller whether we accept cookies or not
+            if (!WebSocketServer::isMasterKey(pubkey)) {
+               //only a client that completed a 2-way AEAD handshake with
+               //the peers db master key can call this method
                break;
             }
 
@@ -752,6 +751,12 @@ namespace {
 
          case StaticRequest::Which::SHUTDOWN_NODE:
          {
+            if (!WebSocketServer::isMasterKey(pubkey)) {
+               //only a client that completed a 2-way AEAD handshake with
+               //the peers db master key can call this method
+               break;
+            }
+
             if (clients->bdm()->nodeRPC_ != nullptr) {
                clients->bdm()->nodeRPC_->shutdown();
             }
@@ -767,7 +772,6 @@ namespace {
             } else {
                //we should NOT return the bdvId, it's the
                //lws context ptr for the connection
-               staticReply.setRegister("sentinel");
             }
             break;
          }
@@ -815,17 +819,19 @@ namespace {
             auto nodeStatus = clients->bdm()->getNodeStatus();
 
             auto nodeReply = staticReply.initGetNodeStatus();
-            nodeReply.setNode((Codec::Types::NodeStatus::NodeState)nodeStatus.state_);
-            nodeReply.setIsSW(nodeStatus.SegWitEnabled_);
-            nodeReply.setRpc((Codec::Types::NodeStatus::RpcState)nodeStatus.rpcState_);
+            nodeReply.setNode(
+               (Codec::Types::NodeStatus::NodeState)nodeStatus->state_);
+            nodeReply.setIsSW(nodeStatus->SegWitEnabled_);
+            nodeReply.setRpc(
+               (Codec::Types::NodeStatus::RpcState)nodeStatus->rpcState_);
 
             auto chainNotif = nodeReply.initChain();
             chainNotif.setChainState((Codec::Types::ChainStatus::ChainState)
-               nodeStatus.chainStatus_.state());
-            chainNotif.setBlockSpeed(nodeStatus.chainStatus_.getBlockSpeed());
-            chainNotif.setEta(nodeStatus.chainStatus_.getETA());
-            chainNotif.setProgress(nodeStatus.chainStatus_.getProgressPct());
-            chainNotif.setBlocksLeft(nodeStatus.chainStatus_.getBlocksLeft());
+               nodeStatus->chainStatus_.state());
+            chainNotif.setBlockSpeed(nodeStatus->chainStatus_.getBlockSpeed());
+            chainNotif.setEta(nodeStatus->chainStatus_.getETA());
+            chainNotif.setProgress(nodeStatus->chainStatus_.getProgressPct());
+            chainNotif.setBlocksLeft(nodeStatus->chainStatus_.getBlocksLeft());
             break;
          }
 
@@ -906,12 +912,67 @@ namespace {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-std::shared_ptr<BDV_Server_Object> Clients::get(const std::string& id) const
+//BDV_Payload
+BDV_Payload::BDV_Payload(BinaryData packet, BdvPtr bdv,
+   BdvIdKey id, const btc_pubkey& key) :
+   packetData_(std::move(packet)), bdvPtr_(bdv), bdvID_(id), pubkey_(key)
+{}
+
+///////////////////////////////////////////////////////////////////////////////
+uint32_t BDV_Payload::getMessageID() const
 {
-   return BDVs_.get(id);
+   if (messageID_ == UINT32_MAX) {
+      throw std::runtime_error("messageID is unset");
+   }
+   return messageID_;
+}
+
+////
+void BDV_Payload::setMessageID(uint32_t msgId)
+{
+   if (messageID_ != UINT32_MAX) {
+      throw std::runtime_error("messageID is already set");
+   }
+   messageID_ = msgId;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+uint64_t BDV_Payload::getBdvID() const
+{
+   return bdvID_;
+}
+
+////
+const btc_pubkey& BDV_Payload::getPubkey() const
+{
+   return pubkey_;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+const BinaryData& BDV_Payload::getData() const
+{
+   return packetData_;
+}
+
+BinaryData&& BDV_Payload::moveData()
+{
+   return std::move(packetData_);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+BdvPtr BDV_Payload::getBdvPtr() const
+{
+   return bdvPtr_;
+}
+
+////
+BdvPtr&& BDV_Payload::moveBdvPtr()
+{
+   return std::move(bdvPtr_);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+//BDV_Server_Object
 void BDV_Server_Object::setup()
 {
    started_.store(0, std::memory_order_relaxed);
@@ -937,13 +998,7 @@ void BDV_Server_Object::setup()
       case SERVICE_WEBSOCKET:
       case SERVICE_UNITTEST_WITHWS:
       {
-         auto bdid = READHEX(getID());
-         if (bdid.getSize() != BDVID_LENGTH) {
-            throw std::runtime_error("invalid bdv id");
-         }
-
-         auto intid = (uint64_t*)bdid.getPtr();
-         notifications_ = std::make_unique<WS_Callback>(*intid);
+         notifications_ = std::make_unique<WS_Callback>(getID());
          break;
       }
 
@@ -966,7 +1021,7 @@ std::vector<uint8_t>& BDV_Server_Object::getScratchPad()
 
 ///////////////////////////////////////////////////////////////////////////////
 BDV_Server_Object::BDV_Server_Object(
-   const std::string& id, std::shared_ptr<BlockDataManager> bdm) :
+   BdvIdKey id, std::shared_ptr<BlockDataManager> bdm) :
    BlockDataViewer(bdm), bdvID_(id)
 {
    setup();
@@ -1053,7 +1108,7 @@ void BDV_Server_Object::init()
    auto zcstruct = createZcNotification(addrSet);
    auto zcAction = dynamic_cast<BDV_Notification_ZC*>(zcstruct.get());
    if (zcAction != nullptr &&
-      !zcAction->packet_.scrAddrToTxioKeys_.empty()) {
+      !zcAction->packet.scrAddrToTxioKeys_.empty()) {
       scanWallets(std::move(zcstruct));
    }
 
@@ -1086,7 +1141,7 @@ void BDV_Server_Object::init()
 void BDV_Server_Object::processNotification(
    std::shared_ptr<BDV_Notification> notifPtr)
 {
-   auto action = notifPtr->action_type();
+   auto action = notifPtr->actionType();
    if (action < BDV_Progress) {
       //skip all but progress notifications if BDV isn't ready
       if (isReadyFuture_.wait_for(0s) != std::future_status::ready) {
@@ -1113,8 +1168,8 @@ void BDV_Server_Object::processNotification(
 
          //init notif builder
          bool haveZcs = false;
-         if (payload->zcPurgePacket_ != nullptr &&
-            !payload->zcPurgePacket_->invalidatedZcKeys_.empty()) {
+         if (payload->zcPurgePacket != nullptr &&
+            !payload->zcPurgePacket->invalidatedZcKeys_.empty()) {
             notifs.initNotifs(2);
             haveZcs = true;
          } else {
@@ -1126,20 +1181,20 @@ void BDV_Server_Object::processNotification(
          auto heightNotif = notifList[0];
          auto blockData = heightNotif.initNewBlock();
 
-         blockData.setHeight(payload->reorgState_.newTop_->getBlockHeight());
-         if (!payload->reorgState_.prevTopStillValid_) {
+         blockData.setHeight(payload->reorgState.newTop_->getBlockHeight());
+         if (!payload->reorgState.prevTopStillValid_) {
             blockData.setBranchHeight(
-               payload->reorgState_.reorgBranchPoint_->getBlockHeight());
+               payload->reorgState.reorgBranchPoint_->getBlockHeight());
          }
 
          //invalidated zc ids
          if (haveZcs) {
             auto zcNotif = notifList[1];
             auto zcIdList = zcNotif.initInvalidatedZc(
-               payload->zcPurgePacket_->invalidatedZcKeys_.size());
+               payload->zcPurgePacket->invalidatedZcKeys_.size());
 
             unsigned i=0;
-            for (const auto& zcId : payload->zcPurgePacket_->invalidatedZcKeys_) {
+            for (const auto& zcId : payload->zcPurgePacket->invalidatedZcKeys_) {
                zcIdList.set(i++, capnp::Data::Builder(
                   (uint8_t*)zcId.second.getPtr(), zcId.second.getSize()));
             }
@@ -1156,9 +1211,9 @@ void BDV_Server_Object::processNotification(
 
          auto payload =
             std::dynamic_pointer_cast<BDV_Notification_Refresh>(notifPtr);
-         refreshNotif.setType((uint32_t)payload->refresh_);
+         refreshNotif.setType((uint32_t)payload->refresh);
          auto refreshIds = refreshNotif.initIds(1);
-         refreshIds.set(0, payload->refreshID_);
+         refreshIds.set(0, payload->refreshID);
          break;
       }
 
@@ -1166,8 +1221,8 @@ void BDV_Server_Object::processNotification(
       {
          unsigned notifCount = 1;
          auto payload = std::dynamic_pointer_cast<BDV_Notification_ZC>(notifPtr);
-         if (payload->packet_.purgePacket_ != nullptr &&
-            !payload->packet_.purgePacket_->invalidatedZcKeys_.empty()) {
+         if (payload->packet.purgePacket_ != nullptr &&
+            !payload->packet.purgePacket_->invalidatedZcKeys_.empty()) {
             notifCount = 2;
          }
 
@@ -1175,12 +1230,12 @@ void BDV_Server_Object::processNotification(
          auto notifList = notifs.initNotifs(notifCount);
          auto notif = notifList[0];
          auto zcNotif = notif.initZc();
-         historyPageToCapn(payload->leVec_, zcNotif);
+         historyPageToCapn(payload->leVec, zcNotif);
 
          if (notifCount == 2) {
             //invalidated zc hashes
             const auto& invalidatedHashes =
-               payload->packet_.purgePacket_->invalidatedZcKeys_;
+               payload->packet.purgePacket_->invalidatedZcKeys_;
             auto capnNotif = notifList[1];
             auto invalNotif = capnNotif.initInvalidatedZc(
                invalidatedHashes.size());
@@ -1204,17 +1259,17 @@ void BDV_Server_Object::processNotification(
          auto payload =
             std::dynamic_pointer_cast<BDV_Notification_Progress>(notifPtr);
 
-         progressNotif.setPhase((uint32_t)payload->phase_);
-         progressNotif.setProgress(payload->progress_);
-         progressNotif.setTime(payload->time_);
-         progressNotif.setNumericProgress(payload->numericProgress_);
+         progressNotif.setPhase((uint32_t)payload->phase);
+         progressNotif.setProgress(payload->progress);
+         progressNotif.setTime(payload->time);
+         progressNotif.setNumericProgress(payload->numericProgress);
 
-         if (payload->walletIDs_.empty()) {
+         if (payload->walletIDs.empty()) {
             break;
          }
-         auto progressIds = progressNotif.initIds(payload->walletIDs_.size());
+         auto progressIds = progressNotif.initIds(payload->walletIDs.size());
          unsigned i=0;
-         for (const auto& id : payload->walletIDs_) {
+         for (const auto& id : payload->walletIDs) {
             progressIds.set(i++, id);
          }
          break;
@@ -1228,20 +1283,19 @@ void BDV_Server_Object::processNotification(
 
          auto payload =
             std::dynamic_pointer_cast<BDV_Notification_NodeStatus>(notifPtr);
+         auto& nodeStatus = payload->status;
 
-         auto& nodeStatus = payload->status_;
-
-         nodeNotif.setNode((Codec::Types::NodeStatus::NodeState)nodeStatus.state_);
-         nodeNotif.setIsSW(nodeStatus.SegWitEnabled_);
-         nodeNotif.setRpc((Codec::Types::NodeStatus::RpcState)nodeStatus.rpcState_);
+         nodeNotif.setNode((Codec::Types::NodeStatus::NodeState)nodeStatus->state_);
+         nodeNotif.setIsSW(nodeStatus->SegWitEnabled_);
+         nodeNotif.setRpc((Codec::Types::NodeStatus::RpcState)nodeStatus->rpcState_);
 
          auto chainNotif = nodeNotif.getChain();
          chainNotif.setChainState((Codec::Types::ChainStatus::ChainState)
-            nodeStatus.chainStatus_.state());
-         chainNotif.setBlockSpeed(nodeStatus.chainStatus_.getBlockSpeed());
-         chainNotif.setEta(nodeStatus.chainStatus_.getETA());
-         chainNotif.setProgress(nodeStatus.chainStatus_.getProgressPct());
-         chainNotif.setBlocksLeft(nodeStatus.chainStatus_.getBlocksLeft());
+            nodeStatus->chainStatus_.state());
+         chainNotif.setBlockSpeed(nodeStatus->chainStatus_.getBlockSpeed());
+         chainNotif.setEta(nodeStatus->chainStatus_.getETA());
+         chainNotif.setProgress(nodeStatus->chainStatus_.getProgressPct());
+         chainNotif.setBlocksLeft(nodeStatus->chainStatus_.getBlocksLeft());
          break;
       }
 
@@ -1354,7 +1408,7 @@ void BDV_Server_Object::flagRefresh(
    auto notif = std::make_unique<BDV_Notification_Refresh>(
       getID(), refresh, refreshID);
    if (zcPtr != nullptr) {
-      notif->zcPacket_ = std::move(zcPtr->packet_);
+      notif->zcPacket = std::move(zcPtr->packet);
    }
 
    if (notifLambda_) {
@@ -1377,9 +1431,9 @@ WebSocketMessagePartial BDV_Server_Object::preparePayload(
    }
 
    auto nextId = lastValidMessageId_ + 1;
-   if (!packet->packetData_.empty()) {
+   if (!packet->getData().empty()) {
       //grab and check the packet's message id
-      auto msgId = WebSocketMessagePartial::readMessageId(packet->packetData_);
+      auto msgId = WebSocketMessagePartial::readMessageId(packet->getData());
       if (msgId != UINT32_MAX) {
          //get the PartialMessage object for this id
          auto msgIter = messageMap_.find(msgId);
@@ -1390,7 +1444,8 @@ WebSocketMessagePartial BDV_Server_Object::preparePayload(
          auto& msgRef = msgIter->second;
 
          //try to reconstruct the message
-         auto parsed = msgRef.parsePacket(packet->packetData_);
+         auto packetData = packet->moveData();
+         auto parsed = msgRef.parsePacket(packetData);
          if (!parsed) {
             //failed to reconstruct from this packet, this
             //shouldn't happen anymore
@@ -1437,7 +1492,7 @@ WebSocketMessagePartial BDV_Server_Object::preparePayload(
 
    //update ids
    lastValidMessageId_ = nextId;
-   packet->messageID_ = nextId;
+   packet->setMessageID(nextId);
 
    //return the message to be processed
    return msgObj;
@@ -1448,10 +1503,12 @@ const std::string& BDV_Server_Object::getLedgerDelegate()
 {
    //return ledger delegate for bdv wallets
    const auto& id = getID();
-   auto iter = delegateMap_.find(id);
+   BinaryDataRef idRef{(uint8_t*)&id, sizeof(BdvIdKey)};
+   auto idHex = idRef.toHexStr();
+   auto iter = delegateMap_.find(idHex);
    if (iter == delegateMap_.end()) {
       auto delegate = getLedgerDelegateForWallets();
-      iter = delegateMap_.emplace(id, delegate).first;
+      iter = delegateMap_.emplace(idHex, delegate).first;
    }
    return iter->first;
 }
@@ -1510,10 +1567,7 @@ std::unique_ptr<BDV_Notification_ZC> BDV_Server_Object::createZcNotification(
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-//
 // Clients
-//
-///////////////////////////////////////////////////////////////////////////////
 Clients::Clients(std::shared_ptr<BlockDataManager> bdm) :
    bdm_(bdm)
 {}
@@ -1573,6 +1627,12 @@ void Clients::init()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+std::shared_ptr<BDV_Server_Object> Clients::get(BdvIdKey id) const
+{
+   return BDVs_.get(id);
+}
+
+///////////////////////////////////////////////////////////////////////////////
 void Clients::bdvMaintenanceLoop()
 {
    while (true) {
@@ -1580,26 +1640,24 @@ void Clients::bdvMaintenanceLoop()
       try {
          notifPtr = std::move(outerBDVNotifStack_.pop_front());
       } catch (const Threading::StopBlockingLoop&) {
-         LOGINFO << "Shutting down BDV event loop";
+         LOGINFO << "Exiting BDV event loop";
          break;
       }
 
-      const auto& bdvID = notifPtr->bdvID();
-      if (bdvID.empty()) {
-         //empty bdvID means broadcast notification to all BDVs
+      if (notifPtr->broadcast()) {
          const auto& bdvs = BDVs_.get();
          for (const auto& bdv_pair : bdvs) {
             auto notifPacket = std::make_shared<BDV_Notification_Packet>();
-            notifPacket->bdvPtr_ = bdv_pair.second;
-            notifPacket->notifPtr_ = notifPtr;
+            notifPacket->bdvPtr = bdv_pair.second;
+            notifPacket->notifPtr = notifPtr;
             innerBDVNotifStack_.push_back(std::move(notifPacket));
          }
       } else {
          //grab bdv
-         auto bdvPtr = BDVs_.get(bdvID);
+         auto bdvPtr = BDVs_.get(notifPtr->bdvID());
          auto notifPacket = std::make_shared<BDV_Notification_Packet>();
-         notifPacket->bdvPtr_ = bdvPtr;
-         notifPacket->notifPtr_ = notifPtr;
+         notifPacket->bdvPtr = bdvPtr;
+         notifPacket->notifPtr = notifPtr;
          innerBDVNotifStack_.push_back(std::move(notifPacket));
       }
    }
@@ -1616,12 +1674,12 @@ void Clients::bdvMaintenanceThread()
          break;
       }
 
-      if (notifPtr->bdvPtr_ == nullptr) {
+      if (notifPtr->bdvPtr == nullptr) {
          LOGWARN << "null bdvPtr in notification";
          continue;
       }
 
-      auto bdvPtr = notifPtr->bdvPtr_;
+      auto bdvPtr = notifPtr->bdvPtr;
       unsigned zero = 0;
       if (!bdvPtr->notificationProcess_threadLock_.compare_exchange_weak(
          zero, 1)) {
@@ -1636,7 +1694,7 @@ void Clients::bdvMaintenanceThread()
          continue;
       }
 
-      bdvPtr->processNotification(notifPtr->notifPtr_);
+      bdvPtr->processNotification(notifPtr->notifPtr);
       bdvPtr->notificationProcess_threadLock_.store(0);
    }
 }
@@ -1644,12 +1702,8 @@ void Clients::bdvMaintenanceThread()
 ///////////////////////////////////////////////////////////////////////////////
 void Clients::shutdown()
 {
-   std::unique_lock<std::mutex> lock(shutdownMutex_, std::defer_lock);
-   if (!lock.try_lock()) {
-      return;
-   }
-
    /*shutdown sequence*/
+   std::unique_lock<std::mutex> lock(shutdownMutex_);
    if (!run_.load(std::memory_order_relaxed)) {
       return;
    }
@@ -1679,7 +1733,6 @@ void Clients::shutdown()
 
    //exit BDM maintenance thread
    bdm_->shutdown();
-
    for (auto& thr : controlThreads_) {
       if (thr.joinable()) {
          thr.join();
@@ -1698,10 +1751,9 @@ void Clients::unregisterAllBDVs()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-bool Clients::registerBDV(const std::string& magicWord,
-   const std::string& bdvId)
+bool Clients::registerBDV(const std::string& magicWord, BdvIdKey bdvId)
 {
-   if (magicWord.empty() || bdvId.empty()) {
+   if (magicWord.empty() || bdvId == BDV_NOTIF_BROADCAST) {
       return false;
    }
    auto thisMagicWord =
@@ -1724,9 +1776,9 @@ bool Clients::registerBDV(const std::string& magicWord,
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-void Clients::unregisterBDV(std::string bdvId)
+void Clients::unregisterBDV(BdvIdKey bdvId)
 {
-   unregBDVQueue_.push_back(move(bdvId));
+   unregBDVQueue_.push_back(std::move(bdvId));
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1734,7 +1786,7 @@ void Clients::unregisterBDVThread()
 {
    while (true) {
       //grab bdv id
-      std::string bdvId;
+      BdvIdKey bdvId;
       try {
          bdvId = std::move(unregBDVQueue_.pop_front());
       } catch(const Threading::StopBlockingLoop&) {
@@ -1779,7 +1831,6 @@ void Clients::notificationThread()
    while (true) {
       bool timedout = true;
       std::shared_ptr<BDV_Notification> notifPtr;
-
       try {
          notifPtr = std::move(bdm_->notificationStack_.pop_front(60s));
          timedout = false;
@@ -1793,7 +1844,7 @@ void Clients::notificationThread()
       }
 
       //trigger gc thread
-      if (timedout == true || notifPtr->action_type() != BDV_Progress) {
+      if (timedout == true || notifPtr->actionType() != BDV_Progress) {
          gcCommands_.push_back(true);
       }
 
@@ -1801,7 +1852,7 @@ void Clients::notificationThread()
       if (notifPtr == nullptr) {
          continue;
       }
-      auto aType = notifPtr->action_type();
+      auto aType = notifPtr->actionType();
       auto fatal = notifPtr->fatal();
       outerBDVNotifStack_.push_back(std::move(notifPtr));
 
@@ -1818,7 +1869,8 @@ void Clients::notificationThread()
 void Clients::parseStandAlonePayload(std::shared_ptr<BDV_Payload> payloadPtr)
 {
    WebSocketMessagePartial msg;
-   if (!msg.parsePacket(payloadPtr->packetData_)) {
+   auto packetData = payloadPtr->moveData();
+   if (!msg.parsePacket(packetData)) {
       //we only allow single packet payloads in here
       return;
    }
@@ -1837,12 +1889,13 @@ void Clients::parseStandAlonePayload(std::shared_ptr<BDV_Payload> payloadPtr)
 
       auto staticRequest = request.getStatic();
       auto builderPtr = parseStaticRequest(
-         staticRequest, request.getMsgId(), this, payloadPtr->hexID);
+         staticRequest, request.getMsgId(), this,
+         payloadPtr->getBdvID(), payloadPtr->getPubkey());
       if (builderPtr != nullptr) {
-         WebSocketServer::write(
-            payloadPtr->bdvID_, payloadPtr->messageID_,
+         WebSocketServer::write(payloadPtr->getBdvID(), 0,
             std::make_unique<WritePayload_Capnp>(
-               std::move(builderPtr), std::vector<uint8_t>{}));
+               std::move(builderPtr), std::vector<uint8_t>{})
+         );
       }
    } catch (const std::runtime_error&) {}
 }
@@ -1864,20 +1917,20 @@ void Clients::messageParserThread(void)
          continue;
       }
 
-      if (payloadPtr->bdvPtr_ == nullptr) {
+      auto bdvPtr = payloadPtr->getBdvPtr();
+      if (bdvPtr == nullptr) {
          //no bdv, is this a static command?
          parseStandAlonePayload(payloadPtr);
          continue;
       }
 
-      auto bdvPtr = payloadPtr->bdvPtr_;
       unsigned zero = 0;
       if (bdvPtr && !bdvPtr->packetProcess_threadLock_.compare_exchange_weak(
          zero, 1, std::memory_order_relaxed, std::memory_order_relaxed)) {
          //Failed to grab lock, there's already a thread processing a payload
          //for this bdv. Insert the payload back into the queue. Another 
          //thread will eventually pick it up and successfully grab the lock 
-         if(payloadPtr == nullptr) {
+         if (payloadPtr == nullptr) {
             LOGERR << "!!!!!! empty payload at reinsertion";
          }
 
@@ -1909,14 +1962,14 @@ void Clients::messageParserThread(void)
             with no data on the queue to assign this bdv a new processing
             thread.
 
-            This is done because we don't want one bdv to hog a thread 
+            This is done because we don't want one bdv to hog a thread
             constantly if it has a lot of queue up messages. It should
             complete for a thread like all other bdv objects, regardless
             of the its message queue depth.
             */
-            auto flagPacket = std::make_shared<BDV_Payload>();
-            flagPacket->bdvPtr_ = bdvPtr;
-            flagPacket->bdvID_ = payloadPtr->bdvID_;
+            auto flagPacket = std::make_shared<BDV_Payload>(
+               BinaryData{}, bdvPtr, payloadPtr->getBdvID(),
+               payloadPtr->getPubkey());
             packetQueue_.push_back(std::move(flagPacket));
          }
       }
@@ -1927,7 +1980,7 @@ void Clients::messageParserThread(void)
       //write return value if any
       if (result != nullptr) {
          WebSocketServer::write(
-            payloadPtr->bdvID_, payloadPtr->messageID_,
+            payloadPtr->getBdvID(), payloadPtr->getMessageID(),
             std::move(result)
          );
       }
@@ -1942,8 +1995,8 @@ void Clients::broadcastThroughRPC()
       int errCode, const std::string& verbose)->void
    {
       auto notifPacket = std::make_shared<BDV_Notification_Packet>();
-      notifPacket->bdvPtr_ = bdvPtr;
-      notifPacket->notifPtr_ = std::make_shared<BDV_Notification_Error>(
+      notifPacket->bdvPtr = bdvPtr;
+      notifPacket->notifPtr = std::make_shared<BDV_Notification_Error>(
          bdvPtr->getID(), errCode, hash, verbose);
       innerBDVNotifStack_.push_back(std::move(notifPacket));
    };
@@ -1966,7 +2019,7 @@ void Clients::broadcastThroughRPC()
       {
          //if this is a RPC fallback from a timed out P2P zc push
          //we may have extra requestors attached to this broadcast
-         std::set<std::string> extraRequestors;
+         std::set<BdvIdKey> extraRequestors;
          for (const auto& exReq : packet.extraRequestors_) {
             extraRequestors.emplace(exReq->getID());
          }
@@ -2067,12 +2120,17 @@ void Clients::broadcastThroughRPC()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+void Clients::queuePayload(std::shared_ptr<BDV_Payload>& payload)
+{
+   packetQueue_.push_back(std::move(payload));
+}
+
+////////
 std::unique_ptr<Socket_WritePayload> Clients::processCommand(
    std::shared_ptr<BDV_Payload> payload)
 {
    //clear bdvPtr from the payload to avoid circular ownership
-   auto bdvPtr = payload->bdvPtr_;
-   payload->bdvPtr_.reset();
+   auto bdvPtr = payload->moveBdvPtr();
 
    //process payload
    auto preparedPayload = bdvPtr->preparePayload(payload);
@@ -2094,7 +2152,8 @@ std::unique_ptr<Socket_WritePayload> Clients::processCommand(
          //process static command
          auto staticRequest = request.getStatic();
          auto builderPtr = parseStaticRequest(
-            staticRequest, request.getMsgId(), this, payload->hexID);
+            staticRequest, request.getMsgId(), this,
+            payload->getBdvID(), payload->getPubkey());
          if (builderPtr != nullptr) {
             return std::make_unique<WritePayload_Capnp>(
                std::move(builderPtr), std::vector<uint8_t>{});
@@ -2133,13 +2192,14 @@ std::unique_ptr<Socket_WritePayload> Clients::processCommand(
    return nullptr;
 }
 
+///////////////////////////////////////////////////////////////////////////////
 void Clients::rpcBroadcast(RpcBroadcastPacket& packet)
 {
    rpcBroadcastQueue_.push_back(std::move(packet));
 }
 
-void Clients::p2pBroadcast(
-   const std::string& bdvId, std::vector<BinaryDataRef>& rawZCs)
+////////
+void Clients::p2pBroadcast(BdvIdKey bdvId, std::vector<BinaryDataRef>& rawZCs)
 {
    //run through submitted ZCs, prune already mined ones
    auto db = bdm_->getIFace();
@@ -2151,9 +2211,9 @@ void Clients::p2pBroadcast(
       if (!dbKey.empty()) {
          //notify the bdv of the error
          auto notifPacket = std::make_shared<BDV_Notification_Packet>();
-         notifPacket->bdvPtr_ = BDVs_.get(bdvId);
+         notifPacket->bdvPtr = BDVs_.get(bdvId);
 
-         notifPacket->notifPtr_ = std::make_shared<BDV_Notification_Error>(
+         notifPacket->notifPtr = std::make_shared<BDV_Notification_Error>(
             bdvId,
             (int)ArmoryErrorCodes::ZcBroadcast_AlreadyInChain,
             hash, "RPC broadcast error: Already in chain"
@@ -2183,8 +2243,8 @@ void Clients::p2pBroadcast(
          if (fallbackStruct.err_ != ArmoryErrorCodes::ZcBatch_Timeout) {
             //signal error to caller
             auto notifPacket = std::make_shared<BDV_Notification_Packet>();
-            notifPacket->bdvPtr_ = bdvPtr;
-            notifPacket->notifPtr_ = std::make_shared<BDV_Notification_Error>(
+            notifPacket->bdvPtr = bdvPtr;
+            notifPacket->notifPtr = std::make_shared<BDV_Notification_Error>(
                bdvId,
                (int)fallbackStruct.err_, fallbackStruct.txHash_, std::string{}
             );
@@ -2193,8 +2253,8 @@ void Clients::p2pBroadcast(
             //then signal extra requestors
             for (const auto& extraBDV : extraRequestors) {
                auto notifPacket = std::make_shared<BDV_Notification_Packet>();
-               notifPacket->bdvPtr_ = extraBDV;
-               notifPacket->notifPtr_ = std::make_shared<BDV_Notification_Error>(
+               notifPacket->bdvPtr = extraBDV;
+               notifPacket->notifPtr = std::make_shared<BDV_Notification_Error>(
                   extraBDV->getID(),
                   (int)fallbackStruct.err_, fallbackStruct.txHash_, std::string{}
                );
@@ -2229,10 +2289,7 @@ void Clients::p2pBroadcast(
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-//
 // Callback
-//
-///////////////////////////////////////////////////////////////////////////////
 Callback::~Callback()
 {}
 
@@ -2265,23 +2322,20 @@ BinaryData UnitTest_Callback::getNotification()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-//
 // BDVMap
-//
-///////////////////////////////////////////////////////////////////////////////
 void BDVMap::add(std::shared_ptr<BDV_Server_Object> bdvObj)
 {
    std::unique_lock<std::mutex> lock(mu);
    bdvs.emplace(bdvObj->getID(), bdvObj);
 }
 
-void BDVMap::del(const std::string& bdvId)
+void BDVMap::del(BdvIdKey bdvId)
 {
    std::unique_lock<std::mutex> lock(mu);
    bdvs.erase(bdvId);
 }
 
-std::shared_ptr<BDV_Server_Object> BDVMap::get(const std::string& bdvId) const
+std::shared_ptr<BDV_Server_Object> BDVMap::get(BdvIdKey bdvId) const
 {
    std::unique_lock<std::mutex> lock(mu);
    auto iter = bdvs.find(bdvId);
@@ -2291,7 +2345,7 @@ std::shared_ptr<BDV_Server_Object> BDVMap::get(const std::string& bdvId) const
    return iter->second;
 }
 
-std::map<std::string, std::shared_ptr<BDV_Server_Object>> BDVMap::get() const
+std::map<BdvIdKey, std::shared_ptr<BDV_Server_Object>> BDVMap::get() const
 {
    std::unique_lock<std::mutex> lock(mu);
    return bdvs;

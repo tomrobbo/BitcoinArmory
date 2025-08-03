@@ -79,8 +79,7 @@ int main(int argc, char* argv[])
    bridge->setWriteLambda(pushPayloadLbd);
 
    //connect
-   if (!sockPtr->connectToRemote())
-   {
+   if (!sockPtr->connectToRemote()) {
       LOGERR << "cannot find ArmoryQt client, shutting down";
       return -1;
    }

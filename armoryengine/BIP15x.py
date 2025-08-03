@@ -15,7 +15,8 @@ BIP15X_READY         = "ready"
 CHACHA20POLY1305MAXBYTESSENT = 1200
 CHACHA20POLY1305MAXPACKETSIZE = 1024 * 1024 * 1024 #1MB
 
-import sys
+import sys, os
+from .ArmoryUtils import ARMORY_HOME_DIR
 from .c20p1305 import lib, ffi
 
 AEAD_THRESHOLD_BEGIN      = 100,
@@ -139,8 +140,9 @@ class BIP15xConnection(object):
 
    #############################################################################
    def serverStartHandshake(self):
-      #load client cookie
-      with open("./client_cookie", "rb") as cookieFile:
+      #grab client cookie
+      cookiePath = os.path.join(ARMORY_HOME_DIR, "client_cookie")
+      with open(cookiePath, "rb") as cookieFile:
          fileData = cookieFile.read()
          self.clientPubkey = bytes(fileData[0:33])
 
@@ -220,7 +222,7 @@ class BIP15xConnection(object):
 
          #sanity check
          if lib.isNull(authReply):
-             raise AEAD_Error("auth reply failure")
+            raise AEAD_Error("auth reply failure")
 
          #append header
          authReplyPy = bytes(AEAD_REPLY) + \
@@ -239,8 +241,8 @@ class BIP15xConnection(object):
          self.step = AEAD_PROPOSE
 
          #check propose
-         if not lib.bip150_check_authpropose(\
-            payload, len(payload), \
+         if not lib.bip150_check_authpropose(
+            payload, len(payload),
             self.inSession.channel, self.clientPubkey):
             raise AEAD_Error("invalid propose")
 
@@ -250,7 +252,7 @@ class BIP15xConnection(object):
 
          #sanity check
          if lib.isNull(authChallenge):
-             raise AEAD_Error("auth reply failure")
+            raise AEAD_Error("auth reply failure")
 
          #append header
          authChallengePy = bytes(AEAD_CHALLENGE) + \

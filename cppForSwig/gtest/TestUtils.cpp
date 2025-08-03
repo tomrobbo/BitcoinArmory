@@ -302,9 +302,9 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   std::string registerBDV(Clients* clients, const BinaryData& magic_word)
+   BdvIdKey registerBDV(Clients* clients, const BinaryData& magic_word)
    {
-      std::string bdvID = "0102030405060708";
+      BdvIdKey bdvID = 123456789;
       if (!clients->registerBDV(magic_word.toHexStr(), bdvID)) {
          return {};
       }
@@ -312,34 +312,31 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   void goOnline(Clients* clients, const string& id)
+   void goOnline(Clients* clients, BdvIdKey id)
    {
       capnp::MallocMessageBuilder message(128);
       auto payload = message.getRoot<Codec::BDV::Request>();
 
       auto bdvRequest = payload.initBdv();
-      bdvRequest.setBdvId(id);
       bdvRequest.setGoOnline();
 
       processCommand(clients, id, serializeCapnp(message));
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   const shared_ptr<BDV_Server_Object> getBDV(Clients* clients, const string& id)
+   const shared_ptr<BDV_Server_Object> getBDV(Clients* clients, BdvIdKey id)
    {
       return clients->get(id);
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   void registerWallet(Clients* clients, const string& bdvId,
+   void registerWallet(Clients* clients, BdvIdKey bdvId,
       const vector<BinaryData>& scrAddrs, const string& wltName,
       bool isLockbox, bool waitOnReg)
    {
       capnp::MallocMessageBuilder message;
       auto payload = message.initRoot<Codec::BDV::Request>();
-
       auto bdvRequest = payload.initBdv();
-      bdvRequest.setBdvId(bdvId);
 
       auto regReq = bdvRequest.initRegisterWallet();
       regReq.setWalletId(wltName);
@@ -390,21 +387,13 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   void regLockbox(Clients* clients, const string& bdvId,
-      const vector<BinaryData>& scrAddrs, const string& wltName, bool waitOnReg)
-   {
-      registerWallet(clients, bdvId, scrAddrs, wltName, true, waitOnReg);
-   }
-
-   /////////////////////////////////////////////////////////////////////////////
    vector<uint64_t> getBalanceAndCount(Clients* clients,
-      const string& bdvId, const string& walletId, unsigned blockheight)
+      BdvIdKey bdvId, const string& walletId, unsigned blockheight)
    {
       capnp::MallocMessageBuilder message;
       auto payload = message.initRoot<Codec::BDV::Request>();
 
       auto walletRequest = payload.initWallet();
-      walletRequest.setBdvId(bdvId);
       walletRequest.setWalletId(walletId);
       walletRequest.setGetBalanceAndCount(blockheight);
 
@@ -428,13 +417,12 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   string getLedgerDelegate(Clients* clients, const string& bdvId)
+   string getLedgerDelegate(Clients* clients, BdvIdKey bdvId)
    {
       capnp::MallocMessageBuilder message;
       auto payload = message.initRoot<Codec::BDV::Request>();
 
       auto bdvRequest = payload.initBdv();
-      bdvRequest.setBdvId(bdvId);
       bdvRequest.setGetLedgerDelegate();
 
       //parse reply
@@ -450,7 +438,7 @@ namespace DBTestUtils
 
    /////////////////////////////////////////////////////////////////////////////
    vector<DBClientClasses::LedgerEntry> getHistoryPage(
-      Clients* clients, const std::string& bdvId,
+      Clients* clients, BdvIdKey bdvId,
       const string& delegateId, uint32_t pageId)
    {
       capnp::MallocMessageBuilder message;
@@ -478,7 +466,7 @@ namespace DBTestUtils
 
    /////////////////////////////////////////////////////////////////////////////
    std::tuple<BinaryData, unsigned> waitOnSignal(
-      Clients* clients, const string& bdvId, int signal)
+      Clients* clients, BdvIdKey bdvId, int signal)
    {
       auto processCallback = [signal](const BinaryData& packet)->int
       {
@@ -518,11 +506,11 @@ namespace DBTestUtils
    void waitOnBDMSignal(std::shared_ptr<BlockDataManager> bdm, BDV_Action action)
    {
       while (true) {
-            try {
+         try {
             auto notif = std::move(bdm->notificationStack_.pop_front());
             if (notif == nullptr) {
                continue;
-            } else if (notif->action_type() == action) {
+            } else if (notif->actionType() == action) {
                return;
             }
          } catch (...) {
@@ -532,7 +520,7 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   void waitOnBDMReady(Clients* clients, const string& bdvId)
+   void waitOnBDMReady(Clients* clients, BdvIdKey bdvId)
    {
       waitOnSignal(clients, bdvId, (int)Codec::BDV::Notification::READY);
    }
@@ -545,14 +533,14 @@ namespace DBTestUtils
 
    /////////////////////////////////////////////////////////////////////////////
    std::tuple<BinaryData, unsigned> waitOnNewBlockSignal(
-      Clients* clients, const string& bdvId)
+      Clients* clients, BdvIdKey bdvId)
    {
       return waitOnSignal(clients, bdvId, (int)Codec::BDV::Notification::NEW_BLOCK);
    }
 
    /////////////////////////////////////////////////////////////////////////////
    pair<vector<DBClientClasses::LedgerEntry>, set<BinaryData>> waitOnNewZcSignal(
-      Clients* clients, const string& bdvId)
+      Clients* clients, BdvIdKey bdvId)
    {
       auto result = waitOnSignal(clients, bdvId,
          (int)Codec::BDV::Notification::ZC);
@@ -591,7 +579,7 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   void waitOnWalletRefresh(Clients* clients, const string& bdvId,
+   void waitOnWalletRefresh(Clients* clients, BdvIdKey bdvId,
       const std::string& wltId)
    {
       while (true) {
@@ -713,14 +701,13 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   Tx getTxByHash(Clients* clients, const string bdvId,
+   Tx getTxByHash(Clients* clients, BdvIdKey bdvId,
       const BinaryData& txHash)
    {
       capnp::MallocMessageBuilder message;
       auto payload = message.initRoot<Codec::BDV::Request>();
 
       auto bdvRequest = payload.initBdv();
-      bdvRequest.setBdvId(bdvId);
       auto hashReq = bdvRequest.initGetTxByHash(1);
       hashReq.set(0, capnp::Data::Builder(
          (uint8_t*)txHash.getPtr(), txHash.getSize()));
@@ -746,7 +733,7 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   std::vector<UTXO> getUtxoForAddress(Clients* clients, const string bdvId,
+   std::vector<UTXO> getUtxoForAddress(Clients* clients, BdvIdKey bdvId,
       const BinaryData& scrAddr, bool withZc)
    {
       //create capnp request
@@ -754,7 +741,6 @@ namespace DBTestUtils
       auto payload = message.initRoot<Codec::BDV::Request>();
 
       auto addrReq = payload.initAddress();
-      addrReq.setBdvId(bdvId);
       auto capnAddr = addrReq.getAddress();
       capnAddr.setBody(capnp::Data::Builder(
          (uint8_t*)scrAddr.getPtr(), scrAddr.getSize()
@@ -869,13 +855,12 @@ namespace DBTestUtils
 
    /////////////////////////////////////////////////////////////////////////////
    void updateWalletsLedgerFilter(
-      Clients* clients, const string& bdvId, const vector<string>& idVec)
+      Clients* clients, BdvIdKey bdvId, const vector<string>& idVec)
    {
       capnp::MallocMessageBuilder message;
       auto payload = message.initRoot<Codec::BDV::Request>();
 
       auto bdvRequest = payload.initBdv();
-      bdvRequest.setBdvId(bdvId);
       auto walletIds = bdvRequest.initUpdateWalletsLedgerFilter(idVec.size());
       for (unsigned i=0; i<idVec.size(); i++) {
          walletIds.set(i, idVec[i]);
@@ -901,7 +886,7 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   BinaryData processCommand(Clients* clients, const std::string& bdvId,
+   BinaryData processCommand(Clients* clients, BdvIdKey bdvId,
       BinaryData msg)
    {
       auto bdVec = WebSocketMessageCodec::serialize(
@@ -911,19 +896,13 @@ namespace DBTestUtils
       if (bdVec.size() > 1) {
          LOGWARN << "large message in unit tests";
       }
-
-      auto payload = make_shared<BDV_Payload>();
-      payload->messageID_ = 0;
-      payload->bdvID_ = 0;
-
       auto bdRef = bdVec[0].getSliceRef(
          LWS_PRE, bdVec[0].getSize() - LWS_PRE);
-      payload->packetData_ = bdRef;
 
-      BinaryData zero;
-      zero.resize(8);
-      memset(zero.getPtr(), 0, 8);
-      payload->bdvPtr_ = clients->get(bdvId);
+      btc_pubkey key;
+      auto payload = std::make_shared<BDV_Payload>(
+         bdRef, clients->get(bdvId), bdvId, key
+      );
 
       auto reply = clients->processCommand(payload);
       if (reply == nullptr) {

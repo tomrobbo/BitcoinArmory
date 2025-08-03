@@ -8029,6 +8029,116 @@ TEST_F(WalletsTest, isAssetIdInUse)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+TEST_F(WalletsTest, ImportPublicKeys)
+{
+   IO::CreateWalletParams params{
+      homedir_,
+      Armory::Passphrase::SetNew{1ms, 0, {}},
+      Armory::Passphrase::SetNew{1ms, 0, {}},
+      nullptr, 0
+   };
+
+   //create a blank WO wallet
+   auto wltWO = AssetWallet_Single::createBlank("walletWO1", params);
+
+   try {
+      //setup the import account
+      auto importAccId = wltWO->setupImportAccount();
+      ASSERT_EQ(importAccId.toHexStr(), "00001201");
+
+      auto importAddrAcc = wltWO->getAccountForID(importAccId);
+      ASSERT_NE(importAddrAcc, nullptr);
+
+      auto outerAcc = importAddrAcc->getOuterAccount();
+      auto importAcc = dynamic_cast<AssetAccount_ImportsWO*>(outerAcc.get());
+      ASSERT_NE(importAcc, nullptr);
+   } catch (const std::exception& e) {
+      std::cout << e.what() << std::endl;
+      ASSERT_TRUE(false);
+   }
+
+   std::map<BinaryData, AssetId> keyToAddrMap;
+   auto checkAddresses = [&keyToAddrMap]
+   (std::shared_ptr<AssetWallet_Single> wlt)->bool
+   {
+      auto addrMap = wlt->getUsedAddressMap();
+      if (addrMap.size() != keyToAddrMap.size()) {
+         return false;
+      }
+
+      for (const auto& addrPair : addrMap) {
+         auto addrHash = addrPair.second->getPrefixedHash();
+         auto iter = keyToAddrMap.find(addrHash);
+         if (iter == keyToAddrMap.end()) {
+            return false;
+         }
+         if (iter->second != addrPair.first) {
+            return false;
+         }
+      }
+
+      //grab address hashes from wallet, should match our map
+      auto addrHashSet = wlt->getAddrHashSet();
+      if (addrHashSet.size() != keyToAddrMap.size()) {
+         return false;
+      }
+      for (const auto& addrHash : addrHashSet) {
+         if (keyToAddrMap.find(addrHash) == keyToAddrMap.end()) {
+            return false;
+         }
+      }
+
+      return true;
+   };
+
+   //import addr B & C
+   {
+      //B
+      auto pubKeyB = CryptoECDSA().ComputePublicKey(TestChain::privKeyAddrB);
+      auto keyB = wltWO->importPublicKey(pubKeyB, AddressEntryType(
+         AddressEntryType_P2PKH | AddressEntryType_Uncompressed));
+      keyToAddrMap.emplace(TestChain::scrAddrB, keyB);
+
+      //C
+      auto pubKeyC = CryptoECDSA().ComputePublicKey(TestChain::privKeyAddrC);
+      auto keyC = wltWO->importPublicKey(pubKeyC, AddressEntryType(
+         AddressEntryType_P2PKH | AddressEntryType_Uncompressed));
+      keyToAddrMap.emplace(TestChain::scrAddrC, keyC);
+   }
+   ASSERT_TRUE(checkAddresses(wltWO));
+
+   //import addr D
+   {
+      auto pubKeyD = CryptoECDSA().ComputePublicKey(TestChain::privKeyAddrD);
+      auto keyD = wltWO->importPublicKey(pubKeyD, AddressEntryType(
+         AddressEntryType_P2PKH | AddressEntryType_Uncompressed));
+      keyToAddrMap.emplace(TestChain::scrAddrD, keyD);
+   }
+   ASSERT_TRUE(checkAddresses(wltWO));
+
+   /* shutdown the wallet, reload and check addresses again */
+   const std::string wltPath = wltWO->getDbFilename();
+   wltWO.reset();
+   ASSERT_EQ(wltWO, nullptr);
+
+   {
+      auto wlt = AssetWallet::loadMainWalletFromFile({wltPath, nullptr});
+      wltWO = std::dynamic_pointer_cast<AssetWallet_Single>(wlt);
+      ASSERT_NE(wltWO, nullptr);
+   }
+   ASSERT_TRUE(checkAddresses(wltWO));
+
+   //import addr E
+   {
+      auto pubKeyE = CryptoECDSA().ComputePublicKey(TestChain::privKeyAddrE);
+      auto keyE = wltWO->importPublicKey(pubKeyE, AddressEntryType(
+         AddressEntryType_P2PKH | AddressEntryType_Uncompressed));
+      keyToAddrMap.emplace(TestChain::scrAddrE, keyE);
+   }
+   ASSERT_TRUE(checkAddresses(wltWO));
+}
+
+////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 class WalletMetaDataTest : public ::testing::Test
@@ -8519,6 +8629,106 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_TRUE(pubkeySet.find(pubkey5_compressed) == pubkeySet.end());
       }
    }
+
+   /* master key checks */
+
+   //set an invalid key
+   auto privKey6 = CryptoPRNG::generateRandom(32);
+   auto pubkey6 = CryptoECDSA().ComputePublicKey(privKey6);
+   auto pubkey6_compressed = CryptoECDSA().CompressPoint(pubkey6);
+
+   btc_pubkey btckey6;
+   btc_pubkey_init(&btckey6);
+   std::memcpy(btckey6.pubkey, pubkey6_compressed.getPtr(), 33);
+   btckey6.compressed = true;
+
+   ASSERT_FALSE(authPeers->setMasterKey(btckey6));
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+
+   //set key1 as master key
+   ASSERT_TRUE(authPeers->setMasterKey(pubkey1_compressed));
+   ASSERT_TRUE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+
+   //set key3 as master key
+   ASSERT_TRUE(authPeers->setMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_TRUE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+
+   //reload wallet, check persistence
+   authPeers.reset();
+   authPeers = std::make_unique<AuthorizedPeers>(roFileParams);
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_TRUE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+
+   //change master key, reload peers wallet and check again
+   ASSERT_TRUE(authPeers->setMasterKey(pubkey1_compressed));
+   ASSERT_TRUE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+
+   authPeers.reset();
+   authPeers = std::make_unique<AuthorizedPeers>(roFileParams);
+   ASSERT_TRUE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+
+   //delete key1, check it's not master key anymore
+   authPeers->eraseKey(pubkey1_compressed);
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+
+   //reload wallet, check key1 isnt master key
+   authPeers.reset();
+   authPeers = std::make_unique<AuthorizedPeers>(roFileParams);
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+
+   //TODO: re-add key1, check it isnt master key
+   authPeers->addPeer(pubkey1, "1.1.1.1", "0123::4567::89ab::cdef::", "test.com");
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+
+   //reload, check key1 isnt master key
+   authPeers.reset();
+   authPeers = std::make_unique<AuthorizedPeers>(roFileParams);
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+
+   //set key3 as master
+   ASSERT_TRUE(authPeers->setMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_TRUE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+
+   //reload & check
+   authPeers.reset();
+   authPeers = std::make_unique<AuthorizedPeers>(roFileParams);
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_TRUE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+
+   //erase master key
+   authPeers->eraseMasterKey();
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+
+   //reload & check
+   authPeers.reset();
+   authPeers = std::make_unique<AuthorizedPeers>(roFileParams);
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
+   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

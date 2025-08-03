@@ -367,13 +367,12 @@ void BlockDataViewer::addPublicKey(const SecureBinaryData& pubkey)
 ///////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<BlockDataViewer> BlockDataViewer::getNewBDV(
    const std::string& addr, const std::string& port,
-   const Armory::Wallets::IO::ReadOnlyFileParams& params,
-   bool ephemeralPeers, bool oneWayAuth,
+   std::shared_ptr<Wallets::AuthorizedPeers> peers, bool oneWayAuth,
    std::shared_ptr<RemoteCallback> callbackPtr)
 {
    //create socket object
-   auto sockptr = std::make_shared<WebSocketClient>(addr, port, params,
-      ephemeralPeers, oneWayAuth, callbackPtr);
+   auto sockptr = std::make_shared<WebSocketClient>(
+      addr, port, peers, oneWayAuth, callbackPtr);
 
    //instantiate bdv object
    BlockDataViewer* bdvPtr = new BlockDataViewer(sockptr);
@@ -388,7 +387,7 @@ std::shared_ptr<BlockDataViewer> BlockDataViewer::getNewBDV(
 ///////////////////////////////////////////////////////////////////////////////
 void BlockDataViewer::registerWithDB(const std::string& magicWord)
 {
-   if (!bdvID_.empty()) {
+   if (registered_) {
       throw BDVAlreadyRegistered();
    }
 
@@ -404,13 +403,12 @@ void BlockDataViewer::registerWithDB(const std::string& magicWord)
    auto write_payload = toWritePayload(message);
 
    //registration is always blocking as it needs to guarantee the bdvID
-   auto promPtr = std::make_shared<std::promise<std::string>>();
+   auto promPtr = std::make_shared<std::promise<bool>>();
    auto fut = promPtr->get_future();
    auto read_payload = std::make_shared<Socket_ReadPayload>();
    read_payload->callbackReturn_ = std::make_unique<ClientCallback>(
       [promPtr](const WebSocketMessagePartial& msg) {
-      try
-      {
+      try {
          //deser capnp reply
          auto msgReader = msg.getReader();
          auto capnReader = msgReader->getReader();
@@ -420,40 +418,28 @@ void BlockDataViewer::registerWithDB(const std::string& magicWord)
          if (!reply.getSuccess()) {
             throw ClientMessageError(reply.getError(), -1);
          }
-
-         if (!reply.isStatic()) {
-            throw ClientMessageError("expected static reply", WRONG_REPLY_CLASS);
-         }
-
-         auto staticReply = reply.getStatic();
-         if (!staticReply.isRegister()) {
-            throw ClientMessageError(
-               "expected register reply", WRONG_REPLY_TYPE);
-         }
-         promPtr->set_value(staticReply.getRegister());
+         promPtr->set_value(true);
       }
-      catch (const std::exception& e)
-      {
+      catch (const std::exception& e) {
          promPtr->set_exception(std::make_exception_ptr(e));
       }
    });
    sock_->pushPayload(std::move(write_payload), read_payload);
-
-   bdvID_ = fut.get();
+   registered_ = fut.get();;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 void BlockDataViewer::unregisterFromDB()
 {
-   if (sock_ == nullptr)
+   if (sock_ == nullptr) {
       return;
+   }
 
-   if (sock_->type() == SocketWS)
-   {
+   if (sock_->type() == SocketWS) {
       auto sockws = std::dynamic_pointer_cast<WebSocketClient>(sock_);
-      if(sockws == nullptr)
+      if(sockws == nullptr) {
          return;
-
+      }
       sockws->shutdown();
       return;
    }
@@ -463,7 +449,7 @@ void BlockDataViewer::unregisterFromDB()
    auto payload = message.initRoot<Codec::BDV::Request>();
 
    auto staticRequest = payload.initStatic();
-   staticRequest.setUnregister(bdvID_);
+   staticRequest.setUnregister();
 
    //serialize and add to payload
    auto write_payload = toWritePayload(message);
@@ -480,7 +466,6 @@ void BlockDataViewer::goOnline()
    auto payload = message.initRoot<Codec::BDV::Request>();
 
    auto bdvRequest = payload.initBdv();
-   bdvRequest.setBdvId(bdvID_);
    bdvRequest.setGoOnline();
 
    //serialize and add to payload
@@ -508,14 +493,13 @@ BlockDataViewer::~BlockDataViewer()
 {}
 
 ///////////////////////////////////////////////////////////////////////////////
-void BlockDataViewer::shutdown(const std::string& cookie)
+void BlockDataViewer::shutdown()
 {
    //create capnp request
    capnp::MallocMessageBuilder message;
    auto payload = message.initRoot<Codec::BDV::Request>();
 
    auto staticRequest = payload.initStatic();
-   staticRequest.setCookie(cookie);
    staticRequest.setShutdown();
 
    //serialize and add to payload
@@ -526,14 +510,13 @@ void BlockDataViewer::shutdown(const std::string& cookie)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-void BlockDataViewer::shutdownNode(const std::string& cookie)
+void BlockDataViewer::shutdownNode()
 {
    //create capnp request
    capnp::MallocMessageBuilder message;
    auto payload = message.initRoot<Codec::BDV::Request>();
 
    auto staticRequest = payload.initStatic();
-   staticRequest.setCookie(cookie);
    staticRequest.setShutdownNode();
 
    //serialize and add to payload
@@ -617,7 +600,6 @@ void BlockDataViewer::getTxsByHash(
    auto payload = message.initRoot<Codec::BDV::Request>();
 
    auto bdvRequest = payload.initBdv();
-   bdvRequest.setBdvId(bdvID_);
    auto hashReq = bdvRequest.initGetTxByHash(hashes.size());
 
    unsigned i=0;
@@ -677,8 +659,6 @@ void BlockDataViewer::updateWalletsLedgerFilter(
    auto payload = message.initRoot<Codec::BDV::Request>();
 
    auto bdvRequest = payload.initBdv();
-   bdvRequest.setBdvId(bdvID_);
-
    auto walletIds = bdvRequest.initUpdateWalletsLedgerFilter(wltIdVec.size());
    for (unsigned i=0; i<wltIdVec.size(); i++) {
       walletIds.set(i, wltIdVec[i]);
@@ -823,7 +803,6 @@ void BlockDataViewer::getOutputsForOutpoints(
    auto payload = message.initRoot<Codec::BDV::Request>();
 
    auto bdvRequest = payload.initBdv();
-   bdvRequest.setBdvId(bdvID_);
    auto opsReq = bdvRequest.initGetOutputsForOutpoints();
    opsReq.setWithZc(withZc);
    auto capnOps = opsReq.initOutpoints(outpoints.size());
@@ -889,8 +868,8 @@ void BlockDataViewer::getOutputsForOutpoints(
 //
 ///////////////////////////////////////////////////////////////////////////////
 LedgerDelegate::LedgerDelegate(std::shared_ptr<SocketPrototype> sock,
-   const std::string& bdvid, const std::string& ldid) :
-   delegateID_(ldid), bdvID_(bdvid), sock_(sock)
+   const std::string& ldid) :
+   delegateID_(ldid), sock_(sock)
 {}
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1010,7 +989,7 @@ void LedgerDelegate::getPageCount(
 ///////////////////////////////////////////////////////////////////////////////
 AsyncClient::BtcWallet::BtcWallet(const BlockDataViewer& bdv,
    const std::string& id) :
-   walletID_(id), bdvID_(bdv.bdvID_), sock_(bdv.sock_)
+   walletID_(id), sock_(bdv.sock_)
 {}
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1022,8 +1001,6 @@ bool AsyncClient::BtcWallet::registerAddresses(
    auto payload = writePayload->builder->initRoot<Codec::BDV::Request>();
 
    auto bdvRequest = payload.initBdv();
-   bdvRequest.setBdvId(bdvID_);
-
    auto addrReq = bdvRequest.initRegisterWallet();
    addrReq.setWalletId(walletID_);
    addrReq.setIsNew(isNew);
@@ -1063,7 +1040,6 @@ void AsyncClient::BtcWallet::setUnconfirmedTarget(unsigned confTarget)
    auto payload = message.initRoot<Codec::BDV::Request>();
 
    auto walletRequest = payload.initWallet();
-   walletRequest.setBdvId(bdvID_);
    walletRequest.setWalletId(walletID_);
    walletRequest.setSetConfTarget(confTarget);
 
@@ -1083,7 +1059,6 @@ void AsyncClient::BtcWallet::unregisterAddresses(
    auto payload = message.initRoot<Codec::BDV::Request>();
 
    auto walletRequest = payload.initWallet();
-   walletRequest.setBdvId(bdvID_);
    walletRequest.setWalletId(walletID_);
 
    auto addrsReq = walletRequest.initUnregisterAddresses(addrSet.size());
@@ -1115,7 +1090,6 @@ void AsyncClient::BtcWallet::getBalancesAndCount(uint32_t blockheight,
    auto payload = message.initRoot<Codec::BDV::Request>();
 
    auto walletRequest = payload.initWallet();
-   walletRequest.setBdvId(bdvID_);
    walletRequest.setWalletId(walletID_);
    walletRequest.setGetBalanceAndCount(blockheight);
 
@@ -1169,7 +1143,6 @@ void AsyncClient::BtcWallet::getUTXOs(uint64_t val, bool zc, bool rbf,
    auto payload = message.initRoot<Codec::BDV::Request>();
 
    auto walletRequest = payload.initWallet();
-   walletRequest.setBdvId(bdvID_);
    walletRequest.setWalletId(walletID_);
 
    auto outputReq = walletRequest.initGetOutputs();
@@ -1224,7 +1197,7 @@ void AsyncClient::BtcWallet::getUTXOs(uint64_t val, bool zc, bool rbf,
 ScrAddrObj AsyncClient::BtcWallet::getScrAddrObj(const BinaryData& scrAddr,
    uint64_t full, uint64_t spendable, uint64_t unconf, uint32_t count)
 {
-   return ScrAddrObj(sock_, bdvID_, walletID_, scrAddr, INT32_MAX,
+   return ScrAddrObj(sock_, walletID_, scrAddr, INT32_MAX,
       full, spendable, unconf, count);
 }
 
@@ -1237,7 +1210,6 @@ void AsyncClient::BtcWallet::createAddressBook(
    auto payload = message.initRoot<Codec::BDV::Request>();
 
    auto walletRequest = payload.initWallet();
-   walletRequest.setBdvId(bdvID_);
    walletRequest.setWalletId(walletID_);
    walletRequest.setCreateAddressBook();
 
@@ -1292,7 +1264,6 @@ void BtcWallet::getLedgerDelegate(
    auto payload = message.initRoot<Codec::BDV::Request>();
 
    auto wltRequest = payload.initWallet();
-   wltRequest.setBdvId(bdvID_);
    wltRequest.setWalletId(walletID_);
    wltRequest.setGetLedgerDelegate();
 
@@ -1302,7 +1273,7 @@ void BtcWallet::getLedgerDelegate(
    //reply handling lambda
    auto read_payload = std::make_shared<Socket_ReadPayload>();
    read_payload->callbackReturn_ = std::make_unique<ClientCallback>(
-      [sock=sock_, bdvId=bdvID_, callback](const WebSocketMessagePartial& msg){
+      [sock=sock_, callback](const WebSocketMessagePartial& msg){
          try {
             //deser capnp reply
             auto msgReader = msg.getReader();
@@ -1325,8 +1296,7 @@ void BtcWallet::getLedgerDelegate(
             }
 
             //instantiate ledger delegate and pass it to callback
-            LedgerDelegate delegate(sock, bdvId,
-               wltReply.getGetLedgerDelegate());
+            LedgerDelegate delegate{sock, wltReply.getGetLedgerDelegate()};
             callback(ReturnMessage<LedgerDelegate>(delegate));
          } catch (ClientMessageError& e) {
             //something went wrong, set error message and fire callback
@@ -1367,10 +1337,9 @@ void Lockbox::getBalancesAndCountFromDB(uint32_t topBlockHeight)
 //
 ///////////////////////////////////////////////////////////////////////////////
 ScrAddrObj::ScrAddrObj(std::shared_ptr<SocketPrototype> sock,
-   const std::string& bdvId, const std::string& walletID,
-   const BinaryData& scrAddr, int index,
+   const std::string& walletID, const BinaryData& scrAddr, int index,
    uint64_t full, uint64_t spendabe, uint64_t unconf, uint32_t count) :
-   bdvID_(bdvId), walletID_(walletID), scrAddr_(scrAddr), sock_(sock),
+   walletID_(walletID), scrAddr_(scrAddr), sock_(sock),
    fullBalance_(full), spendableBalance_(spendabe),
    unconfirmedBalance_(unconf), count_(count), index_(index)
 {}
@@ -1379,8 +1348,7 @@ ScrAddrObj::ScrAddrObj(std::shared_ptr<SocketPrototype> sock,
 ScrAddrObj::ScrAddrObj(AsyncClient::BtcWallet* wlt, const BinaryData& scrAddr,
    int index, uint64_t full, uint64_t spendabe, uint64_t unconf,
    uint32_t count) :
-   bdvID_(wlt->bdvID_), walletID_(wlt->walletID_), 
-   scrAddr_(scrAddr), sock_(wlt->sock_),
+   walletID_(wlt->walletID_), scrAddr_(scrAddr), sock_(wlt->sock_),
    fullBalance_(full), spendableBalance_(spendabe),
    unconfirmedBalance_(unconf), count_(count), index_(index)
 {}
@@ -1394,7 +1362,6 @@ void ScrAddrObj::getOutputs(uint64_t targetValue, bool zc, bool rbf,
    auto payload = message.initRoot<Codec::BDV::Request>();
 
    auto addrRequest = payload.initAddress();
-   addrRequest.setBdvId(bdvID_);
    auto address = addrRequest.getAddress();
    address.setBody(capnp::Data::Builder(
       (uint8_t*)scrAddr_.getPtr(), scrAddr_.getSize()));
@@ -1453,7 +1420,6 @@ void ScrAddrObj::getLedgerDelegate(
    auto payload = message.initRoot<Codec::BDV::Request>();
 
    auto addrRequest = payload.initAddress();
-   addrRequest.setBdvId(bdvID_);
    auto capnAddr = addrRequest.initAddress();
    capnAddr.setBody(capnp::Data::Builder(
       (uint8_t*)scrAddr_.getPtr(), scrAddr_.getSize()
@@ -1466,7 +1432,7 @@ void ScrAddrObj::getLedgerDelegate(
    //reply handling lambda
    auto read_payload = std::make_shared<Socket_ReadPayload>();
    read_payload->callbackReturn_ = std::make_unique<ClientCallback>(
-      [sock=sock_, bdvId=bdvID_, callback](const WebSocketMessagePartial& msg){
+      [sock=sock_,  callback](const WebSocketMessagePartial& msg){
          try {
             //deser capnp reply
             auto msgReader = msg.getReader();
@@ -1489,8 +1455,7 @@ void ScrAddrObj::getLedgerDelegate(
             }
 
             //instantiate ledger delegate and pass it to callback
-            LedgerDelegate delegate(sock, bdvId,
-               addrReply.getGetLedgerDelegate());
+            LedgerDelegate delegate(sock, addrReply.getGetLedgerDelegate());
             callback(ReturnMessage<LedgerDelegate>(delegate));
          } catch (ClientMessageError& e) {
             //something went wrong, set error message and fire callback
@@ -1508,7 +1473,7 @@ void ScrAddrObj::getLedgerDelegate(
 //
 ///////////////////////////////////////////////////////////////////////////////
 AsyncClient::Blockchain::Blockchain(const BlockDataViewer& bdv) :
-   sock_(bdv.sock_), bdvID_(bdv.bdvID_)
+   sock_(bdv.sock_)
 {}
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1666,7 +1631,6 @@ void AsyncClient::BlockDataViewer::getCombinedBalances(std::function<void(
    auto payload = message.initRoot<Codec::BDV::Request>();
 
    auto bdvRequest = payload.initBdv();
-   bdvRequest.setBdvId(bdvID_);
    bdvRequest.setGetCombinedBalances();
 
    //serialize and add to payload
@@ -1719,7 +1683,6 @@ void AsyncClient::BlockDataViewer::getOutputsForAddresses(
    auto payload = message.initRoot<Codec::BDV::Request>();
 
    auto bdvRequest = payload.initBdv();
-   bdvRequest.setBdvId(bdvID_);
    auto addrReq = bdvRequest.initGetOutputsForAddress();
    addrReq.setHeightCutoff(heightCutoff);
    addrReq.setZcCutoff(zcCutoff);
@@ -1784,7 +1747,6 @@ void AsyncClient::BlockDataViewer::getLedgerDelegate(
    auto payload = message.initRoot<Codec::BDV::Request>();
 
    auto bdvRequest = payload.initBdv();
-   bdvRequest.setBdvId(bdvID_);
    bdvRequest.setGetLedgerDelegate();
 
    //serialize and add to payload
@@ -1793,7 +1755,7 @@ void AsyncClient::BlockDataViewer::getLedgerDelegate(
    //reply handling lambda
    auto read_payload = std::make_shared<Socket_ReadPayload>();
    read_payload->callbackReturn_ = std::make_unique<ClientCallback>(
-      [sock=sock_, bdvId=bdvID_, callback](const WebSocketMessagePartial& msg){
+      [sock=sock_, callback](const WebSocketMessagePartial& msg){
          try {
             //deser capnp reply
             auto msgReader = msg.getReader();
@@ -1816,8 +1778,7 @@ void AsyncClient::BlockDataViewer::getLedgerDelegate(
             }
 
             //instantiate ledger delegate and pass it to callback
-            LedgerDelegate delegate(sock, bdvId,
-               bdvReply.getGetLedgerDelegate());
+            LedgerDelegate delegate{sock, bdvReply.getGetLedgerDelegate()};
             callback(ReturnMessage<LedgerDelegate>(delegate));
          } catch (ClientMessageError& e) {
             //something went wrong, set error message and fire callback

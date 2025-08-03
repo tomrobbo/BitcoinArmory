@@ -150,9 +150,14 @@ void AssetAccount::commit(std::shared_ptr<IO::WalletDBInterface> iface)
    bwData.put_var_int(0);
 
    //der scheme
-   auto derSchemeSerData = data_->derScheme_->serialize();
-   bwData.put_var_int(derSchemeSerData.getSize());
-   bwData.put_BinaryData(derSchemeSerData);
+   if (data_->derScheme_ != nullptr) {
+      auto derSchemeSerData = data_->derScheme_->serialize();
+      bwData.put_var_int(derSchemeSerData.getSize());
+      bwData.put_BinaryData(derSchemeSerData);
+   } else {
+      //no derivation scheme, set a 0 size
+      bwData.put_var_int(0);
+   }
 
    //commit root asset if there is one
    if (data_->root_ != nullptr) {
@@ -191,15 +196,18 @@ std::shared_ptr<AssetAccountData> AssetAccount::loadFromDisk(
    brr.get_var_int();
 
    //der scheme
+   std::shared_ptr<DerivationScheme> derScheme = nullptr;
    auto len = brr.get_var_int();
-   auto derSchemeBDR = DBUtils::getDataRefForPacket(brr.get_BinaryDataRef(len));
-   auto derScheme = DerivationScheme::deserialize(derSchemeBDR);
-   if (derScheme->getType() == DerivationSchemeType::ECDH) {
-      auto derECDH = std::dynamic_pointer_cast<DerivationScheme_ECDH>(derScheme);
-      if (derECDH == nullptr) {
-         throw AccountException("[loadFromDisk] ecdh der scheme snafu");
+   if (len > 0) {
+      auto derSchemeBDR = DBUtils::getDataRefForPacket(brr.get_BinaryDataRef(len));
+      derScheme = DerivationScheme::deserialize(derSchemeBDR);
+      if (derScheme->getType() == DerivationSchemeType::ECDH) {
+         auto derECDH = std::dynamic_pointer_cast<DerivationScheme_ECDH>(derScheme);
+         if (derECDH == nullptr) {
+            throw AccountException("[loadFromDisk] ecdh der scheme snafu");
+         }
+         derECDH->getAllSalts(tx);
       }
-      derECDH->getAllSalts(tx);
    }
 
    //asset count
@@ -700,11 +708,16 @@ void AssetAccount::updateAddressHashMap(
    }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-const AssetAccountData::AddrHashMapType& AssetAccount::getAddressHashMap(
-   const std::set<AddressEntryType>& typeSet)
+/////////
+void AssetAccount::updateAddressHashMap(
+   const std::map<Wallets::AssetId, AddressEntryType>&)
 {
-   updateAddressHashMap(typeSet);
+   throw AccountException("invalid for AssetAccount");
+}
+
+////////////////////////////////////////////////////////////////////////////////
+const AssetAccountData::AddrHashMapType& AssetAccount::getAddressHashMap() const
+{
    return data_->addrHashMap_;
 }
 
@@ -784,9 +797,9 @@ std::shared_ptr<Asset_PrivateKey> AssetAccount::fillPrivateKey(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-unsigned AssetAccount::getLookup(void) const 
+unsigned AssetAccount::getLookup(void) const
 {
-   return DERIVATION_LOOKUP; 
+   return DERIVATION_LOOKUP;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -860,4 +873,149 @@ void AssetAccount_ECDH::commit(std::shared_ptr<IO::WalletDBInterface> iface)
 
    std::shared_ptr<IO::DBIfaceTransaction> sharedTx(std::move(uniqueTx));
    schemeECDH->putAllSalts(sharedTx);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+//// AssetAccount_Imports
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+AssetAccount_Imports::AssetAccount_Imports(std::shared_ptr<AssetAccountData> data) :
+   AssetAccount(data)
+{}
+
+////
+unsigned AssetAccount_Imports::getLookup() const
+{
+   return UINT32_MAX;
+}
+
+////
+AssetAccountTypeEnum AssetAccount_Imports::type() const
+{
+   return AssetAccountTypeEnum_Imports;
+}
+
+////
+AssetId AssetAccount_Imports::importPrivateKey(
+   std::shared_ptr<IO::WalletIfaceTransaction>,
+   std::shared_ptr<Encryption::DecryptedDataContainer>,
+   const SecureBinaryData&)
+{
+   throw std::runtime_error("[importPrivateKey] implement me!");
+}
+
+////////
+void AssetAccount_Imports::updateAddressHashMap(
+   const std::set<AddressEntryType>&)
+{
+   throw AccountException("invalid for AssetAccount_Imports");
+}
+
+////
+void AssetAccount_Imports::updateAddressHashMap(
+   const std::map<Wallets::AssetId, AddressEntryType>&)
+{
+   throw std::runtime_error("[updateAddressHashMap] implement me");
+}
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+//// AssetAccount_ImportsWO
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+AssetAccount_ImportsWO::AssetAccount_ImportsWO(
+   std::shared_ptr<AssetAccountData> data) :
+   AssetAccount(data)
+{}
+
+////
+unsigned AssetAccount_ImportsWO::getLookup() const
+{
+   return UINT32_MAX;
+}
+
+////
+AssetAccountTypeEnum AssetAccount_ImportsWO::type() const
+{
+   return AssetAccountTypeEnum_ImportsWO;
+}
+
+////
+AssetId AssetAccount_ImportsWO::importPublicKey(
+   std::shared_ptr<IO::WalletDBInterface> iface,
+   SecureBinaryData& pubKey)
+{
+   //get last key
+   AssetKeyType keyId = 0;
+   auto lastEntry = data_->assets_.rbegin();
+   if (lastEntry != data_->assets_.rend()) {
+      keyId = lastEntry->first+1;
+   }
+
+   AssetId assetId{data_->id_, keyId};
+   auto assetPtr = std::make_shared<AssetEntry_Single>(
+      assetId, pubKey, nullptr);
+   data_->assets_.emplace(keyId, assetPtr);
+   ++data_->lastUsedIndex_;
+
+   commit(iface);
+   return assetId;
+}
+
+/////////
+void AssetAccount_ImportsWO::updateAddressHashMap(
+   const std::set<AddressEntryType>&)
+{
+   throw AccountException("invalid for AssetAccount_ImportsWO");
+}
+
+////
+void AssetAccount_ImportsWO::updateAddressHashMap(
+   const std::map<Wallets::AssetId, AddressEntryType>& addrTypeMap)
+{
+   ReentrantLock lock(this);
+
+   //set iterator to last hashed asset
+   auto assetIter = data_->assets_.find(data_->lastHashedAsset_);
+   if (assetIter == data_->assets_.end()) {
+      assetIter = data_->assets_.begin();
+   } else {
+      ++assetIter;
+      if (assetIter == data_->assets_.end()) {
+         return;
+      }
+   }
+
+   while (assetIter != data_->assets_.end()) {
+      //does this asset have an entry in the type map?
+      AssetId assetId{data_->id_, assetIter->first};
+      auto typeIter = addrTypeMap.find(assetId);
+      if (typeIter == addrTypeMap.end()) {
+         continue;
+      }
+
+      //find the entry for this asset
+      auto hashMapiter = data_->addrHashMap_.find(assetId);
+      if (hashMapiter == data_->addrHashMap_.end()) {
+         hashMapiter = data_->addrHashMap_.emplace(
+            assetId,
+            std::map<AddressEntryType, BinaryData>{}
+         ).first;
+      }
+
+      //skip if we already have a hash for this address type
+      if (hashMapiter->second.find(typeIter->second) !=
+         hashMapiter->second.end()) {
+         continue;
+      }
+
+      auto addrPtr = AddressEntry::instantiate(
+         assetIter->second, typeIter->second);
+      auto& addrHash = addrPtr->getPrefixedHash();
+      data_->addrHashMap_[assetIter->second->getID()].emplace(
+         typeIter->second, addrHash);
+      data_->lastHashedAsset_ = assetIter->first;
+      ++assetIter;
+   }
 }

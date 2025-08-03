@@ -193,19 +193,20 @@ struct BlockchainServiceRequest {
 
       shutdown                      @1 : Void;
       setupDb                       @2 : Void;
-      goOnline                      @3 : Void;
-      getNodeStatus                 @4 : Void;
-      registerWallets               @5 : Void;
+      cleanupDb                     @3 : Void;
+      goOnline                      @4 : Void;
+      getNodeStatus                 @5 : Void;
+      registerWallets               @6 : Void;
 
-      registerWallet                @6 : RegisterWallet;
-      broadcastTx                   @7 : List(Data);
-      getTxsByHash                  @8 : List(Types.Hash);
-      getHeadersByHeight            @9 : List(Types.Height);
-      getBlockTimeByHeight          @10: UInt32;
-      getFeeSchedule                @11: Text;
+      registerWallet                @7 : RegisterWallet;
+      broadcastTx                   @8 : List(Data);
+      getTxsByHash                  @9 : List(Types.Hash);
+      getHeadersByHeight            @10: List(Types.Height);
+      getBlockTimeByHeight          @11: UInt32;
+      getFeeSchedule                @12: Text;
 
-      getLedgerDelegateId           @12: Void;
-      updateWalletsLedgerFilter     @13: List(Types.WalletId);
+      getLedgerDelegateId           @13: Void;
+      updateWalletsLedgerFilter     @14: List(Types.WalletId);
    }
 }
 

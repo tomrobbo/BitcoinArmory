@@ -115,7 +115,6 @@ std::shared_ptr<AddressAccount> AssetWallet::createAccount(
 
    //commit to disk
    account_ptr->commit(iface_);
-
    if (accountType->isMain()) {
       mainAccountId_ = account_ptr->getID();
 
@@ -2251,6 +2250,40 @@ std::shared_ptr<AccountType_BIP32> AssetWallet_Single::makeNewBip32AccTypeObject
    }
    auto seedFingerprint = rootBip32->getSeedFingerprint(true);
    return AccountType_BIP32::makeFromDerPaths(seedFingerprint, {derPath});
+}
+
+////////////////////////////////////////////////////////////////////////////////
+const AddressAccountId& AssetWallet_Single::setupImportAccount()
+{
+   ReentrantLock lock(this);
+
+   auto accTypePtr = std::make_shared<AccountType_Imports>(!isWatchingOnly());
+   if (!mainAccountId_.isValid()) {
+      accTypePtr->setMain(true);
+   }
+   auto accountPtr = createAccount(accTypePtr, nullptr);
+   return accountPtr->getID();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+AssetId AssetWallet_Single::importPublicKey(SecureBinaryData& pubkey,
+   AddressEntryType aeType)
+{
+   //lock
+   ReentrantLock lock(this);
+
+   //grab WO import account
+   auto addrAcc = getAccountForID({IMPORTS_ACCOUNT_PUB});
+   auto assetAcc = addrAcc->getOuterAccount();
+   auto importAcc = dynamic_cast<AssetAccount_ImportsWO*>(assetAcc.get());
+   if (importAcc == nullptr) {
+      throw WalletException("invalid WO import account");
+   }
+
+   auto tx = iface_->beginWriteTransaction(dbName_);
+   auto assetId = importAcc->importPublicKey(iface_, pubkey);
+   addrAcc->updateInstantiatedAddressType(iface_, assetId, aeType);
+   return assetId;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

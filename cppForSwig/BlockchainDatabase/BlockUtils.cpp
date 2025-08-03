@@ -135,7 +135,7 @@ protected:
          LOGERR << "It will now terminate. Restart it to auto-repair";
 
          auto notifPtr = std::make_unique<BDV_Notification_Error>(
-            std::string{}, BDM_FATAL_ERROR_CODE, BinaryData{},
+            BDV_NOTIF_BROADCAST, BDM_FATAL_ERROR_CODE, BinaryData{},
             std::string{"fatal error while scanning"}
          );
          bdm_->notificationStack_.push_back(std::move(notifPtr));
@@ -424,30 +424,30 @@ void BlockDataManager::disableZeroConf(void)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-CoreRPC::NodeStatus BlockDataManager::getNodeStatus() const
+std::shared_ptr<CoreRPC::NodeStatus> BlockDataManager::getNodeStatus() const
 {
    if (processNode_ == nullptr) {
-      return {};
+      return nullptr;
    }
 
-   CoreRPC::NodeStatus nss;
+   auto nss = std::make_shared<CoreRPC::NodeStatus>();
    if (processNode_->connected()) {
-      nss.state_ = CoreRPC::NodeState_Online;
+      nss->state_ = CoreRPC::NodeState_Online;
    }
 
    if (processNode_->isSegWit()) {
-      nss.SegWitEnabled_ = true;
+      nss->SegWitEnabled_ = true;
    }
 
    if (nodeRPC_ == nullptr) {
       return nss;
    }
 
-   nss.rpcState_ = nodeRPC_->testConnection();
-   if (nss.rpcState_ != CoreRPC::RpcState_Online) {
+   nss->rpcState_ = nodeRPC_->testConnection();
+   if (nss->rpcState_ != CoreRPC::RpcState_Online) {
       pollNodeStatus();
    }
-   nss.chainStatus_ = nodeRPC_->getChainStatus();
+   nss->chainStatus_ = nodeRPC_->getChainStatus();
    return nss;
 }
 
@@ -530,7 +530,7 @@ void BlockDataManager::triggerOneTimeHooks(BDV_Notification* notifPtr)
          if (hookPtr == nullptr) {
             continue;
          }
-         hookPtr->lambda_(notifPtr);
+         hookPtr->func(notifPtr);
       }
    } catch (const Armory::Threading::IsEmpty&) {}
 }
