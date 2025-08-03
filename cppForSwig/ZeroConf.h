@@ -20,7 +20,6 @@
 #include <memory>
 
 #include "ThreadSafeClasses.h"
-#include "BitcoinP2p.h"
 #include "BlockchainDatabase/lmdb_wrapper.h"
 #include "BlockchainDatabase/Blockchain.h"
 #include "BlockchainDatabase/ScrAddrFilter.h"
@@ -44,7 +43,17 @@
 #else
    //for unit tests, trigger zc buffers as soon as a single zc is in
    #define ZC_BUFFER_SIZE_THRESHOLD 1
-#endif 
+#endif
+
+namespace Armory
+{
+   namespace Node
+   {
+      class BitcoinNodeInterface;
+      class Payload;
+      struct InvEntry;
+   }
+}
 
 enum ZcAction
 {
@@ -143,11 +152,11 @@ struct ZcInvPayload : public ZcPreprocessPacket
    const bool watcher_;
 
    ZcInvPayload(bool watcher) :
-      ZcPreprocessPacket(ZcPreprocessPacketType_Inv), 
+      ZcPreprocessPacket(ZcPreprocessPacketType_Inv),
       watcher_(watcher)
    {}
 
-   std::vector<InvEntry> invVec_;
+   std::vector<Armory::Node::InvEntry> invVec_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -400,7 +409,7 @@ private:
    std::map<BinaryDataRef, std::set<BinaryDataRef>> keyToFundedScrAddr_;
 
    LMDBBlockDatabase* db_;
-   std::shared_ptr<BitcoinNodeInterface> networkNode_;
+   std::shared_ptr<Armory::Node::BitcoinNodeInterface> networkNode_;
 
    std::shared_ptr<PreprocessQueue> zcPreprocessQueue_;
    Armory::Threading::TimedQueue<
@@ -442,7 +451,7 @@ private:
       const Blockchain::ReorganizationState&, 
       std::shared_ptr<MempoolSnapshot>);
 
-   void processTxGetDataReply(std::unique_ptr<Payload>);
+   void processTxGetDataReply(std::unique_ptr<Armory::Node::Payload>);
    void handleZcProcessingStructThread(void);
    void requestTxFromNode(RequestZcPacket&);
    void processPayloadTx(std::shared_ptr<ProcessPayloadTxPacket>);
@@ -478,7 +487,7 @@ private:
 
 public:
    ZeroConfContainer(LMDBBlockDatabase* db,
-      std::shared_ptr<BitcoinNodeInterface> node, unsigned maxZcThread);
+      std::shared_ptr<Armory::Node::BitcoinNodeInterface> node, unsigned maxZcThread);
 
    //action queue
    std::shared_future<std::shared_ptr<ZcPurgePacket>> pushNewBlockNotification(
@@ -491,7 +500,7 @@ public:
    void clear(void);
    bool isEnabled(void) const;
 
-   void setWatcherNode(std::shared_ptr<BitcoinNodeInterface> watcherNode);
+   void setWatcherNode(std::shared_ptr<Armory::Node::BitcoinNodeInterface> watcherNode);
    void setZeroConfCallbacks(std::unique_ptr<ZeroConfCallbacks> ptr);
    //
 

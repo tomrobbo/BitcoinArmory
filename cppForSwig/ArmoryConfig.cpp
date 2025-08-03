@@ -14,7 +14,7 @@
 #include "JSON_codec.h"
 #include "SocketObject.h"
 #include "BIP150_151.h"
-#include "BitcoinP2p.h"
+#include "BitcoinP2P.h"
 #include "BitcoinSettings.h"
 #include "nodeRPC.h"
 
@@ -833,12 +833,12 @@ void NetworkSettings::createNodes()
 {
    auto magicBytes = BitcoinSettings::getMagicBytes();
    if (DBSettings::getServiceType() == SERVICE_WEBSOCKET) {
-      bitcoinNodes_.first = std::make_shared<BitcoinP2P>(
+      bitcoinNodes_.first = std::make_shared<Node::BitcoinP2P>(
          "127.0.0.1", btcPort_,
          *(uint32_t*)magicBytes.getPtr(), false
       );
 
-      bitcoinNodes_.second = std::make_shared<BitcoinP2P>(
+      bitcoinNodes_.second = std::make_shared<Node::BitcoinP2P>(
          "127.0.0.1", btcPort_,
          *(uint32_t*)magicBytes.getPtr(), true
       );

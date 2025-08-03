@@ -15,7 +15,7 @@
 #include <thread>
 #include <future>
 
-#include "BitcoinP2p.h"
+#include "BitcoinP2P.h"
 #include "BlockDataViewer.h"
 #include "EncryptionUtils.h"
 #include "LedgerEntry.h"

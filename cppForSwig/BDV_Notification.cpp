@@ -6,6 +6,7 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
+#include "BitcoinP2P.h"
 #include "BDV_Notification.h"
 #include "LedgerEntry.h"
 #include "ZeroConf.h"

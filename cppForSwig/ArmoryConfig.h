@@ -32,8 +32,6 @@
 #define BROADCAST_ID_LENGTH 6
 #define REGISTER_ID_LENGH 5
 
-class BitcoinNodeInterface;
-
 namespace CoreRPC
 {
    class NodeRPCInterface;
@@ -41,6 +39,11 @@ namespace CoreRPC
 
 namespace Armory
 {
+   namespace Node
+   {
+      class BitcoinNodeInterface;
+   }
+
    namespace Config
    {
       class Error : public std::runtime_error
@@ -165,8 +168,9 @@ namespace Armory
       {
          using RpcPtr = std::shared_ptr<CoreRPC::NodeRPCInterface>;
          using NodePair = std::pair<
-            std::shared_ptr<BitcoinNodeInterface>, 
-            std::shared_ptr<BitcoinNodeInterface>>;
+            std::shared_ptr<Node::BitcoinNodeInterface>,
+            std::shared_ptr<Node::BitcoinNodeInterface>
+         >;
 
          friend void Config::parseArgs(
             const std::vector<std::string>&, ProcessType);

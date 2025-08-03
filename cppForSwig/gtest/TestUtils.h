@@ -44,7 +44,7 @@
 #include "../Wallets/Wallets.h"
 #include "../AsyncClient.h"
 #include "../Wallets/BIP32_Node.h"
-#include "../BitcoinP2p.h"
+#include "../BitcoinP2P.h"
 #include "btc/ecc.h"
 
 #include "MockedNode.h"

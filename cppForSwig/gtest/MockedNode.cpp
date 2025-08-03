@@ -7,10 +7,12 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "MockedNode.h"
+#include "../BitcoinP2P.h"
 #include "../Signer/Signer.h"
 
 using namespace Armory::Threading;
 using namespace Armory::Signing;
+using namespace Armory::Node;
 using namespace std::chrono_literals;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -120,7 +122,7 @@ void NodeUnitTest::connectToNode(bool)
 void NodeUnitTest::notifyNewBlock(void)
 {
    InvEntry ie;
-   ie.invtype_ = Inv_Msg_Block;
+   ie.invtype = Inv_Msg_Block;
 
    std::vector<InvEntry> vecIE;
    vecIE.push_back(ie);
@@ -351,7 +353,7 @@ std::map<unsigned, BinaryData> NodeUnitTest::mineNewBlock(
       std::map<BinaryData, BinaryData> rawTxMap;
       for (auto& tx : mempool_) {
          InvEntry ie;
-         ie.invtype_ = Inv_Msg_Witness_Tx;
+         ie.invtype = Inv_Msg_Witness_Tx;
          memcpy(ie.hash, tx.first.getPtr(), 32);
          invVec.emplace_back(ie);
          rawTxMap.emplace(tx.first, tx.second->rawTx_);
@@ -461,7 +463,7 @@ void NodeUnitTest::pushZC(const std::vector<std::pair<BinaryData, unsigned>>& tx
 
       //add to inv vector
       InvEntry ie;
-      ie.invtype_ = Inv_Msg_Witness_Tx;
+      ie.invtype = Inv_Msg_Witness_Tx;
       memcpy(ie.hash, insertIter.first->second->hash_.getPtr(), 32);
       invVec.emplace_back(ie);
 
@@ -595,7 +597,7 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Payload> payload)
    //mock the bitcoin node response to these sendMessage payloads
    switch (payload->type())
    {
-      case Payload_inv:
+      case PayloadType::Inv:
       {
          /*
          Pushed inv payload from armorydb to bitcoin node
@@ -608,7 +610,7 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Payload> payload)
          }
 
          for (auto& entry : payloadInv->invVector_) {
-            switch (entry.invtype_)
+            switch (entry.invtype)
             {
                case Inv_Msg_Tx:
                case Inv_Msg_Witness_Tx:
@@ -775,7 +777,7 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Payload> payload)
                         //fee too low to replace, push reject packet
                         auto rejectPayload = std::make_unique<Payload_Reject>();
 
-                        rejectPayload->rejectType_ = Payload_tx;
+                        rejectPayload->rejectType_ = PayloadType::Tx;
                         rejectPayload->code_ =
                            (char)ArmoryErrorCodes::P2PReject_InsufficientFee;
 
@@ -850,7 +852,7 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Payload> payload)
       break;
    }
 
-      case Payload_getdata:
+      case PayloadType::GetData:
       {
          /*
          Pushed getdata payload from armorydb to bitcoin node
@@ -902,7 +904,7 @@ void NodeUnitTest::watcherProcess()
 
       std::vector<InvEntry> invVec;
       InvEntry inv;
-      inv.invtype_ = Inv_Msg_Witness_Tx;
+      inv.invtype = Inv_Msg_Witness_Tx;
       memcpy(inv.hash, hash.getPtr(), 32);
       invVec.push_back(std::move(inv));
       processInvTx(invVec);

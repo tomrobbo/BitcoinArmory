@@ -12,6 +12,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "ZeroConf.h"
+#include "BitcoinP2P.h"
 #include "BlockchainDatabase/BlockDataMap.h"
 #include "ArmoryErrors.h"
 
@@ -19,6 +20,7 @@ using namespace std;
 using namespace std::chrono_literals;
 using namespace Armory::Threading;
 using namespace Armory::Config;
+using namespace Armory::Node;
 
 #define ZC_GETDATA_TIMEOUT_MS 60000
 
@@ -54,7 +56,7 @@ ZeroConfContainer::ZeroConfContainer(LMDBBlockDatabase* db,
       zcWatcherQueue_.push_back(move(payload));
    };
 
-   networkNode_->registerInvTxLambda(processInvTx);
+   networkNode_->registerInvTxCallback(processInvTx);
 
    auto getTx = [this](unique_ptr<Payload> payload)->void
    {
@@ -1242,7 +1244,7 @@ void ZeroConfContainer::processTxGetDataReply(unique_ptr<Payload> payload)
 {
    switch (payload->type())
    {
-   case Payload_tx:
+   case PayloadType::Tx:
    {
       shared_ptr<Payload> payload_sptr(move(payload));
       auto payloadtx = dynamic_pointer_cast<Payload_Tx>(payload_sptr);
@@ -1261,7 +1263,7 @@ void ZeroConfContainer::processTxGetDataReply(unique_ptr<Payload> payload)
       break;
    }
 
-   case Payload_reject:
+   case PayloadType::Reject:
    {
       shared_ptr<Payload> payload_sptr(move(payload));
       auto payloadReject = dynamic_pointer_cast<Payload_Reject>(payload_sptr);
@@ -1271,7 +1273,7 @@ void ZeroConfContainer::processTxGetDataReply(unique_ptr<Payload> payload)
          return;
       }
 
-      if (payloadReject->rejectType() != Payload_tx)
+      if (payloadReject->rejectType() != PayloadType::Tx)
       {
          //only handling payload_tx rejections
          return;
@@ -1301,7 +1303,7 @@ void ZeroConfContainer::requestTxFromNode(RequestZcPacket& packet)
          throw runtime_error("invalid inv hash length");
 
       InvEntry inv;
-      inv.invtype_ = Inv_Msg_Witness_Tx;
+      inv.invtype = Inv_Msg_Witness_Tx;
       memcpy(inv.hash, hash.getPtr(), 32);
       invVec.emplace_back(move(inv));
    }
@@ -1464,7 +1466,7 @@ void ZeroConfContainer::pushZcPacketThroughP2P(ZcBroadcastPacket& packet)
 
    //create inv payload
    std::vector<InvEntry> invVec;
-   std::map<BinaryData, std::shared_ptr<BitcoinP2P::getDataPayload>> getDataPair;
+   std::map<BinaryData, std::shared_ptr<BitcoinP2P::GetDataPayload>> getDataPair;
 
    for (unsigned i=0; i<packet.hashes_.size(); i++) {
       const auto& hash = packet.hashes_[i];
@@ -1475,7 +1477,7 @@ void ZeroConfContainer::pushZcPacketThroughP2P(ZcBroadcastPacket& packet)
 
       //create inv entry, this announces the zc by its hash to the node
       InvEntry entry;
-      entry.invtype_ = Inv_Msg_Witness_Tx;
+      entry.invtype = Inv_Msg_Witness_Tx;
       memcpy(entry.hash, hash.getPtr(), 32);
       invVec.push_back(entry);
 
@@ -1487,7 +1489,7 @@ void ZeroConfContainer::pushZcPacketThroughP2P(ZcBroadcastPacket& packet)
       memcpy(&rawtx[0], rawZc->getPtr(), rawZc->getSize());
 
       payload->setRawTx(std::move(rawtx));
-      auto getDataPayload = std::make_shared<BitcoinP2P::getDataPayload>();
+      auto getDataPayload = std::make_shared<BitcoinP2P::GetDataPayload>();
       getDataPayload->payload_ = std::move(payload);
 
       getDataPair.emplace(hash, getDataPayload);
@@ -1555,7 +1557,7 @@ void ZeroConfContainer::setWatcherNode(
       zcWatcherQueue_.push_back(move(payload));
    };
 
-   watcherNode->registerInvTxLambda(getTxLambda);
+   watcherNode->registerInvTxCallback(getTxLambda);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

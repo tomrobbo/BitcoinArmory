@@ -36,7 +36,7 @@
 #include <functional>
 #include "ScrAddrFilter.h"
 #include "nodeRPC.h"
-#include "BitcoinP2p.h"
+#include "BitcoinP2P.h"
 #include "BDV_Notification.h"
 
 #define NUM_BLKS_BATCH_THRESH 30
@@ -119,7 +119,7 @@ private:
 
 public:
    typedef std::function<void(BDMPhase, double,unsigned, unsigned)> ProgressCallback;
-   std::shared_ptr<BitcoinNodeInterface> processNode_, watchNode_;
+   std::shared_ptr<Armory::Node::BitcoinNodeInterface> processNode_, watchNode_;
    std::shared_future<bool> isReadyFuture_;
    mutable std::shared_ptr<CoreRPC::NodeRPCInterface> nodeRPC_;
 
