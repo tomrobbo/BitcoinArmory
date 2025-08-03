@@ -11,6 +11,7 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 #include "LedgerEntry.h"
+#include "BitcoinP2P.h"
 
 using namespace std;
 

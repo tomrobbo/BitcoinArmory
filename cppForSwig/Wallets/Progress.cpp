@@ -30,31 +30,31 @@ const StateEnum& State::type() const
 ////////////////////////////////////////////////////////////////////////////////
 // State Children
 ////////////////////////////////////////////////////////////////////////////////
-CreateFile::CreateFile(const std::filesystem::path& path) :
-   State(StateEnum::CreateFile), path_(path)
+CreateWalletFile::CreateWalletFile(const std::filesystem::path& path) :
+   State(StateEnum::CreateWalletFile), path_(path)
 {}
 
-const std::filesystem::path& CreateFile::path() const
+const std::filesystem::path& CreateWalletFile::path() const
 {
    return path_;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-InitFile::InitFile(const std::string& masterId) :
-   State(StateEnum::InitFile), masterId_(masterId)
+InitWalletFile::InitWalletFile(const std::string& masterId) :
+   State(StateEnum::InitWalletFile), masterId_(masterId)
 {}
 
-const std::string& InitFile::masterId() const
+const std::string& InitWalletFile::masterId() const
 {
    return masterId_;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-ReadFile::ReadFile(const std::string& masterId) :
-   State(StateEnum::ReadFile), masterId_(masterId)
+ReadWalletFile::ReadWalletFile(const std::string& masterId) :
+   State(StateEnum::ReadWalletFile), masterId_(masterId)
 {}
 
-const std::string& ReadFile::masterId() const
+const std::string& ReadWalletFile::masterId() const
 {
    return masterId_;
 }

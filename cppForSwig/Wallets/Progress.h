@@ -26,9 +26,9 @@ namespace Armory
       {
          enum class StateEnum : int
          {
-            CreateFile,
-            InitFile,
-            ReadFile,
+            CreateWalletFile,
+            InitWalletFile,
+            ReadWalletFile,
             CreateAccount,
             ExtendChain
          };
@@ -48,35 +48,35 @@ namespace Armory
          using Func = std::function<void(std::unique_ptr<State>)>;
 
          ////////
-         class CreateFile : public State
+         class CreateWalletFile : public State
          {
          private:
             const std::filesystem::path path_;
 
          public:
-            CreateFile(const std::filesystem::path&);
+            CreateWalletFile(const std::filesystem::path&);
             const std::filesystem::path& path(void) const;
          };
 
          //
-         class InitFile : public State
+         class InitWalletFile : public State
          {
          private:
             const std::string& masterId_;
 
          public:
-            InitFile(const std::string&);
+            InitWalletFile(const std::string&);
             const std::string& masterId(void) const;
          };
 
          //
-         class ReadFile : public State
+         class ReadWalletFile : public State
          {
          private:
             const std::string& masterId_;
 
          public:
-            ReadFile(const std::string&);
+            ReadWalletFile(const std::string&);
             const std::string& masterId(void) const;
          };
 

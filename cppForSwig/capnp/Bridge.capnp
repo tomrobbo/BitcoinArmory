@@ -80,8 +80,7 @@ struct WalletData {
 # Notifications
 ###############################
 
-struct SetPassphraseStruct
-{
+struct SetPassphraseStruct {
    passphrase  @0 : Text;
    kdfTargetMs @1 : UInt32;
    kdfTargetMB @2 : UInt32;
@@ -162,8 +161,7 @@ struct Notification {
    }
 }
 
-struct NotificationReply
-{
+struct NotificationReply {
    enum RestoreMode {
       overwrite      @0;
       merge          @1;
@@ -195,19 +193,20 @@ struct BlockchainServiceRequest {
 
       shutdown                      @1 : Void;
       setupDb                       @2 : Void;
-      goOnline                      @3 : Void;
-      getNodeStatus                 @4 : Void;
-      registerWallets               @5 : Void;
+      cleanupDb                     @3 : Void;
+      goOnline                      @4 : Void;
+      getNodeStatus                 @5 : Void;
+      registerWallets               @6 : Void;
 
-      registerWallet                @6 : RegisterWallet;
-      broadcastTx                   @7 : List(Data);
-      getTxsByHash                  @8 : List(Types.Hash);
-      getHeadersByHeight            @9: List(Types.Height);
-      getBlockTimeByHeight          @10: UInt32;
-      getFeeSchedule                @11: Text;
+      registerWallet                @7 : RegisterWallet;
+      broadcastTx                   @8 : List(Data);
+      getTxsByHash                  @9 : List(Types.Hash);
+      getHeadersByHeight            @10: List(Types.Height);
+      getBlockTimeByHeight          @11: UInt32;
+      getFeeSchedule                @12: Text;
 
-      getLedgerDelegateId           @12: Void;
-      updateWalletsLedgerFilter     @13: List(Types.WalletId);
+      getLedgerDelegateId           @13: Void;
+      updateWalletsLedgerFilter     @14: List(Types.WalletId);
    }
 }
 
@@ -239,13 +238,18 @@ struct BlockchainServiceReply {
 ###############################
 struct WalletManagerRequest {
    struct StageWalletStruct {
-      walletId @0 : Types.WalletId;
-      stage    @1 : Bool;
+      walletId    @0 : Types.WalletId;
+      stage       @1 : Bool;
    }
 
    struct UnlockRequest {
-      walletPath @0 : Text;
-      callbackId @1 : Text;
+      walletPath  @0 : Text;
+      callbackId  @1 : Text;
+   }
+
+   struct MigrateRequest {
+      walletPath  @0 : Text;
+      callbackId  @1 : Text;
    }
 
    union {
@@ -255,7 +259,7 @@ struct WalletManagerRequest {
       listWallets             @1 : Void;
 
       #migrate a legacy armory .wallet file to the new format
-      migrateLegacyWallet     @2 : Types.WalletId;
+      migrateWallet           @2 : MigrateRequest;
 
       #public data in wallets with an encrypted control header cannot
       #be read, it needs unlocked first
@@ -289,7 +293,7 @@ struct WalletManagerReply {
    union {
       unset                @0 : Void;
       listWallets          @1 : List(WalletFileData);
-      migrateLegacyWallet  @2 : Bool;
+      migrateWallet        @2 : Types.WalletId;
       loadWallets          @3 : List(WalletData);
    }
 }
@@ -568,8 +572,7 @@ struct SignerReply {
 ###############################
 
 struct UtilsRequest {
-   struct CreateWalletStruct
-   {
+   struct CreateWalletStruct {
       callbackId        @0 : Text;
       lookup            @1 : UInt32;
       extraEntropy      @2 : Data;
@@ -578,8 +581,7 @@ struct UtilsRequest {
       description       @4 : Text;
    }
 
-   struct RestoreWalletStruct
-   {
+   struct RestoreWalletStruct {
       root              @0 : List(Text);
       chaincode         @1 : List(Text);
       spPass            @2 : Text;
@@ -594,10 +596,32 @@ struct UtilsRequest {
       getNameForAddrType   @3 : Int32;
       createWallet         @4 : CreateWalletStruct;
       restoreWallet        @5 : RestoreWalletStruct;
+      importWallet         @6 : Text;
    }
 }
 
 struct UtilsReply {
+   struct ImportedWalletHeader {
+      walletId             @0 : Text;
+      label                @1 : Text;
+      description          @2 : Text;
+      watchingOnly         @3 : Bool;
+      encrypted            @4 : Bool;
+      timestamp            @5 : UInt64;
+      highestUsedIndex     @6 : Int64;
+      addressCount         @7 : UInt32;
+      seedVersion          @8 : Text;
+      kdfMem               @9 : UInt32;
+
+      union {
+         unset             @10: Void;
+
+         legacy            @11: Void;
+         locked            @12: Void;
+         ready             @13: Void;
+      }
+   }
+
    union {
       unset                @0 : Void;
 
@@ -605,6 +629,7 @@ struct UtilsReply {
       getHash160           @2 : Types.Hash;
       getNameForAddrType   @3 : Text;
       createWallet         @4 : Types.WalletId;
+      importWallet         @5 : ImportedWalletHeader;
    }
 }
 

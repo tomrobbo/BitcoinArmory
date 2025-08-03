@@ -76,12 +76,12 @@ SecureBinaryData BIP32_Node::encodeBase58() const
    if (!isPublic()) {
       btc_hdnode_serialize_private(
          &node,
-         Armory::Config::BitcoinSettings::get_chain_params(), 
+         Armory::Config::BitcoinSettings::getChainParams(),
          (char*)result.getPtr(), result_len);
    } else if (pubkey_.getSize() == BTC_ECKEY_COMPRESSED_LENGTH) {
       btc_hdnode_serialize_public(
          &node,
-         Armory::Config::BitcoinSettings::get_chain_params(), 
+         Armory::Config::BitcoinSettings::getChainParams(),
          (char*)result.getPtr(), result_len);
    } else {
       throw std::runtime_error("uninitialized BIP32 object, cannot encode");
@@ -102,7 +102,7 @@ void BIP32_Node::decodeBase58(const char* str)
 
    //b58 decode
    if (!btc_hdnode_deserialize(
-      str, Armory::Config::BitcoinSettings::get_chain_params(), &node)) {
+      str, Armory::Config::BitcoinSettings::getChainParams(), &node)) {
       throw std::runtime_error("invalid bip32 serialized string");
    }
    setupFromNode(&node);

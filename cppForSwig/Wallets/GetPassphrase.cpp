@@ -22,8 +22,8 @@ Params::Params() :
 {}
 
 Params::Params(std::chrono::milliseconds target, uint32_t mb,
-   SecureBinaryData pass) :
-   unlockMs(target), memTargetMB(mb), passphrase{std::move(pass)}
+   SecureBinaryData pass, bool succ) :
+   unlockMs(target), memTargetMB(mb), passphrase{std::move(pass)}, success(succ)
 {}
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -71,8 +71,8 @@ const Params& SetNew::get() const
       }
 
       params_ = std::move(setNewPassphrase_());
-      if (params_ == nullptr || params_->passphrase.empty()) {
-         throw std::runtime_error("passphrase was not set");
+      if (params_ == nullptr || params_->success == false) {
+         throw std::runtime_error("passphrase request was rejected");
       }
    }
    return *params_;
@@ -106,8 +106,7 @@ UnlockFunc SetNew::getUnlockFunc() const
    }
 
    return [&pass=params_->passphrase]
-   (const std::set<Armory::Wallets::EncryptionKeyId>&)->SecureBinaryData {
-
-      return pass;
+   (const std::set<Armory::Wallets::EncryptionKeyId>&)->Result {
+      return {pass, true};
    };
 }

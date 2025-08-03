@@ -10,6 +10,7 @@
 #include <string_view>
 
 #include "Manager.h"
+#include "Notifications.h"
 #include "Wallets/Seeds/Backups.h"
 #include "../PassphrasePrompt.h"
 #include "../Wallets/Seeds/Seeds.h"
@@ -101,6 +102,55 @@ std::shared_ptr<WalletContainer> WalletManager::getWalletContainer(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+std::shared_ptr<Callback> WalletManager::setupBdvCallback(
+   const std::function<void(BinaryData&)>& writeFunc)
+{
+   if (callbackPtr_ != nullptr) {
+      throw std::runtime_error("callback already instantiated!");
+   }
+   /***
+   The bridge feeds a RemoteCallback object to the WebSocketClient object
+   that bdvPtr_ wraps around. On pushes from ArmoryDB, the wsclient passes
+   the packets to the RemoteCallback.
+
+   Most of the push actions require pushing the data up the chain, to the
+   client. The pushNotif lambda deals with that.
+
+   The handler is very simple for now: either pass a capnp message along
+   to the client or call updateStateFromDB.
+   ***/
+   auto pushNotif = [writeFunc, this](NotifStruct notif)->void
+   {
+      switch (notif.type)
+      {
+         case NotifType::PUSH:
+         {
+            if (notif.packet.empty()) {
+               throw std::runtime_error("empty packet in push notif!");
+            }
+            writeFunc(notif.packet);
+            return;
+         }
+
+         case NotifType::UPDATE:
+         {
+            if (notif.lbd == nullptr) {
+               throw std::runtime_error("notif lbd is not set!");
+            }
+            updateStateFromDB(notif.lbd);
+            return;
+         }
+
+         default:
+            throw std::runtime_error("invalid pushNotif type");
+      }
+   };
+
+   callbackPtr_ = std::make_shared<Callback>(pushNotif);
+   return callbackPtr_;
+}
+
+////
 void WalletManager::setBdvPtr(
    std::shared_ptr<AsyncClient::BlockDataViewer> bdvPtr)
 {
@@ -120,10 +170,11 @@ void WalletManager::registerWallets()
          accIt.second->registerWithBDV(false);
       }
    }
+   callbackPtr_->notifySetupRegistrationDone();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-const std::string& WalletManager::registerWallet(const std::string& wltId,
+void WalletManager::registerWallet(const std::string& wltId,
    const Wallets::AddressAccountId& accId, bool isNew)
 {
    auto wltIter = wallets_.find(wltId);
@@ -137,7 +188,14 @@ const std::string& WalletManager::registerWallet(const std::string& wltId,
    }
 
    accIter->second->registerWithBDV(isNew);
-   return accIter->second->getDbId();
+   auto dbId = accIter->second->getDbId();
+   auto lbd = [this, dbId]()
+   {
+      updateStateFromDB([this, dbId](){
+         callbackPtr_->notifyRefresh({dbId});
+      });
+   };
+   callbackPtr_->registerRefreshCallback(dbId, lbd);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -258,6 +316,30 @@ void WalletManager::loadWallet(const Wallets::IO::ReadOnlyFileParams& params)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+void WalletManager::loadAFile(const std::filesystem::path& path)
+{
+   ReentrantLock lock(this);
+   try {
+      auto wltPtr = Wallets::AssetWallet::loadMainWalletFromFile(
+      Wallets::IO::ReadOnlyFileParams{path, {}});
+      walletFiles_.emplace(
+         path.filename().string(),
+         std::make_shared<LMDBWalletInfo>(path, wltPtr)
+      );
+   } catch (const Wallets::Encryption::DecryptedDataContainerException& e) {
+      //could not decrypt wallet control header, track as encrypted wallet
+      std::string errStr{
+         "failed to open wallet \"" + path.string() +
+         "\" with decryption error: " + e.what()};
+      LOGDEBUG << errStr;
+      walletFiles_.emplace(
+         path.filename().string(),
+         std::make_shared<LMDBWalletInfo>(path, nullptr)
+      );
+   }
+}
+
+////////
 std::map<std::string, std::shared_ptr<WalletFileInfo>>
 WalletManager::listWallets()
 {
@@ -265,34 +347,45 @@ WalletManager::listWallets()
    std::vector<std::filesystem::path> walletPaths, a135Paths;
    for (const auto& dirEntry : std::filesystem::directory_iterator{path_} ) {
       const auto& path = dirEntry.path();
+
+      //ignore folders
+      if (FileUtils::isDir(path)) {
+         continue;
+      }
+
+      //ignore certain obvious extensions
       const auto& extension = path.extension();
+      if (extension == ".peers" || extension == ".txt" || extension == ".log") {
+         continue;
+      }
 
       //ignore this file if we've parsed it before
-      auto iter = walletFiles_.find(path.stem().string());
+      auto iter = walletFiles_.find(path.filename().string());
       if (iter != walletFiles_.end()) {
          continue;
       }
 
-      if (extension == ".lmdb") {
-         walletPaths.emplace_back(path);
-      } else if (extension == ".wallet") {
-         a135Paths.emplace_back(path);
+      //ignore LMDB lock files
+      auto filename = path.filename().string();
+      if (filename.size() > 5) {
+         if (std::memcmp(filename.data() + filename.size() - 5,
+            "-lock", 5) == 0) {
+            continue;
+         }
       }
+
+      //track file for parsing
+      walletPaths.emplace_back(path);
    }
 
    //read the potential wallet files
    ReentrantLock lock(this);
    for (const auto& wltPath : walletPaths) {
       try {
-         auto wltPtr = Wallets::AssetWallet::loadMainWalletFromFile(
-            Wallets::IO::ReadOnlyFileParams{wltPath, {}});
-         walletFiles_.emplace(wltPath.stem().string(),
-            std::make_shared<LMDBWalletInfo>(wltPath, wltPtr));
-      } catch (const Wallets::Encryption::DecryptedDataContainerException& e) {
-         //could not decrypt wallet control header, track as encrypted wallet
-         LOGDEBUG << "could not open wallet with decryption error: " << e.what();
-         walletFiles_.emplace(wltPath.stem().string(),
-            std::make_shared<LMDBWalletInfo>(wltPath, nullptr));
+         loadAFile(wltPath);
+      } catch (const std::exception&) {
+         //couldnt load the file, maybe it's a legacy wallet?
+         a135Paths.emplace_back(wltPath);
       }
    }
 
@@ -305,15 +398,16 @@ WalletManager::listWallets()
 
       //an armory v1.35 wallet was loaded, check if we need to
       //migrate it to v3.x
-      auto& id = a135->getID();
-      auto iter = wallets_.find(id);
+      auto iter = wallets_.find(a135->getID());
       if (iter != wallets_.end()) {
          continue;
       }
 
       //no equivalent v3.x wallet loaded, add it to the list
-      walletFiles_.emplace(wltPath.stem().string(),
-         std::make_shared<A135FileInfo>(a135));
+      walletFiles_.emplace(
+         wltPath.filename().string(),
+         std::make_shared<A135FileInfo>(a135)
+      );
    }
 
    std::map<std::string, std::shared_ptr<WalletFileInfo>> result;
@@ -329,6 +423,41 @@ WalletManager::listWallets()
       }
    }
    return result;
+}
+
+////////
+std::shared_ptr<WalletFileInfo> WalletManager::importFile(
+   const std::filesystem::path& path)
+{
+   //lock container and try to load the file
+   ReentrantLock lock(this);
+   try {
+      loadAFile(path);
+   } catch (const std::exception&) {
+      //potentially a legacy wallet
+      auto a135 = std::make_shared<Armory135Header>(path);
+      if (a135->isInitialized()) {
+         auto idIter = wallets_.find(a135->getID());
+         if (idIter != wallets_.end()) {
+            throw std::runtime_error("this legacy wallet is already loaded");
+         }
+
+         walletFiles_.emplace(
+            path.filename().string(),
+            std::make_shared<A135FileInfo>(a135)
+         );
+      } else if (a135->errorCode() == A135_ERROR_MAGICBYTE) {
+         throw std::runtime_error(
+            "this legacy wallet is not for this network!");
+      }
+   }
+
+   //if the file is loaded, it will be in files map
+   auto fileIter = walletFiles_.find(path.filename().string());
+   if (fileIter == walletFiles_.end()) {
+      throw std::runtime_error("file isn't a wallet");
+   }
+   return fileIter->second;
 }
 
 /////////
@@ -354,7 +483,7 @@ void WalletManager::unlockControlHeader(const std::string& path,
 }
 
 /////////
-void WalletManager::migrateWallet(const std::string& path,
+const std::string& WalletManager::migrateWallet(const std::string& path,
    const Passphrase::UnlockFunc& lbd,
    const Wallets::IO::CreateWalletParams& params)
 {
@@ -375,8 +504,9 @@ void WalletManager::migrateWallet(const std::string& path,
 
    auto wltPtr = infoObj->migrate(lbd, params);
    auto migratedPath = wltPtr->getDbFilename();
-   walletFiles_.emplace(migratedPath.stem().string(),
+   walletFiles_.emplace(migratedPath.filename().string(),
       std::make_shared<LMDBWalletInfo>(migratedPath, wltPtr));
+   return wltPtr->getID();
 }
 
 /////////

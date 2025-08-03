@@ -8,6 +8,7 @@
 import enum
 from armoryengine.ArmoryUtils import LOGINFO, LOGWARN, LOGERROR
 from armoryengine.PyBtcWallet import PyBtcWallet
+from armoryengine.CppBridge import TheBridge
 
 ################################################################################
 class WalletTypes(enum.Enum):
@@ -89,6 +90,19 @@ class WalletMap(object):
             'visible' : True
          })
 
+   def migrateWallet(self, path, callbackId, cbFunc):
+      def wrapperFunc(capnReply):
+         if capnReply.success == False:
+            cbFunc(False, capnReply.error)
+         else:
+            try:
+               self.parent.loadWallets()  # This reloads all wallets, registering the new one
+               dbId = capnReply.walletManager.migrateWallet
+               cbFunc(True, dbId)
+            except Exception as e:
+               cbFunc(False, str(e))
+      TheBridge.wltManager.migrateWallet(path, callbackId, wrapperFunc)
+
    def unloadWallet(self, wltId: str, accId: str=None):
       dbIds = []
 
@@ -133,7 +147,7 @@ class WalletMap(object):
 
          wltLoaded = True
          if dbId in self._walletMap:
-            LOGWARN('***WARNING: Duplicate wallet detected, %s', wallet.walletId)
+            LOGWARN('***WARNING: Duplicate wallet detected, %s', wltLoad.walletId)
             wo1 = self._walletMap[dbId].watchingOnly
             wo2 = wltLoad.watchingOnly
             fpath = wltLoad.walletPath

@@ -177,6 +177,7 @@ public:
    static void shutdown(void);
    static void waitOnShutdown(void);
    static SecureBinaryData getPublicKey(void);
+   static bool isMasterKey(const btc_pubkey&);
 
    static void write(const uint64_t&, const uint32_t&,
       std::unique_ptr<Socket_WritePayload>);

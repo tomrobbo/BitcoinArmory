@@ -65,7 +65,7 @@ std::shared_ptr<IO::WalletDBInterface> AssetWallet::createIface(
    passphrase. Private keys use a different passphrase, with its own prompt.
    */
    if (prog) {
-      auto prg = std::make_unique<Progress::CreateFile>(params.filePath);
+      auto prg = std::make_unique<Progress::CreateWalletFile>(params.filePath);
       prog(std::move(prg));
    }
    auto iface = std::make_shared<IO::WalletDBInterface>();
@@ -115,7 +115,6 @@ std::shared_ptr<AddressAccount> AssetWallet::createAccount(
 
    //commit to disk
    account_ptr->commit(iface_);
-
    if (accountType->isMain()) {
       mainAccountId_ = account_ptr->getID();
 
@@ -163,7 +162,7 @@ std::string AssetWallet::getMainWalletID(
       std::string idStr{dataRef.toCharPtr(), dataRef.getSize()};
       return idStr;
    } catch (const IO::NoEntryInWalletException&) {
-      LOGERR << "main wallet ID is not set!";
+      LOGERR << "main wallet ID is not set in file: " << iface->getFilename();
       throw WalletException("main wallet ID is not set!");
    }
 }
@@ -188,7 +187,6 @@ void AssetWallet::checkMasterID(const std::string& masterID)
       /*
       Grab ID from disk, check it matches arg.
       */
-
       auto fromDisk = getMasterID(iface_);
 
       //sanity check
@@ -1454,7 +1452,7 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::initWalletDb(
    uint32_t seedFingerprint)
 {
    if (params.progressFunc) {
-      auto prg = std::make_unique<Progress::InitFile>(masterID);
+      auto prg = std::make_unique<Progress::InitWalletFile>(masterID);
       params.progressFunc(std::move(prg));
    }
 
@@ -1466,14 +1464,22 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::initWalletDb(
    IO::MasterKeyStruct masterKeyStruct;
    try {
       auto paramsCopy = params.setPrivPassObj.get();
-      masterKeyStruct = std::move(IO::WalletDBInterface::initWalletHeaderObject(
-         headerPtr, paramsCopy));
-   } catch (const std::runtime_error&) {
+      if (paramsCopy.passphrase.empty()) {
       LOGWARN << "!! No private passphrase provided !!";
       LOGWARN << "!! Private keys in this wallet will not be encrypted !!";
-      Passphrase::Params defaultParams{2000ms, 0, {}};
-      masterKeyStruct = std::move(IO::WalletDBInterface::initWalletHeaderObject(
-         headerPtr, defaultParams));
+         Passphrase::Params defaultParams{2000ms, 0, {}};
+         masterKeyStruct = std::move(IO::WalletDBInterface::initWalletHeaderObject(
+            headerPtr, defaultParams));
+      } else {
+         masterKeyStruct = std::move(IO::WalletDBInterface::initWalletHeaderObject(
+            headerPtr, paramsCopy));
+      }
+   } catch (const std::exception& e) {
+      //user rejected password request, cleanup and rethrow
+      auto path = iface->getFilename();
+      iface->shutdown();
+      std::filesystem::remove(path);
+      throw WalletException(e.what());
    }
 
    //copy cipher to cycle the IV then encrypt the private root
@@ -1556,7 +1562,7 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::initWalletDb(
 
    //init walletptr from file
    if (params.progressFunc) {
-      auto prg = std::make_unique<Progress::ReadFile>(masterID);
+      auto prg = std::make_unique<Progress::ReadWalletFile>(masterID);
       params.progressFunc(std::move(prg));
    }
    walletPtr->readFromFile();
@@ -1577,7 +1583,7 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::initWalletDbWithPubRoot(
    }
 
    if (params.progressFunc) {
-      auto prg = std::make_unique<Progress::InitFile>(masterID);
+      auto prg = std::make_unique<Progress::InitWalletFile>(masterID);
       params.progressFunc(std::move(prg));
    }
 
@@ -1628,7 +1634,7 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::initWalletDbWithPubRoot(
 
    //init walletptr from file
    if (params.progressFunc) {
-      auto prg = std::make_unique<Progress::ReadFile>(masterID);
+      auto prg = std::make_unique<Progress::ReadWalletFile>(masterID);
       params.progressFunc(std::move(prg));
    }
    walletPtr->readFromFile();
@@ -2244,6 +2250,40 @@ std::shared_ptr<AccountType_BIP32> AssetWallet_Single::makeNewBip32AccTypeObject
    }
    auto seedFingerprint = rootBip32->getSeedFingerprint(true);
    return AccountType_BIP32::makeFromDerPaths(seedFingerprint, {derPath});
+}
+
+////////////////////////////////////////////////////////////////////////////////
+const AddressAccountId& AssetWallet_Single::setupImportAccount()
+{
+   ReentrantLock lock(this);
+
+   auto accTypePtr = std::make_shared<AccountType_Imports>(!isWatchingOnly());
+   if (!mainAccountId_.isValid()) {
+      accTypePtr->setMain(true);
+   }
+   auto accountPtr = createAccount(accTypePtr, nullptr);
+   return accountPtr->getID();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+AssetId AssetWallet_Single::importPublicKey(SecureBinaryData& pubkey,
+   AddressEntryType aeType)
+{
+   //lock
+   ReentrantLock lock(this);
+
+   //grab WO import account
+   auto addrAcc = getAccountForID({IMPORTS_ACCOUNT_PUB});
+   auto assetAcc = addrAcc->getOuterAccount();
+   auto importAcc = dynamic_cast<AssetAccount_ImportsWO*>(assetAcc.get());
+   if (importAcc == nullptr) {
+      throw WalletException("invalid WO import account");
+   }
+
+   auto tx = iface_->beginWriteTransaction(dbName_);
+   auto assetId = importAcc->importPublicKey(iface_, pubkey);
+   addrAcc->updateInstantiatedAddressType(iface_, assetId, aeType);
+   return assetId;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

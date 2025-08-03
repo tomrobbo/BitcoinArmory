@@ -18,10 +18,6 @@ extern "C" {
 #include <trezor-crypto/bip39.h>
 }
 
-#include <capnp/message.h>
-#include <capnp/serialize.h>
-#include "capnp/Bridge.capnp.h"
-
 #define EASY16_CHECKSUM_LEN 2
 #define EASY16_INDEX_MAX   15
 #define EASY16_LINE_LENGTH 16
@@ -31,19 +27,7 @@ extern "C" {
 using namespace Armory::Seeds;
 using namespace Armory::Assets;
 using namespace Armory::Wallets;
-
 using namespace std::string_view_literals;
-
-namespace
-{
-   capnp::FlatArrayMessageReader getReader(BinaryDataRef raw)
-   {
-      kj::ArrayPtr<const capnp::word> words(
-         reinterpret_cast<const capnp::word*>(raw.getPtr()),
-         raw.getSize() / sizeof(capnp::word));
-      return capnp::FlatArrayMessageReader(words);
-   }
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 const std::vector<char> Easy16Codec::e16chars_ = {

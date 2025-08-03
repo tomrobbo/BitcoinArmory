@@ -146,24 +146,15 @@ private:
 
 public:
    WebSocketClient(const std::string& addr, const std::string& port,
-      const Armory::Wallets::IO::ReadOnlyFileParams&,
-      bool ephemeralPeers, bool oneWayAuth,
-      std::shared_ptr<RemoteCallback> cbPtr);
-
-   ~WebSocketClient()
-   {
-      shutdown();
-
-      if (serviceThr_.joinable())
-         serviceThr_.join();
-   }
+      std::shared_ptr<Armory::Wallets::AuthorizedPeers>, bool,
+      std::shared_ptr<RemoteCallback>);
+   ~WebSocketClient(void);
 
    //locals
    void shutdown(void);
-   void cleanUp(void);
+   void cleanup(void);
    bool running(void) const override;
-   std::pair<unsigned, unsigned> 
-      getRekeyCount(void) const { return std::make_pair(outerRekeyCount_, innerRekeyCount_); }
+   std::pair<unsigned, unsigned> getRekeyCount(void) const;
    void addPublicKey(const SecureBinaryData&);
    void setPubkeyPromptLambda(std::function<bool(const BinaryData&, const std::string&)>);
 

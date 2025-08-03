@@ -82,16 +82,27 @@ namespace
 
          case BlockchainServiceRequest::SETUP_DB:
          {
-            bridge->setupDB();
-            break;
+            std::thread thr([bridge, referenceId]{
+               bridge->setupDB(referenceId);});
+            if (thr.joinable()) {
+               thr.detach();
+            }
+            return true;
+         }
+
+         case BlockchainServiceRequest::CLEANUP_DB:
+         {
+            std::thread thr([bridge, referenceId]{
+               bridge->cleanupDb(referenceId);});
+            if (thr.joinable()) {
+               thr.detach();
+            }
+            return true;
          }
 
          case BlockchainServiceRequest::GO_ONLINE:
          {
-            if (bridge->bdvPtr() == nullptr) {
-               throw std::runtime_error("null bdv ptr");
-            }
-            bridge->bdvPtr()->goOnline();
+            bridge->goOnline();
             break;
          }
 
@@ -245,6 +256,16 @@ namespace
          case WalletManagerRequest::LOAD_WALLETS:
          {
             response = bridge->loadWallets(referenceId);
+            break;
+         }
+
+         case WalletManagerRequest::MIGRATE_WALLET:
+         {
+            auto migrateReq = request.getMigrateWallet();
+            const std::filesystem::path walletId(migrateReq.getWalletPath());
+            const std::string callbackId(migrateReq.getCallbackId());
+            bridge->migrateWallet(walletId.filename().string(),
+               callbackId, referenceId);
             break;
          }
 
@@ -1045,6 +1066,13 @@ namespace
 
             bridge->restoreWallet(lines, spPass,
                callbackId, referenceId);
+            break;
+         }
+
+         case UtilsRequest::IMPORT_WALLET:
+         {
+            std::filesystem::path importPath(request.getImportWallet());
+            bridge->importWallet(importPath, referenceId);
             break;
          }
 

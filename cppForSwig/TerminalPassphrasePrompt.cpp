@@ -189,9 +189,10 @@ Armory::Passphrase::UnlockFunc TerminalPassphrasePrompt::getLambda(
    auto ptr = new TerminalPassphrasePrompt(verbose);
    std::shared_ptr<TerminalPassphrasePrompt> smartPtr(ptr);
 
-   auto passLbd = [smartPtr](const std::set<EncryptionKeyId>& idSet)->SecureBinaryData
+   auto passLbd = [smartPtr](const std::set<EncryptionKeyId>& idSet)
+   ->Armory::Passphrase::Result
    {
-      return smartPtr->prompt(idSet);
+      return {smartPtr->prompt(idSet), true};
    };
    return passLbd;
 }

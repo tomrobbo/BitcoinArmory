@@ -29,8 +29,14 @@ namespace Armory
 
    namespace Passphrase
    {
+      struct Result
+      {
+         SecureBinaryData passphrase;
+         const bool success;
+      };
+
       /* to unlock an encrypted container */
-      using UnlockFunc = std::function<SecureBinaryData(
+      using UnlockFunc = std::function<Result(
          const std::set<Wallets::EncryptionKeyId>&)>;
 
       /* to get passphrase and kdf params at encrypted container creation */
@@ -39,9 +45,11 @@ namespace Armory
          std::chrono::milliseconds unlockMs;
          uint32_t memTargetMB=0;
          SecureBinaryData passphrase{};
+         bool success;
 
          Params(void);
-         Params(std::chrono::milliseconds, uint32_t, SecureBinaryData);
+         Params(std::chrono::milliseconds, uint32_t,
+            SecureBinaryData, bool success=true);
       };
 
       class SetNew

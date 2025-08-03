@@ -55,8 +55,7 @@ namespace Armory
       class WalletException : public std::runtime_error
       {
       public:
-         WalletException(const std::string& msg) : std::runtime_error(msg)
-         {}
+         WalletException(const std::string&);
       };
 
       namespace IO

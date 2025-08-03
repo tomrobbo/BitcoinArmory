@@ -13,9 +13,12 @@
 #include "../Addresses.h"
 
 #define ARMORY_LEGACY_ACCOUNTID        0xF6E10000
+#define IMPORTS_ACCOUNT_PRIV           0x00001200
+#define IMPORTS_ACCOUNT_PUB            0x00001201
 #define IMPORTS_ACCOUNTID              0x00000000
 #define ARMORY_LEGACY_ASSET_ACCOUNTID  0x00000001U
 #define ECDH_ASSET_ACCOUNTID           0x20000000U
+
 #define SEED_DEPTH                     0xFFFF
 
 namespace Armory
@@ -45,7 +48,9 @@ namespace Armory
       enum AssetAccountTypeEnum
       {
          AssetAccountTypeEnum_Plain = 0,
-         AssetAccountTypeEnum_ECDH
+         AssetAccountTypeEnum_ECDH,
+         AssetAccountTypeEnum_Imports,
+         AssetAccountTypeEnum_ImportsWO
       };
 
       enum AccountTypeEnum
@@ -75,7 +80,10 @@ namespace Armory
          */
          AccountTypeEnum_ECDH,
 
-         AccountTypeEnum_Custom
+         /*
+         As the name says, to import key pairs
+         */
+         AccountTypeEnum_Imports
       };
 
       enum MetaAccountType
@@ -344,6 +352,23 @@ namespace Armory
          //local
          const SecureBinaryData& getPrivKey(void) const;
          const SecureBinaryData& getPubKey(void) const;
+
+         //virtual
+         AccountTypeEnum type(void) const override;
+         Wallets::AddressAccountId getAccountID(void) const override;
+         Wallets::AssetAccountId getOuterAccountID(void) const override;
+         Wallets::AssetAccountId getInnerAccountID(void) const override;
+
+         virtual bool isWatchingOnly(void) const override;
+         std::string name(void) const override;
+      };
+
+      class AccountType_Imports : public AccountType
+      {
+         const bool hasPrivateKeys_;
+
+      public:
+         AccountType_Imports(bool);
 
          //virtual
          AccountTypeEnum type(void) const override;

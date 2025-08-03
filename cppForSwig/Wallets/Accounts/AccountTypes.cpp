@@ -503,6 +503,58 @@ AssetAccountId AccountType_ECDH::getInnerAccountID() const
 
 ////////////////////////////////////////////////////////////////////////////////
 //
+//// AccountType_Imports
+//
+////////////////////////////////////////////////////////////////////////////////
+AccountType_Imports::AccountType_Imports(bool hasPrivateKeys) :
+   hasPrivateKeys_(hasPrivateKeys)
+{}
+
+////
+AccountTypeEnum AccountType_Imports::type() const
+{
+   return AccountTypeEnum_Imports;
+}
+
+////
+AddressAccountId AccountType_Imports::getAccountID() const
+{
+   if (hasPrivateKeys_) {
+      return AddressAccountId{IMPORTS_ACCOUNT_PRIV};
+   } else {
+      return AddressAccountId{IMPORTS_ACCOUNT_PUB};
+   }
+}
+
+////
+AssetAccountId AccountType_Imports::getOuterAccountID() const
+{
+   return AssetAccountId{getAccountID(), IMPORTS_ACCOUNTID};
+}
+
+AssetAccountId AccountType_Imports::getInnerAccountID() const
+{
+   return {};
+}
+
+////
+bool AccountType_Imports::isWatchingOnly() const
+{
+   return !hasPrivateKeys_;
+}
+
+////
+std::string AccountType_Imports::name() const
+{
+   if (hasPrivateKeys_) {
+      return std::string{"WO imports"sv};
+   } else {
+      return std::string{"imports"sv};
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
 //// DerivationBranch
 //
 ////////////////////////////////////////////////////////////////////////////////

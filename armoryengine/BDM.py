@@ -304,14 +304,7 @@ if CLI_OPTIONS.offline:
    LOGINFO('Armory loaded in offline-mode.  Will not attempt to load ')
    LOGINFO('blockchain without explicit command to do so.')
    TheBDM = BlockDataManager(isOffline=True)
-
 else:
-   # NOTE:  "TheBDM" is sometimes used in the C++ code to reference the
-   #        singleton BlockDataManager_LevelDB class object.  Here, 
-   #        "TheBDM" refers to a python BlockDataManagerThead class 
-   #        object that wraps the C++ version.  It implements some of 
-   #        it's own methods, and then passes through anything it 
-   #        doesn't recognize to the C++ object.
    LOGINFO('Using the asynchronous/multi-threaded BlockDataManager.')
    LOGINFO('Blockchain operations will happen in the background.  ')
    LOGINFO('Devs: check TheBDM.getState() before asking for data.')

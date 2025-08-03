@@ -330,6 +330,7 @@ namespace Armory
          bool isWatchingOnly(void) const;
          std::shared_ptr<Seeds::EncryptedSeed> getEncryptedSeed(void) const;
 
+         //bip32 primitives
          Signing::BIP32_AssetPath getBip32PathForAsset(
             std::shared_ptr<Assets::AssetEntry>) const;
          Signing::BIP32_AssetPath getBip32PathForAssetID(
@@ -338,6 +339,12 @@ namespace Armory
          std::string getXpubForAssetID(const AssetId&) const;
          std::shared_ptr<Accounts::AccountType_BIP32>
             makeNewBip32AccTypeObject(const std::vector<uint32_t>&) const;
+
+         //imports
+         const AddressAccountId& setupImportAccount(void);
+         AssetId importPublicKey(SecureBinaryData&, AddressEntryType);
+         AssetId importPrivateKey(SecureBinaryData&);
+         AssetId importAddressHash(SecureBinaryData&);
 
          //virtual
          const SecureBinaryData& getDecryptedValue(
