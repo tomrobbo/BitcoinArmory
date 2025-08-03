@@ -2,7 +2,7 @@
 //                                                                            //
 //  Copyright (C) 2019, goatpig.                                              //
 //  Distributed under the MIT license                                         //
-//  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //                                      
+//  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -17,7 +17,7 @@
 #include "../BtcUtils.h"
 
 #include "../BlockchainDatabase/BlockUtils.h"
-#include "../BitcoinP2p.h"
+#include "../BitcoinP2P.h"
 #include "../BlockchainDatabase/Blockchain.h"
 #include "../Signer/ScriptRecipient.h"
 #include "../BlockchainDatabase/BlockDataMap.h"
@@ -46,12 +46,12 @@ struct MempoolObject
    unsigned blocksUntilMined_ = 0;
    bool staged_;
 
-   bool operator<(const MempoolObject& rhs) const 
+   bool operator<(const MempoolObject& rhs) const
    { return order_ < rhs.order_; }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-class NodeUnitTest : public BitcoinNodeInterface
+class NodeUnitTest : public Armory::Node::BitcoinNodeInterface
 {
    friend class NodeRPC_UnitTest;
 
@@ -101,9 +101,11 @@ public:
    void watcherProcess(void);
 
    std::map<unsigned, BinaryData> mineNewBlock(
-      BlockDataManager* bdm, unsigned count, const BinaryData& h160, double diff = 1.0);
+      std::shared_ptr<BlockDataManager> bdm,
+      unsigned count, const BinaryData& h160, double diff = 1.0);
    std::map<unsigned, BinaryData> mineNewBlock(
-      BlockDataManager* bdm, unsigned, Armory::Signing::ScriptRecipient*, double diff = 1.0);
+      std::shared_ptr<BlockDataManager> bdm,
+      unsigned, Armory::Signing::ScriptRecipient*, double diff = 1.0);
 
    std::vector<UnitTestBlock> getMinedBlocks(void) const { return blocks_; }
    void setReorgBranchPoint(std::shared_ptr<BlockHeader>);
@@ -124,7 +126,7 @@ public:
    void setIface(LMDBBlockDatabase* iface) { iface_ = iface; }
 
    //virtuals
-   void sendMessage(std::unique_ptr<Payload>) override;
+   void sendMessage(std::unique_ptr<Armory::Node::Payload>) override;
 
    void connectToNode(bool) override;
    bool connected(void) const override { return true; }

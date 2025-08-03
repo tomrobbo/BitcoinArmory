@@ -236,7 +236,7 @@ SecureBinaryData BtcUtils::computeChainCode_Armory135(
    */
 
    auto hmacKey = BtcUtils::hash256(privateRoot);
-   auto hmacMsg = BinaryData::fromString("Derive Chaincode from Root Key");
+   auto hmacMsg = BinaryData::fromString("Derive Chaincode from Root Key"sv);
 
    //use key as is for invalid armory hmac256: armory erroneously uses the
    //output size for sha256 (32 bytes) instead of the block size (64 bytes)
@@ -432,24 +432,24 @@ TXOUT_SCRIPT_TYPE BtcUtils::getScriptTypeForScrAddr(BinaryDataRef scrAddr)
 std::string BtcUtils::getAddressStrFromScrAddr(BinaryDataRef scrAddrRef)
 {
    auto scrType = getScriptTypeForScrAddr(scrAddrRef);
-   switch (scrType) 
+   switch (scrType)
    {
-   case TXOUT_SCRIPT_P2WPKH:
-   case TXOUT_SCRIPT_P2WSH:
-   {
-      auto scrAddrNoPrefix = 
-         scrAddrRef.getSliceRef(1, scrAddrRef.getSize() -1);
-      return BtcUtils::scrAddrToSegWitAddress(scrAddrNoPrefix);
-   }
+      case TXOUT_SCRIPT_P2WPKH:
+      case TXOUT_SCRIPT_P2WSH:
+      {
+         auto scrAddrNoPrefix =
+            scrAddrRef.getSliceRef(1, scrAddrRef.getSize() -1);
+         return BtcUtils::scrAddrToSegWitAddress(scrAddrNoPrefix);
+      }
 
-   case TXOUT_SCRIPT_STDHASH160:
-   case TXOUT_SCRIPT_P2SH:
-   {
-      return BtcUtils::scrAddrToBase58(scrAddrRef);         
-   }
+      case TXOUT_SCRIPT_STDHASH160:
+      case TXOUT_SCRIPT_P2SH:
+      {
+         return BtcUtils::scrAddrToBase58(scrAddrRef);
+      }
 
-   default:
-      throw runtime_error("unsupported address type");
+      default:
+         throw std::runtime_error("unsupported address type");
    }
 }
 

@@ -353,7 +353,7 @@ void LMDBEnv::open(const std::filesystem::path &path, unsigned flags)
    if (rc != MDB_SUCCESS) {
       throw LMDBException("Failed to load mdb env (" + errorString(rc) + ")");
    }
-   
+
    rc = mdb_env_set_maxdbs(dbenv, dbCount_);
    if (rc != MDB_SUCCESS) {
       throw LMDBException("Failed to set max dbs (" + errorString(rc) + ")");
@@ -361,11 +361,9 @@ void LMDBEnv::open(const std::filesystem::path &path, unsigned flags)
 
    rc = mdb_env_open(dbenv, path.string().c_str(), MDB_NOSUBDIR | flags, 0600);
    if (rc != MDB_SUCCESS) {
-      std::stringstream ss;
-      ss << "Failed to open db " << path <<
-         " (" + errorString(rc) + ")" << std::endl;
-      std::cout << ss.str();
-      throw LMDBException(ss.str());
+      std::string errStr{
+         "Failed to open db \"" + path.string() + "\" (" + errorString(rc) + ")"};
+      throw LMDBException(errStr);
    }
 
    path_ = path;
@@ -383,11 +381,11 @@ void LMDBEnv::setMapSize(size_t sz)
 {
    auto rc = mdb_env_set_mapsize(dbenv, sz);
    if (rc != MDB_SUCCESS) {
-      std::stringstream ss;
-      ss << "failed to insert set map size, returned following error string: " << 
-         errorString(rc) << std::endl;
-      std::cout << ss.str();
-      throw LMDBException(ss.str());
+      std::string errStr{
+         "failed to insert set map size, returned following error string: " +
+         errorString(rc)};
+      std::cout << errStr << std::endl;
+      throw LMDBException(errStr);
    }
 }
 
@@ -395,11 +393,11 @@ void LMDBEnv::compactCopy(const std::filesystem::path& fname)
 {
    auto rc = mdb_env_copy2(dbenv, fname.string().c_str(), MDB_CP_COMPACT);
    if (rc != MDB_SUCCESS) {
-      std::stringstream ss;
-      ss << "failed to copy env, returned following error string: " <<
-         errorString(rc) << std::endl;
-      std::cout << ss.str();
-      throw LMDBException(ss.str());
+      std::string errStr{
+         "failed to copy env, returned following error string: " +
+         errorString(rc)};
+      std::cout << errStr << std::endl;
+      throw LMDBException(errStr);
    }
 }
 

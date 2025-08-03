@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2020-2024, goatpig                                          //
+//  Copyright (C) 2020-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -8,6 +8,10 @@
 
 #include "ProtoCommandParser.h"
 #include "CppBridge.h"
+#include "Wallets/Seeds/Backups.h"
+#include "Wallets/IOHeader.h"
+#include "../AsyncClient.h"
+#include "../CoinSelection.h"
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
@@ -15,6 +19,7 @@
 
 using namespace Armory;
 using namespace Armory::Bridge;
+using namespace std::chrono_literals;
 
 namespace
 {
@@ -75,25 +80,29 @@ namespace
             break;
          }
 
-         case BlockchainServiceRequest::LOAD_WALLETS:
-         {
-            auto callbackId = request.getLoadWallets();
-            bridge->loadWallets(callbackId, referenceId);
-            break;
-         }
-
          case BlockchainServiceRequest::SETUP_DB:
          {
-            bridge->setupDB();
-            break;
+            std::thread thr([bridge, referenceId]{
+               bridge->setupDB(referenceId);});
+            if (thr.joinable()) {
+               thr.detach();
+            }
+            return true;
+         }
+
+         case BlockchainServiceRequest::CLEANUP_DB:
+         {
+            std::thread thr([bridge, referenceId]{
+               bridge->cleanupDb(referenceId);});
+            if (thr.joinable()) {
+               thr.detach();
+            }
+            return true;
          }
 
          case BlockchainServiceRequest::GO_ONLINE:
          {
-            if (bridge->bdvPtr() == nullptr) {
-               throw std::runtime_error("null bdv ptr");
-            }
-            bridge->bdvPtr()->goOnline();
+            bridge->goOnline();
             break;
          }
 
@@ -112,8 +121,10 @@ namespace
          case BlockchainServiceRequest::REGISTER_WALLET:
          {
             auto regWallet = request.getRegisterWallet();
-            auto id = regWallet.getId();
-            bridge->registerWallet(id, regWallet.getIsNew());
+            auto wltId = regWallet.getWalletId();
+            auto accIdCapn = regWallet.getAccountId();
+            auto accId = Wallets::AddressAccountId::fromHex(accIdCapn);
+            bridge->registerWallet(wltId, accId, regWallet.getIsNew());
             break;
          }
 
@@ -204,27 +215,132 @@ namespace
       return true;
    }
 
+   bool processWalletManagerCommands(
+      std::shared_ptr<CppBridge> bridge, MessageId referenceId,
+      WalletManagerRequest::Reader& request)
+   {
+      BinaryData response;
+      switch (request.which())
+      {
+         case WalletManagerRequest::LIST_WALLETS:
+         {
+            response = bridge->listWallets(referenceId);
+            break;
+         }
+
+         case WalletManagerRequest::UNLOCK_CONTROL_HEADER:
+         {
+            auto unlockReq = request.getUnlockControlHeader();
+            std::string path = unlockReq.getWalletPath();
+            std::string callbackId = unlockReq.getCallbackId();
+            bridge->unlockControlHeader(path, callbackId, referenceId);
+            break;
+         }
+
+         case WalletManagerRequest::STAGE_WALLET:
+         {
+            auto stageRequest = request.getStageWallet();
+            auto success = bridge->stageWallet(
+               stageRequest.getWalletId(), stageRequest.getStage());
+
+            capnp::MallocMessageBuilder message;
+            auto fromBridge = message.initRoot<FromBridge>();
+            auto reply = fromBridge.initReply();
+            reply.setSuccess(success);
+            reply.setReferenceId(referenceId);
+
+            response = serializeCapnp(message);
+            break;
+         }
+
+         case WalletManagerRequest::LOAD_WALLETS:
+         {
+            response = bridge->loadWallets(referenceId);
+            break;
+         }
+
+         case WalletManagerRequest::MIGRATE_WALLET:
+         {
+            auto migrateReq = request.getMigrateWallet();
+            const std::filesystem::path walletId(migrateReq.getWalletPath());
+            const std::string callbackId(migrateReq.getCallbackId());
+            bridge->migrateWallet(walletId.filename().string(),
+               callbackId, referenceId);
+            break;
+         }
+
+         default:
+            capnp::MallocMessageBuilder message;
+            auto fromBridge = message.initRoot<FromBridge>();
+            auto reply = fromBridge.initReply();
+            auto walletReply = reply.initWalletManager();
+            reply.setSuccess(false);
+            reply.setReferenceId(referenceId);
+            reply.setError("invalid WalletManager request");
+      }
+
+      if (!response.empty()) {
+         //write response to socket
+         bridge->writeToClient(response);
+      }
+      return true;
+   }
+
    bool processWalletCommands(
       std::shared_ptr<CppBridge> bridge, MessageId referenceId,
       WalletRequest::Reader& request)
    {
-      auto walletId = request.getId();
+      const std::string walletId = request.getWalletId();
+      const std::string accountIdStr = request.getAccountId();
+      Wallets::AddressAccountId accountId;
+      try {
+         accountId = Wallets::AddressAccountId::fromHex(accountIdStr);
+      } catch (const Wallets::IdException&) {
+         //nothing to do, accountId wont be set
+      }
 
       BinaryData response;
+      auto checkOnline = [&response, &referenceId, bridge](void)->bool
+      {
+         if (bridge->isOffline()) {
+            capnp::MallocMessageBuilder message;
+            auto fromBridge = message.initRoot<FromBridge>();
+            auto reply = fromBridge.initReply();
+            reply.setSuccess(false);
+            reply.setReferenceId(referenceId);
+            reply.setError("Armory is offline");
+            response = serializeCapnp(message);
+            return false;
+         }
+         return true;
+      };
+
       switch (request.which())
       {
          case WalletRequest::CREATE_BACKUP_STRING:
          {
-            auto callbackId = request.getCreateBackupString();
+            std::string callbackId;
+            SecureBinaryData passphrase;
+            auto backupStruct = request.getCreateBackupString();
+            if (backupStruct.which() == WalletRequest::BackupStringStruct::PASSPHRASE) {
+               passphrase = SecureBinaryData::fromString(backupStruct.getPassphrase());
+            } else {
+               callbackId = backupStruct.getCallbackId();
+            }
+
             bridge->createBackupStringForWallet(
-               walletId, callbackId, referenceId);
+               walletId, callbackId, std::move(passphrase), referenceId);
             break;
          }
 
          case WalletRequest::GET_LEDGER_DELEGATE_ID:
          {
-            const auto& delegateId =
-               bridge->getLedgerDelegateIdForWallet(walletId);
+            if (!checkOnline()) {
+               break;
+            }
+
+            const auto& delegateId = bridge->getLedgerDelegateIdForWallet(
+               walletId, accountId);
 
             capnp::MallocMessageBuilder message;
             auto fromBridge = message.initRoot<FromBridge>();
@@ -240,10 +356,14 @@ namespace
 
          case WalletRequest::GET_LEDGER_DELEGATE_ID_FOR_SCR_ADDR:
          {
+            if (!checkOnline()) {
+               break;
+            }
+
             auto capnAddr = request.getGetLedgerDelegateIdForScrAddr();
             BinaryDataRef addr(capnAddr.begin(), capnAddr.end());
-            const auto& delegateId =
-               bridge->getLedgerDelegateIdForScrAddr(walletId, addr);
+            const auto& delegateId = bridge->getLedgerDelegateIdForScrAddr(
+               walletId, accountId, addr);
 
             capnp::MallocMessageBuilder message;
             auto fromBridge = message.initRoot<FromBridge>();
@@ -259,37 +379,49 @@ namespace
 
          case WalletRequest::GET_BALANCE_AND_COUNT:
          {
+            if (!checkOnline()) {
+               break;
+            }
+
             response = bridge->getBalanceAndCount(
-               walletId, referenceId);
+               walletId, accountId, referenceId);
             break;
          }
 
          case WalletRequest::SETUP_NEW_COIN_SELECTION_INSTANCE:
          {
-            bridge->setupNewCoinSelectionInstance(walletId,
+            bridge->setupNewCoinSelectionInstance(walletId, accountId,
                request.getSetupNewCoinSelectionInstance(), referenceId);
             break;
          }
 
          case WalletRequest::GET_ADDR_COMBINED_LIST:
          {
+            if (!checkOnline()) {
+               break;
+            }
+
             response = bridge->getAddrCombinedList(
-               walletId, referenceId);
+               walletId, accountId, referenceId);
             break;
          }
 
          case WalletRequest::GET_HIGHEST_USED_INDEX:
          {
+            if (!checkOnline()) {
+               break;
+            }
+
             response = bridge->getHighestUsedIndex(
-               walletId, referenceId);
+               walletId, accountId, referenceId);
             break;
          }
 
          case WalletRequest::EXTEND_ADDRESS_POOL:
          {
             auto args = request.getExtendAddressPool();
-            bridge->extendAddressPool(walletId, args.getCount(),
-               args.getCallbackId(), referenceId);
+            bridge->extendAddressPool(walletId, accountId,
+               args.getCount(), args.getCallbackId(), referenceId);
             break;
          }
 
@@ -309,7 +441,7 @@ namespace
          case WalletRequest::GET_DATA:
          {
             response = bridge->getWalletPacket(
-               walletId, referenceId);
+               walletId, accountId, referenceId);
             break;
          }
 
@@ -319,14 +451,18 @@ namespace
             auto capnAssetId = args.getAssetId();
             BinaryDataRef assetId(capnAssetId.begin(), capnAssetId.end());
 
-            response = bridge->setAddressTypeFor(
-               walletId, assetId, args.getAddressType(), referenceId);
+            response = bridge->setAddressTypeFor(walletId, accountId,
+               assetId, args.getAddressType(), referenceId);
             break;
          }
 
          case WalletRequest::CREATE_ADDRESS_BOOK:
          {
-            bridge->createAddressBook(walletId, referenceId);
+            if (!checkOnline()) {
+               break;
+            }
+
+            bridge->createAddressBook(walletId, accountId, referenceId);
             break;
          }
 
@@ -347,12 +483,16 @@ namespace
 
          case WalletRequest::GET_UTXOS:
          {
+            if (!checkOnline()) {
+               break;
+            }
+
             auto args = request.getGetUtxos();
             uint64_t value = 0;
             if (args.isValue()) {
                value = args.getValue();
             }
-            bridge->getUTXOs(walletId,
+            bridge->getUTXOs(walletId, accountId,
                value, args.isZc(), args.isRbf(),
                referenceId);
             break;
@@ -361,8 +501,14 @@ namespace
          case WalletRequest::GET_ADDRESS:
          {
             auto args = request.getGetAddress();
-            response = bridge->getAddress(walletId,
+            response = bridge->getAddress(walletId, accountId,
                args.getType(), args.which(), referenceId);
+            break;
+         }
+
+         case WalletRequest::GET_UNLOCK_TIME:
+         {
+            bridge->getUnlockTime(walletId, referenceId);
             break;
          }
       }
@@ -442,14 +588,18 @@ namespace
                   feeByte = args.getFeeByte();
                   break;
             }
-            auto success = cs->selectUTXOs(flatFee, feeByte, args.getFlags());
 
             capnp::MallocMessageBuilder message;
             auto fromBridge = message.initRoot<FromBridge>();
             auto reply = fromBridge.initReply();
             reply.setReferenceId(referenceId);
-            reply.setSuccess(success);
-
+            try {
+               cs->selectUTXOs(flatFee, feeByte, args.getFlags());
+               reply.setSuccess(true);
+            } catch (const std::exception& e) {
+               reply.setSuccess(true);
+               reply.setError(e.what());
+            }
             response = serializeCapnp(message);
             break;
          }
@@ -627,6 +777,7 @@ namespace
          auto fromBridge = message.initRoot<FromBridge>();
          auto reply = fromBridge.initReply();
          reply.setSuccess(success);
+         reply.setError("generic signer error message");
          reply.setReferenceId(referenceId);
 
          //serialize & push reply
@@ -658,14 +809,14 @@ namespace
 
          case SignerRequest::SET_VERSION:
          {
-            signer->signer_.setVersion(request.getSetVersion());
+            signer->signer->setVersion(request.getSetVersion());
             replySuccess(true);
             break;
          }
 
          case SignerRequest::SET_LOCK_TIME:
          {
-            signer->signer_.setLockTime(request.getSetLockTime());
+            signer->signer->setLockTime(request.getSetLockTime());
             replySuccess(true);
             break;
          }
@@ -675,7 +826,7 @@ namespace
             auto args = request.getAddSpenderByOutpoint();
             auto capnHash = args.getHash();
             BinaryDataRef hashRef(capnHash.begin(), capnHash.end());
-            signer->signer_.addSpender_ByOutpoint(hashRef,
+            signer->signer->addSpender_ByOutpoint(hashRef,
                args.getTxOutId(), args.getSequence());
 
             replySuccess(true);
@@ -694,7 +845,7 @@ namespace
 
             ::UTXO utxo(args.getValue(), UINT32_MAX, UINT32_MAX,
                args.getTxOutId(), hashRef, scriptRef);
-            signer->signer_.populateUtxo(utxo);
+            signer->signer->populateUtxo(utxo);
 
             replySuccess(true);
             break;
@@ -704,7 +855,7 @@ namespace
          {
             auto capnTx = request.getAddSupportingTx();
             BinaryDataRef txRef(capnTx.begin(), capnTx.end());
-            signer->signer_.addSupportingTx(txRef);
+            signer->signer->addSupportingTx(txRef);
 
             replySuccess(true);
             break;
@@ -719,7 +870,7 @@ namespace
             BinaryDataRef scriptRef(capnScript.begin(), capnScript.end());
             auto hash = BtcUtils::getTxOutScrAddr(scriptRef);
 
-            signer->signer_.addRecipient(
+            signer->signer->addRecipient(
                CoinSelection::CoinSelectionInstance::createRecipient(
                   hash, args.getValue()));
 
@@ -729,7 +880,7 @@ namespace
 
          case SignerRequest::TO_TX_SIG_COLLECT:
          {
-            auto txSigCollect = signer->signer_.toString(
+            auto txSigCollect = signer->signer->toString(
                static_cast<Signing::SignerStringFormat>(
                   request.getToTxSigCollect()));
 
@@ -748,8 +899,9 @@ namespace
 
          case SignerRequest::FROM_TX_SIG_COLLECT:
          {
-            signer->signer_ = Signing::Signer::fromString(
+            auto signerObj = Signing::Signer::fromString(
                request.getFromTxSigCollect());
+            signer->signer = std::make_unique<Signing::Signer>(std::move(signerObj));
 
             replySuccess(true);
             break;
@@ -771,14 +923,15 @@ namespace
             reply.setReferenceId(referenceId);
 
             try {
-               auto signedTx = signer->signer_.serializeSignedTx();
+               auto signedTx = signer->signer->serializeSignedTx();
                reply.setSuccess(true);
 
                auto signerReply = reply.initSigner();
                signerReply.setGetSignedTx(capnp::Data::Builder(
                   (uint8_t*)signedTx.getPtr(), signedTx.getSize()
                ));
-            } catch (const std::exception&) {
+            } catch (const std::exception& e) {
+               reply.setError(e.what());
                reply.setSuccess(false);
             }
 
@@ -794,14 +947,15 @@ namespace
             reply.setReferenceId(referenceId);
 
             try {
-               auto signedTx = signer->signer_.serializeUnsignedTx();
+               auto signedTx = signer->signer->serializeUnsignedTx();
                reply.setSuccess(true);
 
                auto signerReply = reply.initSigner();
                signerReply.setGetUnsignedTx(capnp::Data::Builder(
                   (uint8_t*)signedTx.getPtr(), signedTx.getSize()
                ));
-            } catch (const std::exception&) {
+            } catch (const std::exception& e) {
+               reply.setError(e.what());
                reply.setSuccess(false);
             }
 
@@ -826,7 +980,7 @@ namespace
 
          case SignerRequest::FROM_TYPE:
          {
-            auto result = signer->signer_.deserializedFromType();
+            auto result = signer->signer->deserializedFromType();
 
             capnp::MallocMessageBuilder message;
             auto fromBridge = message.initRoot<FromBridge>();
@@ -843,7 +997,7 @@ namespace
 
          case SignerRequest::CAN_LEGACY_SERIALIZE:
          {
-            auto result = signer->signer_.canLegacySerialize();
+            auto result = signer->signer->canLegacySerialize();
             replySuccess(result);
             break;
          }
@@ -866,41 +1020,59 @@ namespace
          case UtilsRequest::CREATE_WALLET:
          {
             auto args = request.getCreateWallet();
-
-            auto capnPassphrase = args.getPassphrase();
-            SecureBinaryData sbdPass(
-               (uint8_t*)capnPassphrase.begin(),
-               (uint8_t*)capnPassphrase.end()
-            );
-
-            auto capnControlPass = args.getControlPassphrase();
-            SecureBinaryData sbdControl(
-               (uint8_t*)capnControlPass.begin(),
-               (uint8_t*)capnControlPass.end()
-            );
+            std::string callbackId = args.getCallbackId();
 
             auto capnEntropy = args.getExtraEntropy();
-            SecureBinaryData sbdEntropy(
+            SecureBinaryData sbdEntropy{
                (uint8_t*)capnEntropy.begin(),
                (uint8_t*)capnEntropy.end()
+            };
+
+            bridge->createWallet(
+               std::move(sbdEntropy),
+               Wallets::IO::CreateWalletParams{
+                  bridge->getDataDir(),
+                  Passphrase::SetNew{}, Passphrase::SetNew{},
+                  nullptr,
+                  args.getLookup(),
+                  args.getLabel(), args.getDescription()},
+               callbackId, referenceId
             );
+            break;
+         }
 
-            auto wltId = bridge->createWallet(
-               args.getLookup(),
-               args.getLabel(), args.getDescription(),
-               sbdControl, sbdPass, sbdEntropy
-            );
+         case UtilsRequest::RESTORE_WALLET:
+         {
+            auto walletRequest = request.getRestoreWallet();
 
-            capnp::MallocMessageBuilder message;
-            auto fromBridge = message.initRoot<FromBridge>();
-            auto reply = fromBridge.initReply();
-            reply.setReferenceId(referenceId);
-            reply.setSuccess(true);
+            auto roots = walletRequest.getRoot();
+            auto chaincodes = walletRequest.getChaincode();
+            std::vector<std::string_view> lines;
+            lines.reserve(roots.size() + chaincodes.size());
+            for (const auto& root : roots) {
+               lines.emplace_back(
+                  std::string_view{root.begin(), root.size()});
+            }
+            for (const auto& chaincode : chaincodes) {
+               lines.emplace_back(
+                  std::string_view{chaincode.begin(), chaincode.size()});
+            }
 
-            auto utilsReply = reply.initUtils();
-            utilsReply.setCreateWallet(wltId);
+            auto spPassCapnp = walletRequest.getSpPass();
+            std::string_view spPass{spPassCapnp.begin(), spPassCapnp.size()};
 
-            response = serializeCapnp(message);
+            auto callbackIdCapnp = walletRequest.getCallbackId();
+            std::string_view callbackId{callbackIdCapnp.begin(), callbackIdCapnp.size()};
+
+            bridge->restoreWallet(lines, spPass,
+               callbackId, referenceId);
+            break;
+         }
+
+         case UtilsRequest::IMPORT_WALLET:
+         {
+            std::filesystem::path importPath(request.getImportWallet());
+            bridge->importWallet(importPath, referenceId);
             break;
          }
 
@@ -1030,8 +1202,6 @@ namespace
       LedgerDelegateRequest::Reader& request)
    {
       std::string delegateId = request.getId();
-      BinaryData response;
-
       switch (request.which())
       {
          case LedgerDelegateRequest::GET_PAGES:
@@ -1045,13 +1215,9 @@ namespace
 
          case LedgerDelegateRequest::GET_PAGE_COUNT:
          {
+            LOGWARN << "[GET_PAGE_COUNT] implement me!";
             break;
          }
-      }
-
-      if (!response.empty()) {
-         //write response to socket
-         bridge->writeToClient(response);
       }
       return true;
    }
@@ -1062,8 +1228,45 @@ namespace
    {
       try {
          auto handler = bridge->getCallbackHandler(notif.getCounter());
-         auto sbdPass = SecureBinaryData::fromString(notif.getPassphrase());
-         return handler(notif.getSuccess(), sbdPass);
+         switch (notif.which())
+         {
+            case NotificationReply::WALLET_CREATION:
+            {
+               auto capnpPassStruct = notif.getWalletCreation();
+               auto pass = SecureBinaryData::fromString(capnpPassStruct.getPassphrase());
+               auto kdfMs = std::chrono::milliseconds{capnpPassStruct.getKdfTargetMs()};
+               return handler(Seeds::PromptReply{
+                  notif.getSuccess(), false,
+                  Passphrase::Params{
+                     kdfMs, capnpPassStruct.getKdfTargetMB(),
+                     std::move(pass)
+                  }});
+            }
+
+            case NotificationReply::RESTORE:
+            {
+               return handler(Seeds::PromptReply{
+                  notif.getSuccess(),
+                  notif.getRestore() == NotificationReply::RestoreMode::MERGE ?
+                     true : false
+               });
+            }
+
+            case NotificationReply::UNLOCK_REQUEST:
+            {
+               auto pass = SecureBinaryData::fromString(notif.getUnlockRequest());
+               return handler(Seeds::PromptReply{
+                  notif.getSuccess(), false,
+                  Passphrase::Params{
+                     1ms, 0,
+                     std::move(pass)
+                  }});
+            }
+
+            default:
+               throw std::runtime_error("invalid NotificationReply which");
+         }
+         return false;
       } catch (const std::runtime_error& e) {
          LOGERR << "failed notif handling with error: " << e.what();
          return false;
@@ -1089,6 +1292,13 @@ bool ProtoCommandParser::processData(
          auto service = toBridge.getService();
          return processBlockchainServiceCommands(
             bridge, referenceId, service);
+      }
+
+      case Codec::Bridge::ToBridge::WALLET_MANAGER:
+      {
+         auto mgr = toBridge.getWalletManager();
+         return processWalletManagerCommands(
+            bridge, referenceId, mgr);
       }
 
       case Codec::Bridge::ToBridge::WALLET:
@@ -1145,7 +1355,8 @@ bool ProtoCommandParser::processData(
          auto fromBridge = message.initRoot<FromBridge>();
          auto reply = fromBridge.initReply();
          reply.setReferenceId(referenceId);
-         reply.setSuccess(true);
+         reply.setSuccess(false);
+         reply.setError("invalid request");
 
          auto serialized = serializeCapnp(message);
          bridge->writeToClient(serialized);

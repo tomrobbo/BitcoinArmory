@@ -31,7 +31,7 @@ The following dependencies you have to build from source.
     git clone https://github.com/libbtc/libbtc
     cd libbtc
     sh autogen.sh
-    CFLAGS="-fPIC -g" ./configure --disable-wallet --disable-tools --disable-net
+    CFLAGS="-fPIC -g" ./configure --disable-wallet --disable-tools --disable-net --disable-shared
     make
     ```
 

@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2019-2024, goatpig                                          //
+//  Copyright (C) 2019-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -11,6 +11,8 @@
 #include "BIP15x_Handshake.h"
 #include "BIP150_151.h"
 #include "ProtoCommandParser.h"
+#include "../Wallets/AuthorizedPeers.h"
+#include "../WebSocketMessage.h"
 
 using namespace Armory;
 using namespace Armory::Bridge;
@@ -52,7 +54,8 @@ CppBridgeSocket::CppBridgeSocket(
 
       //on windows, we need to explicitly open the cookie file in binary
       //for writing, or it will stop at the first null byte
-      file.open("./client_cookie", std::ios::out | std::ios::binary);
+      file.open(Config::getDataDir() / "client_cookie",
+         std::ios::out | std::ios::binary);
       file.write((const char*)ownKey.pubkey, 33);
    }
 
@@ -71,11 +74,13 @@ void CppBridgeSocket::respond(std::vector<uint8_t>& data)
 
    //append data to leftovers from previous iteration if applicable
    if (!leftOverData_.empty()) {
-      leftOverData_.insert(leftOverData_.end(), data.begin(), data.end());
-      data = std::move(leftOverData_);
+      std::vector<uint8_t> copy;
+      copy.resize(leftOverData_.size() + data.size());
+      memcpy(&copy[0], &leftOverData_[0], leftOverData_.size());
+      memcpy(&copy[0] + leftOverData_.size(), &data[0], data.size());
 
-      //leftoverData_ should be empty cause of the move operation
-      assert(leftOverData_.empty());
+      data = std::move(copy);
+      leftOverData_.clear();
    }
 
    while (!data.empty()) {
@@ -222,7 +227,6 @@ void CppBridgeSocket::pushPayload(
    bip151Connection_->assemblePacket(
       &data[0], data.size() - POLY1305MACLEN,
       &data[0], data.size());
-
    queuePayloadForWrite(data);
 }
 
@@ -310,18 +314,18 @@ void WritePayload_Bridge::serialize(std::vector<uint8_t>& payload)
    if (data.empty()) {
       return;
    }
-   payload.resize(data.getSize() + 5 + POLY1305MACLEN);
+   payload.resize(data.getSize() + 8 + POLY1305MACLEN);
 
    //set packet size
-   uint32_t sizeVal = data.getSize() + 1;
+   uint32_t sizeVal = data.getSize() + 4;
    memcpy(&payload[0], &sizeVal, sizeof(uint32_t));
 
    //serialize protobuf message
-   memcpy(&payload[5], data.getPtr(), data.getSize());
+   memcpy(&payload[8], data.getPtr(), data.getSize());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 size_t WritePayload_Bridge::getSerializedSize(void) const
 {
-   return data.getSize() + 5 + POLY1305MACLEN;
+   return data.getSize() + 8 + POLY1305MACLEN;
 }

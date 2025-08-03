@@ -182,8 +182,6 @@ private:
 
    RpcState previousState_ = RpcState_Disabled;
    std::condition_variable pollCondVar_;
-
-
    std::vector<std::thread> thrVec_;
    std::atomic<bool> run_ = { true };
 

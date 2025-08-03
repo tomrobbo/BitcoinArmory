@@ -14,7 +14,7 @@
 #include "AssetEncryption.h"
 #include "ReentrantLock.h"
 #include "BinaryData.h"
-#include "PassphraseLambda.h"
+#include "GetPassphrase.h"
 
 #define ENCRYPTIONKEY_PREFIX        0xC0
 #define ENCRYPTIONKEY_PREFIX_TEMP   0xCC
@@ -66,7 +66,7 @@ namespace Armory
             };
 
          private:
-            std::map<BinaryData, std::shared_ptr<KeyDerivationFunction>> kdfMap_;
+            std::map<KdfId, std::shared_ptr<KeyDerivationFunction>> kdfMap_;
             std::unique_ptr<DecryptedDataMaps> lockedDecryptedData_ = nullptr;
 
             struct OtherLockedContainer
@@ -76,16 +76,13 @@ namespace Armory
 
                OtherLockedContainer(std::shared_ptr<DecryptedDataContainer> obj)
                {
-                  if (obj == nullptr)
-                  {
+                  if (obj == nullptr) {
                      throw std::runtime_error(
                         "emtpy DecryptedDataContainer ptr");
                   }
-
                   lock_ = std::make_unique<ReentrantLock>(obj.get());
                }
             };
-
             std::vector<OtherLockedContainer> otherLocks_ = {};
 
          public:
@@ -96,7 +93,7 @@ namespace Armory
             /*
             The default encryption key is used to encrypt the master encryption
             in case no passphrase was provided at wallet creation. This is to
-            prevent for the master key being written in plain text on disk. It
+            prevent the master key being written in plain text on disk. It
             is encryption but does not effectively result in the wallet being
             protected by encryption, since the default encryption key is written
             on disk in plain text.
@@ -107,33 +104,24 @@ namespace Armory
             const SecureBinaryData defaultEncryptionKey_;
             const EncryptionKeyId defaultEncryptionKeyId_;
 
-            const SecureBinaryData defaultKdfId_;
+            const KdfId defaultKdfId_;
             const EncryptionKeyId masterEncryptionKeyId_;
-
 
          protected:
             std::map<EncryptionKeyId,
                std::shared_ptr<EncryptionKey>> encryptedKeys_;
 
          private:
-            PassphraseLambda getPassphraseLambda_;
+            Passphrase::UnlockFunc getPassphraseLambda_;
 
          private:
             std::unique_ptr<ClearTextEncryptionKey> deriveEncryptionKey(
-               std::unique_ptr<ClearTextEncryptionKey>,
-               const BinaryData& kdfid) const;
-
+               std::unique_ptr<ClearTextEncryptionKey>, const KdfId&) const;
             std::unique_ptr<ClearTextEncryptionKey> promptPassphrase(
-               const std::map<EncryptionKeyId, BinaryData>&) const;
+               const std::map<EncryptionKeyId, KdfId>&) const;
 
             void initAfterLock(void);
             void cleanUpBeforeUnlock(void);
-
-         public:
-            const EncryptionKeyId& getDefaultEncryptionKeyId(void) const
-            {
-               return defaultEncryptionKeyId_;
-            }
 
          public:
             DecryptedDataContainer(
@@ -141,7 +129,7 @@ namespace Armory
                const std::string dbName,
                const SecureBinaryData& defaultEncryptionKey,
                const EncryptionKeyId& defaultEncryptionKeyId,
-               const SecureBinaryData& defaultKdfId,
+               const KdfId& defaultKdfId,
                const EncryptionKeyId& masterKeyId);
 
             const SecureBinaryData& getClearTextAssetData(
@@ -154,14 +142,15 @@ namespace Armory
                const uint8_t*, size_t);
 
             SecureBinaryData encryptData(Cipher* const, const SecureBinaryData&);
-
             EncryptionKeyId populateEncryptionKey(
-               const std::map<EncryptionKeyId, BinaryData>&);
+               const std::map<EncryptionKeyId, KdfId>&);
 
             void addKdf(std::shared_ptr<KeyDerivationFunction>);
             std::shared_ptr<KeyDerivationFunction> getKdf(
-               const SecureBinaryData&) const;
+               const KdfId&) const;
             void addEncryptionKey(std::shared_ptr<EncryptionKey>);
+            std::shared_ptr<EncryptionKey> getEncryptionKey(
+               const EncryptionKeyId&) const;
 
             void updateOnDisk(void);
             void updateOnDisk(std::unique_ptr<IO::DBIfaceTransaction>);
@@ -172,28 +161,24 @@ namespace Armory
             void updateOnDisk(std::shared_ptr<IO::DBIfaceTransaction>,
                const EncryptionKeyId&,
                std::shared_ptr<EncryptionKey>);
-            void deleteFromDisk(std::shared_ptr<IO::DBIfaceTransaction>, const BinaryData&);
+            void deleteFromDisk(std::shared_ptr<IO::DBIfaceTransaction>,
+               const BinaryData&);
 
-            void setPassphrasePromptLambda(const PassphraseLambda& lambda)
-            {
-               getPassphraseLambda_ = lambda;
-            }
-
-            void resetPassphraseLambda(void) { getPassphraseLambda_ = nullptr; }
+            void setPassphrasePromptLambda(const Passphrase::UnlockFunc&);
+            void resetPassphraseLambda(void);
 
             void encryptEncryptionKey(
-               const EncryptionKeyId& keyID, const BinaryData& kdfID,
-               const std::function<SecureBinaryData(void)>&, bool replace = true);
-            void eraseEncryptionKey(
-               const EncryptionKeyId& keyID, const BinaryData& kdfID);
+               const EncryptionKeyId&,
+               const KdfId&, const KdfId&, //kdf in, out
+               Passphrase::SetNew&, bool replace=true);
+            void eraseEncryptionKey(const EncryptionKeyId&, const KdfId&);
 
             void lockOther(std::shared_ptr<DecryptedDataContainer> other);
-
-            const SecureBinaryData& getDefaultKdfId(void) const { return defaultKdfId_; }
-            const EncryptionKeyId& getMasterEncryptionKeyId(void) const
-            {
-               return masterEncryptionKeyId_;
-            }
+            const KdfId& getDefaultKdfId(void) const;
+            std::shared_ptr<KeyDerivationFunction> getMasterKdf(void) const;
+            bool isMasterKeyEncrypted(void) const;
+            const EncryptionKeyId& getMasterEncryptionKeyId(void) const;
+            const EncryptionKeyId& getDefaultEncryptionKeyId(void) const;
          };
       }; //namespace Encryption
    }; //namespace Wallets

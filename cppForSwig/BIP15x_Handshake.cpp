@@ -18,29 +18,29 @@ AEAD sequence:
 
 +++
 server:  . present [auth public key] (for public servers only)
-         . enc init: 
+         . enc init:
             send server's [outSession pubkey]
 
 ---
-client:  . process enc init: 
-            create inSession symmetrical encryption key with 
+client:  . process enc init:
+            create inSession symmetrical encryption key with
             [server outSession pubkey] and [own inSession privkey]
-         
-         . enc ack:
-            send [own inSession pubkey]
 
-         . enc init:
-            send [own outSession pubkey]
+         . send enc ack:
+            present [own inSession pubkey]
+
+         . send enc init:
+            present [own outSession pubkey]
 
 +++
 server:  . process enc ack:
             create outSession sym key ([own outSession privkey] * [client inSession pubkey])
-         
+
          . process enc init:
             create inSession sym key ([own inSession privkey]  * [client outSession pubkey])
 
-         . enc ack:
-            send [own inSession pubkey]
+         . send enc ack:
+            present [own inSession pubkey]
 
          . mark shared encryption key setup as completed
 
@@ -54,27 +54,31 @@ client:  . process enc ack:
       ** ENCRYPT ALL TRAFFIC FROM HERE **
       ***********************************
 
-         . auth challenge:
-            send hash(outSession.id | 'i' | [server auth pubkey]))
+         . send auth challenge:
+            present hash(outSession.id | 'i' | [server auth pubkey]))
 
 +++
 server:  . process auth challenge:
             check hash(inSession.id | 'i' | [own auth pubkey]) matches challenge
 
-         . auth reply:
-            send sign(outSession.id, [own auth privkey])
+         . send auth reply:
+            present sign(outSession.id, [own auth privkey])
 
 ---
 client:  . process auth reply:
             verify sig(inSession.id, [server auth pubkey])
+
+   ###################################################
+   #### Peer authentication starts deviating here ####
+   ###################################################
 
       ********************************
    ***** 2-WAY AUTH HANDSHAKE BEGIN *****
       ********************************
 
 ---
-client:  . auth propose:
-            send hash(outSession.id | 'p' | [own auth pukbey])
+client:  . send auth propose:
+            present hash(outSession.id | 'p' | [own auth pukbey])
 
 +++
 server:  . process auth propose:
@@ -83,17 +87,17 @@ server:  . process auth propose:
                -> select match as chosenPeerKey
                -> fail if no match, drop connection
 
-         . auth challenge:
-            send hash(outSession.id | 'r' | [chosenPeerKey])
+         . send auth challenge:
+            present hash(outSession.id | 'r' | [chosenPeerKey])
 
 ---
 client:  . process auth challenge:
             check hash(inSession.id | 'r' | [own auth pubkey]) matches challenge
                -> on failure, send auth reply before killing connection
-         
+
          . send auth reply:
-            send sign(outSession.id, [own auth privkey])
-         
+            present sign(outSession.id, [own auth privkey])
+
          . rekey
          . mark auth handshake as completed
 
@@ -101,7 +105,7 @@ client:  . process auth challenge:
 server:
          . process auth reply:
             verify sig(inSession.id, [chosenPeerKey])
-         
+
          . rekey
          . mark auth handshake as completed
 
@@ -110,13 +114,15 @@ server:
       ******************************
 
 
+   ###################################################
+   ### Pick up from deviation point for 1-way auth ###
 
       ********************************
    ***** 1-WAY AUTH HANDSHAKE BEGIN *****
       ********************************
 ---
-client:  . auth propose:
-            send hash(outSession.id | 'p' | [0xFF **33])
+client:  . send auth propose:
+            present hash(outSession.id | 'p' | [0xFF **33])
 
 +++
 server:  . process auth propose
@@ -124,25 +130,25 @@ server:  . process auth propose
                -> fail on mismatch
                   do not allow 2-way auth with 1-way server, drop connection
                -> do not select a client pubkey
-            
-         . auth challenge:
-            hash(outSession.id | 'r' | [0xFF **33])
+
+         . send auth challenge:
+            present hash(outSession.id | 'r' | [0xFF **33])
 
 ---
 client:  . process auth challenge:
             check hash(inSession.id | 'r' | [0xFF **33])
                -> on failure, send auth reply before killing connection
-         
+
          . send auth reply:
-            [own auth pubkey]
-         
+            present [own auth pubkey]
+
          . rekey
          . mark auth handshake as completed
 
 +++
 server:  . process auth reply:
             set chosenPeerKey
-         
+
          . rekey
          . mark auth handshake as completed
 

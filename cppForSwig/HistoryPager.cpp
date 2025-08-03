@@ -6,6 +6,7 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 #include "HistoryPager.h"
+#include "BitcoinP2P.h"
 
 using namespace std;
 

@@ -70,11 +70,14 @@ INCLUDE_FILES = -I$(srcdir)/lmdbpp \
 KEYMANAGER_SOURCE_FILES = KeyManager.cpp
 
 CPPBRIDGE_SOURCE_FILES = BridgeAPI/CppBridge.cpp \
-	BridgeAPI/BridgeMain.cpp \
 	BridgeAPI/BridgeSocket.cpp \
-	BridgeAPI/WalletManager.cpp \
 	BridgeAPI/ProtoCommandParser.cpp \
-	BridgeAPI/PassphrasePrompt.cpp
+	BridgeAPI/PassphrasePrompt.cpp \
+	BridgeAPI/Wallets/Container.cpp \
+	BridgeAPI/Wallets/Loader.cpp \
+	BridgeAPI/Wallets/Manager.cpp \
+	BridgeAPI/Wallets/Notifications.cpp \
+	BridgeAPI/BlockchainDbClient.cpp
 
 LIBTREZORCRYPTO_SOURCE_FILES = $(LIBBTC_LIBDIR)/src/trezor-crypto/bip39.c \
 	$(LIBBTC_LIBDIR)/src/trezor-crypto/pbkdf2.c \
@@ -100,8 +103,11 @@ ARMORYWALLETS_SOURCE_FILES = Wallets/BIP32_Node.cpp \
 	Wallets/AssetEncryption.cpp \
 	Wallets/Wallets.cpp \
 	Wallets/AuthorizedPeers.cpp \
+	Wallets/Progress.cpp \
 	Wallets/Seeds/Backups.cpp \
 	Wallets/Seeds/Seeds.cpp \
+	Wallets/KDF.cpp \
+	Wallets/GetPassphrase.cpp \
 	Wallets/random_buffer.c
 
 ARMORYSIGNER_SOURCE_FILES = Signer/Script.cpp \
@@ -135,6 +141,7 @@ ARMORYDB_SOURCE_FILES = main.cpp
 ARMORYGUI_SOURCE_FILES = TransactionBatch.cpp
 ARMORYCLI_SOURCE_FILES = BDM_mainthread.cpp \
 	BDM_Server.cpp \
+	BDV_Notification.cpp \
 	BIP150_151.cpp \
 	BIP15x_Handshake.cpp \
 	BitcoinP2P.cpp \
@@ -155,7 +162,7 @@ ARMORYCLI_SOURCE_FILES = BDM_mainthread.cpp \
 	ZeroConf.cpp \
 	ZeroConfNotifications.cpp \
 	TerminalPassphrasePrompt.cpp \
-	gtest/NodeUnitTest.cpp
+	gtest/MockedNode.cpp
 
 ARMORYCOMMON_SOURCE_FILES = capnp/Types.capnp.c++ \
 	capnp/BDV.capnp.c++ \
@@ -166,7 +173,6 @@ ARMORYCOMMON_SOURCE_FILES = capnp/Types.capnp.c++ \
 	DBClientClasses.cpp \
 	CoinSelection.cpp \
 	EncryptionUtils.cpp \
-	KDF.cpp \
 	log.cpp \
 	BitcoinSettings.cpp \
 	ReentrantLock.cpp \
@@ -329,7 +335,8 @@ BIP150KeyManager_LDFLAGS = $(LWSLDFLAGS) $(LDFLAGS) -static
 
 if BUILD_CLIENT
 bin_PROGRAMS += CppBridge
-CppBridge_SOURCES = $(CPPBRIDGE_SOURCE_FILES)
+CppBridge_SOURCES = BridgeAPI/BridgeMain.cpp \
+	$(CPPBRIDGE_SOURCE_FILES)
 CppBridge_CXXFLAGS = $(AM_CXXFLAGS) $(LIBBTC_FLAGS) $(UNIT_TEST_CXXFLAGS) \
 		-D__STDC_LIMIT_MACROS
 CppBridge_CPPFLAGS = $(AM_CPPFLAGS) $(INCLUDE_FILES)

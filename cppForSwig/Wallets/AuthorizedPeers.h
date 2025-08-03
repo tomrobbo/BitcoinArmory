@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2019, goatpig                                               //
+//  Copyright (C) 2019-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -29,6 +29,12 @@ namespace Armory
 {
    namespace Wallets
    {
+      namespace IO
+      {
+         struct ReadOnlyFileParams;
+         struct CreateFileParams;
+      };
+
       //////////////////////////////////////////////////////////////////////////
       class PeerFileMissing
       {
@@ -62,15 +68,16 @@ namespace Armory
          //<pubkey, sig>
          std::pair<SecureBinaryData, SecureBinaryData> rootSignature_;
 
-         //<pubkey, description>
+         //<pubkey, <description, asset id>>
          std::map<SecureBinaryData,
             std::pair<std::string, unsigned>> peerRootKeys_;
 
-      private:
-         void loadWallet(const std::filesystem::path&, const PassphraseLambda&);
-         void createWallet(const std::filesystem::path&, const std::string&,
-            const PassphraseLambda&);
+         //public key of master ACL; a client that completes a 2-way
+         //AEAD handshake with this key will receive master credentials
+         SecureBinaryData masterKey_;
 
+      private:
+         void loadWallet(const IO::ReadOnlyFileParams&);
          void addPeer(const SecureBinaryData&,
             const std::initializer_list<std::string>&);
          void addPeer(const btc_pubkey&,
@@ -78,22 +85,16 @@ namespace Armory
          void erasePeerRootKey(const SecureBinaryData&);
 
       public:
-         AuthorizedPeers(
-            const std::filesystem::path&, const std::string&, const PassphraseLambda&);
+         AuthorizedPeers(const IO::ReadOnlyFileParams&);
          AuthorizedPeers(void);
 
          const std::map<std::string, btc_pubkey>& getPeerNameMap(void) const;
          const std::set<SecureBinaryData>& getPublicKeySet(void) const;
          const SecureBinaryData& getPrivateKey(const BinaryDataRef&) const;
-         
-         const std::map<SecureBinaryData, std::pair<std::string, unsigned>>&
-            getRootKeys(void) const { return peerRootKeys_; }
-         const std::pair<SecureBinaryData, SecureBinaryData>& getRootSig(void) {
-            return rootSignature_; }
 
          /* addPeer:
          input:
-         - pubkey as SecurBinaryData/btc_pubkey. secp256k1 un/compressed
+         - pubkey as SecureBinaryData/btc_pubkey. secp256k1 un/compressed
            public key
          - count as unsigned: number of names as strings, at least 1
          - count names as string/char*
@@ -129,11 +130,17 @@ namespace Armory
          void eraseKey(const btc_pubkey&);
 
          const btc_pubkey& getOwnPublicKey(void) const;
+         bool setMasterKey(const btc_pubkey&);
+         bool setMasterKey(const SecureBinaryData&);
+         void eraseMasterKey(void);
+         bool isMasterKey(const btc_pubkey&) const;
+         bool isMasterKey(const SecureBinaryData&) const;
 
          //takes path to peers db, passphrase lambdas are handled internally
-         static void changeControlPassphrase(const std::string&);
+         static void changeControlPassphrase(const std::filesystem::path&);
          static AuthPeersLambdas getAuthPeersLambdas(
             std::shared_ptr<AuthorizedPeers>);
+         static void createWallet(const IO::CreateFileParams&);
       };
    }; //namespace Wallets
 }; //namespace Armory

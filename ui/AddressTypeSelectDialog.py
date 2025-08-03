@@ -22,6 +22,10 @@ selectorDescriptions[AddressEntryType_P2PKH] = str(
       'Legacy address type. Backwards compatible.'
    )
 
+selectorDescriptions[AddressEntryType_P2PKH + AddressEntryType_Uncompressed] = str(
+      'Legacy address type. Backwards compatible.'
+   )
+
 selectorDescriptions[(AddressEntryType_P2SH + AddressEntryType_P2WPKH)] = str(
       'P2WPKH (SegWit script) nested in P2SH script. Any wallet can pay to '
       'this address type. Only wallets supporting SegWit can spend from it.'
@@ -42,7 +46,6 @@ selectorDescriptions[AddressEntryType_P2WPKH] = str(
    )
 
 class AddressTypeSelectDialog(ArmoryDialog):
-
    def __init__(self, parent, main, addressTypes, currentType):
       super(AddressTypeSelectDialog, self).__init__(parent, main)
       self.radioFrames = {}
@@ -76,7 +79,7 @@ class AddressTypeSelectDialog(ArmoryDialog):
 
    def addTypeFrame(self, addrType):
       #radio button
-      addrTypeStr = TheBridge.getNameForAddrType(addrType)
+      addrTypeStr = TheBridge.utils.getNameForAddrType(addrType)
       radioBtn = QtWidgets.QRadioButton(addrTypeStr)
       def setAddrType():
          self.selectType(addrType)
@@ -125,13 +128,11 @@ class AddressLabelFrame(object):
       addrLabel.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
       self.typeLabel = QLabelButton("")
       self.typeLabel.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
-
       self.typeLabel.linkActivated.connect(self.changeType)
 
       frmAddrTypeLayout.addWidget(addrLabel, 0, 0, 1, 1)
       frmAddrTypeLayout.addWidget(self.typeLabel, 0, 1, 1, 2)
       self.frmAddrType.setLayout(frmAddrTypeLayout)
-
       self.updateAddressTypes(addressTypes, currentAddrType)
 
    def updateAddressTypes(self, addrTypes, currType):
@@ -140,16 +141,18 @@ class AddressLabelFrame(object):
 
    def setType(self, _type):
       self.addrType = _type
-      addrTypeStr = TheBridge.utils.getNameForAddrType(_type)
-      self.typeLabel.setText(\
-         self.main.tr("<u><font color='blue'>%s</font></u>" \
-         % addrTypeStr))
+      if not isinstance(_type, str):
+         addrTypeStr = TheBridge.utils.getNameForAddrType(_type)
+      else:
+         addrTypeStr = _type
+      self.typeLabel.setText(
+         self.main.tr("<u><font color='blue'>%s</font></u>" % addrTypeStr))
 
    def getType(self):
       return self.addrType
 
    def changeType(self):
-      dlg = AddressTypeSelectDialog(self.main, self.main, \
+      dlg = AddressTypeSelectDialog(self.main, self.main,
          self.addressTypes, self.addrType)
       if dlg.exec_():
          self.setType(dlg.getType())

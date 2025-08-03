@@ -4,27 +4,24 @@ using Cxx = import "/capnp/c++.capnp";
 $Cxx.namespace("Armory::Codec::BDV");
 using Types = import "Types.capnp";
 
-using Cookie = Text;
-
 ##### statics #####
 struct StaticRequest {
    magicWord               @0 : Text;
-   cookie                  @1 : Cookie;
 
    union {
-      unset                @2 : Void;
+      unset                @1 : Void;
 
-      register             @3 : Void;
-      unregister           @4 : Types.BdvId;
-      shutdown             @5 : Void;
-      shutdownNode         @6 : Void;
-      getNodeStatus        @7 : Void;
-      getFeeSchedule       @8 : Text;
-      getTopBlockHeight    @9 : Void;
-      getHeadersByHash     @10: List(Types.Hash);
-      getHeadersByHeight   @11: List(UInt32);
-      broadcast            @12: List(Data);
-      rpcBroadcast         @13: Data;
+      register             @2 : Void;
+      unregister           @3 : Void;
+      shutdown             @4 : Void;
+      shutdownNode         @5 : Void;
+      getNodeStatus        @6 : Void;
+      getFeeSchedule       @7 : Text;
+      getTopBlockHeight    @8 : Void;
+      getHeadersByHash     @9 : List(Types.Hash);
+      getHeadersByHeight   @10: List(UInt32);
+      broadcast            @11: List(Data);
+      rpcBroadcast         @12: Data;
    }
 }
 
@@ -32,15 +29,11 @@ struct StaticReply {
    union {
       unset                @0 : Void;
 
-      register             @1 : Types.BdvId;
-      unregister           @2 : Void;
-      shutdown             @3 : Void;
-      shutdownNode         @4 : Void;
-      getNodeStatus        @5 : Types.NodeStatus;
-      getFeeSchedule       @6 : List(Types.FeeSchedule);
-      getTopBlockHeight    @7 : UInt32;
-      getHeadersByHash     @8 : List(Types.Header);
-      getHeadersByHeight   @9 : List(Types.Header);
+      getNodeStatus        @1 : Types.NodeStatus;
+      getFeeSchedule       @2 : List(Types.FeeSchedule);
+      getTopBlockHeight    @3 : UInt32;
+      getHeadersByHash     @4 : List(Types.Header);
+      getHeadersByHeight   @5 : List(Types.Header);
    }
 }
 
@@ -75,21 +68,19 @@ struct BdvRequest {
       zcCutoff       @2 : UInt32;
    }
 
-   bdvId                         @0 : Types.BdvId;
-
    union {
-      unset                      @1 : Void;
+      unset                      @0 : Void;
 
-      registerWallet             @2 : RegisterWalletRequest;
-      unregisterWallet           @3 : Types.WalletId;
-      goOnline                   @4 : Void;
+      registerWallet             @1 : RegisterWalletRequest;
+      unregisterWallet           @2 : Types.WalletId;
+      goOnline                   @3 : Void;
 
-      getLedgerDelegate          @5 : Void;
-      getTxByHash                @6 : List(Types.Hash);
-      getOutputsForOutpoints     @7 : OutpointRequest;
-      getOutputsForAddress       @8 : AddressOutputsRequest;
-      updateWalletsLedgerFilter  @9 : List(Types.WalletId);
-      getCombinedBalances        @10: Void;
+      getLedgerDelegate          @4 : Void;
+      getTxByHash                @5 : List(Types.Hash);
+      getOutputsForOutpoints     @6 : OutpointRequest;
+      getOutputsForAddress       @7 : AddressOutputsRequest;
+      updateWalletsLedgerFilter  @8 : List(Types.WalletId);
+      getCombinedBalances        @9 : Void;
    }
 }
 
@@ -155,18 +146,17 @@ struct Address {
 }
 
 struct WalletRequest {
-   bdvId                   @0 : Types.BdvId;
-   walletId                @1 : Types.WalletId;
+   walletId                @0 : Types.WalletId;
 
    union {
-      unset                @2 : Void;
+      unset                @1 : Void;
 
-      getLedgerDelegate    @3 : Void;
-      createAddressBook    @4 : Void;
-      getBalanceAndCount   @5 : UInt32;
-      getOutputs           @6 : TxoutRequest;
-      setConfTarget        @7 : UInt32;
-      unregisterAddresses  @8 : List(Address);
+      getLedgerDelegate    @2 : Void;
+      createAddressBook    @3 : Void;
+      getBalanceAndCount   @4 : UInt32;
+      getOutputs           @5 : TxoutRequest;
+      setConfTarget        @6 : UInt32;
+      unregisterAddresses  @7 : List(Address);
    }
 }
 
@@ -186,14 +176,13 @@ struct WalletReply {
 ##### addresses #####
 struct AddressRequest {
    address                 @0 : Address;
-   bdvId                   @1 : Types.BdvId;
 
    union {
-      unset                @2 : Void;
+      unset                @1 : Void;
 
-      getLedgerDelegate    @3 : Types.WalletId;
-      getBalanceAndCount   @4 : Void;
-      getOutputs           @5 : TxoutRequest;
+      getLedgerDelegate    @2 : Types.WalletId;
+      getBalanceAndCount   @3 : Void;
+      getOutputs           @4 : TxoutRequest;
    }
 }
 
@@ -249,7 +238,7 @@ struct Notification {
 
    struct Refresh {
       type              @0 : UInt32;
-      ids               @1 : List(Data);
+      ids               @1 : List(Text);
    }
 
    requestId @0 : Text;

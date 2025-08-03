@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2019-2024, goatpig                                          //
+//  Copyright (C) 2019-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -8,11 +8,17 @@
 
 #include "CppBridge.h"
 #include "BridgeSocket.h"
-#include "TerminalPassphrasePrompt.h"
+#include "Wallets/Manager.h"
+#include "BlockchainDbClient.h"
 #include "PassphrasePrompt.h"
+#include "../AsyncClient.h"
 #include "../Wallets/Seeds/Backups.h"
+#include "../Wallets/IOHeader.h"
 #include "../Signer/ResolverFeed_Wallets.h"
 #include "../Wallets/WalletIdTypes.h"
+#include "../Wallets/KDF.h"
+#include "../CoinSelection.h"
+#include "../TerminalPassphrasePrompt.h"
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
@@ -23,6 +29,7 @@ using namespace Armory;
 using namespace Armory::Codec::Bridge;
 using namespace Armory::Codec::Types;
 using namespace Armory::Bridge;
+using namespace std::chrono_literals;
 
 enum CppBridgeState
 {
@@ -30,14 +37,13 @@ enum CppBridgeState
    CppBridge_Registered
 };
 
-#define BRIDGE_CALLBACK_BDM         "bdm_callback"
-#define BRIDGE_CALLBACK_PROGRESS    "progress"
-#define DISCONNECTED_CALLBACK_ID    "disconnected"
-
 #define PROTO_ASSETID_PREFIX 0xAFu
 
 namespace
 {
+   PRNG_Fortuna fortuna;
+
+   ////
    BinaryData serializeCapnp(capnp::MallocMessageBuilder& msg)
    {
       auto flat = capnp::messageToFlatArray(msg);
@@ -45,7 +51,7 @@ namespace
       return BinaryData(bytes.begin(), bytes.end());
    }
 
-   bool addressToCapnp(WalletData::AddressData::Builder& capnAddress,
+   void addressToCapnp(WalletData::AddressData::Builder& capnAddress,
       std::shared_ptr<AddressEntry> addrPtr,
       std::shared_ptr<Accounts::AddressAccount> addrAcc,
       const Wallets::EncryptionKeyId& keyId)
@@ -118,29 +124,32 @@ namespace
          }
       }
       capnAddress.setHasPrivKey(hasPrivKey);
-      capnAddress.setUsesEncryption(isLocked);
 
       //precursor, if any
       if (addrNested == nullptr) {
-         return isLocked;
+         return;
       }
 
       const auto& precursor = addrNested->getPredecessor()->getScript();
       capnAddress.setPrecursorScript(capnp::Data::Builder(
          (uint8_t*)precursor.getPtr(), precursor.getSize()
       ));
-
-      return isLocked;
    }
 
    void walletToCapnp(std::shared_ptr<Wallets::AssetWallet> wallet,
-      const Wallets::AddressAccountId& accId,
+      const Wallets::AddressAccountId& accId, const std::string& dbId,
       const std::map<BinaryData, std::string>& commentsMap,
       WalletData::Builder& capnWallet)
    {
       /* header */
-      //wallet id (append the account id to it)
-      capnWallet.setId({ wallet->getID() + ":" + accId.toHexStr() });
+      //ids
+      capnWallet.setMasterId(wallet->getMasterID());
+      capnWallet.setWalletId(wallet->getID());
+      capnWallet.setAccountId(accId.toHexStr());
+      capnWallet.setDbId(dbId);
+
+      //path
+      capnWallet.setPath(wallet->getDbFilename().string());
 
       //labels
       capnWallet.setLabel(wallet->getLabel());
@@ -170,31 +179,33 @@ namespace
 
       //address use count
       auto assetAccountPtr = accPtr->getOuterAccount();
-      capnWallet.setLookupCount(assetAccountPtr->getLastComputedIndex());
+      capnWallet.setLookupCount(assetAccountPtr->getLastComputedIndex() + 1);
       capnWallet.setUseCount(assetAccountPtr->getHighestUsedIndex());
 
       //address map
       auto addrMap = accPtr->getUsedAddressMap();
-      bool useEncryption = true;
       auto capnAddresses = capnWallet.initAddressData(addrMap.size());
       i=0;
       for (const auto& addrPair : addrMap) {
          auto capnAddress = capnAddresses[i++];
-         useEncryption &= addressToCapnp(capnAddress,
+         addressToCapnp(capnAddress,
             addrPair.second, accPtr,
-            wallet->getDefaultEncryptionKeyId());
+            wallet->getDefaultEncryptionKeyId()
+         );
       }
 
       /* encryption info */
-      uint32_t kdfMem = 0;
-      auto kdfPtr = wallet->getDefaultKdf();
-      auto kdfRomix = std::dynamic_pointer_cast<
-         Wallets::Encryption::KeyDerivationFunction_Romix>(kdfPtr);
-      if (kdfRomix != nullptr) {
-         kdfMem = kdfRomix->memTarget();
+      bool usesEncryption = wallet->isMasterRecordEncrypted();
+      capnWallet.setUsesEncryption(usesEncryption);
+      if (usesEncryption) {
+         auto kdfPtr = wallet->getDefaultKdf();
+         auto kdfRomix = std::dynamic_pointer_cast<
+            Wallets::Encryption::KeyDerivationFunction_Romix>(kdfPtr);
+         if (kdfRomix != nullptr) {
+            uint32_t kdfMem = kdfRomix->memTarget() / 1024 / 1024;
+            capnWallet.setKdfMemReq(kdfMem);
+         }
       }
-      capnWallet.setUsesEncryption(useEncryption);
-      capnWallet.setKdfMemReq(kdfMem);
 
       /* comments */
       auto capnComments = capnWallet.initComments(commentsMap.size());
@@ -235,17 +246,6 @@ namespace
          capnAddrs.set(i++, capnp::Data::Builder(
             (uint8_t*)scrAddr.getPtr(), scrAddr.getSize()
          ));
-      }
-   }
-
-   void ledgersToCapnp(
-      const std::vector<std::shared_ptr<DBClientClasses::LedgerEntry>>& ledgers,
-      Codec::Types::TxLedger::Builder& txLedger)
-   {
-      auto capnLedgers = txLedger.initLedgers(ledgers.size());
-      for (unsigned i=0; i<ledgers.size(); i++) {
-         auto capnLedger = capnLedgers[i];
-         ledgerToCapnp(*ledgers[i], capnLedger);
       }
    }
 
@@ -311,6 +311,171 @@ namespace
          ));
       }
    }
+
+   Wallets::Progress::Func getWalletProgressLbd(
+      CppBridge* bridgePtr, const std::string& callbackId)
+   {
+      return [bridgePtr, callbackId](
+         std::unique_ptr<Wallets::Progress::State> statePtr)
+      {
+         capnp::MallocMessageBuilder notifMessage;
+         auto fromBridge = notifMessage.initRoot<FromBridge>();
+         auto notif = fromBridge.initNotification();
+         notif.setCallbackId(callbackId);
+         auto prog = notif.initWalletProgress();
+
+         switch (statePtr->type())
+         {
+            case Wallets::Progress::StateEnum::CreateWalletFile:
+            {
+               auto stateCf = dynamic_cast<Wallets::Progress::CreateWalletFile*>(
+                  statePtr.get());
+               if (stateCf != nullptr) {
+                  prog.setCreateFile(stateCf->path().filename().string());
+               }
+               break;
+            }
+
+            case Wallets::Progress::StateEnum::InitWalletFile:
+            {
+               auto stateInit = dynamic_cast<Wallets::Progress::InitWalletFile*>(
+                  statePtr.get());
+               if (stateInit != nullptr) {
+                  prog.setInitFile(stateInit->masterId());
+               }
+               break;
+            }
+
+            case Wallets::Progress::StateEnum::ReadWalletFile:
+            {
+               auto stateRead = dynamic_cast<Wallets::Progress::ReadWalletFile*>(
+                  statePtr.get());
+               if (stateRead != nullptr) {
+                  prog.setReadFile(stateRead->masterId());
+               }
+               break;
+            }
+
+            case Wallets::Progress::StateEnum::CreateAccount:
+            {
+               auto stateAcc = dynamic_cast<Wallets::Progress::CreateAccount*>(
+                  statePtr.get());
+               if (stateAcc != nullptr) {
+                  prog.setCreateAccount(stateAcc->accPtr()->name());
+               }
+               break;
+            }
+
+            case Wallets::Progress::StateEnum::ExtendChain:
+            {
+               auto stateExt = dynamic_cast<Wallets::Progress::ExtendChain*>(
+                  statePtr.get());
+               if (stateExt != nullptr) {
+                  auto extNotif = prog.initExtendChain();
+                  extNotif.setTotal(stateExt->lookup());
+               }
+               break;
+            }
+         }
+
+         auto notifSerialized = serializeCapnp(notifMessage);
+         bridgePtr->writeToClient(notifSerialized);
+      };
+   }
+
+   void sendSuccess(CppBridge* bridgePtr, MessageId refId)
+   {
+      capnp::MallocMessageBuilder message;
+      auto reply = message.initRoot<FromBridge>().initReply();
+      reply.setReferenceId(refId);
+      reply.setSuccess(true);
+      auto serialized = serializeCapnp(message);
+      bridgePtr->writeToClient(serialized);
+   }
+
+   void sendCleanup(CppBridge* bridgePtr, const std::string& callbackId)
+   {
+      capnp::MallocMessageBuilder message;
+      auto notif = message.initRoot<FromBridge>().initNotification();
+      notif.setCallbackId(callbackId);
+      notif.setCleanup();
+      auto serialized = serializeCapnp(message);
+      bridgePtr->writeToClient(serialized);
+   }
+
+   WalletBackup::Type toCapnBackupType(const Seeds::BackupType& bType)
+   {
+      switch (bType)
+      {
+         case Seeds::BackupType::Armory135a:
+            return WalletBackup::Type::LEGACY135_A;
+
+         case Seeds::BackupType::Armory135c:
+            return WalletBackup::Type::LEGACY135_C;
+
+         case Seeds::BackupType::Armory200a:
+            return WalletBackup::Type::LEGACY200_A;
+
+         case Seeds::BackupType::Armory200b:
+            return WalletBackup::Type::LEGACY200_B;
+
+         case Seeds::BackupType::Armory200c:
+            return WalletBackup::Type::LEGACY200_C;
+
+         case Seeds::BackupType::Armory200d:
+            return WalletBackup::Type::LEGACY200_D;
+
+         case Seeds::BackupType::BIP39:
+            return WalletBackup::Type::BIP39;
+
+         default:
+            return WalletBackup::Type::UNKNOWN;
+      }
+   }
+
+   std::function<std::unique_ptr<Passphrase::Params>(void)> getSetPassFunc(
+      CppBridge* bridgePtr, const std::string& callbackId, bool priv)
+   {
+      return [bridgePtr, callbackId, priv]()->std::unique_ptr<Passphrase::Params>
+      {
+         auto counterBd = bridgePtr->generateRandom(4);
+         auto notifCounter = *(uint32_t*)counterBd.getPtr();
+
+         //create set passphrase notif
+         capnp::MallocMessageBuilder notifMessage;
+         auto fromBridge = notifMessage.initRoot<FromBridge>();
+         auto notif = fromBridge.initNotification();
+         notif.setCallbackId(callbackId);
+         notif.setCounter(notifCounter);
+         auto wltCrt = notif.initWalletCreation();
+         if (priv) {
+            wltCrt.setSetPrivPass();
+         } else {
+            wltCrt.setSetCtrlPass();
+         }
+         auto notifSerialized = serializeCapnp(notifMessage);
+
+         //reply handler
+         auto prom = std::make_shared<std::promise<Seeds::PromptReply>>();
+         auto fut = prom->get_future();
+         auto replyLbd = [prom](const Seeds::PromptReply& reply)->bool
+         {
+            prom->set_value(reply);
+            return true;
+         };
+
+         //push prompt to caller
+         ServerPushWrapper wrapper{notifCounter, replyLbd, std::move(notifSerialized)};
+         bridgePtr->callbackWriter(wrapper);
+
+         //wait on reply
+         auto reply = std::move(fut.get());
+         if (!reply.success) {
+            return nullptr;
+         }
+         return std::make_unique<Passphrase::Params>(reply.passParams);
+      };
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -318,11 +483,18 @@ namespace
 ////  CppBridge
 ////
 ////////////////////////////////////////////////////////////////////////////////
-CppBridge::CppBridge(const std::filesystem::path& path, const std::string& dbAddr,
-   const std::string& dbPort, bool oneWayAuth, bool offline) :
-   path_(path), dbAddr_(dbAddr), dbPort_(dbPort),
-   dbOneWayAuth_(oneWayAuth), dbOffline_(offline)
-{}
+CppBridge::CppBridge() :
+   path_(Config::getDataDir()),
+   dbOffline_(Config::NetworkSettings::isOffline())
+{
+   wltManager_ = std::make_shared<WalletManager>(path_);
+}
+
+void CppBridge::setWriteLambda(
+   const std::function<void(std::unique_ptr<WritePayload_Bridge>)>& lbd)
+{
+   writeLambda_ = lbd;
+}
 
 std::shared_ptr<AsyncClient::BlockDataViewer> CppBridge::bdvPtr() const
 {
@@ -335,7 +507,23 @@ void CppBridge::reset()
       bdvPtr_->unregisterFromDB();
    }
    bdvPtr_.reset();
-   callbackPtr_.reset();
+}
+
+bool CppBridge::isOffline() const
+{
+   if (dbOffline_) {
+      return true;
+   }
+
+   if (bdvPtr_ == nullptr) {
+      return true;
+   }
+   return !bdvPtr_->isValid();
+}
+
+const std::filesystem::path& CppBridge::getDataDir() const
+{
+   return path_;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -354,22 +542,77 @@ void CppBridge::callbackWriter(ServerPushWrapper& wrapper)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void CppBridge::loadWallets(const std::string& callbackId, MessageId msgId)
+// WalletManager init methods
+////////////////////////////////////////////////////////////////////////////////
+BinaryData CppBridge::listWallets(MessageId msgId)
 {
-   if (wltManager_ != nullptr) {
-      return;
+   auto wltList = wltManager_->listWallets();
+
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   auto mgrReply = reply.initWalletManager();
+   auto capnWltList = mgrReply.initListWallets(wltList.size());
+
+   unsigned i=0;
+   for (const auto& wltObj : wltList) {
+      auto capnWltObj = capnWltList[i++];
+      capnWltObj.setState(WalletManagerReply::WalletLoadState(
+         (int)wltObj.second->state()));
+      capnWltObj.setPath(wltObj.first);
+      capnWltObj.setStaged(wltObj.second->staged());
+
+      try {
+         const auto& walletId = wltObj.second->walletId();
+         if (!walletId.empty()) {
+            capnWltObj.setWalletId(walletId);
+         }
+      } catch (const std::exception&) {
+         capnWltObj.setWalletId("N/A");
+      }
    }
 
-   auto thrLbd = [this, callbackId, msgId](void)->void
+   reply.setReferenceId(msgId);
+   reply.setSuccess(true);
+   return serializeCapnp(message);
+}
+
+////////
+void CppBridge::unlockControlHeader(const std::string& path,
+   const std::string& callbackId, MessageId refId)
+{
+   auto thrLbd = [this, callbackId, path, refId](void)->void
    {
       auto passPromptObj = std::make_shared<BridgePassphrasePrompt>(
          callbackId, [this](ServerPushWrapper wrapper) {
             this->callbackWriter(wrapper);
       });
       auto lbd = passPromptObj->getLambda();
-      wltManager_ = std::make_shared<WalletManager>(path_, lbd);
-      auto response = createWalletsPacket(msgId);
-      writeToClient(response);
+
+      auto notifySuccess = [refId, this](bool success, const std::string& error)
+      {
+         capnp::MallocMessageBuilder message;
+         auto fromBridge = message.initRoot<FromBridge>();
+         auto reply = fromBridge.initReply();
+         reply.setReferenceId(refId);
+         reply.setSuccess(success);
+         if (!success) {
+            reply.setError(error);
+         }
+
+         auto response = serializeCapnp(message);
+         this->writeToClient(response);
+      };
+
+      try {
+         wltManager_->unlockControlHeader(path, lbd);
+         notifySuccess(true, {});
+      } catch (const std::exception& e) {
+         notifySuccess(false, e.what());
+      }
+
+      //call lbd with empty id set to cleanup passphrase prompt
+      lbd({});
    };
 
    std::thread thr(thrLbd);
@@ -378,12 +621,79 @@ void CppBridge::loadWallets(const std::string& callbackId, MessageId msgId)
    }
 }
 
+////////
+bool CppBridge::stageWallet(const std::string& walletId, bool stage)
+{
+   return wltManager_->stageWallet(walletId, stage);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void CppBridge::migrateWallet(const std::string& walletId,
+   const std::string& callbackId, MessageId refId)
+{
+   auto migrateLbd = [this]
+   (const std::string& wltId, const std::string& callbackId, MessageId refId)
+   {
+      //prepare reply
+      capnp::MallocMessageBuilder message;
+      auto fromBridge = message.initRoot<FromBridge>();
+      auto reply = fromBridge.initReply();
+      reply.setReferenceId(refId);
+      auto mgrReply = reply.initWalletManager();
+
+      //set passphrase functions
+      auto setCtrlPassFunc = getSetPassFunc(this, callbackId, false);
+      auto setPrivPassFunc = getSetPassFunc(this, callbackId, true);
+
+      //creation params for the wallet receiving the migration
+      Wallets::IO::CreateWalletParams params{
+         wltManager_->getWalletDir(),
+         Passphrase::SetNew{setPrivPassFunc},
+         Passphrase::SetNew{setCtrlPassFunc},
+         getWalletProgressLbd(this, callbackId), 0
+      };
+
+      //function to unlock private keys in the origin wallet
+      auto passPromptObj = std::make_shared<BridgePassphrasePrompt>(
+         callbackId, [this](ServerPushWrapper wrapper) {
+            this->callbackWriter(wrapper);
+      });
+      auto unlockLbd = passPromptObj->getLambda();
+
+      try {
+         auto resultId = wltManager_->migrateWallet(wltId, unlockLbd, params);
+         sendCleanup(this, callbackId);
+
+         auto mgrReply = reply.initWalletManager();
+         mgrReply.setMigrateWallet(resultId);
+         reply.setSuccess(true);
+      } catch (const std::exception& e) {
+         sendCleanup(this, callbackId);
+         reply.setSuccess(false);
+         reply.setError(e.what());
+      }
+
+      auto response = serializeCapnp(message);
+      this->writeToClient(response);
+   };
+
+   std::thread thr(migrateLbd, walletId, callbackId, refId);
+   if (thr.joinable()) {
+      thr.detach();
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+BinaryData CppBridge::loadWallets(MessageId msgId)
+{
+   wltManager_->loadWallets();
+   return createWalletsPacket(msgId);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 WalletPtr CppBridge::getWalletPtr(const std::string& wltId) const
 {
-   auto wai = WalletAccountIdentifier::deserialize(wltId);
-   auto wltContainer = wltManager_->getWalletContainer(
-      wai.walletId, wai.accountId);
+   auto wltContainer = wltManager_->getWalletContainer(wltId);
    return wltContainer->getWalletPtr();
 }
 
@@ -393,7 +703,7 @@ BinaryData CppBridge::createWalletsPacket(MessageId msgId)
    capnp::MallocMessageBuilder message;
    auto fromBridge = message.initRoot<FromBridge>();
    auto reply = fromBridge.initReply();
-   auto serviceReply = reply.initService();
+   auto mgrReply = reply.initWalletManager();
 
    //grab wallet map
    auto accountIdMap = wltManager_->getAccountIdMap();
@@ -404,7 +714,7 @@ BinaryData CppBridge::createWalletsPacket(MessageId msgId)
       }
       count += idIt.second.size();
    }
-   auto wltPackets = serviceReply.initLoadWallets(count);
+   auto wltPackets = mgrReply.initLoadWallets(count);
 
    unsigned i=0;
    for (const auto& idIt : accountIdMap) {
@@ -417,7 +727,8 @@ BinaryData CppBridge::createWalletsPacket(MessageId msgId)
          auto firstCont = wltManager_->getWalletContainer(idIt.first, accId);
          auto wltPtr = firstCont->getWalletPtr();
          auto commentMap = wltPtr->getCommentMap();
-         walletToCapnp(wltPtr, accId, commentMap, capnWallet);
+         walletToCapnp(wltPtr, accId, firstCont->getDbId(),
+            commentMap, capnWallet);
       }
    }
 
@@ -427,11 +738,10 @@ BinaryData CppBridge::createWalletsPacket(MessageId msgId)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-bool CppBridge::deleteWallet(const std::string& id)
+bool CppBridge::deleteWallet(const std::string& wltId)
 {
    try {
-      auto wai = WalletAccountIdentifier::deserialize(id);
-      wltManager_->deleteWallet(wai.walletId, wai.accountId);
+      wltManager_->deleteWallet(wltId);
    } catch (const std::exception& e) {
       LOGWARN << "failed to delete wallet with error: " << e.what();
       return false;
@@ -440,117 +750,178 @@ bool CppBridge::deleteWallet(const std::string& id)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void CppBridge::setupDB()
+void CppBridge::setupDB(MessageId refId)
 {
+   /*
+   * should call this method from a dedicated thread
+   */
+   LOGINFO << "connecting to ArmoryDB";
+
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   reply.setReferenceId(refId);
+
    if (dbOffline_) {
       LOGWARN << "attempt to connect to DB in offline mode, ignoring";
+      reply.setError("cannot setup db offline mode");
+      reply.setSuccess(false);
+      auto response = serializeCapnp(message);
+      this->writeToClient(response);
       return;
    }
 
-   auto lbd = [this](void)->void
-   {
-      //sanity check
-      if (bdvPtr_ != nullptr) {
-         return;
-      }
-
-      if (wltManager_ == nullptr) {
-         throw std::runtime_error("wallet manager is not initialized");
-      }
-
-      //lambda to push notifications over to the gui socket
-      auto pushNotif = [this](BinaryData& msg)->void
-      {
-         this->writeToClient(msg);
-      };
-
-      //setup bdv obj
-      callbackPtr_ = std::make_shared<BridgeCallback>(wltManager_, pushNotif);
-      bdvPtr_ = AsyncClient::BlockDataViewer::getNewBDV(
-         dbAddr_, dbPort_, path_,
-         TerminalPassphrasePrompt::getLambda("db identification key"),
-         true, dbOneWayAuth_, callbackPtr_
-      );
-
-      //TODO: set gui prompt to accept server pubkeys
-      bdvPtr_->setCheckServerKeyPromptLambda(
-         [](const BinaryData&, const std::string&)->bool{return true;});
-
-      //set bdvPtr in wallet manager
-      wltManager_->setBdvPtr(bdvPtr_);
-
-      //connect to db
-      try {
-         bdvPtr_->connectToRemote();
-         bdvPtr_->registerWithDB(
-            Config::BitcoinSettings::getMagicBytes().toHexStr());
-
-         //notify setup is done
-         callbackPtr_->notify_SetupDone();
-      } catch (const std::exception& e) {
-         LOGERR << "failed to connect to db with error: " << e.what();
-      }
-   };
-
-   std::thread thr(lbd);
-   if (thr.joinable()) {
-      thr.join(); //set back to detach
+   if (bdvPtr_ != nullptr) {
+      LOGWARN << "already connected to db!";
+      reply.setError("already connected to db!");
+      reply.setSuccess(false);
+      auto response = serializeCapnp(message);
+      this->writeToClient(response);
+      return;
    }
+
+   if (wltManager_ == nullptr) {
+      LOGERR << "null wallet manager!";
+      reply.setError("null wallet manager!");
+      reply.setSuccess(false);
+      auto response = serializeCapnp(message);
+      this->writeToClient(response);
+      return;
+   }
+
+   //do we have to spawn the db?
+   std::shared_ptr<Wallets::AuthorizedPeers> peers = nullptr;
+   if (Config::NetworkSettings::automateDb()) {
+      peers = spawnDb();
+   } else {
+      peers = std::make_shared<Wallets::AuthorizedPeers>(
+         Wallets::IO::ReadOnlyFileParams {
+            path_ / CLIENT_AUTH_PEER_FILENAME,
+            TerminalPassphrasePrompt::getLambda("db identification key")
+      });
+   }
+
+   //connect to db
+   try {
+      if (peers == nullptr) {
+         throw std::runtime_error("failed to setup client peers db");
+      }
+
+      bdvPtr_ = setupClientConnection(
+         peers, [this](BinaryData& data){ writeToClient(data); },
+         wltManager_
+      );
+      if (bdvPtr_ == nullptr) {
+         throw std::runtime_error("failed to instantiate bdv object");
+      }
+
+      //reply to caller
+      reply.setSuccess(true);
+   } catch (const std::exception& e) {
+      reply.setSuccess(false);
+      reply.setError(e.what());
+   }
+
+   auto response = serializeCapnp(message);
+   this->writeToClient(response);
+}
+
+////
+void CppBridge::cleanupDb(MessageId refId)
+{
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   reply.setReferenceId(refId);
+
+   if (!Config::NetworkSettings::automateDb()) {
+      reply.setSuccess(false);
+      reply.setError("db is not automated");
+   } else if (bdvPtr_ == nullptr) {
+      reply.setSuccess(false);
+      reply.setError("no connection to db");
+   } else if (autoDbPid == -1) {
+      reply.setSuccess(false);
+      reply.setError("db is not running");
+   } else {
+      bdvPtr_->shutdown();
+      reply.setSuccess(true);
+   }
+
+   auto response = serializeCapnp(message);
+   this->writeToClient(response);
+}
+
+////
+void CppBridge::goOnline()
+{
+   bdvPtr_->goOnline();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 void CppBridge::registerWallets()
 {
    wltManager_->registerWallets();
-
-   std::set<std::string> walletIds;
-   auto accountIdMap = wltManager_->getAccountIdMap();
-   for (const auto& idIt : accountIdMap) {
-      for (const auto& accId : idIt.second) {
-         WalletAccountIdentifier wai(idIt.first, accId);
-         walletIds.insert(wai.serialize());
-      }
-   }
-   callbackPtr_->notify_SetupRegistrationDone(walletIds);
 }
 
-////////////////////////////////////////////////////////////////////////////////
-void CppBridge::registerWallet(const std::string& id, bool isNew)
+////
+void CppBridge::registerWallet(const std::string& wltId,
+   const Wallets::AddressAccountId& accId, bool isNew)
 {
+   if (isOffline()) {
+      LOGDEBUG << "Armory is offline, cannot register wallet";
+      return;
+   }
+
    try {
-      auto wai = WalletAccountIdentifier::deserialize(id);
-      wltManager_->registerWallet(
-         wai.walletId, wai.accountId, isNew);
-      callbackPtr_->waitOnId(id);
+      wltManager_->registerWallet(wltId, accId, isNew);
    } catch (const std::exception& e) {
       LOGERR << "failed to register wallet with error: " << e.what();
    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void CppBridge::createBackupStringForWallet(const std::string& waaId,
-   const std::string& callbackId, MessageId msgId)
+void CppBridge::createBackupStringForWallet(const std::string& wltId,
+   const std::string& callbackId, SecureBinaryData passphrase, MessageId msgId)
 {
-   auto wai = WalletAccountIdentifier::deserialize(waaId);
-   auto backupStringLbd = [this, wai, msgId, callbackId]()->void
+   auto backupStringLbd =
+   [this, wltId, msgId, callbackId, passphrase=std::move(passphrase)]()
    {
-      auto passPromptObj = std::make_shared<BridgePassphrasePrompt>(
-         callbackId, [this](ServerPushWrapper wrapper){
-            this->callbackWriter(wrapper);
-         });
-      auto lbd = passPromptObj->getLambda();
+      std::shared_ptr<BridgePassphrasePrompt> passPromptObj;
+      if (passphrase.empty()) {
+         passPromptObj = std::make_shared<BridgePassphrasePrompt>(
+            callbackId, [this](ServerPushWrapper wrapper){
+               this->callbackWriter(wrapper);
+            });
+      }
 
       std::unique_ptr<Seeds::WalletBackup> backupData;
+      std::string error;
       try {
          //grab wallet
-         auto wltContainer = wltManager_->getWalletContainer(wai.walletId);
+         auto wltContainer = wltManager_->getWalletContainer(wltId);
 
          //grab root
-         backupData = move(wltContainer->getBackupStrings(lbd));
-      } catch (const std::exception&) {}
+         if (passphrase.empty()) {
+            auto lbd = passPromptObj->getLambda();
+            backupData = std::move(wltContainer->getBackupStrings(lbd));
+         } else {
+            backupData = std::move(wltContainer->getBackupStrings(
+               [passphrase=std::move(passphrase)]
+               (const std::set<Wallets::EncryptionKeyId>&)->Passphrase::Result
+               { return { passphrase, true }; }
+            ));
+         }
+      } catch (const std::exception& e) {
+         error = e.what();
+         backupData = nullptr;
+      }
 
       //wind down passphrase prompt
-      passPromptObj->cleanup();
+      if (passPromptObj != nullptr) {
+         passPromptObj->cleanup();
+         passPromptObj.reset();
+      }
 
       capnp::MallocMessageBuilder message;
       auto fromBridge = message.initRoot<FromBridge>();
@@ -559,6 +930,7 @@ void CppBridge::createBackupStringForWallet(const std::string& waaId,
       if (backupData == nullptr) {
          //return on error
          reply.setSuccess(false);
+         reply.setError(error);
          auto payload = serializeCapnp(message);
          writeToClient(payload);
          return;
@@ -570,7 +942,7 @@ void CppBridge::createBackupStringForWallet(const std::string& waaId,
          throw std::runtime_error("[createBackupStringForWallet]"
             " invalid backup type");
       }
-      auto walletReply = reply.getWallet();
+      auto walletReply = reply.initWallet();
       auto backupStringCapnp = walletReply.initCreateBackupString();
 
       //cleartext root
@@ -618,6 +990,9 @@ void CppBridge::createBackupStringForWallet(const std::string& waaId,
       backupStringCapnp.setSpPass(
          capnp::Text::Reader(spPass.data(), spPass.size()));
 
+      //backup type
+      backupStringCapnp.setBackupType(toCapnBackupType(backupData->type()));
+
       reply.setSuccess(true);
       auto payload = serializeCapnp(message);
       writeToClient(payload);
@@ -630,176 +1005,356 @@ void CppBridge::createBackupStringForWallet(const std::string& waaId,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void CppBridge::restoreWallet(const BinaryDataRef& msgRef)
+void CppBridge::restoreWallet(
+   const std::vector<std::string_view>& lines_sv,
+   const std::string_view& spPass_sv,
+   const std::string_view& callbackId, MessageId refId)
 {
+   //NOTE: easy16 only for now, will need a dedicated call for BIP39
+
    /*
    Needs 2 lines for the root, possibly another 2 for the chaincode, possibly
    1 more for the SecurePrint passphrase.
 
-   This call will block waiting on user replies to the prompt for the different 
+   This call will block waiting on user replies to the prompt for the different
    steps in the wallet restoration process (checking id, checkums, passphrase
    requests). It has to run in its own thread.
    */
 
-   //TODO: fix me
-
-   #if 0
-   RestoreWalletPayload msg;
-   msg.ParseFromArray(msgRef.getPtr(), msgRef.getSize());
-
-   if (msg.root_size() != 2)
-      throw runtime_error("[restoreWallet] invalid root lines count");
+   auto backup = Seeds::Backup_Easy16::fromLines(lines_sv, spPass_sv);
 
    //
-   auto restoreLbd = [this](RestoreWalletPayload msg)
+   auto restoreLbd = [
+      this, refId, callbackId=std::string{callbackId}](
+      std::unique_ptr<Seeds::Backup_Easy16> backup)
    {
-      auto createCallbackMessage = [](
-         int promptType,
-         const vector<int> chkResults,
-         SecureBinaryData& extra)->unique_ptr<BridgeProto::Payload>
+      auto createCallbackMessage = [callbackId](
+         const Seeds::RestorePrompt& prompt, uint32_t notifCounter)->BinaryData
       {
-         RestorePrompt opaqueMsg;
-         opaqueMsg.set_prompttype((RestorePromptType)promptType);
-         for (auto& chk : chkResults)
-            opaqueMsg.add_checksums(chk);
+         capnp::MallocMessageBuilder message;
+         auto promptCapnp = message.initRoot<FromBridge>();
+         auto notifCapnp = promptCapnp.initNotification();
+         notifCapnp.setCallbackId(callbackId);
+         notifCapnp.setCounter(notifCounter);
 
-         if (!extra.empty())
-            opaqueMsg.set_extra(extra.toCharPtr(), extra.getSize());
+         switch (prompt.promptType)
+         {
+            case Seeds::RestorePromptType::FormatError:
+            case Seeds::RestorePromptType::Failure:
+            {
+               auto restore = notifCapnp.initRestore();
+               restore.setFailure(prompt.error);
+               break;
+            }
 
-         //wrap in opaque payload
-         auto payload = make_unique<BridgeProto::Payload>();
-         auto callback = payload->mutable_callback();
-         callback->set_callback_id(
-            handler->id().getCharPtr(), handler->id().getSize());
+            case Seeds::RestorePromptType::ChecksumError:
+            {
+               auto restore = notifCapnp.initRestore();
+               auto chksumCapnp = restore.initChecksumError(
+                  prompt.checksumResult.size());
 
-         /*callbackMsg->set_payloadtype(OpaquePayloadType::commandWithCallback);
+               unsigned i=0;
+               for (const auto& chkResult : prompt.checksumResult) {
+                  auto capnChkResult = chksumCapnp[i++];
+                  capnChkResult.setLineId(chkResult.first);
+                  capnChkResult.setValue(chkResult.second);
+               }
+               break;
+            }
 
-         string serializedOpaqueData;
-         opaqueMsg.SerializeToString(&serializedOpaqueData);
-         callbackMsg->set_payload(serializedOpaqueData);*/
+            case Seeds::RestorePromptType::ChecksumMismatch:
+            {
+               auto restore = notifCapnp.initRestore();
+               auto chksumCapnp = restore.initChecksumMismatch(
+                  prompt.checksumResult.size());
 
-         return payload;
+               unsigned i=0;
+               for (const auto& chkResult : prompt.checksumResult) {
+                  auto capnChkResult = chksumCapnp[i++];
+                  capnChkResult.setLineId(chkResult.first);
+                  capnChkResult.setValue(chkResult.second);
+               }
+               break;
+            }
+
+            case Seeds::RestorePromptType::DecryptError:
+            {
+               auto restore = notifCapnp.initRestore();
+               restore.setDecryptError();
+               break;
+            }
+
+            case Seeds::RestorePromptType::ControlPassphrase:
+            {
+               auto wltCreation = notifCapnp.initWalletCreation();
+               wltCreation.setSetCtrlPass();
+               break;
+            }
+
+            case Seeds::RestorePromptType::PrivatePassphrase:
+            {
+               auto wltCreation = notifCapnp.initWalletCreation();
+               wltCreation.setSetPrivPass();
+               break;
+            }
+
+            case Seeds::RestorePromptType::Id:
+            {
+               auto restore = notifCapnp.initRestore();
+               auto metaCapnp = restore.initCheckWalletId();
+               metaCapnp.setWalletId(prompt.walletId);
+               metaCapnp.setBackupType(toCapnBackupType(prompt.backupType));
+               break;
+            }
+
+            case Seeds::RestorePromptType::TypeError:
+            {
+               auto restore = notifCapnp.initRestore();
+               restore.setTypeError(prompt.error);
+               break;
+            }
+
+            default:
+               throw std::runtime_error("invalid prompt type");
+         }
+         return serializeCapnp(message);
       };
 
-      auto callback = [this, handler, createCallbackMessage](
-         Armory::Backups::RestorePromptType promptType,
-         const vector<int> chkResults,
-         SecureBinaryData& extra)->bool
+      auto callback = [this, createCallbackMessage](
+         const Seeds::RestorePrompt& prompt)->Seeds::PromptReply
       {
-         //convert prompt args to protobuf
-         auto callbackMsg = createCallbackMessage(
-            promptType, chkResults, extra);
+         if (prompt.needsReply()) {
+            auto counterBd = fortuna.generateRandom(4);
+            auto notifCounter = *(uint32_t*)counterBd.getPtr();
+            auto message = createCallbackMessage(prompt, notifCounter);
 
-         //setup reply lambda
-         auto prom = make_shared<promise<BinaryData>>();
-         auto fut = prom->get_future();
-         auto replyLbd = [prom](BinaryData data)->void
-         {
-            prom->set_value(data);
+            //setup reply lambda
+            auto prom = std::make_shared<std::promise<Seeds::PromptReply>>();
+            auto fut = prom->get_future();
+            auto replyLbd = [prom](const Seeds::PromptReply& reply)->bool
+            {
+               prom->set_value(reply);
+               return true;
+            };
+
+            //push prompt to caller
+            ServerPushWrapper wrapper{notifCounter, replyLbd, std::move(message)};
+            callbackWriter(wrapper);
+
+            //wait on reply
+            return fut.get();
+         } else {
+            auto message = createCallbackMessage(prompt, 0);
+            ServerPushWrapper wrapper{0, nullptr, std::move(message)};
+            callbackWriter(wrapper);
+            return {false};
+         }
+      };
+
+      auto setNewCtrlFunc = [callback]()->std::unique_ptr<Passphrase::Params>
+      {
+         auto reply = callback(Seeds::RestorePrompt{
+            Seeds::RestorePromptType::ControlPassphrase});
+         if (!reply.success) {
+            return nullptr;
+         }
+         return std::make_unique<Passphrase::Params>(reply.passParams);
+      };
+
+      auto setNewPrivFunc = [callback]()->std::unique_ptr<Passphrase::Params>
+      {
+         auto reply = callback(Seeds::RestorePrompt{
+            Seeds::RestorePromptType::PrivatePassphrase});
+         if (!reply.success) {
+            return nullptr;
+         }
+         return std::make_unique<Passphrase::Params>(reply.passParams);
+      };
+
+      auto tempDir = wltManager_->getWalletDir() / "temp";
+      try {
+         //create a temp folder where the wallet will be generated
+         FileUtils::createDirectory(tempDir);
+
+         //create wallet from backup
+         auto progFunc = getWalletProgressLbd(this, callbackId);
+         Wallets::IO::CreateWalletParams params{
+            tempDir,
+            Passphrase::SetNew{setNewPrivFunc},
+            Passphrase::SetNew{setNewCtrlFunc},
+            progFunc,
+            0 //address lookup
          };
 
-         //register reply lambda will callbacks handler
-         //auto callbackId = handler->addCallback(replyLbd);
-         //callbackMsg->mutable_callback()->set_callback_id(callbackId);
-         writeToClient(move(callbackMsg));
+         auto restoreResult = Armory::Seeds::Helpers::restoreFromBackup(
+            std::move(backup), callback, params);
 
-         //wait on reply
-         auto&& data = fut.get();
+         if (restoreResult.wltPtr == nullptr) {
+            throw std::runtime_error("empty wallet");
+         }
 
-         //process it
-         RestoreReply reply;
-         reply.ParseFromArray(data.getPtr(), data.getSize());
+         //get new wallet path
+         auto newWltID = restoreResult.wltPtr->getID();
+         auto newWltPath = restoreResult.wltPtr->getDbFilename();
 
-         if (!reply.extra().empty())
-            extra = move(SecureBinaryData::fromString(reply.extra()));
+         //are we merging this wallet or overwriting an existing one?
+         std::filesystem::path oldWltPath;
+         if (restoreResult.merge && wltManager_->hasWallet(newWltID)) {
+            //we want to merge the old wallet data in the new one,
+            //close the new file first
+            restoreResult.wltPtr.reset();
 
-         return reply.result();
-      };
+            //grab the old wallet
+            auto oldWlt = wltManager_->getWalletContainer(newWltID);
+            auto oldWltSingle = std::dynamic_pointer_cast<Wallets::AssetWallet_Single>(
+               oldWlt->getWalletPtr());
 
-      //grab passphrase
-      BinaryDataRef passphrase;
-      passphrase.setRef(msg.sppass());
+            //merge old into new one
+            if (oldWltSingle == nullptr) {
+               LOGWARN << "replaced wallet is not single, merging not implemented yet!";
+            } else {
+               auto oldWltData = Wallets::AssetWallet_Single::exportPublicData(
+                  oldWltSingle);
+               Wallets::AssetWallet_Single::mergePublicData(
+                  Wallets::IO::ReadOnlyFileParams{
+                     newWltPath, params.setCtrlPassObj.getUnlockFunc()},
+                  oldWltData, progFunc
+               );
+            }
+         } else {
+            //we didnt have an old wallet merge into the new one, extend
+            //the address chain for some baseline count
+            restoreResult.wltPtr->setPassphrasePromptLambda(
+               params.setPrivPassObj.getUnlockFunc());
+            progFunc(std::make_unique<Wallets::Progress::ExtendChain>(500));
+            restoreResult.wltPtr->extendPrivateChainToIndex(499);
+            restoreResult.wltPtr.reset();
+         }
 
-      //grab backup lines
-      vector<BinaryDataRef> lines;
-      for (unsigned i=0; i<2; i++)
-      {
-         const auto& line = msg.root(i);
-         lines.emplace_back((const uint8_t*)line.c_str(), line.size());
-      }
+         //unload old wallet & rename it
+         if (wltManager_->hasWallet(newWltID)) {
+            oldWltPath = wltManager_->unloadWallet(newWltID);
+            if (!oldWltPath.empty()) {
+               oldWltPath = FileUtils::appendTagToPath(oldWltPath, "_old");
+            }
+         }
 
-      for (int i=0; i<msg.secondary_size(); i++)
-      {
-         const auto& line = msg.secondary(i);
-         lines.emplace_back((const uint8_t*)line.c_str(), line.size());
-      }
+         //move new wallet
+         auto newPath = wltManager_->getWalletDir() / newWltPath.filename();
+         std::filesystem::rename(newWltPath, newPath);
 
-      try
-      {
-         //create wallet from backup
-         auto wltPtr = Armory::Backups::Helpers::restoreFromBackup(
-            lines, passphrase, wltManager_->getWalletDir(), callback);
+         //reload new wallet
+         wltManager_->loadWallet(Wallets::IO::ReadOnlyFileParams{
+            newPath, params.setCtrlPassObj.getUnlockFunc()});
 
-         if (wltPtr == nullptr)
-            throw runtime_error("empty wallet");
+         //delete old wallet if there's one
+         if (!oldWltPath.empty() && std::filesystem::exists(oldWltPath)) {
+            std::filesystem::remove(oldWltPath);
+         }
 
-         //add wallet to manager
-         auto accIds = wltPtr->getAccountIDs();
-         for (const auto& accId : accIds)
-            wltManager_->addWallet(wltPtr, accId);
+         //put first address in use, or the GUI will have nothing to display
+         if (!restoreResult.merge) {
+            auto wltContainer = wltManager_->getWalletContainer(newWltID);
+            auto wltPtr = wltContainer->getWalletPtr();
+            auto accPtr = wltContainer->getAddressAccount();
+            accPtr->getNewAddress(wltPtr->getIface());
+         }
 
-         //signal caller of success
-         SecureBinaryData dummy;
-         auto successMsg = createCallbackMessage(
-            RestorePromptType::Success, {}, dummy);
-         successMsg->mutable_callback()->set_callback_id(
-            BRIDGE_CALLBACK_PROMPTUSER);
-         writeToClient(move(successMsg));
-      }
-      catch (const Armory::Backups::RestoreUserException& e)
-      {
+         //cleanup & success
+         sendCleanup(this, callbackId);
+         sendSuccess(this, refId);
+      } catch (const Armory::Seeds::RestoreUserException& e) {
          /*
          These type of errors are the result of user actions. They should have
-         an opportunity to fix the issue. Consequently, no error flag will be 
+         an opportunity to fix the issue. Consequently, no error flag will be
          pushed to the client.
          */
 
          LOGWARN << "[restoreFromBackup] user exception: " << e.what();
-      }
-      catch (const exception& e)
-      {
+      } catch (const std::exception& e) {
          LOGERR << "[restoreFromBackup] fatal error: " << e.what();
 
          /*
-         Report error to client. This will catch throws in the
-         callbacks reply handler too.
+         Report error to client
          */
-         /*auto errorMsg = make_unique<OpaquePayload>();
-         errorMsg->set_payloadtype(OpaquePayloadType::commandWithCallback);
-         errorMsg->set_uniqueid(
-            handler->id().getPtr(), handler->id().getSize());
-         errorMsg->set_intid(UINT32_MAX); //error flag
-
-         BridgeProto::Strings errorVerbose;
-         errorVerbose.add_reply(e.what());
-
-         string serializedOpaqueData;
-         errorVerbose.SerializeToString(&serializedOpaqueData);
-         errorMsg->set_payload(serializedOpaqueData);*/
-
-         auto payload = make_unique<BridgeProto::Payload>();
-         auto callback = payload->mutable_callback();
-         callback->set_callback_id(
-            handler->id().toCharPtr(), handler->id().getSize());
-         callback->set_error(e.what());
-         writeToClient(move(payload));
+         Seeds::RestorePrompt errorPrompt{Seeds::RestorePromptType::Failure};
+         errorPrompt.error = e.what();
+         callback(errorPrompt);
       }
 
-      handler->flagForCleanup();
+      //delete the temp folder
+      FileUtils::removeDirectory(tempDir);
    };
-   #endif
 
-   //handler->methodThr_ = thread(restoreLbd, move(msg));
+   auto worker = std::thread(restoreLbd, std::move(backup));
+   if (worker.joinable()) {
+      worker.detach();
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void CppBridge::importWallet(const std::filesystem::path& path, MessageId msgId)
+{
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   reply.setReferenceId(msgId);
+
+   try {
+      auto wltInfo = wltManager_->importFile(path);
+      auto utilsReply = reply.initUtils();
+      auto importReply = utilsReply.initImportWallet();
+
+      importReply.setWalletId(wltInfo->walletId());
+      importReply.setLabel(wltInfo->name());
+      switch (wltInfo->state())
+      {
+         case WalletLoadState::Legacy:
+         {
+            //set the union
+            importReply.setLegacy();
+
+            //cast the info ptr
+            auto legacyInfo = std::dynamic_pointer_cast<A135FileInfo>(wltInfo);
+            if (legacyInfo == nullptr) {
+               throw std::runtime_error("failed to grab legacy wallet info");
+            }
+
+            //fill up the rest of the data
+            importReply.setDescription(legacyInfo->description());
+            importReply.setWatchingOnly(legacyInfo->isWatchingOnly());
+            importReply.setEncrypted(legacyInfo->isEncrypted());
+            importReply.setTimestamp(legacyInfo->timestamp());
+            importReply.setHighestUsedIndex(legacyInfo->highestUsedIndex());
+            importReply.setAddressCount(legacyInfo->addressCount());
+            importReply.setKdfMem(legacyInfo->kdfMem());
+            importReply.setSeedVersion(legacyInfo->version());
+            break;
+         }
+
+         case WalletLoadState::Encrypted:
+         {
+            break;
+         }
+
+         case WalletLoadState::Ready:
+         {
+            importReply.setReady();
+            break;
+         }
+
+         default:
+            throw std::runtime_error("unexpected file state");
+      }
+
+      reply.setSuccess(true);
+   } catch (const std::exception& e) {
+      reply.setSuccess(false);
+      reply.setError(e.what());
+   }
+
+   auto payload = serializeCapnp(message);
+   writeToClient(payload);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -826,7 +1381,7 @@ const std::string& CppBridge::getLedgerDelegateId()
 
 ////////////////////////////////////////////////////////////////////////////////
 const std::string& CppBridge::getLedgerDelegateIdForWallet(
-   const std::string& walletId)
+   const std::string& walletId, const Wallets::AddressAccountId& accId)
 {
    auto promPtr = std::make_shared<std::promise<AsyncClient::LedgerDelegate>>();
    auto fut = promPtr->get_future();
@@ -836,7 +1391,10 @@ const std::string& CppBridge::getLedgerDelegateIdForWallet(
       promPtr->set_value(std::move(result.get()));
    };
 
-   auto walletObj = bdvPtr_->getWalletObj(walletId);
+   //grab the wallet container
+   auto wltCont = wltManager_->getWalletContainer(walletId, accId);
+   auto walletObj = bdvPtr_->getWalletObj(wltCont->getDbId());
+
    walletObj.getLedgerDelegate(lbd);
    auto delegate = std::move(fut.get());
    auto insertPair = delegateMap_.emplace(
@@ -850,7 +1408,8 @@ const std::string& CppBridge::getLedgerDelegateIdForWallet(
 
 ////////////////////////////////////////////////////////////////////////////////
 const std::string& CppBridge::getLedgerDelegateIdForScrAddr(
-   const std::string& walletId, const BinaryDataRef& addrHash)
+   const std::string& wltId, const Wallets::AddressAccountId& accId,
+   const BinaryDataRef& addrHash)
 {
    auto promPtr = std::make_shared<std::promise<AsyncClient::LedgerDelegate>>();
    auto fut = promPtr->get_future();
@@ -860,7 +1419,9 @@ const std::string& CppBridge::getLedgerDelegateIdForScrAddr(
       promPtr->set_value(std::move(result.get()));
    };
 
-   auto walletObj = bdvPtr_->getWalletObj(walletId);
+   auto wltCont = wltManager_->getWalletContainer(wltId, accId);
+   auto walletObj = bdvPtr_->getWalletObj(wltCont->getDbId());
+
    auto scrAddrObj = walletObj.getScrAddrObj(addrHash, 0, 0, 0, 0);
    scrAddrObj.getLedgerDelegate(lbd);
    auto delegate = std::move(fut.get());
@@ -879,7 +1440,16 @@ void CppBridge::getHistoryPageForDelegate(
 {
    auto iter = delegateMap_.find(id);
    if (iter == delegateMap_.end()) {
-      throw std::runtime_error("unknown delegate: " + id);
+      capnp::MallocMessageBuilder message;
+      auto fromBridge = message.initRoot<FromBridge>();
+      auto reply = fromBridge.initReply();
+      reply.setReferenceId(msgId);
+      reply.setSuccess(false);
+      reply.setError(std::string{"unknown delegate id: "} + id);
+
+      auto payload = serializeCapnp(message);
+      this->writeToClient(payload);
+      return;
    }
 
    auto lbd = [this, msgId](
@@ -894,6 +1464,7 @@ void CppBridge::getHistoryPageForDelegate(
       auto delegate = reply.initDelegate();
       auto pages = delegate.initGetPages(histVec.size());
       ledgersToCapnp(histVec, pages);
+      reply.setSuccess(true);
 
       auto payload = serializeCapnp(message);
       this->writeToClient(payload);
@@ -939,34 +1510,36 @@ BinaryData CppBridge::getNodeStatus(MessageId msgId)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-BinaryData CppBridge::getBalanceAndCount(const std::string& id, MessageId msgId)
+BinaryData CppBridge::getBalanceAndCount(const std::string& wltId,
+   const Wallets::AddressAccountId& accId, MessageId msgId)
 {
-   auto wai = WalletAccountIdentifier::deserialize(id);
-   auto wltContainer = wltManager_->getWalletContainer(
-      wai.walletId, wai.accountId);
-
    capnp::MallocMessageBuilder message;
    auto fromBridge = message.initRoot<FromBridge>();
    auto reply = fromBridge.initReply();
    auto walletReply = reply.initWallet();
    auto bnc = walletReply.initGetBalanceAndCount();
 
-   bnc.setFull(wltContainer->getFullBalance());
-   bnc.setSpendable(wltContainer->getSpendableBalance());
-   bnc.setUnconfirmed(wltContainer->getUnconfirmedBalance());
-   bnc.setTxnCount(wltContainer->getTxIOCount());
+   try {
+      auto wltContainer = wltManager_->getWalletContainer(wltId, accId);
+      bnc.setFull(wltContainer->getFullBalance());
+      bnc.setSpendable(wltContainer->getSpendableBalance());
+      bnc.setUnconfirmed(wltContainer->getUnconfirmedBalance());
+      bnc.setTxnCount(wltContainer->getTxIOCount());
+      reply.setSuccess(true);
+   } catch (const std::exception& e) {
+      reply.setError(e.what());
+      reply.setSuccess(false);
+   }
 
-   reply.setSuccess(true);
    reply.setReferenceId(msgId);
    return serializeCapnp(message);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-BinaryData CppBridge::getAddrCombinedList(const std::string& id, MessageId msgId)
+BinaryData CppBridge::getAddrCombinedList(const std::string& wltId,
+   const Wallets::AddressAccountId& accId, MessageId msgId)
 {
-   auto wai = WalletAccountIdentifier::deserialize(id);
-   auto wltContainer = wltManager_->getWalletContainer(
-      wai.walletId, wai.accountId);
+   auto wltContainer = wltManager_->getWalletContainer(wltId, accId);
    auto addrMap = wltContainer->getAddrBalanceMap();
 
    capnp::MallocMessageBuilder message;
@@ -995,11 +1568,13 @@ BinaryData CppBridge::getAddrCombinedList(const std::string& id, MessageId msgId
 
    auto addrDataReply = combinedReply.initUpdatedAssets(updatedMap.size());
    i=0;
+   const auto& keyId = wltContainer->getDefaultEncryptionKeyId();
    for (const auto& addrPair : updatedMap) {
       auto capnAddr = addrDataReply[i++];
       addressToCapnp(capnAddr,
          addrPair.second, accPtr,
-         wltContainer->getDefaultEncryptionKeyId());
+         keyId
+      );
    }
 
    reply.setSuccess(true);
@@ -1008,11 +1583,10 @@ BinaryData CppBridge::getAddrCombinedList(const std::string& id, MessageId msgId
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-BinaryData CppBridge::getHighestUsedIndex(const std::string& id, MessageId msgId)
+BinaryData CppBridge::getHighestUsedIndex(const std::string& wltId,
+   const Wallets::AddressAccountId& accId, MessageId msgId)
 {
-   auto wai = WalletAccountIdentifier::deserialize(id);
-   auto wltContainer = wltManager_->getWalletContainer(
-      wai.walletId, wai.accountId);
+   auto wltContainer = wltManager_->getWalletContainer(wltId, accId);
 
    capnp::MallocMessageBuilder message;
    auto fromBridge = message.initRoot<FromBridge>();
@@ -1027,17 +1601,16 @@ BinaryData CppBridge::getHighestUsedIndex(const std::string& id, MessageId msgId
 
 ////////////////////////////////////////////////////////////////////////////////
 void CppBridge::extendAddressPool(const std::string& wltId,
-   unsigned count, const std::string& callbackId, MessageId msgId)
+   const Wallets::AddressAccountId& accId, unsigned count,
+   const std::string& callbackId, MessageId msgId)
 {
-   auto wai = WalletAccountIdentifier::deserialize(wltId);
-   auto wltContainer = wltManager_->getWalletContainer(
-      wai.walletId, wai.accountId);
+   auto wltContainer = wltManager_->getWalletContainer(wltId, accId);
    auto wltPtr = wltContainer->getWalletPtr();
-   const auto& accId = wai.accountId;
 
    //run chain extention in another thread
    auto extendChain =
-      [this, wltPtr, accId, count, msgId, callbackId]()
+      [this, wltPtr, accId, dbId=wltContainer->getDbId(),
+      count, msgId, callbackId]()
    {
       auto accPtr = wltPtr->getAccountForID(accId);
 
@@ -1065,13 +1638,12 @@ void CppBridge::extendAddressPool(const std::string& wltId,
          capnp::MallocMessageBuilder message;
          auto fromBridge = message.initRoot<FromBridge>();
          auto notif = fromBridge.getNotification();
-         auto progressNotif = notif.initProgress();
+         notif.setCallbackId(callbackId);
 
-         float progressFloat = float(tickCount) / float(tickTotal);
-         progressNotif.setProgress(progressFloat);
-         progressNotif.setNumericProgress(tickCount);
-         auto notifIds = progressNotif.initIds(1);
-         notifIds.set(0, callbackId);
+         auto progressNotif = notif.initWalletProgress();
+         auto countNotif = progressNotif.initExtendChain();
+         countNotif.setTotal(tickTotal);
+         countNotif.setCurrent(tickCount);
 
          auto serialized = serializeCapnp(message);
          this->writeToClient(serialized);
@@ -1084,13 +1656,12 @@ void CppBridge::extendAddressPool(const std::string& wltId,
       capnp::MallocMessageBuilder message;
       auto fromBridge = message.initRoot<FromBridge>();
       auto notif = fromBridge.getNotification();
-      auto progressNotif = notif.initProgress();
+      notif.setCallbackId(callbackId);
 
-      progressNotif.setProgress(0);
-      progressNotif.setNumericProgress(0);
-      progressNotif.setPhase((uint32_t)BDMPhase_Completed);
-      auto notifIds = progressNotif.initIds(1);
-      notifIds.set(0, callbackId);
+      auto progressNotif = notif.initWalletProgress();
+      auto countNotif = progressNotif.initExtendChain();
+      countNotif.setTotal(tickTotal);
+      countNotif.setCurrent(tickCount);
 
       auto serialized = serializeCapnp(message);
       this->writeToClient(serialized);
@@ -1104,7 +1675,7 @@ void CppBridge::extendAddressPool(const std::string& wltId,
 
       auto walletReply = reply.initWallet();
       auto capnWallet = walletReply.initExtendAddressPool();
-      walletToCapnp(wltPtr, accId, {}, capnWallet);
+      walletToCapnp(wltPtr, accId, dbId, {}, capnWallet);
 
       auto replySerialized = serializeCapnp(replyMessage);
       this->writeToClient(replySerialized);
@@ -1117,41 +1688,78 @@ void CppBridge::extendAddressPool(const std::string& wltId,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::string CppBridge::createWallet(uint32_t lookup,
-   const std::string& label, const std::string& description,
-   const SecureBinaryData& controlPassphrase,
-   const SecureBinaryData& passphrase,
-   const SecureBinaryData& extraEntropy
-)
+void CppBridge::createWallet(SecureBinaryData extraEntropy,
+   Wallets::IO::CreateWalletParams params, const std::string& callbackId,
+   MessageId refId)
 {
-   //sanity check
-   if (wltManager_ == nullptr) {
-      throw std::runtime_error("wallet manager is not initialized");
-   }
+   auto setCtrlPassFunc = getSetPassFunc(this, callbackId, false);
+   auto setPrivPassFunc = getSetPassFunc(this, callbackId, true);
 
-   //create wallet
-   auto wallet = wltManager_->createNewWallet(
-      passphrase, controlPassphrase, extraEntropy, lookup);
+   auto paramsCopy = std::make_unique<Wallets::IO::CreateWalletParams>(
+      params.folder,
+      Passphrase::SetNew{setPrivPassFunc},
+      Passphrase::SetNew(setCtrlPassFunc),
+      getWalletProgressLbd(this, callbackId),
+      params.lookup, params.label, params.description
+   );
 
-   //set labels
-   auto wltPtr = wallet->getWalletPtr();
-   if (!label.empty()) {
-      wltPtr->setLabel(label);
-   }
-   if (!description.empty()) {
-      wltPtr->setDescription(description);
-   }
+   //this is a long process (several seconds), run in its own thread
+   auto createWltFunc = [this, callbackId,
+      extraEntropy=std::move(extraEntropy),
+      refId](std::unique_ptr<Wallets::IO::CreateWalletParams> paramPtr) {
+      //prepare reply
+      capnp::MallocMessageBuilder replyMessage;
+      auto fromBridge = replyMessage.initRoot<FromBridge>();
+      auto reply = fromBridge.initReply();
+      reply.setReferenceId(refId);
 
-   return wltPtr->getID();
+      try {
+         //create wallet
+         auto wltContainer = wltManager_->createNewWallet(extraEntropy, *paramPtr);
+
+         //put first address in use, or the GUI will have nothing to display
+         auto wltPtr = wltContainer->getWalletPtr();
+         auto accPtr = wltContainer->getAddressAccount();
+         accPtr->getNewAddress(wltPtr->getIface());
+
+         reply.setSuccess(true);
+         auto utilsReply = reply.initUtils();
+         auto wltId = wltPtr->getID();
+         utilsReply.setCreateWallet(wltId);
+      } catch (const std::exception& e) {
+         reply.setSuccess(false);
+         reply.setError(e.what());
+      }
+
+      //callback cleanup
+      sendCleanup(this, callbackId);
+
+      //reply to caller
+      auto replySerialized = serializeCapnp(replyMessage);
+      this->writeToClient(replySerialized);
+   };
+
+   std::thread thr(createWltFunc, std::move(paramsCopy));
+   if (thr.joinable()) {
+      thr.detach();
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-BinaryData CppBridge::getWalletPacket(const std::string& id, MessageId msgId) const
+BinaryData CppBridge::getWalletPacket(const std::string& wltId,
+   Wallets::AddressAccountId accId, MessageId msgId) const
 {
-   auto wai = WalletAccountIdentifier::deserialize(id);
-   auto wltContainer = wltManager_->getWalletContainer(
-      wai.walletId, wai.accountId);
+   std::shared_ptr<WalletContainer> wltContainer = nullptr;
+   if (accId.isValid()) {
+      wltContainer = wltManager_->getWalletContainer(wltId, accId);
+   } else {
+      wltContainer = wltManager_->getWalletContainer(wltId);
+      accId = wltContainer->getAccountId();
+   }
 
+   if (wltContainer == nullptr) {
+      throw std::runtime_error("could not get wallet container");
+   }
    auto wltPtr = wltContainer->getWalletPtr();
    auto commentMap = wltPtr->getCommentMap();
 
@@ -1162,24 +1770,26 @@ BinaryData CppBridge::getWalletPacket(const std::string& id, MessageId msgId) co
    reply.setSuccess(true);
 
    auto walletReply = reply.initWallet();
-   auto capnWallet = walletReply.initExtendAddressPool();
-   walletToCapnp(wltPtr, wai.accountId, commentMap, capnWallet);
+   auto capnWallet = walletReply.initGetData();
+   walletToCapnp(wltPtr, accId, wltContainer->getDbId(),
+      commentMap, capnWallet);
 
    return serializeCapnp(message);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-BinaryData CppBridge::getAddress(const std::string& id,
-   uint32_t addrType, uint32_t addrKind, MessageId msgId)
+BinaryData CppBridge::getAddress(const std::string& wltId,
+   const Wallets::AddressAccountId& accId,
+   uint32_t addrType, uint32_t addrKind,
+   MessageId msgId)
 {
    capnp::MallocMessageBuilder message;
    auto fromBridge = message.initRoot<FromBridge>();
    auto reply = fromBridge.initReply();
    reply.setReferenceId(msgId);
+   reply.setSuccess(true);
 
-   auto wai = WalletAccountIdentifier::deserialize(id);
-   auto wltContainer = wltManager_->getWalletContainer(
-      wai.walletId, wai.accountId);
+   auto wltContainer = wltManager_->getWalletContainer(wltId, accId);
    auto wltPtr = wltContainer->getWalletPtr();
    auto accPtr = wltContainer->getAddressAccount();
    std::shared_ptr<AddressEntry> addrPtr;
@@ -1415,7 +2025,6 @@ BinaryData CppBridge::getAddrStrForScrAddr(
 
    try {
       auto addrStr = BtcUtils::getAddressStrFromScrAddr(script);
-
       auto utilsReply = reply.initScriptUtils();
       utilsReply.setGetAddrStrForScrAddr(addrStr);
       reply.setSuccess(true);
@@ -1493,13 +2102,11 @@ std::string CppBridge::getNameForAddrType(int addrTypeInt) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-BinaryData CppBridge::setAddressTypeFor(
-   const std::string& walletId, const BinaryDataRef& idRef,
+BinaryData CppBridge::setAddressTypeFor(const std::string& wltId,
+   const Wallets::AddressAccountId& accId, const BinaryDataRef& idRef,
    uint32_t addrType, MessageId msgId) const
 {
-   auto wai = WalletAccountIdentifier::deserialize(walletId);
-   auto wltContainer = wltManager_->getWalletContainer(
-      wai.walletId, wai.accountId);
+   auto wltContainer = wltManager_->getWalletContainer(wltId, accId);
    auto wltPtr = wltContainer->getWalletPtr();
    auto assetId = Armory::Wallets::AssetId::deserializeKey(
       idRef, PROTO_ASSETID_PREFIX);
@@ -1557,14 +2164,12 @@ void CppBridge::getHeadersByHeight(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void CppBridge::setupNewCoinSelectionInstance(const std::string& id,
+void CppBridge::setupNewCoinSelectionInstance(const std::string& wltId,
+   const Wallets::AddressAccountId& accId,
    unsigned height, MessageId msgId)
 {
-   auto wai = WalletAccountIdentifier::deserialize(id);
-   auto wltContainer = wltManager_->getWalletContainer(
-      wai.walletId, wai.accountId);
-
-   auto csId = fortuna_.generateRandom(6).toHexStr();
+   auto wltContainer = wltManager_->getWalletContainer(wltId, accId);
+   auto csId = fortuna.generateRandom(6).toHexStr();
    auto insertIter = csMap_.emplace(csId,
       std::shared_ptr<CoinSelection::CoinSelectionInstance>()).first;
    auto csPtr = &insertIter->second;
@@ -1624,12 +2229,11 @@ CppBridge::coinSelectionInstance(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void CppBridge::createAddressBook(const std::string& id, MessageId msgId)
+void CppBridge::createAddressBook(const std::string& wltId,
+   const Wallets::AddressAccountId& accId,
+   MessageId msgId)
 {
-   auto wai = WalletAccountIdentifier::deserialize(id);
-   auto wltContainer = wltManager_->getWalletContainer(
-      wai.walletId, wai.accountId);
-
+   auto wltContainer = wltManager_->getWalletContainer(wltId, accId);
    auto lbd = [this, msgId](
       ReturnMessage<std::vector<AddressBookEntry>> result)->void
    {
@@ -1671,33 +2275,27 @@ void CppBridge::createAddressBook(const std::string& id, MessageId msgId)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void CppBridge::setComment(const std::string& walletId,
+void CppBridge::setComment(const std::string& wltId,
    const std::string& hash, const std::string& comment)
 {
-   auto wai = WalletAccountIdentifier::deserialize(walletId);
-   auto wltContainer = wltManager_->getWalletContainer(
-      wai.walletId, wai.accountId);
+   auto wltContainer = wltManager_->getWalletContainer(wltId);
    wltContainer->setComment(hash, comment);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void CppBridge::setWalletLabels(const std::string& walletId,
+void CppBridge::setWalletLabels(const std::string& wltId,
    const std::string& label, const std::string& desc)
 {
-   auto wai = WalletAccountIdentifier::deserialize(walletId);
-   auto wltContainer = wltManager_->getWalletContainer(
-      wai.walletId, wai.accountId);
+   auto wltContainer = wltManager_->getWalletContainer(wltId);
    wltContainer->setLabels(label, desc);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void CppBridge::getUTXOs(const std::string& id,
+void CppBridge::getUTXOs(const std::string& wltId,
+   const Wallets::AddressAccountId& accId,
    uint64_t value, bool zc, bool rbf, MessageId msgId)
 {
-   auto wai = WalletAccountIdentifier::deserialize(id);
-   auto wltContainer = wltManager_->getWalletContainer(
-      wai.walletId, wai.accountId);
-
+   auto wltContainer = wltManager_->getWalletContainer(wltId, accId);
    auto lbd = [this, msgId](ReturnMessage<std::vector<::UTXO>> result)->void
    {
       auto utxoVec = std::move(result.get());
@@ -1722,8 +2320,8 @@ void CppBridge::getUTXOs(const std::string& id,
 ////////////////////////////////////////////////////////////////////////////////
 BinaryData CppBridge::initNewSigner(MessageId msgId)
 {
-   auto id = fortuna_.generateRandom(6).toHexStr();
-   signerMap_.emplace(make_pair(id,
+   auto id = fortuna.generateRandom(6).toHexStr();
+   signerMap_.emplace(std::make_pair(id,
       std::make_shared<CppBridgeSignerStruct>(
          [this](const std::string& wltId)->auto {
             return this->getWalletPtr(wltId); },
@@ -1850,6 +2448,7 @@ void CppBridge::setCallbackHandler(ServerPushWrapper& wrapper)
    }
 }
 
+////
 CallbackHandler CppBridge::getCallbackHandler(uint32_t id)
 {
    std::unique_lock<std::mutex> lock(callbackHandlerMu_);
@@ -1863,260 +2462,63 @@ CallbackHandler CppBridge::getCallbackHandler(uint32_t id)
    return handler;
 }
 
+////////////////////////////////////////////////////////////////////////////////
 SecureBinaryData CppBridge::generateRandom(size_t count) const
 {
-   return fortuna_.generateRandom(count);
+   return fortuna.generateRandom(count);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-////
-////  BridgeCallback
-////
-////////////////////////////////////////////////////////////////////////////////
-void BridgeCallback::waitOnId(const std::string& id)
+void CppBridge::getUnlockTime(const std::string& walletId, MessageId refId)
 {
-   std::string currentId;
-   while (true) {
-      if (currentId == id) {
-         return;
-      }
-
-      std::unique_lock<std::mutex> lock(idMutex_);
-      auto iter = validIds_.find(id);
-      if (*iter == id) {
-         validIds_.erase(iter);
-         return;
-      }
-
-      validIds_.insert(currentId);
-      currentId.clear();
-
-      //TODO: implement queue wake up logic
-      currentId = std::move(idQueue_.pop_front());
-   }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void BridgeCallback::run(BdmNotification notif)
-{
-   switch (notif.action_)
+   using namespace std::chrono;
+   auto testUnlockTime = [this, walletId, refId]
    {
-      case BDMAction_NewBlock:
-      {
-         auto height = notif.height_;
-         auto lbd = [this, height](void)->void
-         {
-            this->notify_NewBlock(height);
-         };
-         wltManager_->updateStateFromDB(lbd);
-         break;
-      }
+      try {
+         //get wallet
+         auto wltContainer = wltManager_->getWalletContainer(walletId);
+         auto wlt = wltContainer->getWalletPtr();
 
-      case BDMAction_ZC:
-      {
-         capnp::MallocMessageBuilder message;
-         auto fromBridge = message.initRoot<FromBridge>();
-         auto capnNotif = fromBridge.initNotification();
-         capnNotif.setCallbackId(BRIDGE_CALLBACK_BDM);
-
-         auto capnZCs = capnNotif.initZeroConfs();
-         ledgersToCapnp(notif.ledgers_, capnZCs);
-
-         auto serialized = serializeCapnp(message);
-         pushNotifLbd_(serialized);
-         break;
-      }
-
-      case BDMAction_InvalidatedZC:
-      {
-         //notify zc
-         break;
-      }
-
-      case BDMAction_Refresh:
-      {
-         capnp::MallocMessageBuilder message;
-         auto fromBridge = message.initRoot<FromBridge>();
-         auto capnNotif = fromBridge.initNotification();
-         capnNotif.setCallbackId(BRIDGE_CALLBACK_BDM);
-
-         auto capnRefresh = capnNotif.initRefresh(notif.ids_.size());
-         for (unsigned i=0; i<notif.ids_.size(); i++) {
-            auto& id = notif.ids_[i];
-            capnRefresh.set(i, capnp::Text::Builder(
-               id.getCharPtr(), id.getSize()
-            ));
+         //get kdf
+         auto kdf = wlt->getPrimaryKdf();
+         if (kdf == nullptr) {
+            throw std::runtime_error("kdf is null!");
          }
 
-         auto serialized = serializeCapnp(message);
-         pushNotifLbd_(serialized);
-         break;
-      }
+         //time the derivation of a dummy key
+         auto start = system_clock::now();
+         kdf->deriveKey(SecureBinaryData::fromString("test key"));
+         auto end = system_clock::now();
+         auto result = duration_cast<milliseconds>(end-start);
 
-      case BDMAction_Ready:
-      {
-         auto height = notif.height_;
-         auto lbd = [this, height](void)->void
-         {
-            this->notify_Ready(height);
-         };
-
-         wltManager_->updateStateFromDB(lbd);
-         break;
-      }
-
-      case BDMAction_NodeStatus:
-      {
+         //reply
          capnp::MallocMessageBuilder message;
          auto fromBridge = message.initRoot<FromBridge>();
-         auto capnNotif = fromBridge.initNotification();
-         capnNotif.setCallbackId(BRIDGE_CALLBACK_BDM);
-
-         auto capnNode = capnNotif.initNodeStatus();
-         nodeStatusToCapnp(notif.nodeStatus_, capnNode);
+         auto reply = fromBridge.initReply();
+         reply.setReferenceId(refId);
+         reply.setSuccess(true);
+         auto wltReply = reply.initWallet();
+         wltReply.setGetUnlockTime(result.count());
 
          auto serialized = serializeCapnp(message);
-         pushNotifLbd_(serialized);
-         break;
-      }
-
-      case BDMAction_BDV_Error:
-      {
-         //notify error
-         LOGINFO << "bdv error:";
-         LOGINFO << "  code: " << notif.error_.errCode_;
-         LOGINFO << "  data: " << notif.error_.errData_.toHexStr();
-
+         this->writeToClient(serialized);
+      } catch (const std::exception& e) {
+         //report error
          capnp::MallocMessageBuilder message;
          auto fromBridge = message.initRoot<FromBridge>();
-         auto capnNotif = fromBridge.initNotification();
-         capnNotif.setCallbackId(BRIDGE_CALLBACK_BDM);
-         capnNotif.setError(notif.error_.errorStr_);
-
+         auto reply = fromBridge.initReply();
+         reply.setReferenceId(refId);
+         reply.setSuccess(false);
+         reply.setError(e.what());
          auto serialized = serializeCapnp(message);
-         pushNotifLbd_(serialized);
-         break;
+         this->writeToClient(serialized);
       }
+   };
 
-      default:
-         return;
+   std::thread thr(testUnlockTime);
+   if (thr.joinable()) {
+      thr.detach();
    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void BridgeCallback::progress(
-   BDMPhase phase,
-   const std::vector<std::string> &walletIdVec,
-   float progress, unsigned secondsRem,
-   unsigned progressNumeric)
-{
-   capnp::MallocMessageBuilder message;
-   auto fromBridge = message.initRoot<FromBridge>();
-   auto capnNotif = fromBridge.initNotification();
-   auto capnProgress = capnNotif.initProgress();
-   capnNotif.setCallbackId(BRIDGE_CALLBACK_PROGRESS);
-
-   capnProgress.setPhase((uint32_t)phase);
-   capnProgress.setProgress(progress);
-   capnProgress.setTime(secondsRem);
-   capnProgress.setNumericProgress(progressNumeric);
-
-   auto capnIds = capnProgress.initIds(walletIdVec.size());
-   for (unsigned i=0; i<walletIdVec.size(); i++) {
-      capnIds.set(i, walletIdVec[i]);
-   }
-
-   auto serialized = serializeCapnp(message);
-   pushNotifLbd_(serialized);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void BridgeCallback::notify_SetupDone()
-{
-   capnp::MallocMessageBuilder message;
-   auto fromBridge = message.initRoot<FromBridge>();
-   auto capnNotif = fromBridge.initNotification();
-   capnNotif.setSetupDone();
-   capnNotif.setCallbackId(BRIDGE_CALLBACK_BDM);
-
-   auto serialized = serializeCapnp(message);
-   pushNotifLbd_(serialized);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void BridgeCallback::notify_SetupRegistrationDone(
-   const std::set<std::string>& ids)
-{
-   capnp::MallocMessageBuilder message;
-   auto fromBridge = message.initRoot<FromBridge>();
-   auto capnNotif = fromBridge.initNotification();
-   capnNotif.setCallbackId(BRIDGE_CALLBACK_BDM);
-
-   auto capnIds = capnNotif.initRegisterDone(ids.size());
-   unsigned i=0;
-   for (const auto& id : ids) {
-      capnIds.set(i++, id);
-   }
-
-   auto serialized = serializeCapnp(message);
-   pushNotifLbd_(serialized);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void BridgeCallback::notify_RegistrationDone(const std::set<std::string>& ids)
-{
-   capnp::MallocMessageBuilder message;
-   auto fromBridge = message.initRoot<FromBridge>();
-   auto capnNotif = fromBridge.initNotification();
-   capnNotif.setCallbackId(BRIDGE_CALLBACK_BDM);
-
-   auto capnIds = capnNotif.initRefresh(ids.size());
-   unsigned i=0;
-   for (const auto& id : ids) {
-      capnIds.set(i++, id);
-   }
-
-   auto serialized = serializeCapnp(message);
-   pushNotifLbd_(serialized);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void BridgeCallback::notify_NewBlock(unsigned height)
-{
-   capnp::MallocMessageBuilder message;
-   auto fromBridge = message.initRoot<FromBridge>();
-   auto capnNotif = fromBridge.initNotification();
-   capnNotif.setNewBlock(height);
-   capnNotif.setCallbackId(BRIDGE_CALLBACK_BDM);
-
-   auto serialized = serializeCapnp(message);
-   pushNotifLbd_(serialized);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void BridgeCallback::notify_Ready(unsigned height)
-{
-   capnp::MallocMessageBuilder message;
-   auto fromBridge = message.initRoot<FromBridge>();
-   auto capnNotif = fromBridge.initNotification();
-   capnNotif.setReady(height);
-   capnNotif.setCallbackId(BRIDGE_CALLBACK_BDM);
-
-   auto serialized = serializeCapnp(message);
-   pushNotifLbd_(serialized);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void BridgeCallback::disconnected()
-{
-   capnp::MallocMessageBuilder message;
-   auto fromBridge = message.initRoot<FromBridge>();
-   auto capnNotif = fromBridge.initNotification();
-   capnNotif.setDisconnected();
-   capnNotif.setCallbackId(BRIDGE_CALLBACK_BDM);
-
-   auto serialized = serializeCapnp(message);
-   pushNotifLbd_(serialized);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2128,7 +2530,9 @@ CppBridgeSignerStruct::CppBridgeSignerStruct(
    std::function<WalletPtr(const std::string&)> getWalletFunc,
    std::function<void(ServerPushWrapper)> writeFunc) :
    getWalletFunc_(getWalletFunc), writeFunc_(writeFunc)
-{}
+{
+   signer = std::make_unique<Signing::Signer>();
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 void CppBridgeSignerStruct::signTx(const std::string& wltId,
@@ -2155,8 +2559,8 @@ void CppBridgeSignerStruct::signTx(const std::string& wltId,
             Signing::ResolverFeed_AssetWalletSingle>(wltSingle);
 
          //set resolver
-         signer_.resetFeed();
-         signer_.setFeed(feed);
+         signer->resetFeed();
+         signer->setFeed(feed);
 
          //create & set passphrase lambda
          wltPtr->setPassphrasePromptLambda(passLbd);
@@ -2165,7 +2569,7 @@ void CppBridgeSignerStruct::signTx(const std::string& wltId,
          auto lock = wltPtr->lockDecryptedContainer();
 
          //sign, this will prompt the passphrase lambda on demand
-         signer_.sign();
+         signer->sign();
       } catch (const std::exception&) {
          success = false;
       }
@@ -2204,9 +2608,9 @@ bool CppBridgeSignerStruct::resolve(const std::string& wltId)
    auto feed = std::make_shared<Signing::ResolverFeed_AssetWalletSingle>(wltSingle);
 
    //set feed & resolve
-   signer_.resetFeed();
-   signer_.setFeed(feed);
-   signer_.resolvePublicData();
+   signer->resetFeed();
+   signer->setFeed(feed);
+   signer->resolvePublicData();
 
    return true;
 }
@@ -2217,7 +2621,7 @@ BinaryData CppBridgeSignerStruct::getSignedStateForInput(
 {
    if (signState_ == nullptr) {
       signState_ = std::make_unique<Signing::TxEvalState>(
-         signer_.evaluateSignedState());
+         signer->evaluateSignedState());
    }
 
    const auto signState = signState_.get();

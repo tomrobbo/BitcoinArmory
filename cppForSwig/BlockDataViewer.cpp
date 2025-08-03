@@ -5,25 +5,24 @@
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
 //                                                                            //
-//  Copyright (C) 2016-2024, goatpig                                          //
+//  Copyright (C) 2016-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 #include "BlockDataViewer.h"
+#include "BlockchainDatabase/BlockUtils.h"
 
 using namespace std;
 
 /////////////////////////////////////////////////////////////////////////////
-BlockDataViewer::BlockDataViewer(BlockDataManager* bdm) :
-   rescanZC_(false), zeroConfCont_(bdm->zeroConfCont())
+BlockDataViewer::BlockDataViewer(std::shared_ptr<BlockDataManager> bdm) :
+   bdm_(bdm), rescanZC_(false), zeroConfCont_(bdm->zeroConfCont())
 {
    db_ = bdm->getIFace();
    bc_ = bdm->blockchain();
    saf_ = bdm->getScrAddrFilter().get();
    zc_ = bdm->zeroConfCont().get();
-
-   bdmPtr_ = bdm;
 
    groups_.push_back(WalletGroup(this, saf_));
    groups_.push_back(WalletGroup(this, saf_));
@@ -35,6 +34,33 @@ BlockDataViewer::BlockDataViewer(BlockDataManager* bdm) :
 BlockDataViewer::~BlockDataViewer()
 {
    groups_.clear();
+}
+
+/////////////////////////////////////////////////////////////////////////////
+bool BlockDataViewer::isBDMRunning() const
+{
+   if (bdm_ == nullptr) {
+      return false;
+   }
+   return bdm_->isRunning();
+}
+
+////
+void BlockDataViewer::blockUntilBDMisReady() const
+{
+   if (bdm_ == nullptr) {
+      throw std::runtime_error("no bdmPtr_");
+   }
+   bdm_->blockUntilReady();
+}
+
+////
+bool BlockDataViewer::isZcEnabled() const
+{
+   if (bdm_ == nullptr) {
+      return false;
+   }
+   return bdm_->isZcEnabled();
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -78,125 +104,111 @@ void BlockDataViewer::scanWallets(shared_ptr<BDV_Notification> action)
    ScanWalletStruct scanData;
    vector<LedgerEntry>* leVecPtr = nullptr;
 
-   switch (action->action_type())
+   switch (action->actionType())
    {
-   case BDV_Init:
-   {
-      prevTopBlock = startBlock = 0;
-      endBlock = blockchain().top()->getBlockHeight();
-      refresh = true;
-      break;
-   }
+      case BDV_Init:
+      {
+         prevTopBlock = startBlock = 0;
+         endBlock = blockchain().top()->getBlockHeight();
+         refresh = true;
+         break;
+      }
 
-   case BDV_NewBlock:
-   {
-      auto reorgNotif =
-         dynamic_pointer_cast<BDV_Notification_NewBlock>(action);
-      auto& reorgState = reorgNotif->reorgState_;
-         
-      if (!reorgState.hasNewTop_)
+      case BDV_NewBlock:
+      {
+         auto reorgNotif =
+            std::dynamic_pointer_cast<BDV_Notification_NewBlock>(action);
+         auto& reorgState = reorgNotif->reorgState;
+
+         if (!reorgState.hasNewTop_) {
+            return;
+         }
+
+         if (!reorgState.prevTopStillValid_) {
+            //reorg
+            reorg = true;
+            startBlock = reorgState.reorgBranchPoint_->getBlockHeight();
+         } else {
+            startBlock = reorgState.prevTop_->getBlockHeight();
+         }
+         endBlock = reorgState.newTop_->getBlockHeight();
+
+         //set invalidated keys
+         if (reorgNotif->zcPurgePacket != nullptr) {
+            scanData.saStruct_.invalidatedZcKeys_ =
+               &reorgNotif->zcPurgePacket->invalidatedZcKeys_;
+
+            //carry zc state
+            scanData.saStruct_.zcState_ = reorgNotif->zcPurgePacket->ssPtr_;
+            scanData.saStruct_.scrAddrToTxioKeys_ =
+               reorgNotif->zcPurgePacket->scrAddrToTxioKeys_;
+         }
+
+         prevTopBlock = reorgState.prevTop_->getBlockHeight() + 1;
+         break;
+      }
+
+      case BDV_ZC:
+      {
+         auto zcAction =
+            std::dynamic_pointer_cast<BDV_Notification_ZC>(action);
+         scanData.saStruct_.scrAddrToTxioKeys_ =
+            std::move(zcAction->packet.scrAddrToTxioKeys_);
+
+         scanData.saStruct_.zcState_ = zcAction->packet.ssPtr_;
+         scanData.saStruct_.newKeysAndScrAddr_ =
+            zcAction->packet.newKeysAndScrAddr_;
+
+         if (zcAction->packet.purgePacket_ != nullptr) {
+            scanData.saStruct_.invalidatedZcKeys_ =
+               &zcAction->packet.purgePacket_->invalidatedZcKeys_;
+         }
+
+         leVecPtr = &zcAction->leVec;
+         prevTopBlock = startBlock = endBlock =
+            blockchain().top()->getBlockHeight();
+         break;
+      }
+
+      case BDV_Refresh:
+      {
+         auto refreshNotif =
+            std::dynamic_pointer_cast<BDV_Notification_Refresh>(action);
+
+         if (refreshNotif->refresh == BDV_refreshSkipRescan) {
+            //only flagged the wallet to send a refresh notification, do not
+            //perform any other operations
+            ++updateID_;
+            return;
+         }
+
+         scanData.saStruct_.scrAddrToTxioKeys_ =
+            std::move(refreshNotif->zcPacket.scrAddrToTxioKeys_);
+         scanData.saStruct_.zcState_ = refreshNotif->zcPacket.ssPtr_;
+         refresh = true;
+         break;
+      }
+
+      default:
          return;
-    
-      if (!reorgState.prevTopStillValid_)
-      {
-         //reorg
-         reorg = true;
-         startBlock = reorgState.reorgBranchPoint_->getBlockHeight();
-      }
-      else
-      {
-         startBlock = reorgState.prevTop_->getBlockHeight();
-      }
-         
-      endBlock = reorgState.newTop_->getBlockHeight();
-
-      //set invalidated keys
-      if (reorgNotif->zcPurgePacket_ != nullptr)
-      {
-         scanData.saStruct_.invalidatedZcKeys_ =
-            &reorgNotif->zcPurgePacket_->invalidatedZcKeys_;
-
-         //carry zc state
-         scanData.saStruct_.zcState_ = reorgNotif->zcPurgePacket_->ssPtr_;
-         scanData.saStruct_.scrAddrToTxioKeys_ = 
-            reorgNotif->zcPurgePacket_->scrAddrToTxioKeys_;
-      }
-
-      prevTopBlock = reorgState.prevTop_->getBlockHeight() + 1;
-
-      break;
-   }
-   
-   case BDV_ZC:
-   {
-      auto zcAction = 
-         dynamic_pointer_cast<BDV_Notification_ZC>(action);
-      
-      scanData.saStruct_.scrAddrToTxioKeys_ = 
-         move(zcAction->packet_.scrAddrToTxioKeys_);
-
-      scanData.saStruct_.zcState_ = zcAction->packet_.ssPtr_;
-
-      scanData.saStruct_.newKeysAndScrAddr_ = 
-         zcAction->packet_.newKeysAndScrAddr_;
-
-      if (zcAction->packet_.purgePacket_ != nullptr)
-      {
-         scanData.saStruct_.invalidatedZcKeys_ =
-            &zcAction->packet_.purgePacket_->invalidatedZcKeys_;
-      }
-
-      leVecPtr = &zcAction->leVec_;
-      prevTopBlock = 
-      startBlock = 
-      endBlock = blockchain().top()->getBlockHeight();
-
-      break;
    }
 
-   case BDV_Refresh:
-   {
-      auto refreshNotif =
-         dynamic_pointer_cast<BDV_Notification_Refresh>(action);
-
-      if (refreshNotif->refresh_ == BDV_refreshSkipRescan)
-      {
-         //only flagged the wallet to send a refresh notification, do not
-         //perform any other operations
-         ++updateID_;
-         return;
-      }
-
-      scanData.saStruct_.scrAddrToTxioKeys_ =
-         move(refreshNotif->zcPacket_.scrAddrToTxioKeys_);
-
-      scanData.saStruct_.zcState_ = refreshNotif->zcPacket_.ssPtr_;
-
-      refresh = true;
-      break;
-   }
-
-   default:
-      return;
-   }
-   
    scanData.prevTopBlockHeight_ = prevTopBlock;
    scanData.endBlock_ = endBlock;
-   scanData.action_ = action->action_type();
+   scanData.action_ = action->actionType();
    scanData.reorg_ = reorg;
 
-   vector<uint32_t> startBlocks;
-   for (size_t i = 0; i < groups_.size(); i++)
-      startBlocks.push_back(startBlock);
+   std::vector<uint32_t> startBlocks;
+   startBlocks.reserve(groups_.size());
+   for (size_t i = 0; i < groups_.size(); i++) {
+      startBlocks.emplace_back(startBlock);
+   }
 
    auto sbIter = startBlocks.begin();
-   for (auto& group : groups_)
-   {
-      if (group.pageHistory(refresh, false))
-      {
+   for (auto& group : groups_) {
+      if (group.pageHistory(refresh, false)) {
          *sbIter = group.hist_.getPageBottom(0);
       }
-         
       sbIter++;
    }
 
@@ -204,20 +216,18 @@ void BlockDataViewer::scanWallets(shared_ptr<BDV_Notification> action)
    ++updateID_;
 
    sbIter = startBlocks.begin();
-   for (auto& group : groups_)
-   {
+   for (auto& group : groups_) {
       scanData.startBlock_ = *sbIter;
       group.scanWallets(scanData, updateID_);
 
       sbIter++;
    }
 
-   if (leVecPtr != nullptr)
-   {
-      for (auto& walletLedgerMap : scanData.saStruct_.zcLedgers_)
-      {
-         for(auto& lePair : walletLedgerMap.second)
+   if (leVecPtr != nullptr) {
+      for (auto& walletLedgerMap : scanData.saStruct_.zcLedgers_) {
+         for (auto& lePair : walletLedgerMap.second) {
             leVecPtr->push_back(lePair.second);
+         }
       }
    }
 
@@ -599,7 +609,7 @@ LedgerDelegate BlockDataViewer::getLedgerDelegateForScrAddr(
    }
 
    if (wlt == nullptr) {
-      throw runtime_error("Unregistered wallet ID");
+      throw std::runtime_error("Unregistered wallet ID");
    }
 
    ScrAddrObj& sca = wlt->getScrAddrObjRef(scrAddr);
@@ -1241,8 +1251,12 @@ void WalletGroup::registerAddresses(WalletRegistrationRequest& request)
    }
 
    auto callback = [theWallet, zcCB=request.zcCallback](
-      std::set<BinaryDataRef>& addrSet)->void
+      std::set<BinaryDataRef> addrSet, bool success)->void
    {
+      if (!success) {
+         return;
+      }
+
       auto bdvPtr = theWallet->bdvPtr_;
       auto dbPtr = theWallet->bdvPtr_->getDB();
       auto bcPtr = &theWallet->bdvPtr_->blockchain();
@@ -1270,8 +1284,8 @@ void WalletGroup::registerAddresses(WalletRegistrationRequest& request)
       theWallet->setRegistered();
    };
 
-   auto batch = make_shared<RegistrationBatch>();
-   batch->scrAddrSet_ = move(scrAddrSet);
+   auto batch = std::make_shared<RegistrationBatch>();
+   batch->scrAddrSet_ = std::move(scrAddrSet);
    batch->isNew_ = request.isNew;
    batch->callback_ = callback;
 

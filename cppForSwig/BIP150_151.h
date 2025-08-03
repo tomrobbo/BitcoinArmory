@@ -223,7 +223,7 @@ public:
    BinaryDataRef getOwnPubKey(void) const;
    bool havePublicKey(const BinaryDataRef&, const std::string&) const;
    // For unit tests
-   btc_pubkey getChosenAuthPeerKey() const { return chosenAuthPeerKey; }
+   const btc_pubkey& getChosenAuthPeerKey() const { return chosenAuthPeerKey; }
    bool isOneWayAuth(void) const { return oneWayAuth_; }
 };
 
@@ -286,7 +286,7 @@ public:
    bool havePublicKey(const BinaryDataRef&, const std::string&) const;
 
    // For unit tests
-   btc_pubkey getChosenAuthPeerKey() const { return bip150SM_.getChosenAuthPeerKey(); }
+   const btc_pubkey& getChosenAuthPeerKey() const { return bip150SM_.getChosenAuthPeerKey(); }
 
    bool isOneWayAuth(void) { return bip150SM_.isOneWayAuth(); }
 };

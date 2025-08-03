@@ -17,7 +17,7 @@ endif
 noinst_LTLIBRARIES += gtest/libgtest.la
 gtest_libgtest_la_CXXFLAGS = $(AM_CXXFLAGS) $(UNIT_TEST_CXXFLAGS) $(LIBBTC_FLAGS)
 gtest_libgtest_la_CPPFLAGS = $(AM_CPPFLAGS) $(INCLUDE_FILES)
-gtest_libgtest_la_SOURCES = gtest/TestUtils.cpp gtest/NodeUnitTest.cpp
+gtest_libgtest_la_SOURCES = gtest/TestUtils.cpp gtest/MockedNode.cpp
 gtest_libgtest_la_LIBADD = $(LIBARMORYCOMMON) $(LIBARMORYCLI) \
 				$(LIBBTC) \
 				-lgtest
@@ -30,8 +30,7 @@ gtest_ContainerTests_CXXFLAGS = $(AM_CXXFLAGS) $(UNIT_TEST_CXXFLAGS) $(LIBBTC_FL
 gtest_ContainerTests_CPPFLAGS = $(AM_CPPFLAGS) $(INCLUDE_FILES)
 gtest_ContainerTests_LDADD = gtest/libgtest.la $(LIBARMORYCOMMON) \
 		 $(LIBARMORYCLI) \
-		 $(LIBBTC) \
-		 $(LIBPROTOBUF_STATIC)
+		 $(LIBBTC)
 gtest_ContainerTests_LDFLAGS = $(AM_LDFLAGS) $(LWSLDFLAGS) $(LDFLAGS) -static
 TESTS += gtest/ContainerTests
 
@@ -49,7 +48,6 @@ gtest_UtilsTests_LDADD = gtest/libgtest.la \
 			$(LIBTREZORCRYPTO) \
 			$(LIBLMDBPP) \
 			-llmdb \
-			$(LIBPROTOBUF_STATIC) \
 			$(LIBWEBSOCKETS_STATIC)
 if BUILD_OPENSSL_SUPPORT
 gtest_UtilsTests_LDADD += $(LIBSSL_STATIC) \
@@ -81,7 +79,6 @@ gtest_SignerTests_LDADD = gtest/libgtest.la \
 			$(LIBLMDBPP) \
 			$(LIBTREZORCRYPTO) \
 			-llmdb \
-			$(LIBPROTOBUF_STATIC) \
 			$(LIBWEBSOCKETS_STATIC)
 if BUILD_OPENSSL_SUPPORT
 gtest_SignerTests_LDADD += $(LIBSSL_STATIC) \
@@ -113,7 +110,6 @@ gtest_WalletTests_LDADD = gtest/libgtest.la \
 			$(LIBLMDBPP) \
 			$(LIBTREZORCRYPTO) \
 			-llmdb \
-			$(LIBPROTOBUF_STATIC) \
 			$(LIBWEBSOCKETS_STATIC)
 if BUILD_OPENSSL_SUPPORT
 gtest_WalletTests_LDADD += $(LIBSSL_STATIC) \
@@ -141,7 +137,6 @@ TESTS += gtest/WalletTests
 #		 $(LIBBTC) \
 #		 $(LIBCHACHA20POLY1305) \
 #		 $(LIBLMDB) \
-#		 $(LIBPROTOBUF_STATIC) \
 #		 $(LIBWEBSOCKETS_STATIC)
 #if BUILD_OPENSSL_SUPPORT
 #gtest_DB1kIterTest_LDADD += $(LIBSSL_STATIC) \
@@ -183,7 +178,6 @@ gtest_SupernodeTests_LDADD = gtest/libgtest.la \
 			$(LIBBTC) \
 			$(LIBTREZORCRYPTO) \
 			$(LIBCHACHA20POLY1305) \
-			$(LIBPROTOBUF_STATIC) \
 			$(LIBWEBSOCKETS_STATIC)
 if BUILD_OPENSSL_SUPPORT
 gtest_SupernodeTests_LDADD += $(LIBSSL_STATIC) \
@@ -215,7 +209,6 @@ gtest_CppBlockUtilsTests_LDADD = gtest/libgtest.la \
 			$(LIBLMDBPP) \
 			$(LIBTREZORCRYPTO) \
 			-llmdb \
-			$(LIBPROTOBUF_STATIC) \
 			$(LIBWEBSOCKETS_STATIC)
 if BUILD_OPENSSL_SUPPORT
 gtest_CppBlockUtilsTests_LDADD += $(LIBSSL_STATIC) \
@@ -247,7 +240,6 @@ gtest_ZeroConfTests_LDADD = gtest/libgtest.la \
 			$(LIBBTC) \
 			$(LIBTREZORCRYPTO) \
 			$(LIBCHACHA20POLY1305) \
-			$(LIBPROTOBUF_STATIC) \
 			$(LIBWEBSOCKETS_STATIC)
 if BUILD_OPENSSL_SUPPORT
 gtest_ZeroConfTests_LDADD += $(LIBSSL_STATIC) \
@@ -264,3 +256,35 @@ gtest_ZeroConfTests_LDADD += $(LIBCAP_LIBS)
 endif
 gtest_ZeroConfTests_LDFLAGS = $(AM_LDFLAGS) $(LWSLDFLAGS) $(LDFLAGS) -static
 TESTS += gtest/ZeroConfTests
+
+# BridgeTests
+bin_PROGRAMS += gtest/BridgeTests
+gtest_BridgeTests_SOURCES = gtest/BridgeTests.cpp \
+	${CPPBRIDGE_SOURCE_FILES}
+gtest_BridgeTests_CXXFLAGS = $(AM_CXXFLAGS) $(UNIT_TEST_CXXFLAGS) $(LIBBTC_FLAGS)
+gtest_BridgeTests_CPPFLAGS = $(AM_CPPFLAGS) $(INCLUDE_FILES)
+gtest_BridgeTests_LDADD = gtest/libgtest.la \
+	$(LIBARMORYCOMMON) \
+	$(LIBCHACHA20POLY1305) \
+	$(LIBARMORYCLI) \
+	$(LIBHKDF) \
+	$(LIBBTC) \
+	$(LIBLMDBPP) \
+	$(LIBTREZORCRYPTO) \
+	-llmdb \
+	$(LIBWEBSOCKETS_STATIC)
+if BUILD_OPENSSL_SUPPORT
+gtest_BridgeTests_LDADD += $(LIBSSL_STATIC) \
+	$(LIBCRYPTO_STATIC)
+endif
+if BUILD_LIBUV_SUPPORT
+gtest_BridgeTests_LDADD += $(LIBUV_STATIC)
+endif
+if BUILD_LIBEVENT_SUPPORT
+gtest_BridgeTests_LDADD += $(LIBEVENT_STATIC)
+endif
+if BUILD_LIBCAP_SUPPORT
+gtest_BridgeTests_LDADD += $(LIBCAP_LIBS)
+endif
+gtest_BridgeTests_LDFLAGS = $(AM_LDFLAGS) $(LWSLDFLAGS) $(LDFLAGS) -static
+TESTS += gtest/BridgeTests

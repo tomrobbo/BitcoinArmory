@@ -32,8 +32,6 @@
 #define BROADCAST_ID_LENGTH 6
 #define REGISTER_ID_LENGH 5
 
-class BitcoinNodeInterface;
-
 namespace CoreRPC
 {
    class NodeRPCInterface;
@@ -41,6 +39,11 @@ namespace CoreRPC
 
 namespace Armory
 {
+   namespace Node
+   {
+      class BitcoinNodeInterface;
+   }
+
    namespace Config
    {
       class Error : public std::runtime_error
@@ -71,7 +74,6 @@ namespace Armory
          std::vector<std::string> keyValToArgv(
             const std::map<std::string, std::string>&);
 
-         std::string portToString(unsigned);
          bool testConnection(const std::string& ip, const std::string& port);
          std::string getPortFromCookie(const std::string& datadir);
          std::string hasLocalDB(const std::string& datadir,
@@ -119,6 +121,7 @@ namespace Armory
          static unsigned ramUsage_;
          static unsigned threadCount_;
          static unsigned zcThreadCount_;
+         static unsigned rewindCount_; 
 
          static bool reportProgress_;
          static bool checkChain_;
@@ -151,6 +154,7 @@ namespace Armory
          static unsigned threadCount(void) { return threadCount_; }
          static unsigned ramUsage(void) { return ramUsage_; }
          static unsigned zcThreadCount(void) { return zcThreadCount_; }
+         static unsigned rewindCount(void) { return rewindCount_; }
 
          static bool checkChain(void) { return checkChain_; }
          static BDM_INIT_MODE initMode(void) { return initMode_; }
@@ -164,8 +168,9 @@ namespace Armory
       {
          using RpcPtr = std::shared_ptr<CoreRPC::NodeRPCInterface>;
          using NodePair = std::pair<
-            std::shared_ptr<BitcoinNodeInterface>, 
-            std::shared_ptr<BitcoinNodeInterface>>;
+            std::shared_ptr<Node::BitcoinNodeInterface>,
+            std::shared_ptr<Node::BitcoinNodeInterface>
+         >;
 
          friend void Config::parseArgs(
             const std::vector<std::string>&, ProcessType);
@@ -183,18 +188,16 @@ namespace Armory
          static bool customDbPort_;
          static bool customBtcPort_;
 
-         static bool useCookie_;
          static bool ephemeralPeers_;
          static bool oneWayAuth_;
 
          static bool offline_;
-         static std::string cookie_;
+         static bool automateDb_;
 
          static BinaryData uiPublicKey_;
 
       private:
          static void createNodes(void);
-         static void createCookie(void);
 
          static void processArgs(
             const std::map<std::string, std::string>&, ProcessType);
@@ -208,20 +211,16 @@ namespace Armory
          static const std::string& dbIP(void);
          static const std::string& rpcPort(void);
 
-         static void randomizeDbPort(void);
-
          static const NodePair& bitcoinNodes(void);
          static RpcPtr rpcNode(void);
+         static void setDbPort(const std::string&);
 
-         static bool useCookie(void) { return useCookie_; }
-         static const std::string& cookie(void) { return cookie_; }
-         
          static bool ephemeralPeers(void) { return ephemeralPeers_; }
          static bool oneWayAuth(void) { return oneWayAuth_; }
          static bool isOffline(void) { return offline_; }
+         static bool automateDb(void) { return automateDb_; }
 
          static BinaryData uiPublicKey(void) { return uiPublicKey_; }
-         static void injectUiPubkey(BinaryData&);
       };
 
       //////////////////////////////////////////////////////////////////////////
@@ -229,11 +228,13 @@ namespace Armory
       {
          friend void Config::parseArgs(
             const std::vector<std::string>&, ProcessType);
+         friend void Config::parseArgs(int, char*[], ProcessType);
          friend void Config::reset(void);
 
       private:
          static std::filesystem::path blkFilePath_;
          static std::filesystem::path dbDir_;
+         static std::filesystem::path own_;
 
       private:
          static void processArgs(
@@ -242,8 +243,10 @@ namespace Armory
 
       public:
          static std::filesystem::path logFilePath(const std::string&);
-         static const std::filesystem::path& blkFilePath(void) { return blkFilePath_; }
-         static const std::filesystem::path& dbDir(void) { return dbDir_; }
+         static const std::filesystem::path& blkFilePath(void);
+         static const std::filesystem::path& dbDir(void);
+         static const std::filesystem::path& runningDir(void);
+         static void setRunningDir(const std::filesystem::path&);
       };
 
       //////////////////////////////////////////////////////////////////////////

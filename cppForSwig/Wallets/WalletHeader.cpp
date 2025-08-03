@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2019, goatpig                                               //
+//  Copyright (C) 2019-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -22,8 +22,12 @@
 #define WALLETHEADER_CONTROL_VERSION      0x00000001
 #define WALLETHEADER_CUSTOM_VERSION       0x00000001
 
-using namespace std;
 using namespace Armory::Wallets::IO;
+
+////////////////////////////////////////////////////////////////////////////////
+Armory::Wallets::WalletException::WalletException(const std::string& msg) :
+   std::runtime_error(msg)
+{}
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -36,13 +40,13 @@ WalletHeader::~WalletHeader()
 ////////////////////////////////////////////////////////////////////////////////
 BinaryData WalletHeader::getDbKey()
 {
-   if (walletID_.size() == 0)
+   if (walletID_.empty()) {
       throw WalletException("empty master ID");
+   }
 
    BinaryWriter bw;
    bw.put_uint8_t(WALLETHEADER_PREFIX);
    bw.put_String(walletID_);
-
    return bw.getData();
 }
 
@@ -63,20 +67,19 @@ BinaryData WalletHeader_Control::serializeVersion() const
 void WalletHeader_Control::unseralizeVersion(BinaryRefReader& brr)
 {
    auto version = brr.get_uint32_t();
-
    switch (version)
    {
-   case 0x00000001:
-   {
-      versionMajor_ = brr.get_uint8_t();
-      versionMinor_ = brr.get_uint16_t();
-      revision_ = brr.get_uint16_t();
-      encryptionVersion_ = brr.get_uint32_t();
-      break;
-   }
+      case 0x00000001:
+      {
+         versionMajor_ = brr.get_uint8_t();
+         versionMinor_ = brr.get_uint16_t();
+         revision_ = brr.get_uint16_t();
+         encryptionVersion_ = brr.get_uint32_t();
+         break;
+      }
 
-   default:
-      throw WalletException("unsupported version packet");
+      default:
+         throw WalletException("unsupported version packet");
    }
 }
 
@@ -90,10 +93,9 @@ BinaryData WalletHeader::serializeEncryptionKey() const
    bw.put_var_int(defaultEncryptionKey_.getSize());
    bw.put_BinaryData(defaultEncryptionKey_);
 
-   bw.put_var_int(defaultKdfId_.getSize());
-   bw.put_BinaryData(defaultKdfId_);
+   bw.put_var_int(defaultKdfId_.data().getSize());
+   bw.put_BinaryData(defaultKdfId_.data());
    masterEncryptionKeyId_.serializeValue(bw);
-
 
    return bw.getData();
 }
@@ -102,29 +104,29 @@ BinaryData WalletHeader::serializeEncryptionKey() const
 void WalletHeader::unserializeEncryptionKey(BinaryRefReader& brr)
 {
    auto version = brr.get_uint32_t();
-
    switch (version)
    {
-   case 0x00000001:
-   {
-      auto len = brr.get_var_int();
-      defaultEncryptionKeyId_ = move(brr.get_BinaryData(len));
+      case 0x00000001:
+      {
+         auto len = brr.get_var_int();
+         defaultEncryptionKeyId_ = std::move(brr.get_BinaryData(len));
 
-      len = brr.get_var_int();
-      defaultEncryptionKey_ = move(brr.get_BinaryData(len));
+         len = brr.get_var_int();
+         defaultEncryptionKey_ = std::move(brr.get_BinaryData(len));
 
-      len = brr.get_var_int();
-      defaultKdfId_ = move(brr.get_BinaryData(len));
+         len = brr.get_var_int();
+         auto kdfId = brr.get_BinaryData(len);
+         defaultKdfId_ = KdfId::fromBinaryData(kdfId);
 
-      len = brr.get_var_int();
-      masterEncryptionKeyId_ = move(brr.get_BinaryData(len));
+         len = brr.get_var_int();
+         masterEncryptionKeyId_ = std::move(brr.get_BinaryData(len));
 
-      break;
+         break;
+      }
+
+      default:
+         throw WalletException("unsupported header encryption key version");
    }
-
-   default:
-      throw WalletException("unsupported header encryption key version");
-   } 
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -134,7 +136,6 @@ BinaryData WalletHeader::serializeControlSalt() const
    bw.put_uint32_t(HEADER_SALT_VERSION);
    bw.put_var_int(controlSalt_.getSize());
    bw.put_BinaryData(controlSalt_);
-
    return bw.getData();
 }
 
@@ -142,19 +143,17 @@ BinaryData WalletHeader::serializeControlSalt() const
 void WalletHeader::unserializeControlSalt(BinaryRefReader& brr)
 {
    auto version = brr.get_uint32_t();
-
    switch (version)
    {
-   case 0x00000001:
-   {   
-      auto len = brr.get_var_int();
-      controlSalt_ = brr.get_SecureBinaryData(len);
+      case 0x00000001:
+      {
+         auto len = brr.get_var_int();
+         controlSalt_ = brr.get_SecureBinaryData(len);
+         break;
+      }
 
-      break;
-   }
-
-   default:
-      throw WalletException("unsupported header salt version");
+      default:
+         throw WalletException("unsupported header salt version");
    }
 }
 
@@ -171,7 +170,6 @@ BinaryData WalletHeader_Single::serialize() const
    BinaryWriter final_bw;
    final_bw.put_var_int(bw.getSize());
    final_bw.put_BinaryDataRef(bw.getDataRef());
-
    return final_bw.getData();
 }
 
@@ -194,7 +192,6 @@ BinaryData WalletHeader_Multisig::serialize() const
    BinaryWriter final_bw;
    final_bw.put_var_int(bw.getSize());
    final_bw.put_BinaryDataRef(bw.getDataRef());
-
    return final_bw.getData();
 }
 
@@ -211,7 +208,6 @@ BinaryData WalletHeader_Subwallet::serialize() const
    bw.put_uint32_t(WALLETHEADER_SUBWALLET_VERSION);
    bw.put_var_int(4);
    bw.put_uint32_t(type_);
-
    return bw.getData();
 }
 
@@ -234,7 +230,6 @@ BinaryData WalletHeader_Control::serialize() const
    BinaryWriter final_bw;
    final_bw.put_var_int(bw.getSize());
    final_bw.put_BinaryDataRef(bw.getDataRef());
-
    return final_bw.getData();
 }
 
@@ -254,7 +249,6 @@ BinaryData WalletHeader_Custom::serialize() const
    BinaryWriter final_bw;
    final_bw.put_var_int(bw.getSize());
    final_bw.put_BinaryDataRef(bw.getDataRef());
-
    return final_bw.getData();
 }
 
@@ -265,99 +259,96 @@ bool WalletHeader_Custom::shouldLoad() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-shared_ptr<WalletHeader> WalletHeader::deserialize(
+std::shared_ptr<WalletHeader> WalletHeader::deserialize(
    BinaryDataRef key, BinaryDataRef val)
 {
-   if (key.getSize() < 2)
+   if (key.getSize() < 2) {
       throw WalletException("invalid meta key");
+   }
 
    BinaryRefReader brrKey(key);
    auto prefix = brrKey.get_uint8_t();
-   if (prefix != WALLETHEADER_PREFIX)
+   if (prefix != WALLETHEADER_PREFIX) {
       throw WalletException("invalid wallet meta prefix");
-
-   string dbname((char*)brrKey.getCurrPtr(), brrKey.getSizeRemaining());
+   }
+   std::string dbname{(char*)brrKey.getCurrPtr(), brrKey.getSizeRemaining()};
 
    BinaryRefReader brrVal(val);
    auto version = brrVal.get_uint32_t();
    auto wltType = (WalletHeaderType)brrVal.get_uint32_t();
 
-   shared_ptr<WalletHeader> wltHeaderPtr;
-
+   std::shared_ptr<WalletHeader> wltHeaderPtr;
    switch (wltType)
    {
-   case WalletHeaderType_Single:
-   {
-      switch (version)
+      case WalletHeaderType_Single:
       {
-      case 0x00000001:
-      {
-         wltHeaderPtr = make_shared<WalletHeader_Single>(
-            Armory::Config::BitcoinSettings::getMainnetMagicBytes());
-         wltHeaderPtr->unserializeEncryptionKey(brrVal);
-         wltHeaderPtr->unserializeControlSalt(brrVal);
+         switch (version)
+         {
+            case 0x00000001:
+            {
+               wltHeaderPtr = std::make_shared<WalletHeader_Single>(
+                  Armory::Config::BitcoinSettings::getMainnetMagicBytes());
+               wltHeaderPtr->unserializeEncryptionKey(brrVal);
+               wltHeaderPtr->unserializeControlSalt(brrVal);
+               break;
+            }
+
+            case 0x00000002:
+            {
+               auto magicBytes = brrVal.get_BinaryData(4);
+               wltHeaderPtr = std::make_shared<WalletHeader_Single>(magicBytes);
+               wltHeaderPtr->unserializeEncryptionKey(brrVal);
+               wltHeaderPtr->unserializeControlSalt(brrVal);
+               break;
+            }
+
+            default:
+               throw WalletException("unsupported wallet header version");
+         }
          break;
       }
 
-      case 0x00000002:
+      case WalletHeaderType_Subwallet:
       {
-         auto magicBytes = brrVal.get_BinaryData(4);
-         wltHeaderPtr = make_shared<WalletHeader_Single>(magicBytes);
-         wltHeaderPtr->unserializeEncryptionKey(brrVal);
-         wltHeaderPtr->unserializeControlSalt(brrVal);
+         switch (version)
+         {
+            case 0x00000001:
+            {
+               wltHeaderPtr = std::make_shared<WalletHeader_Subwallet>();
+               break;
+            }
+
+            default:
+               throw WalletException("unsupported subwallet header version");
+         }
          break;
       }
-
-      default:
-         throw WalletException("unsupported wallet header version");
-      }
-
-      break;
-   }
-
-   case WalletHeaderType_Subwallet:
-   {
-      switch (version)
-      {
-      case 0x00000001:
-      {
-         wltHeaderPtr = make_shared<WalletHeader_Subwallet>();
-         break;
-      }
-
-      default:
-         throw WalletException("unsupported subwallet header version");
-      }
-
-      break;
-   }
 
    case WalletHeaderType_Multisig:
    {
       switch (version)
       {
-      case 0x00000001:
-      {
-         wltHeaderPtr = make_shared<WalletHeader_Multisig>(
-            Armory::Config::BitcoinSettings::getMainnetMagicBytes());
-         wltHeaderPtr->unserializeEncryptionKey(brrVal);
-         wltHeaderPtr->unserializeControlSalt(brrVal);
-         break;
-      }
+         case 0x00000001:
+         {
+            wltHeaderPtr = std::make_shared<WalletHeader_Multisig>(
+               Armory::Config::BitcoinSettings::getMainnetMagicBytes());
+            wltHeaderPtr->unserializeEncryptionKey(brrVal);
+            wltHeaderPtr->unserializeControlSalt(brrVal);
+            break;
+         }
 
-      case 0x00000002:
-      {
-         auto magicBytes = brrVal.get_BinaryData(4);
-         wltHeaderPtr = make_shared<WalletHeader_Multisig>(magicBytes);
-         wltHeaderPtr->unserializeEncryptionKey(brrVal);
-         wltHeaderPtr->unserializeControlSalt(brrVal);
-         break;
-      }
+         case 0x00000002:
+         {
+            auto magicBytes = brrVal.get_BinaryData(4);
+            wltHeaderPtr = std::make_shared<WalletHeader_Multisig>(magicBytes);
+            wltHeaderPtr->unserializeEncryptionKey(brrVal);
+            wltHeaderPtr->unserializeControlSalt(brrVal);
+            break;
+         }
 
-      default:
-         throw WalletException("unsupported mswallet header version");
+         default:
+            throw WalletException("unsupported mswallet header version");
       }
-
       break;
    }
 
@@ -365,21 +356,20 @@ shared_ptr<WalletHeader> WalletHeader::deserialize(
    {
       switch (version)
       {
-      case 0x00000001:
-      {
-         auto headerPtr = make_shared<WalletHeader_Control>();
-         headerPtr->unseralizeVersion(brrVal);
-         headerPtr->unserializeEncryptionKey(brrVal);
-         headerPtr->unserializeControlSalt(brrVal);
+         case 0x00000001:
+         {
+            auto headerPtr = std::make_shared<WalletHeader_Control>();
+            headerPtr->unseralizeVersion(brrVal);
+            headerPtr->unserializeEncryptionKey(brrVal);
+            headerPtr->unserializeControlSalt(brrVal);
 
-         wltHeaderPtr = headerPtr;
-         break;
+            wltHeaderPtr = headerPtr;
+            break;
+         }
+
+         default:
+            throw WalletException("unsupported control header version");
       }
-
-      default:
-         throw WalletException("unsupported control header version");
-      }
-
       break;
    }
 
@@ -387,21 +377,20 @@ shared_ptr<WalletHeader> WalletHeader::deserialize(
    {
       switch (version)
       {
-      case 0x00000001:
-      {
-         wltHeaderPtr = make_shared<WalletHeader_Custom>();
-         break;
-      }
+         case 0x00000001:
+         {
+            wltHeaderPtr = std::make_shared<WalletHeader_Custom>();
+            break;
+         }
 
-      default:
-         throw WalletException("unsupported custom header version");
+         default:
+            throw WalletException("unsupported custom header version");
       }
-
       break;
    }
 
-   default:
-      throw WalletException("invalid wallet type");
+      default:
+         throw WalletException("invalid wallet type");
    }
 
    wltHeaderPtr->walletID_ = brrKey.get_String(brrKey.getSizeRemaining());

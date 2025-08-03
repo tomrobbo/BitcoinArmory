@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2019-2024, goatpig                                          //
+//  Copyright (C) 2019-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -12,10 +12,11 @@
 
 #include "log.h"
 #include "PassphrasePrompt.h"
-
+#include "Wallets/Seeds/Backups.h"
 
 using namespace Armory;
 using namespace Armory::Bridge;
+using namespace std::chrono_literals;
 
 uint32_t BridgePassphrasePrompt::referenceCounter_ = 1;
 
@@ -30,17 +31,17 @@ BridgePassphrasePrompt::BridgePassphrasePrompt(const std::string& id,
 {}
 
 ////////////////////////////////////////////////////////////////////////////////
-SecureBinaryData BridgePassphrasePrompt::processFeedRequest(
+Seeds::PromptReply BridgePassphrasePrompt::processFeedRequest(
    const std::set<Wallets::EncryptionKeyId>& ids)
 {
    if (ids.empty()) {
       //exit condition
       cleanup();
-      return {};
+      return {false};
    }
 
    //cycle the promise & future
-   auto promPtr = std::make_shared<std::promise<SecureBinaryData>>();
+   auto promPtr = std::make_shared<std::promise<Seeds::PromptReply>>();
    auto fut = promPtr->get_future();
    auto refId = referenceCounter_++;
 
@@ -64,13 +65,14 @@ SecureBinaryData BridgePassphrasePrompt::processFeedRequest(
    BinaryData serialized(bytes.begin(), bytes.end());
 
    //reply handler
-   auto replyHandler = [promPtr](bool success, SecureBinaryData& passphrase)->bool
+   auto replyHandler = [promPtr](const Seeds::PromptReply& reply)->bool
    {
-      if (!success) {
+      if (!reply.success) {
          promPtr->set_exception(std::make_exception_ptr(
             std::runtime_error("unsuccessful reply")));
+         return true;
       }
-      promPtr->set_value(std::move(passphrase));
+      promPtr->set_value(std::move(reply));
       return true;
    };
 
@@ -81,10 +83,9 @@ SecureBinaryData BridgePassphrasePrompt::processFeedRequest(
    //wait on future
    try {
       return fut.get();
-   }
-   catch (const std::exception&) {
+   } catch (const std::exception&) {
       LOGINFO << "cancelled wallet unlock";
-      return {};
+      return {false};
    }
 }
 
@@ -104,10 +105,12 @@ void BridgePassphrasePrompt::cleanup()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-PassphraseLambda BridgePassphrasePrompt::getLambda()
+Passphrase::UnlockFunc BridgePassphrasePrompt::getLambda()
 {
-   return [this](const std::set<Wallets::EncryptionKeyId>& ids)->SecureBinaryData
+   return [this](const std::set<Wallets::EncryptionKeyId>& ids)
+   ->Passphrase::Result
    {
-      return processFeedRequest(ids);
+      auto reply = processFeedRequest(ids);
+      return { std::move(reply.passParams.passphrase), reply.success };
    };
 }

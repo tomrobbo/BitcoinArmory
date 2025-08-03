@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2016-18, goatpig.                                           //
+//  Copyright (C) 2016-2025, goatpig.                                         //
 //  Distributed under the MIT license                                         //
-//  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //                                      
+//  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -24,14 +24,25 @@
 #include "EncryptionUtils.h"
 #include "ArmoryConfig.h"
 #include "SocketService.h"
-#include "AuthorizedPeers.h"
-
 #include "BIP150_151.h"
 
 #define SERVER_AUTH_PEER_FILENAME "server.peers"
 
 class Clients;
-class BlockDataManagerThread;
+class BlockDataManager;
+
+namespace Armory
+{
+   namespace Wallets
+   {
+      class AuthorizedPeers;
+
+      namespace IO
+      {
+         struct ReadOnlyFileParams;
+      }
+   }
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 struct per_session_data__http {
@@ -161,11 +172,12 @@ public:
       struct lws *wsi, enum lws_callback_reasons reason,
       void *user, void *in, size_t len);
 
-   static void initAuthPeers(const PassphraseLambda&);
-   static void start(BlockDataManagerThread* bdmT, bool async);
+   static void initAuthPeers(const Armory::Wallets::IO::ReadOnlyFileParams&);
+   static void start(std::shared_ptr<BlockDataManager>, bool);
    static void shutdown(void);
    static void waitOnShutdown(void);
    static SecureBinaryData getPublicKey(void);
+   static bool isMasterKey(const btc_pubkey&);
 
    static void write(const uint64_t&, const uint32_t&,
       std::unique_ptr<Socket_WritePayload>);

@@ -160,25 +160,25 @@ namespace Armory
             const Wallets::AddressAccountId&);
 
          void extendPublicChain(
-            std::shared_ptr<Wallets::IO::WalletDBInterface>, unsigned,
+            std::shared_ptr<Wallets::IO::WalletDBInterface>, int32_t,
             const std::function<void(int)>& = nullptr);
          void extendPublicChain(
             std::shared_ptr<Wallets::IO::WalletDBInterface>,
-            const Wallets::AssetAccountId&, unsigned,
+            const Wallets::AssetAccountId&, int32_t,
             const std::function<void(int)>& = nullptr);
          void extendPublicChainToIndex(
             std::shared_ptr<Wallets::IO::WalletDBInterface>,
-            const Wallets::AssetAccountId&, unsigned,
+            const Wallets::AssetAccountId&, int32_t,
             const std::function<void(int)>& = nullptr);
 
          void extendPrivateChain(
             std::shared_ptr<Wallets::IO::WalletDBInterface>,
             std::shared_ptr<Wallets::Encryption::DecryptedDataContainer>,
-            unsigned);
+            int32_t);
          void extendPrivateChainToIndex(
             std::shared_ptr<Wallets::IO::WalletDBInterface>,
             std::shared_ptr<Wallets::Encryption::DecryptedDataContainer>,
-            const Wallets::AssetAccountId&, unsigned);
+            const Wallets::AssetAccountId&, int32_t);
 
          std::shared_ptr<AddressEntry> getNewAddress(
             std::shared_ptr<Wallets::IO::WalletDBInterface>,
@@ -197,7 +197,6 @@ namespace Armory
 
          std::shared_ptr<Assets::AssetEntry> getOuterAssetRoot(void) const;
 
-
          AddressEntryType getDefaultAddressType(void) const
             { return defaultAddressEntryType_; }
          const std::set<AddressEntryType>& getAddressTypeSet(void) const
@@ -213,9 +212,8 @@ namespace Armory
             getAssetIDPairForAddrUnprefixed(const BinaryData&);
 
          void updateAddressHashMap(void);
-         const std::map<BinaryData,
-            std::pair<Wallets::AssetId, AddressEntryType>>&
-               getAddressHashMap(void);
+         const std::map<BinaryData, std::pair<Wallets::AssetId, AddressEntryType>>&
+         getAddressHashMap(void);
 
          size_t getNumAssetAccounts(void) const;
          std::set<Wallets::AssetAccountId> getAccountIdSet(void) const;
@@ -225,10 +223,8 @@ namespace Armory
             const Wallets::AssetAccountId&) const;
          std::unique_ptr<AssetAccount> getOuterAccount(void) const;
 
-         const Wallets::AssetAccountId& getOuterAccountID(void) const
-         { return outerAccountId_; }
-         const Wallets::AssetAccountId& getInnerAccountID(void) const
-         { return innerAccountId_; }
+         const Wallets::AssetAccountId& getOuterAccountID(void) const;
+         const Wallets::AssetAccountId& getInnerAccountID(void) const;
 
          AddressAccountPublicData exportPublicData() const;
          void importPublicData(const AddressAccountPublicData&);

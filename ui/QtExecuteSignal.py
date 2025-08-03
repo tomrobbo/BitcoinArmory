@@ -29,8 +29,8 @@ class QtExecuteSignal(QtCore.QObject):
    ###########################################################################
    def executeMethod(self, _callable, *args):
       if not callable(_callable):
-         print (f"** executeMethod: {str(_callable)} **")
-         print (f"** args type: {str(type(args))}, args: {str(args)} **")
+         #print (f"** executeMethod: {str(_callable)} **")
+         #print (f"** args type: {str(type(args))}, args: {str(args)} **")
          raise QtExecuteSignalError("invalid arguments")
 
       self.executeSignal.emit([{
@@ -40,7 +40,8 @@ class QtExecuteSignal(QtCore.QObject):
 
    ###########################################################################
    def methodSlot(self, execList):
-      execList[0]['callable'](*(execList[0]['args']))
+      args = execList[0]['args']
+      execList[0]['callable'](*args)
 
    ###########################################################################
    def callLater(self, delay, _callable, *_args):

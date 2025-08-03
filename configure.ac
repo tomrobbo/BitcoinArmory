@@ -382,6 +382,8 @@ if test x$want_tests = xyes; then
     AC_CONFIG_LINKS(cppForSwig/reorgTest/botched_block.dat:cppForSwig/reorgTest/botched_block.dat)
     AC_CONFIG_LINKS(cppForSwig/reorgTest/LBZC.tx:cppForSwig/reorgTest/LBZC.tx)
     AC_CONFIG_LINKS(cppForSwig/reorgTest/ZCtx.tx:cppForSwig/reorgTest/ZCtx.tx)
+
+    AC_CONFIG_LINKS(cppForSwig/gtest/input_files/legacy.wallet:cppForSwig/gtest/input_files/legacy.wallet)
 fi
 
 AC_OUTPUT
