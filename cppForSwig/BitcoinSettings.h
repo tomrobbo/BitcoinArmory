@@ -56,7 +56,7 @@ namespace Armory
          NETWORK_MODE_REGTEST,
       } NETWORK_MODE;
 
-      struct BitcoinSettings
+      class BitcoinSettings
       {
       private:
          static BinaryData genesisBlockHash_;
@@ -68,7 +68,7 @@ namespace Armory
          static uint8_t privKeyPrefix_;
 
          static NETWORK_MODE mode_;
-         static const btc_chainparams* chain_params_;
+         static const btc_chainparams* chainParams_;
          static std::string bech32Prefix_;
          static uint32_t BIP32_CoinType_;
 
@@ -87,10 +87,9 @@ namespace Armory
          static const BinaryData& getMagicBytes(void);
          static BinaryData getMainnetMagicBytes(void);
 
-         static NETWORK_MODE getMode(void) { return mode_; }
+         static NETWORK_MODE getMode(void);
          static bool isInitialized(void);
-         static const btc_chainparams* get_chain_params(void)
-         { return chain_params_; }
+         static const btc_chainparams* getChainParams(void);
          static uint32_t getCoinType(void);
       };
    }; //namespace Config

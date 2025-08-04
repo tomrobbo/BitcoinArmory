@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2021-2021, goatpig                                          //
+//  Copyright (C) 2021-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -12,7 +12,8 @@
 #include <string>
 #include <stdexcept>
 #include "../BinaryData.h"
-#include "../BtcUtils.h"
+
+#define KDF_PREFIX 0xC1
 
 namespace Armory
 {
@@ -85,7 +86,6 @@ namespace Armory
          static AddressAccountId deserializeValue(BinaryRefReader&);
          static AddressAccountId deserializeValue(const BinaryData&);
          static AddressAccountId deserializeKey(const BinaryData&, uint8_t);
-         static AccountKeyType getRootKey(void) { return rootAccountId; }
       };
 
       ////////////////////////////////////////////////////////////////////////
@@ -123,7 +123,6 @@ namespace Armory
          static AssetAccountId deserializeValueOld(
             const AddressAccountId&, BinaryRefReader&);
          static AssetAccountId deserializeKey(const BinaryData&, uint8_t);
-         static AccountKeyType getRootKey(void) { return rootAccountId; }
       };
 
       ////////////////////////////////////////////////////////////////////////
@@ -161,7 +160,7 @@ namespace Armory
          static AssetId deserializeValue(BinaryRefReader&);
          static AssetId deserializeKey(const BinaryData&, uint8_t);
          static AssetId deserializeKey(BinaryDataRef, uint8_t);
-         static AssetKeyType getRootKey(void) { return rootAssetId; }
+         static AssetKeyType getRootKey(void);
          static AssetId getRootAssetId(void);
          static AssetId getNextDummyId(void);
       };
@@ -193,6 +192,32 @@ namespace Armory
          void serializeValue(BinaryWriter&) const;
          BinaryData getSerializedKey(uint8_t) const;
          static EncryptionKeyId deserializeValue(BinaryRefReader&);
+      };
+
+      ////////////////////////////////////////////////////////////////////////
+      class KdfId
+      {
+      private:
+         BinaryData data_;
+
+      private:
+         KdfId(const std::string&);
+
+      public:
+         KdfId(void);
+         KdfId(const std::string_view&);
+         KdfId(const KdfId&);
+
+         bool operator<(const KdfId&) const;
+         bool operator==(const KdfId&) const;
+         KdfId& operator=(const KdfId&);
+
+         bool isValid(void) const;
+         bool toHexStr(void) const;
+         const BinaryData& data(void) const;
+
+         BinaryData getSerializedKey(void) const;
+         static KdfId fromBinaryData(BinaryData&);
       };
 
       ////////////////////////////////////////////////////////////////////////

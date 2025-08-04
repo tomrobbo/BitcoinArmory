@@ -120,6 +120,9 @@ class DlgUnlockWallet(ArmoryDialog):
       self.redrawKeys()
       self.encryptionKeyIds = []
 
+      self.edtPasswd.textChanged.connect(self.updateUnlockButton)
+      self.updateUnlockButton()
+
    #############################################################################
    def toggleOSD(self, *args):
       isChk = self.btnShowOSD.isChecked()
@@ -285,20 +288,15 @@ class DlgUnlockWallet(ArmoryDialog):
       passphraseStr = ''
 
    #############################################################################
-   def rejectPassphrase(self):
-      self.edtPasswd.setText('')
-      self.reply("")
-      self.reject()
-
-   #############################################################################
    def accept(self):
       self.edtPasswd.setText('')
       super().accept()
 
    #############################################################################
-   def reject(self):
+   def rejectPassphrase(self):
       self.edtPasswd.setText('')
-      super().reject()
+      self.reply("")
+      self.reject()
 
    #############################################################################
    def reply(self, passphrase):
@@ -306,16 +304,24 @@ class DlgUnlockWallet(ArmoryDialog):
 
    #############################################################################
    def setIds(self, ids):
-      if len(ids) == 0:
+      if not ids:
          self.reject()
-      elif len(self.encryptionKeyIds) == 0:
+
+      if not self.encryptionKeyIds:
          self.encryptionKeyIds = ids
+
+      if self.encryptionKeyIds == ids:
+         #success
          self.exec_()
-      elif self.encryptionKeyIds != ids:
-         raise Exception("encryption key ids mismtach")
       else:
+         #failure
          self.recycle()
          self.show()
+
+   #############################################################################
+   def updateUnlockButton(self):
+      # Minimal password length, adjust as needed
+      self.btnAccept.setEnabled(len(self.edtPasswd.text()) >= 4)
 
 ################################################################################
 class UnlockWalletHandler(ServerPush, DlgUnlockWallet):
@@ -327,16 +333,16 @@ class UnlockWalletHandler(ServerPush, DlgUnlockWallet):
    #############################################################################
    def parseProtoPacket(self, protoPacket):
       def processPacket(theDialog, protoPacket):
-         if protoPacket.HasField('cleanup'):
+         if protoPacket.which() == 'cleanup':
             theDialog.reject()
             return
-         elif protoPacket.HasField('unlock_request'):
-            theDialog.setIds(protoPacket.unlock_request.encryption_key_ids)
+         elif protoPacket.which() == 'unlockRequest':
+            theDialog.setIds(protoPacket.unlockRequest)
       TheSignalExecution.executeMethod(processPacket, self, protoPacket)
 
    #############################################################################
    def reply(self, passphrase):
       packet = self.getNewPacket()
       packet.success = bool(len(passphrase) != 0)
-      packet.passphrase = passphrase
+      packet.unlockRequest = passphrase
       super().reply()

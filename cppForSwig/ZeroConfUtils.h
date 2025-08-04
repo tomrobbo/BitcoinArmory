@@ -103,7 +103,7 @@ struct ParsedTxOut
 
    bool isInitialized(void) const
    {
-      return scrAddr_.getSize() != 0 && value_ != UINT64_MAX; \
+      return scrAddr_.getSize() != 0 && value_ != UINT64_MAX;
    }
 };
 
@@ -151,11 +151,10 @@ struct FilteredZeroConfData
    std::map<BinaryDataRef, std::shared_ptr<std::set<BinaryDataRef>>> keyToSpentScrAddr_;
    std::map<BinaryDataRef, std::set<BinaryDataRef>> keyToFundedScrAddr_;
 
-   std::map<std::string, ParsedZCData> flaggedBDVs_;
-
+   std::map<uint64_t, ParsedZCData> flaggedBDVs_;
    std::shared_ptr<ParsedTx> txPtr_;
 
-   bool isEmpty(void) const { return scrAddrTxioMap_.size() == 0; }
+   bool isEmpty(void) const { return scrAddrTxioMap_.empty(); }
    bool isValid(void) const;
 };
 
@@ -205,7 +204,7 @@ public:
    //TODO: shouldn't use references for txHashes anymore
    std::map<BinaryDataRef, BinaryDataRef> txHashToDBKey_; //<txHash, zcKey>
    std::map<BinaryData, std::shared_ptr<ParsedTx>> txMap_; //<zcKey, zcTx>
-   
+
    //<txOutKey, bool> (true for valid, false for dropped)
    std::map<BinaryData, bool> txOutsSpentByZC_;
 
@@ -296,7 +295,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 void finalizeParsedTxResolution(
-   std::shared_ptr<ParsedTx>, 
+   std::shared_ptr<ParsedTx>,
    LMDBBlockDatabase*, const std::set<BinaryData>&,
    std::shared_ptr<MempoolSnapshot>);
 
@@ -306,7 +305,7 @@ class AddrAndHash;
 
 FilteredZeroConfData filterParsedTx(
    std::shared_ptr<ParsedTx>,
-   std::shared_ptr<const std::map<BinaryDataRef, std::shared_ptr<AddrAndHash>>>,
+   const std::map<BinaryData, std::shared_ptr<AddrAndHash>>&,
    ZeroConfCallbacks*);
 
 

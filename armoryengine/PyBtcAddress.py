@@ -1,12 +1,17 @@
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
 ################################################################################
 #                                                                              #
 # Copyright (C) 2011-2015, Armory Technologies, Inc.                           #
 # Distributed under the GNU Affero General Public License (AGPL v3)            #
 # See LICENSE or http://www.gnu.org/licenses/agpl.html                         #
 #                                                                              #
+# Copyright (C) 2016-2025, goatpig                                             #
+#  Distributed under the MIT license                                           #
+#  See LICENSE-MIT or https://opensource.org/licenses/MIT                      #
+#                                                                              #
 ################################################################################
+from __future__ import (absolute_import, division,
+   print_function, unicode_literals)
+
 from armoryengine.ArmoryUtils import ADDRBYTE, hash256, \
    KeyDataError, RightNow, LOGERROR, ChecksumError, convertKeyDataToAddress, \
    verifyChecksum, WalletLockError, createDERSigFromRS, binary_to_int, \
@@ -80,7 +85,6 @@ class PyBtcAddress(object):
       self.precursorScript       = []
       self.isInitialized         = False
       self.chainIndex            = 0
-      self.useEncryption         = False
       self.hasPrivKey            = False
       self.addrType              = AddressEntryType_Default
       self.parentWallet          = parentWallet
@@ -141,29 +145,27 @@ class PyBtcAddress(object):
       return (self.chainIndex==-1)
 
    #############################################################################
-   def loadFromProtobufPayload(self, payload):
+   def loadFromProto(self, payload):
       self.__init__()
 
-      self.prefixedHash = payload.prefixed_hash
-      self.binPublicKey = payload.public_key
-      self.chainIndex = payload.id
-      self.assetId = payload.asset_id
+      self.prefixedHash = payload.prefixedHash
+      self.binPublicKey = payload.publicKey
+      self.chainIndex = payload.index
+      self.assetId = payload.assetId
       self.isInitialized = True
-      self.addrType = payload.addr_type
-      self.addressString = payload.address_string
-      self.hasPrivKey = payload.has_priv_key
-      self.use_encryption = payload.use_encryption
+      self.addrType = payload.addrType
+      self.addressString = payload.addressString
+      self.hasPrivKey = payload.hasPrivKey
 
-      self.precursorScript = payload.precursor_script
-      self.isUsed = payload.is_used
-      self.isChange = payload.is_change
+      self.precursorScript = payload.precursorScript
+      self.isUsed = payload.isUsed
+      self.isChange = payload.isChange
 
    #############################################################################
    def getTxioCount(self):
       from armoryengine.BDM import TheBDM, BDM_OFFLINE, BDM_UNINITIALIZED
       if TheBDM.getState() in (BDM_OFFLINE,BDM_UNINITIALIZED):
          return "N/A"
-
       return self.txioCount
 
    #############################################################################
@@ -182,8 +184,7 @@ class PyBtcAddress(object):
    def getComment(self):
       if self.parentWallet is None:
          return ''
-
-      return self.parentWallet.getCommentForAddr(self.getAddr160())
+      return self.parentWallet.getComment(self.getAddr160())
 
    #############################################################################
    def filter(self, filterType, isUsed, isChange):

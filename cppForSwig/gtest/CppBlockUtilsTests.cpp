@@ -5,16 +5,18 @@
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
 //                                                                            //
-//  Copyright (C) 2016-2021, goatpig                                          //
+//  Copyright (C) 2016-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 #include "TestUtils.h"
 #include "hkdf.h"
+#include "../Wallets/IOHeader.h"
 
-using namespace std;
-using namespace Armory::Signer;
+using namespace std::string_view_literals;
+using namespace std::chrono_literals;
+using namespace Armory::Signing;
 using namespace Armory::Config;
 using namespace Armory::Wallets;
 
@@ -23,49 +25,49 @@ using namespace Armory::Wallets;
 class BlockDir : public ::testing::Test
 {
 protected:
-   const string blkdir_  = "./blkfiletest";
-   const string homedir_ = "./fakehomedir";
-   const string ldbdir_  = "./ldbtestdir";
-   
-   string blk0dat_;
-   string wallet1id;
+   const std::filesystem::path blkdir_  = "./blkfiletest";
+   const std::filesystem::path homedir_ = "./fakehomedir";
+   const std::filesystem::path ldbdir_  = "./ldbtestdir";
+   std::filesystem::path blk0dat_;
+   std::string wallet1id;
+   std::vector<std::string> args;
 
    /////////////////////////////////////////////////////////////////////////////
    void cleanUp()
    {
-      DBUtils::removeDirectory(blkdir_);
-      DBUtils::removeDirectory(homedir_);
-      DBUtils::removeDirectory(ldbdir_);
+      FileUtils::removeDirectory(blkdir_);
+      FileUtils::removeDirectory(homedir_);
+      FileUtils::removeDirectory(ldbdir_);
    }
 
    /////////////////////////////////////////////////////////////////////////////
    virtual void SetUp()
    {
       LOGDISABLESTDOUT();
-            
       cleanUp();
 
-      mkdir(blkdir_ + "/blocks");
-      mkdir(homedir_);
-      mkdir(ldbdir_);
+      FileUtils::createDirectory(blkdir_ / "blocks");
+      FileUtils::createDirectory(homedir_);
+      FileUtils::createDirectory(ldbdir_);
 
       DBSettings::setServiceType(SERVICE_UNITTEST);
-      Armory::Config::parseArgs({
+
+      args = {
          "--datadir=./fakehomedir",
          "--dbdir=./ldbtestdir",
          "--satoshi-datadir=./blkfiletest",
          "--public",
          "--db-type=DB_FULL",
          "--thread-count=3",
-         "--public"},
-         Armory::Config::ProcessType::DB);
-      
+         "--rewind-blocks=0",
+         "--public"};
+      Armory::Config::parseArgs(args, Armory::Config::ProcessType::DB);
       DBTestUtils::init();
 
-      blk0dat_ = BtcUtils::getBlkFilename(blkdir_ + "/blocks", 0);
+      blk0dat_ = FileUtils::getBlkFilename(blkdir_ / "blocks", 0);
       wallet1id = "wallet1";
    }
-   
+
    /////////////////////////////////////////////////////////////////////////////
    virtual void TearDown(void)
    {
@@ -83,26 +85,25 @@ TEST_F(BlockDir, HeadersFirst)
    TestUtils::setBlocks({ "0", "1", "2", "4", "3", "5" }, blk0dat_);
 
    BlockDataManagerThread* BDMt = new BlockDataManagerThread();
-   auto fakeshutdown = [](void)->void {};
-   Clients *clients = new Clients(BDMt, fakeshutdown);
+   auto clients = new Clients(BDMt->bdm());
+   clients->init();
 
    BDMt->start(INIT_RESUME);
-   
-   const std::vector<BinaryData> scraddrs
-   {
+   const std::vector<BinaryData> scraddrs{
       TestChain::scrAddrA,
       TestChain::scrAddrB,
       TestChain::scrAddrC
    };
 
-   auto&& bdvID = DBTestUtils::registerBDV(clients, BitcoinSettings::getMagicBytes());
-   DBTestUtils::registerWallet(clients, bdvID, scraddrs, "wallet1");
+   auto bdvID = DBTestUtils::registerBDV(clients, BitcoinSettings::getMagicBytes());
+   DBTestUtils::registerWallet(clients, bdvID, scraddrs, "wallet1",
+      false, false);
    auto bdvPtr = DBTestUtils::getBDV(clients, bdvID);
 
    DBTestUtils::goOnline(clients, bdvID);
    DBTestUtils::waitOnBDMReady(clients, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
-   
+
    const ScrAddrObj *scrobj;
    scrobj = wlt->getScrAddrObjByKey(scraddrs[0]);
    EXPECT_EQ(scrobj->getFullBalance(), 50*COIN);
@@ -114,8 +115,8 @@ TEST_F(BlockDir, HeadersFirst)
    //cleanup
    bdvPtr.reset();
    wlt.reset();
-   clients->exitRequestLoop();
    clients->shutdown();
+   BDMt->shutdown();
 
    delete clients;
    delete BDMt;
@@ -126,22 +127,21 @@ TEST_F(BlockDir, HeadersFirstUpdate)
 {
    // Put the first 5 blocks out of order
    TestUtils::setBlocks({ "0", "1", "2" }, blk0dat_);
-   
+
    BlockDataManagerThread* BDMt = new BlockDataManagerThread();
-   auto fakeshutdown = [](void)->void {};
-   Clients *clients = new Clients(BDMt, fakeshutdown);
+   auto clients = new Clients(BDMt->bdm());
+   clients->init();
 
    BDMt->start(INIT_RESUME);
-
-   const std::vector<BinaryData> scraddrs
-   {
+   const std::vector<BinaryData> scraddrs {
       TestChain::scrAddrA,
       TestChain::scrAddrB,
       TestChain::scrAddrC
    };
 
-   auto&& bdvID = DBTestUtils::registerBDV(clients, BitcoinSettings::getMagicBytes());
-   DBTestUtils::registerWallet(clients, bdvID, scraddrs, "wallet1");
+   auto bdvID = DBTestUtils::registerBDV(clients, BitcoinSettings::getMagicBytes());
+   DBTestUtils::registerWallet(clients, bdvID, scraddrs, "wallet1",
+      false, false);
    auto bdvPtr = DBTestUtils::getBDV(clients, bdvID);
 
    DBTestUtils::goOnline(clients, bdvID);
@@ -151,10 +151,10 @@ TEST_F(BlockDir, HeadersFirstUpdate)
    TestUtils::appendBlocks({ "4", "3", "5" }, blk0dat_);
    DBTestUtils::triggerNewBlockNotification(BDMt);
    DBTestUtils::waitOnNewBlockSignal(clients, bdvID);
-   
+
    // we should get the same balance as we do for test 'Load5Blocks'
    const ScrAddrObj *scrobj;
-   
+
    scrobj = wlt->getScrAddrObjByKey(scraddrs[0]);
    EXPECT_EQ(scrobj->getFullBalance(), 50*COIN);
    scrobj = wlt->getScrAddrObjByKey(scraddrs[1]);
@@ -165,8 +165,8 @@ TEST_F(BlockDir, HeadersFirstUpdate)
    //cleanup
    bdvPtr.reset();
    wlt.reset();
-   clients->exitRequestLoop();
    clients->shutdown();
+   BDMt->shutdown();
 
    delete clients;
    delete BDMt;
@@ -176,22 +176,20 @@ TEST_F(BlockDir, HeadersFirstUpdate)
 TEST_F(BlockDir, HeadersFirstReorg)
 {
    TestUtils::setBlocks({ "0", "1" }, blk0dat_);
-
    BlockDataManagerThread* BDMt = new BlockDataManagerThread();
-   auto fakeshutdown = [](void)->void {};
-   Clients *clients = new Clients(BDMt, fakeshutdown);
+   auto clients = new Clients(BDMt->bdm());
+   clients->init();
 
    BDMt->start(INIT_RESUME);
-
-   const std::vector<BinaryData> scraddrs
-   {
+   const std::vector<BinaryData> scraddrs {
       TestChain::scrAddrA,
       TestChain::scrAddrB,
       TestChain::scrAddrC
    };
 
-   auto&& bdvID = DBTestUtils::registerBDV(clients, BitcoinSettings::getMagicBytes());
-   DBTestUtils::registerWallet(clients, bdvID, scraddrs, "wallet1");
+   auto bdvID = DBTestUtils::registerBDV(clients, BitcoinSettings::getMagicBytes());
+   DBTestUtils::registerWallet(clients, bdvID, scraddrs, "wallet1",
+      false, false);
    auto bdvPtr = DBTestUtils::getBDV(clients, bdvID);
 
    DBTestUtils::goOnline(clients, bdvID);
@@ -212,7 +210,6 @@ TEST_F(BlockDir, HeadersFirstReorg)
    DBTestUtils::waitOnNewBlockSignal(clients, bdvID);
 
    const ScrAddrObj *scrobj;
-
    scrobj = wlt->getScrAddrObjByKey(scraddrs[0]);
    EXPECT_EQ(scrobj->getFullBalance(), 50 * COIN);
    scrobj = wlt->getScrAddrObjByKey(scraddrs[1]);
@@ -234,8 +231,8 @@ TEST_F(BlockDir, HeadersFirstReorg)
    //cleanup
    bdvPtr.reset();
    wlt.reset();
-   clients->exitRequestLoop();
    clients->shutdown();
+   BDMt->shutdown();
 
    delete clients;
    delete BDMt;
@@ -245,22 +242,20 @@ TEST_F(BlockDir, HeadersFirstReorg)
 TEST_F(BlockDir, HeadersFirstUpdateTwice)
 {
    TestUtils::setBlocks({ "0", "1", "2" }, blk0dat_);
-   
    BlockDataManagerThread* BDMt = new BlockDataManagerThread();
-   auto fakeshutdown = [](void)->void {};
-   Clients *clients = new Clients(BDMt, fakeshutdown);
+   auto clients = new Clients(BDMt->bdm());
+   clients->init();
 
    BDMt->start(INIT_RESUME);
-
-   const std::vector<BinaryData> scraddrs
-   {
+   const std::vector<BinaryData> scraddrs{
       TestChain::scrAddrA,
       TestChain::scrAddrB,
       TestChain::scrAddrC
    };
 
-   auto&& bdvID = DBTestUtils::registerBDV(clients, BitcoinSettings::getMagicBytes());
-   DBTestUtils::registerWallet(clients, bdvID, scraddrs, "wallet1");
+   auto bdvID = DBTestUtils::registerBDV(clients, BitcoinSettings::getMagicBytes());
+   DBTestUtils::registerWallet(clients, bdvID, scraddrs, "wallet1",
+      false, false);
    auto bdvPtr = DBTestUtils::getBDV(clients, bdvID);
 
    DBTestUtils::goOnline(clients, bdvID);
@@ -288,8 +283,8 @@ TEST_F(BlockDir, HeadersFirstUpdateTwice)
    //cleanup
    bdvPtr.reset();
    wlt.reset();
-   clients->exitRequestLoop();
    clients->shutdown();
+   BDMt->shutdown();
 
    delete clients;
    delete BDMt;
@@ -299,25 +294,23 @@ TEST_F(BlockDir, HeadersFirstUpdateTwice)
 TEST_F(BlockDir, BlockFileSplit)
 {
    TestUtils::setBlocks({ "0", "1" }, blk0dat_);
-   
-   std::string blk1dat = BtcUtils::getBlkFilename(blkdir_ + "/blocks", 1);
+   auto blk1dat = FileUtils::getBlkFilename(blkdir_ / "blocks", 1);
    TestUtils::setBlocks({ "2", "3", "4", "5" }, blk1dat);
-   
+
    BlockDataManagerThread* BDMt = new BlockDataManagerThread();
-   auto fakeshutdown = [](void)->void {};
-   Clients *clients = new Clients(BDMt, fakeshutdown);
+   auto clients = new Clients(BDMt->bdm());
+   clients->init();
 
    BDMt->start(INIT_RESUME);
-
-   const std::vector<BinaryData> scraddrs
-   {
+   const std::vector<BinaryData> scraddrs{
       TestChain::scrAddrA,
       TestChain::scrAddrB,
       TestChain::scrAddrC
    };
 
-   auto&& bdvID = DBTestUtils::registerBDV(clients, BitcoinSettings::getMagicBytes());
-   DBTestUtils::registerWallet(clients, bdvID, scraddrs, "wallet1");
+   auto bdvID = DBTestUtils::registerBDV(clients, BitcoinSettings::getMagicBytes());
+   DBTestUtils::registerWallet(clients, bdvID, scraddrs, "wallet1",
+      false, false);
    auto bdvPtr = DBTestUtils::getBDV(clients, bdvID);
 
    DBTestUtils::goOnline(clients, bdvID);
@@ -325,7 +318,6 @@ TEST_F(BlockDir, BlockFileSplit)
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
 
    const ScrAddrObj *scrobj;
-   
    scrobj = wlt->getScrAddrObjByKey(scraddrs[0]);
    EXPECT_EQ(scrobj->getFullBalance(), 50*COIN);
    scrobj = wlt->getScrAddrObjByKey(scraddrs[1]);
@@ -336,8 +328,8 @@ TEST_F(BlockDir, BlockFileSplit)
    //cleanup
    bdvPtr.reset();
    wlt.reset();
-   clients->exitRequestLoop();
    clients->shutdown();
+   BDMt->shutdown();
 
    delete clients;
    delete BDMt;
@@ -347,29 +339,27 @@ TEST_F(BlockDir, BlockFileSplit)
 TEST_F(BlockDir, BlockFileSplitUpdate)
 {
    TestUtils::setBlocks({ "0", "1" }, blk0dat_);
-      
    BlockDataManagerThread* BDMt = new BlockDataManagerThread();
-   auto fakeshutdown = [](void)->void {};
-   Clients *clients = new Clients(BDMt, fakeshutdown);
+   auto clients = new Clients(BDMt->bdm());
+   clients->init();
 
    BDMt->start(INIT_RESUME);
-
-   const std::vector<BinaryData> scraddrs
-   {
+   const std::vector<BinaryData> scraddrs{
       TestChain::scrAddrA,
       TestChain::scrAddrB,
       TestChain::scrAddrC
    };
 
-   auto&& bdvID = DBTestUtils::registerBDV(clients, BitcoinSettings::getMagicBytes());
-   DBTestUtils::registerWallet(clients, bdvID, scraddrs, "wallet1");
+   auto bdvID = DBTestUtils::registerBDV(clients, BitcoinSettings::getMagicBytes());
+   DBTestUtils::registerWallet(clients, bdvID, scraddrs, "wallet1",
+      false, false);
    auto bdvPtr = DBTestUtils::getBDV(clients, bdvID);
 
    DBTestUtils::goOnline(clients, bdvID);
    DBTestUtils::waitOnBDMReady(clients, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
 
-   std::string blk1dat = BtcUtils::getBlkFilename(blkdir_, 1);
+   auto blk1dat = FileUtils::getBlkFilename(blkdir_, 1);
    TestUtils::appendBlocks({ "2", "4", "3", "5" }, blk0dat_);
    DBTestUtils::triggerNewBlockNotification(BDMt);
    DBTestUtils::waitOnNewBlockSignal(clients, bdvID);
@@ -386,8 +376,142 @@ TEST_F(BlockDir, BlockFileSplitUpdate)
    //cleanup
    bdvPtr.reset();
    wlt.reset();
-   clients->exitRequestLoop();
    clients->shutdown();
+   BDMt->shutdown();
+
+   delete clients;
+   delete BDMt;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(BlockDir, FixBlockDataOffsets)
+{
+   /* 1. setup regular test, check balances */
+   TestUtils::setBlocks({ "0", "1", "2", "4", "3", "5" }, blk0dat_);
+
+   //setup BDM
+   BlockDataManagerThread* BDMt = new BlockDataManagerThread();
+   auto clients = new Clients(BDMt->bdm());
+   clients->init();
+
+   BDMt->start(INIT_RESUME);
+   std::vector<BinaryData> scraddrs{
+      TestChain::scrAddrA,
+      TestChain::scrAddrB,
+      TestChain::scrAddrC
+   };
+
+   auto bdvID = DBTestUtils::registerBDV(clients, BitcoinSettings::getMagicBytes());
+   DBTestUtils::registerWallet(clients, bdvID, scraddrs, "wallet1",
+      false, false);
+   auto bdvPtr = DBTestUtils::getBDV(clients, bdvID);
+
+   DBTestUtils::goOnline(clients, bdvID);
+   DBTestUtils::waitOnBDMReady(clients, bdvID);
+
+   //check balances
+   auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
+   const ScrAddrObj *scrobj;
+   ASSERT_NE(wlt, nullptr);
+   scrobj = wlt->getScrAddrObjByKey(scraddrs[0]);
+   EXPECT_EQ(scrobj->getFullBalance(), 50*COIN);
+   scrobj = wlt->getScrAddrObjByKey(scraddrs[1]);
+   EXPECT_EQ(scrobj->getFullBalance(), 70*COIN);
+   scrobj = wlt->getScrAddrObjByKey(scraddrs[2]);
+   EXPECT_EQ(scrobj->getFullBalance(), 20*COIN);
+
+   //grab offset for block 3, we will mangle it in next phase of the test
+   size_t block3Offset = SIZE_MAX;
+   {
+      auto bcPtr = BDMt->bdm()->blockchain();
+      auto block3 = bcPtr->getHeaderByHeight(3, 0xFF);
+      block3Offset = block3->getOffset();
+   }
+   ASSERT_NE(block3Offset, SIZE_MAX);
+
+   //cleanup
+   bdvPtr.reset();
+   wlt.reset();
+   BDMt->shutdown();
+   clients->shutdown();
+   delete clients;
+   delete BDMt;
+   Armory::Config::reset();
+
+   /* 2. mangle chain data, append mangled block at the end of the file */
+   {
+      std::fstream fileStream{blk0dat_,
+         std::ios::in | std::ios::out | std::ios::binary};
+      fileStream.seekg(block3Offset + 120);
+      fileStream.write("mangling the block", 18);
+   }
+
+   //setup BDM
+   DBSettings::setServiceType(SERVICE_UNITTEST);
+   Armory::Config::parseArgs(args, Armory::Config::ProcessType::DB);
+   DBTestUtils::init();
+   BDMt = new BlockDataManagerThread();
+   clients = new Clients(BDMt->bdm());
+   clients->init();
+   BDMt->start(INIT_RESUME);
+
+   //register new address, will trigger scan and detect bad block data
+   scraddrs.emplace_back(TestChain::scrAddrD);
+   auto bdvID2 = DBTestUtils::registerBDV(clients, BitcoinSettings::getMagicBytes());
+   DBTestUtils::registerWallet(clients, bdvID2, scraddrs, "wallet2",
+      false, false);
+
+   auto bdvPtr2 = DBTestUtils::getBDV(clients, bdvID2);
+   DBTestUtils::goOnline(clients, bdvID2);
+
+   //BDM should warn user and shutdown gracefully
+   BDMt->join();
+
+   //cleanup
+   bdvPtr2.reset();
+   clients->shutdown();
+   delete clients;
+   delete BDMt;
+   Armory::Config::reset();
+
+   //append the correct 3rd block
+   TestUtils::appendBlocks({"3"}, blk0dat_);
+
+   /* 3. restart BDM, should fix mangled data and get through scan */
+   DBSettings::setServiceType(SERVICE_UNITTEST);
+   Armory::Config::parseArgs(args, Armory::Config::ProcessType::DB);
+   DBTestUtils::init();
+   BDMt = new BlockDataManagerThread();
+   clients = new Clients(BDMt->bdm());
+   clients->init();
+   BDMt->start(INIT_RESUME);
+
+   scraddrs.emplace_back(TestChain::scrAddrD);
+   auto bdvID3 = DBTestUtils::registerBDV(clients, BitcoinSettings::getMagicBytes());
+   DBTestUtils::registerWallet(clients, bdvID3, scraddrs, "wallet3",
+      false, false);
+
+   auto bdvPtr3 = DBTestUtils::getBDV(clients, bdvID3);
+   DBTestUtils::goOnline(clients, bdvID3);
+   DBTestUtils::waitOnBDMReady(clients, bdvID3);
+
+   //check balances
+   wlt = bdvPtr3->getWalletOrLockbox("wallet3");
+   ASSERT_NE(wlt, nullptr);
+   scrobj = wlt->getScrAddrObjByKey(scraddrs[0]);
+   EXPECT_EQ(scrobj->getFullBalance(), 50*COIN);
+   scrobj = wlt->getScrAddrObjByKey(scraddrs[1]);
+   EXPECT_EQ(scrobj->getFullBalance(), 70*COIN);
+   scrobj = wlt->getScrAddrObjByKey(scraddrs[2]);
+   EXPECT_EQ(scrobj->getFullBalance(), 20*COIN);
+   scrobj = wlt->getScrAddrObjByKey(scraddrs[3]);
+   EXPECT_EQ(scrobj->getFullBalance(), 65*COIN);
+
+   //cleanup
+   bdvPtr3.reset();
+   wlt.reset();
+   clients->shutdown();
+   BDMt->shutdown();
 
    delete clients;
    delete BDMt;
@@ -399,9 +523,6 @@ TEST_F(BlockDir, BlockFileSplitUpdate)
 class BlockUtilsFull : public ::testing::Test
 {
 protected:
-   BlockDataManagerThread *theBDMt_;
-   Clients* clients_;
-
    void initBDM(void)
    {
       Armory::Config::reset();
@@ -417,18 +538,15 @@ protected:
          Armory::Config::ProcessType::DB);
 
       DBTestUtils::init();
-            
       theBDMt_ = new BlockDataManagerThread();
       iface_ = theBDMt_->bdm()->getIFace();
 
-      auto nodePtr = dynamic_pointer_cast<NodeUnitTest>(
+      auto nodePtr = std::dynamic_pointer_cast<NodeUnitTest>(
          NetworkSettings::bitcoinNodes().first);
       nodePtr->setBlockchain(theBDMt_->bdm()->blockchain());
       nodePtr->setBlockFiles(theBDMt_->bdm()->blockFiles());
       nodePtr->setIface(iface_);
-
-      auto mockedShutdown = [](void)->void {};
-      clients_ = new Clients(theBDMt_, mockedShutdown);
+      clients_ = new Clients(theBDMt_->bdm());
    }
 
    /////////////////////////////////////////////////////////////////////////////
@@ -437,20 +555,16 @@ protected:
       LOGDISABLESTDOUT();
       zeros_ = READHEX("00000000");
 
-      blkdir_ = string("./blkfiletest");
-      homedir_ = string("./fakehomedir");
-      ldbdir_ = string("./ldbtestdir");
+      FileUtils::removeDirectory(blkdir_);
+      FileUtils::removeDirectory(homedir_);
+      FileUtils::removeDirectory(ldbdir_);
 
-      DBUtils::removeDirectory(blkdir_);
-      DBUtils::removeDirectory(homedir_);
-      DBUtils::removeDirectory(ldbdir_);
-
-      mkdir(blkdir_ + "/blocks");
-      mkdir(homedir_);
-      mkdir(ldbdir_);
+      FileUtils::createDirectory(blkdir_ / "blocks");
+      FileUtils::createDirectory(homedir_);
+      FileUtils::createDirectory(ldbdir_);
 
       // Put the first 5 blocks into the blkdir
-      blk0dat_ = BtcUtils::getBlkFilename(blkdir_ + "/blocks", 0);
+      blk0dat_ = FileUtils::getBlkFilename(blkdir_ / "blocks", 0);
       TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
 
       wallet1id = "wallet1";
@@ -464,75 +578,72 @@ protected:
    /////////////////////////////////////////////////////////////////////////////
    virtual void TearDown(void)
    {
-      if (clients_ != nullptr)
-      {
-         clients_->exitRequestLoop();
+      if (clients_ != nullptr) {
          clients_->shutdown();
       }
+      theBDMt_->shutdown();
 
-      Armory::Config::reset();
       delete clients_;
       delete theBDMt_;
-
-      theBDMt_ = nullptr;
       clients_ = nullptr;
+      theBDMt_ = nullptr;
 
-      DBUtils::removeDirectory(blkdir_);
-      DBUtils::removeDirectory(homedir_);
-      DBUtils::removeDirectory("./ldbtestdir");
-      
-      mkdir("./ldbtestdir");
-
+      FileUtils::removeDirectory(blkdir_);
+      FileUtils::removeDirectory(homedir_);
+      FileUtils::removeDirectory(ldbdir_);
       Armory::Config::reset();
-
-      LOGENABLESTDOUT();
       CLEANUP_ALL_TIMERS();
    }
 
+   BlockDataManagerThread *theBDMt_;
+   Clients* clients_;
    LMDBBlockDatabase* iface_;
    BinaryData zeros_;
 
-   string blkdir_;
-   string homedir_;
-   string ldbdir_;
-   string blk0dat_;
+   std::filesystem::path blkdir_{"./blkfiletest"sv};
+   std::filesystem::path homedir_{"./fakehomedir"sv};
+   std::filesystem::path ldbdir_{"./ldbtestdir"sv};
+   std::filesystem::path blk0dat_;
 
-   string wallet1id;
-   string wallet2id;
-   string LB1ID;
-   string LB2ID;
+   std::string wallet1id;
+   std::string wallet2id;
+   std::string LB1ID;
+   std::string LB2ID;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BlockUtilsFull, Load5Blocks)
 {
+   clients_->init();
    theBDMt_->start(DBSettings::initMode());
-   auto&& bdvID = DBTestUtils::registerBDV(clients_, BitcoinSettings::getMagicBytes());
-   
-   vector<BinaryData> scrAddrVec;
-   scrAddrVec.push_back(TestChain::scrAddrA);
-   scrAddrVec.push_back(TestChain::scrAddrB);
-   scrAddrVec.push_back(TestChain::scrAddrC);
-   scrAddrVec.push_back(TestChain::scrAddrD);
-   scrAddrVec.push_back(TestChain::scrAddrE);
-   scrAddrVec.push_back(TestChain::scrAddrF);
+   auto bdvID = DBTestUtils::registerBDV(
+      clients_, BitcoinSettings::getMagicBytes());
+   std::vector<BinaryData> scrAddrVec {
+      TestChain::scrAddrA,
+      TestChain::scrAddrB,
+      TestChain::scrAddrC,
+      TestChain::scrAddrD,
+      TestChain::scrAddrE,
+      TestChain::scrAddrF
+   };
 
-   const vector<BinaryData> lb1ScrAddrs
-   {
+   const std::vector<BinaryData> lb1ScrAddrs{
       TestChain::lb1ScrAddr,
       TestChain::lb1ScrAddrP2SH
    };
-   const vector<BinaryData> lb2ScrAddrs
-   {
+   const std::vector<BinaryData> lb2ScrAddrs{
       TestChain::lb2ScrAddr,
       TestChain::lb2ScrAddrP2SH
    };
 
-   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1");
-   DBTestUtils::regLockbox(
-      clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID);
-   DBTestUtils::regLockbox(
-      clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID);
+   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
+      false, false);
+   DBTestUtils::registerWallet(
+      clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID,
+      true, false);
+   DBTestUtils::registerWallet(
+      clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID,
+      true, false);
 
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
@@ -582,18 +693,20 @@ TEST_F(BlockUtilsFull, Load5Blocks)
 TEST_F(BlockUtilsFull, Load5Blocks_DamagedBlkFile)
 {
    // this test should be reworked to be in terms of createTestChain.py
-   string path(TestUtils::dataDir + "/botched_block.dat");
-   BtcUtils::copyFile(path.c_str(), blk0dat_);
+   std::filesystem::path path(TestUtils::dataDir / "botched_block.dat");
+   FileUtils::copy(path, blk0dat_);
 
+   clients_->init();
    theBDMt_->start(DBSettings::initMode());
-   auto&& bdvID = DBTestUtils::registerBDV(clients_, BitcoinSettings::getMagicBytes());
+   auto bdvID = DBTestUtils::registerBDV(clients_, BitcoinSettings::getMagicBytes());
 
-   vector<BinaryData> scrAddrVec;
-   scrAddrVec.push_back(TestChain::scrAddrA);
-   scrAddrVec.push_back(TestChain::scrAddrB);
-   scrAddrVec.push_back(TestChain::scrAddrC);
-   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1");
-
+   std::vector<BinaryData> scrAddrVec {
+      TestChain::scrAddrA,
+      TestChain::scrAddrB,
+      TestChain::scrAddrC
+   };
+   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
+      false, false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -608,7 +721,6 @@ TEST_F(BlockUtilsFull, Load5Blocks_DamagedBlkFile)
    EXPECT_EQ(scrObj->getFullBalance(),   0*COIN);
    scrObj = wlt->getScrAddrObjByKey(TestChain::scrAddrC);
    EXPECT_EQ(scrObj->getFullBalance(),  50*COIN);
-
    EXPECT_EQ(wlt->getFullBalance(), 150 * COIN);
 
    //cleanup
@@ -621,33 +733,38 @@ TEST_F(BlockUtilsFull, Load4Blocks_Plus2)
 {
    TestUtils::setBlocks({ "0", "1", "2", "3" }, blk0dat_);
 
+   clients_->init();
    theBDMt_->start(DBSettings::initMode());
-   auto&& bdvID = DBTestUtils::registerBDV(clients_, BitcoinSettings::getMagicBytes());
+   auto bdvID = DBTestUtils::registerBDV(clients_, BitcoinSettings::getMagicBytes());
 
-   vector<BinaryData> scrAddrVec;
-   scrAddrVec.push_back(TestChain::scrAddrA);
-   scrAddrVec.push_back(TestChain::scrAddrB);
-   scrAddrVec.push_back(TestChain::scrAddrC);
-   scrAddrVec.push_back(TestChain::scrAddrD);
-   scrAddrVec.push_back(TestChain::scrAddrE);
-   scrAddrVec.push_back(TestChain::scrAddrF);
+   std::vector<BinaryData> scrAddrVec {
+      TestChain::scrAddrA,
+      TestChain::scrAddrB,
+      TestChain::scrAddrC,
+      TestChain::scrAddrD,
+      TestChain::scrAddrE,
+      TestChain::scrAddrF
+   };
 
-   const vector<BinaryData> lb1ScrAddrs
+   const std::vector<BinaryData> lb1ScrAddrs
    {
       TestChain::lb1ScrAddr,
       TestChain::lb1ScrAddrP2SH
    };
-   const vector<BinaryData> lb2ScrAddrs
+   const std::vector<BinaryData> lb2ScrAddrs
    {
       TestChain::lb2ScrAddr,
       TestChain::lb2ScrAddrP2SH
    };
 
-   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1");
-   DBTestUtils::regLockbox(
-      clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID);
-   DBTestUtils::regLockbox(
-      clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID);
+   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
+      false, false);
+   DBTestUtils::registerWallet(
+      clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID,
+      true, false);
+   DBTestUtils::registerWallet(
+      clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID,
+      true, false);
 
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
@@ -728,36 +845,42 @@ TEST_F(BlockUtilsFull, Load4Blocks_Plus2)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BlockUtilsFull, Load5Blocks_FullReorg)
 {
+   clients_->init();
    theBDMt_->start(DBSettings::initMode());
-   auto&& bdvID = DBTestUtils::registerBDV(clients_, BitcoinSettings::getMagicBytes());
+   auto bdvID = DBTestUtils::registerBDV(clients_, BitcoinSettings::getMagicBytes());
 
-   vector<BinaryData> scrAddrVec;
-   scrAddrVec.push_back(TestChain::scrAddrA);
-   scrAddrVec.push_back(TestChain::scrAddrB);
-   scrAddrVec.push_back(TestChain::scrAddrC);
-   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1");
+   std::vector<BinaryData> scrAddrVec {
+      TestChain::scrAddrA,
+      TestChain::scrAddrB,
+      TestChain::scrAddrC
+   };
+   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
+      false, false);
 
    scrAddrVec.clear();
    scrAddrVec.push_back(TestChain::scrAddrD);
    scrAddrVec.push_back(TestChain::scrAddrE);
    scrAddrVec.push_back(TestChain::scrAddrF);
-   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet2");
+   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet2",
+      false, false);
 
-   const vector<BinaryData> lb1ScrAddrs
+   const std::vector<BinaryData> lb1ScrAddrs
    {
       TestChain::lb1ScrAddr,
       TestChain::lb1ScrAddrP2SH
    };
-   const vector<BinaryData> lb2ScrAddrs
+   const std::vector<BinaryData> lb2ScrAddrs
    {
       TestChain::lb2ScrAddr,
       TestChain::lb2ScrAddrP2SH
    };
 
-   DBTestUtils::regLockbox(
-      clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID);
-   DBTestUtils::regLockbox(
-      clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID);
+   DBTestUtils::registerWallet(
+      clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID,
+      true, false);
+   DBTestUtils::registerWallet(
+      clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID,
+      true, false);
 
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
@@ -810,37 +933,43 @@ TEST_F(BlockUtilsFull, Load5Blocks_FullReorg)
 TEST_F(BlockUtilsFull, Load5Blocks_DoubleReorg)
 {
    TestUtils::setBlocks({ "0", "1", "2", "3", "4A" }, blk0dat_);
-   
-   theBDMt_->start(DBSettings::initMode());
-   auto&& bdvID = DBTestUtils::registerBDV(clients_, BitcoinSettings::getMagicBytes());
 
-   vector<BinaryData> scrAddrVec;
-   scrAddrVec.push_back(TestChain::scrAddrA);
-   scrAddrVec.push_back(TestChain::scrAddrB);
-   scrAddrVec.push_back(TestChain::scrAddrC);
-   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1");
+   clients_->init();
+   theBDMt_->start(DBSettings::initMode());
+   auto bdvID = DBTestUtils::registerBDV(clients_, BitcoinSettings::getMagicBytes());
+
+   std::vector<BinaryData> scrAddrVec {
+      TestChain::scrAddrA,
+      TestChain::scrAddrB,
+      TestChain::scrAddrC
+   };
+   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
+      false, false);
 
    scrAddrVec.clear();
    scrAddrVec.push_back(TestChain::scrAddrD);
    scrAddrVec.push_back(TestChain::scrAddrE);
    scrAddrVec.push_back(TestChain::scrAddrF);
-   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet2");
+   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet2",
+      false, false);
 
-   const vector<BinaryData> lb1ScrAddrs
+   const std::vector<BinaryData> lb1ScrAddrs
    {
       TestChain::lb1ScrAddr,
       TestChain::lb1ScrAddrP2SH
    };
-   const vector<BinaryData> lb2ScrAddrs
+   const std::vector<BinaryData> lb2ScrAddrs
    {
       TestChain::lb2ScrAddr,
       TestChain::lb2ScrAddrP2SH
    };
 
-   DBTestUtils::regLockbox(
-      clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID);
-   DBTestUtils::regLockbox(
-      clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID);
+   DBTestUtils::registerWallet(
+      clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID,
+      true, false);
+   DBTestUtils::registerWallet(
+      clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID,
+      true, false);
 
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
@@ -924,36 +1053,43 @@ TEST_F(BlockUtilsFull, Load5Blocks_DoubleReorg)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BlockUtilsFull, Load5Blocks_ReloadBDM_Reorg)
 {
+   clients_->init();
    theBDMt_->start(DBSettings::initMode());
-   auto&& bdvID = DBTestUtils::registerBDV(clients_, BitcoinSettings::getMagicBytes());
+   auto bdvID = DBTestUtils::registerBDV(clients_, BitcoinSettings::getMagicBytes());
 
-   vector<BinaryData> scrAddrVec;
-   scrAddrVec.push_back(TestChain::scrAddrA);
-   scrAddrVec.push_back(TestChain::scrAddrB);
-   scrAddrVec.push_back(TestChain::scrAddrC);
-   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1");
+   std::vector<BinaryData> scrAddrVec {
+      TestChain::scrAddrA,
+      TestChain::scrAddrB,
+      TestChain::scrAddrC
+   };
+   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
+      false, false);
 
-   vector<BinaryData> scrAddrVec2;
-   scrAddrVec2.push_back(TestChain::scrAddrD);
-   scrAddrVec2.push_back(TestChain::scrAddrE);
-   scrAddrVec2.push_back(TestChain::scrAddrF);
-   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec2, "wallet2");
+   std::vector<BinaryData> scrAddrVec2 {
+      TestChain::scrAddrD,
+      TestChain::scrAddrE,
+      TestChain::scrAddrF
+   };
+   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec2, "wallet2",
+      false, false);
 
-   const vector<BinaryData> lb1ScrAddrs
+   const std::vector<BinaryData> lb1ScrAddrs
    {
       TestChain::lb1ScrAddr,
       TestChain::lb1ScrAddrP2SH
    };
-   const vector<BinaryData> lb2ScrAddrs
+   const std::vector<BinaryData> lb2ScrAddrs
    {
       TestChain::lb2ScrAddr,
       TestChain::lb2ScrAddrP2SH
    };
 
-   DBTestUtils::regLockbox(
-      clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID);
-   DBTestUtils::regLockbox(
-      clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID);
+   DBTestUtils::registerWallet(
+      clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID,
+      true, false);
+   DBTestUtils::registerWallet(
+      clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID,
+      true, false);
 
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
@@ -963,8 +1099,8 @@ TEST_F(BlockUtilsFull, Load5Blocks_ReloadBDM_Reorg)
 
    //shutdown bdm
    bdvPtr.reset();
-   clients_->exitRequestLoop();
    clients_->shutdown();
+   theBDMt_->shutdown();
 
    delete clients_;
    delete theBDMt_;
@@ -975,15 +1111,20 @@ TEST_F(BlockUtilsFull, Load5Blocks_ReloadBDM_Reorg)
    //restart bdm
    initBDM();
 
+   clients_->init();
    theBDMt_->start(DBSettings::initMode());
    bdvID = DBTestUtils::registerBDV(clients_, BitcoinSettings::getMagicBytes());
 
-   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1");
-   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec2, "wallet2");
-   DBTestUtils::regLockbox(
-      clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID);
-   DBTestUtils::regLockbox(
-      clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID);
+   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
+      false, false);
+   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec2, "wallet2",
+      false, false);
+   DBTestUtils::registerWallet(
+      clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID,
+      true, false);
+   DBTestUtils::registerWallet(
+      clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID,
+      true, false);
 
    bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
@@ -1032,30 +1173,33 @@ TEST_F(BlockUtilsFull, CorruptedBlock)
 {
    TestUtils::setBlocks({ "0", "1", "2", "3", "4" }, blk0dat_);
 
+   clients_->init();
    theBDMt_->start(DBSettings::initMode());
-   auto&& bdvID = DBTestUtils::registerBDV(clients_, BitcoinSettings::getMagicBytes());
+   auto bdvID = DBTestUtils::registerBDV(clients_, BitcoinSettings::getMagicBytes());
 
-   vector<BinaryData> scrAddrVec;
-   scrAddrVec.push_back(TestChain::scrAddrA);
-   scrAddrVec.push_back(TestChain::scrAddrB);
-   scrAddrVec.push_back(TestChain::scrAddrC);
-   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1");
+   std::vector<BinaryData> scrAddrVec {
+      TestChain::scrAddrA,
+      TestChain::scrAddrB,
+      TestChain::scrAddrC
+   };
+   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
+      false, false);
 
-   const vector<BinaryData> lb1ScrAddrs
-   {
+   const std::vector<BinaryData> lb1ScrAddrs{
       TestChain::lb1ScrAddr,
       TestChain::lb1ScrAddrP2SH
    };
-   const vector<BinaryData> lb2ScrAddrs
-   {
+   const std::vector<BinaryData> lb2ScrAddrs{
       TestChain::lb2ScrAddr,
       TestChain::lb2ScrAddrP2SH
    };
 
-   DBTestUtils::regLockbox(
-      clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID);
-   DBTestUtils::regLockbox(
-      clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID);
+   DBTestUtils::registerWallet(
+      clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID,
+      true, false);
+   DBTestUtils::registerWallet(
+      clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID,
+      true, false);
 
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
@@ -1068,16 +1212,14 @@ TEST_F(BlockUtilsFull, CorruptedBlock)
 
    {
       TestUtils::appendBlocks({ "4A", "5", "5A" }, blk0dat_);
-      const uint64_t srcsz = BtcUtils::GetFileSize(blk0dat_);
-      BinaryData temp(srcsz);
-      {
-         ifstream is(blk0dat_.c_str(), ios::in  | ios::binary);
+      const uint64_t srcsz = FileUtils::getFileSize(blk0dat_);
+      BinaryData temp(srcsz); {
+         std::ifstream is(blk0dat_.c_str(), std::ios::in | std::ios::binary);
          is.read((char*)temp.getPtr(), srcsz);
       }
 
-      const std::string dst = blk0dat_;
-
-      ofstream os(dst.c_str(), ios::out | ios::binary);
+      const std::filesystem::path dst = blk0dat_;
+      std::ofstream os(dst, std::ios::out | std::ios::binary);
       os.write((char*)temp.getPtr(), 100);
       os.write((char*)temp.getPtr()+120, srcsz-100-20); // erase 20 bytes
    }
@@ -1085,51 +1227,54 @@ TEST_F(BlockUtilsFull, CorruptedBlock)
    DBTestUtils::triggerNewBlockNotification(theBDMt_);
    DBTestUtils::waitOnNewBlockSignal(clients_, bdvID);
 
-   const ScrAddrObj* scrObj;
-   scrObj = wlt->getScrAddrObjByKey(TestChain::scrAddrA);
+   auto scrObj = wlt->getScrAddrObjByKey(TestChain::scrAddrA);
    EXPECT_EQ(scrObj->getFullBalance(), 50*COIN);
    scrObj = wlt->getScrAddrObjByKey(TestChain::scrAddrB);
    EXPECT_EQ(scrObj->getFullBalance(), 70*COIN);
-
    EXPECT_EQ(wlt->getFullBalance(), 140*COIN);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BlockUtilsFull, Load5Blocks_RescanOps)
 {
-   shared_ptr<BtcWallet> wlt;
-   shared_ptr<BtcWallet> wltLB1;
-   shared_ptr<BtcWallet> wltLB2;
+   std::shared_ptr<BtcWallet> wlt;
+   std::shared_ptr<BtcWallet> wltLB1;
+   std::shared_ptr<BtcWallet> wltLB2;
 
    auto startbdm = [&wlt, &wltLB1, &wltLB2, this](BDM_INIT_MODE init)->void
    {
+      clients_->init();
       theBDMt_->start(init);
-      auto&& bdvID = DBTestUtils::registerBDV(clients_, BitcoinSettings::getMagicBytes());
+      auto bdvID = DBTestUtils::registerBDV(clients_, BitcoinSettings::getMagicBytes());
 
-      vector<BinaryData> scrAddrVec;
-      scrAddrVec.push_back(TestChain::scrAddrA);
-      scrAddrVec.push_back(TestChain::scrAddrB);
-      scrAddrVec.push_back(TestChain::scrAddrC);
-      scrAddrVec.push_back(TestChain::scrAddrD);
-      scrAddrVec.push_back(TestChain::scrAddrE);
-      scrAddrVec.push_back(TestChain::scrAddrF);
+      std::vector<BinaryData> scrAddrVec {
+         TestChain::scrAddrA,
+         TestChain::scrAddrB,
+         TestChain::scrAddrC,
+         TestChain::scrAddrD,
+         TestChain::scrAddrE,
+         TestChain::scrAddrF
+      };
 
-      const vector<BinaryData> lb1ScrAddrs
+      const std::vector<BinaryData> lb1ScrAddrs
       {
          TestChain::lb1ScrAddr,
          TestChain::lb1ScrAddrP2SH
       };
-      const vector<BinaryData> lb2ScrAddrs
+      const std::vector<BinaryData> lb2ScrAddrs
       {
          TestChain::lb2ScrAddr,
          TestChain::lb2ScrAddrP2SH
       };
 
-      DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1");
-      DBTestUtils::regLockbox(
-         clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID);
-      DBTestUtils::regLockbox(
-         clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID);
+      DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
+         false, false);
+      DBTestUtils::registerWallet(
+         clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID,
+         true, false);
+      DBTestUtils::registerWallet(
+         clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID,
+         true, false);
 
       auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
@@ -1172,11 +1317,12 @@ TEST_F(BlockUtilsFull, Load5Blocks_RescanOps)
       wltLB1.reset();
       wltLB2.reset();
 
-      clients_->exitRequestLoop();
       clients_->shutdown();
+      theBDMt_->shutdown();
 
       delete clients_;
       delete theBDMt_;
+      std::this_thread::sleep_for(1s);
 
       initBDM();
    };
@@ -1219,39 +1365,41 @@ TEST_F(BlockUtilsFull, Load5Blocks_RescanOps)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BlockUtilsFull, Load5Blocks_RescanEmptyDB)
 {
-   shared_ptr<BtcWallet> wlt;
-   shared_ptr<BtcWallet> wltLB1;
-   shared_ptr<BtcWallet> wltLB2;
+   std::shared_ptr<BtcWallet> wlt;
+   std::shared_ptr<BtcWallet> wltLB1;
+   std::shared_ptr<BtcWallet> wltLB2;
 
    auto startbdm = [&wlt, &wltLB1, &wltLB2, this](BDM_INIT_MODE init)->void
    {
+      clients_->init();
       theBDMt_->start(init);
-      auto&& bdvID = DBTestUtils::registerBDV(clients_, BitcoinSettings::getMagicBytes());
+      auto bdvID = DBTestUtils::registerBDV(clients_, BitcoinSettings::getMagicBytes());
 
-      vector<BinaryData> scrAddrVec;
-      scrAddrVec.push_back(TestChain::scrAddrA);
-      scrAddrVec.push_back(TestChain::scrAddrB);
-      scrAddrVec.push_back(TestChain::scrAddrC);
-      scrAddrVec.push_back(TestChain::scrAddrD);
-      scrAddrVec.push_back(TestChain::scrAddrE);
-      scrAddrVec.push_back(TestChain::scrAddrF);
-
-      const vector<BinaryData> lb1ScrAddrs
-      {
+      std::vector<BinaryData> scrAddrVec {
+         TestChain::scrAddrA,
+         TestChain::scrAddrB,
+         TestChain::scrAddrC,
+         TestChain::scrAddrD,
+         TestChain::scrAddrE,
+         TestChain::scrAddrF
+      };
+      const std::vector<BinaryData> lb1ScrAddrs {
          TestChain::lb1ScrAddr,
          TestChain::lb1ScrAddrP2SH
       };
-      const vector<BinaryData> lb2ScrAddrs
-      {
+      const std::vector<BinaryData> lb2ScrAddrs {
          TestChain::lb2ScrAddr,
          TestChain::lb2ScrAddrP2SH
       };
 
-      DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1");
-      DBTestUtils::regLockbox(
-         clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID);
-      DBTestUtils::regLockbox(
-         clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID);
+      DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
+         false, false);
+      DBTestUtils::registerWallet(
+         clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID,
+         true, false);
+      DBTestUtils::registerWallet(
+         clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID,
+         true, false);
 
       auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
@@ -1296,39 +1444,40 @@ TEST_F(BlockUtilsFull, Load5Blocks_RescanEmptyDB)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BlockUtilsFull, Load5Blocks_RebuildEmptyDB)
 {
-   shared_ptr<BtcWallet> wlt;
-   shared_ptr<BtcWallet> wltLB1;
-   shared_ptr<BtcWallet> wltLB2;
+   std::shared_ptr<BtcWallet> wlt;
+   std::shared_ptr<BtcWallet> wltLB1;
+   std::shared_ptr<BtcWallet> wltLB2;
 
    auto startbdm = [&wlt, &wltLB1, &wltLB2, this](BDM_INIT_MODE init)->void
    {
       theBDMt_->start(init);
       auto&& bdvID = DBTestUtils::registerBDV(clients_, BitcoinSettings::getMagicBytes());
 
-      vector<BinaryData> scrAddrVec;
-      scrAddrVec.push_back(TestChain::scrAddrA);
-      scrAddrVec.push_back(TestChain::scrAddrB);
-      scrAddrVec.push_back(TestChain::scrAddrC);
-      scrAddrVec.push_back(TestChain::scrAddrD);
-      scrAddrVec.push_back(TestChain::scrAddrE);
-      scrAddrVec.push_back(TestChain::scrAddrF);
-
-      const vector<BinaryData> lb1ScrAddrs
-      {
+      std::vector<BinaryData> scrAddrVec {
+         TestChain::scrAddrA,
+         TestChain::scrAddrB,
+         TestChain::scrAddrC,
+         TestChain::scrAddrD,
+         TestChain::scrAddrE,
+         TestChain::scrAddrF
+      };
+      const std::vector<BinaryData> lb1ScrAddrs {
          TestChain::lb1ScrAddr,
          TestChain::lb1ScrAddrP2SH
       };
-      const vector<BinaryData> lb2ScrAddrs
-      {
+      const std::vector<BinaryData> lb2ScrAddrs {
          TestChain::lb2ScrAddr,
          TestChain::lb2ScrAddrP2SH
       };
 
-      DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1");
-      DBTestUtils::regLockbox(
-         clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID);
-      DBTestUtils::regLockbox(
-         clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID);
+      DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
+         false, false);
+      DBTestUtils::registerWallet(
+         clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID,
+         true, false);
+      DBTestUtils::registerWallet(
+         clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID,
+         true, false);
 
       auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
@@ -1373,30 +1522,34 @@ TEST_F(BlockUtilsFull, Load5Blocks_RebuildEmptyDB)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BlockUtilsFull, Load5Blocks_SideScan)
 {
+   clients_->init();
    theBDMt_->start(DBSettings::initMode());
-   auto&& bdvID = DBTestUtils::registerBDV(clients_, BitcoinSettings::getMagicBytes());
+   auto bdvID = DBTestUtils::registerBDV(clients_, BitcoinSettings::getMagicBytes());
 
-   vector<BinaryData> scrAddrVec;
-   scrAddrVec.push_back(TestChain::scrAddrA);
-   scrAddrVec.push_back(TestChain::scrAddrB);
-   scrAddrVec.push_back(TestChain::scrAddrC);
+   std::vector<BinaryData> scrAddrVec {
+      TestChain::scrAddrA,
+      TestChain::scrAddrB,
+      TestChain::scrAddrC
+   };
 
-   const vector<BinaryData> lb1ScrAddrs
-   {
+   const std::vector<BinaryData> lb1ScrAddrs {
       TestChain::lb1ScrAddr,
       TestChain::lb1ScrAddrP2SH
    };
-   const vector<BinaryData> lb2ScrAddrs
+   const std::vector<BinaryData> lb2ScrAddrs
    {
       TestChain::lb2ScrAddr,
       TestChain::lb2ScrAddrP2SH
    };
 
-   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1");
-   DBTestUtils::regLockbox(
-      clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID);
-   DBTestUtils::regLockbox(
-      clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID);
+   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
+      false, false);
+   DBTestUtils::registerWallet(
+      clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID,
+      true, false);
+   DBTestUtils::registerWallet(
+      clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID,
+      true, false);
 
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
@@ -1430,7 +1583,8 @@ TEST_F(BlockUtilsFull, Load5Blocks_SideScan)
    //post-init address registration
    scrAddrVec.clear();
    scrAddrVec.push_back(TestChain::scrAddrD);
-   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1");
+   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
+      false, true);
 
    scrObj = wlt->getScrAddrObjByKey(TestChain::scrAddrA);
    EXPECT_EQ(scrObj->getFullBalance(), 50 * COIN);
@@ -1457,34 +1611,36 @@ TEST_F(BlockUtilsFull, Load5Blocks_SideScan)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BlockUtilsFull, Load5Blocks_GetUtxos)
 {
+   clients_->init();
    theBDMt_->start(DBSettings::initMode());
-   auto&& bdvID = DBTestUtils::registerBDV(clients_, BitcoinSettings::getMagicBytes());
+   auto bdvID = DBTestUtils::registerBDV(clients_, BitcoinSettings::getMagicBytes());
 
-   vector<BinaryData> scrAddrVec;
-   scrAddrVec.push_back(TestChain::scrAddrA);
-   scrAddrVec.push_back(TestChain::scrAddrB);
-   scrAddrVec.push_back(TestChain::scrAddrC);
-   scrAddrVec.push_back(TestChain::scrAddrD);
-   scrAddrVec.push_back(TestChain::scrAddrE);
-   scrAddrVec.push_back(TestChain::scrAddrF);
+   std::vector<BinaryData> scrAddrVec {
+      TestChain::scrAddrA,
+      TestChain::scrAddrB,
+      TestChain::scrAddrC,
+      TestChain::scrAddrD,
+      TestChain::scrAddrE,
+      TestChain::scrAddrF
+   };
 
-   const vector<BinaryData> lb1ScrAddrs
-   {
+   const std::vector<BinaryData> lb1ScrAddrs {
       TestChain::lb1ScrAddr,
       TestChain::lb1ScrAddrP2SH
    };
-   const vector<BinaryData> lb2ScrAddrs
-   {
+   const std::vector<BinaryData> lb2ScrAddrs {
       TestChain::lb2ScrAddr,
       TestChain::lb2ScrAddrP2SH
    };
 
-   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1");
-   DBTestUtils::regLockbox(
-      clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID);
-   DBTestUtils::regLockbox(
-      clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID);
-
+   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
+      false, false);
+   DBTestUtils::registerWallet(
+      clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID,
+      true, false);
+   DBTestUtils::registerWallet(
+      clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID,
+      true, false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -1535,36 +1691,42 @@ TEST_F(BlockUtilsFull, Load5Blocks_GetUtxos)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BlockUtilsFull, Load5Blocks_CheckWalletFilters)
 {
+   clients_->init();
    theBDMt_->start(DBSettings::initMode());
-   auto&& bdvID = DBTestUtils::registerBDV(clients_, BitcoinSettings::getMagicBytes());
+   auto bdvID = DBTestUtils::registerBDV(clients_, BitcoinSettings::getMagicBytes());
 
-   vector<BinaryData> scrAddrVec1, scrAddrVec2;
-   scrAddrVec1.push_back(TestChain::scrAddrA);
-   scrAddrVec1.push_back(TestChain::scrAddrB);
-   scrAddrVec1.push_back(TestChain::scrAddrC);
+   std::vector<BinaryData> scrAddrVec1 {
+      TestChain::scrAddrA,
+      TestChain::scrAddrB,
+      TestChain::scrAddrC
+   };
 
-   scrAddrVec2.push_back(TestChain::scrAddrD);
-   scrAddrVec2.push_back(TestChain::scrAddrE);
-   scrAddrVec2.push_back(TestChain::scrAddrF);
+   std::vector<BinaryData> scrAddrVec2 {
+      TestChain::scrAddrD,
+      TestChain::scrAddrE,
+      TestChain::scrAddrF
+   };
 
-   const vector<BinaryData> lb1ScrAddrs
-   {
+   const std::vector<BinaryData> lb1ScrAddrs {
       TestChain::lb1ScrAddr,
       TestChain::lb1ScrAddrP2SH
    };
-   const vector<BinaryData> lb2ScrAddrs
-   {
+   const std::vector<BinaryData> lb2ScrAddrs {
       TestChain::lb2ScrAddr,
       TestChain::lb2ScrAddrP2SH
    };
 
-   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec1, "wallet1");
-   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec2, "wallet2");
+   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec1, "wallet1",
+      false, false);
+   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec2, "wallet2",
+      false, false);
 
-   DBTestUtils::regLockbox(
-      clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID);
-   DBTestUtils::regLockbox(
-      clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID);
+   DBTestUtils::registerWallet(
+      clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID,
+      true, false);
+   DBTestUtils::registerWallet(
+      clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID,
+      true, false);
 
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
@@ -1576,7 +1738,6 @@ TEST_F(BlockUtilsFull, Load5Blocks_CheckWalletFilters)
    auto wltLB1 = bdvPtr->getWalletOrLockbox(LB1ID);
    auto wltLB2 = bdvPtr->getWalletOrLockbox(LB2ID);
    auto delegateID = DBTestUtils::getLedgerDelegate(clients_, bdvID);
-
 
    const ScrAddrObj* scrObj;
    scrObj = wlt1->getScrAddrObjByKey(TestChain::scrAddrA);
@@ -1606,38 +1767,36 @@ TEST_F(BlockUtilsFull, Load5Blocks_CheckWalletFilters)
    EXPECT_EQ(wltLB1->getFullBalance(), 30 * COIN);
    EXPECT_EQ(wltLB2->getFullBalance(), 30 * COIN);
 
-
    //grab delegate ledger
-   auto&& delegateLedger1 = DBTestUtils::getHistoryPage(clients_, bdvID, delegateID, 0);
+   auto delegateLedger1 = DBTestUtils::getHistoryPage(clients_, bdvID, delegateID, 0);
 
    unsigned wlt1_count = 0, wlt2_count = 0;
-   for (auto& ledger : delegateLedger1)
-   {
-      if (ledger.getID() == "wallet1")
+   for (auto& ledger : delegateLedger1) {
+      if (ledger.getID() == "wallet1") {
          ++wlt1_count;
-      else if (ledger.getID() == "wallet2")
+      } else if (ledger.getID() == "wallet2") {
          ++wlt2_count;
+      }
    }
 
    EXPECT_EQ(wlt1_count, 11U);
    EXPECT_EQ(wlt2_count, 9U);
 
-   vector<string> idVec;
+   std::vector<std::string> idVec;
    idVec.push_back(wallet1id);
    DBTestUtils::updateWalletsLedgerFilter(clients_, bdvID, idVec);
-   BinaryData emptyBD;
-   DBTestUtils::waitOnWalletRefresh(clients_, bdvID, emptyBD);
+   DBTestUtils::waitOnWalletRefresh(clients_, bdvID, {});
 
-   auto&& delegateLedger2 = DBTestUtils::getHistoryPage(clients_, bdvID, delegateID, 0);
+   auto delegateLedger2 = DBTestUtils::getHistoryPage(clients_, bdvID, delegateID, 0);
 
    wlt1_count = 0;
    wlt2_count = 0;
-   for (auto& ledger : delegateLedger2)
-   {
-      if (ledger.getID() == "wallet1")
+   for (auto& ledger : delegateLedger2) {
+      if (ledger.getID() == "wallet1") {
          ++wlt1_count;
-      else if (ledger.getID() == "wallet2")
+      } else if (ledger.getID() == "wallet2") {
          ++wlt2_count;
+      }
    }
 
    EXPECT_EQ(wlt1_count, 11U);
@@ -1648,17 +1807,10 @@ TEST_F(BlockUtilsFull, Load5Blocks_CheckWalletFilters)
 class WebSocketTests_1Way : public ::testing::Test
 {
 protected:
-   BlockDataManagerThread *theBDMt_;
-   Clients* clients_;
-   PassphraseLambda authPeersPassLbd_;
-
    void initBDM(void)
    {
       theBDMt_ = new BlockDataManagerThread();
       iface_ = theBDMt_->bdm()->getIFace();
-
-      auto mockedShutdown = [](void)->void {};
-      clients_ = new Clients(theBDMt_, mockedShutdown);
    }
 
    /////////////////////////////////////////////////////////////////////////////
@@ -1667,22 +1819,18 @@ protected:
       LOGDISABLESTDOUT();
       zeros_ = READHEX("00000000");
 
-      blkdir_ = string("./blkfiletest");
-      homedir_ = string("./fakehomedir");
-      ldbdir_ = string("./ldbtestdir");
+      FileUtils::removeDirectory(blkdir_);
+      FileUtils::removeDirectory(homedir_);
+      FileUtils::removeDirectory(ldbdir_);
 
-      DBUtils::removeDirectory(blkdir_);
-      DBUtils::removeDirectory(homedir_);
-      DBUtils::removeDirectory(ldbdir_);
-
-      mkdir(blkdir_ + "/blocks");
-      mkdir(homedir_);
-      mkdir(ldbdir_);
+      FileUtils::createDirectory(blkdir_ / "blocks");
+      FileUtils::createDirectory(homedir_);
+      FileUtils::createDirectory(ldbdir_);
 
       DBSettings::setServiceType(SERVICE_UNITTEST_WITHWS);
 
       // Put the first 5 blocks into the blkdir
-      blk0dat_ = BtcUtils::getBlkFilename(blkdir_ + "/blocks", 0);
+      blk0dat_ = FileUtils::getBlkFilename(blkdir_ / "blocks", 0);
       TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
 
       Armory::Config::parseArgs({
@@ -1703,151 +1851,154 @@ protected:
       startupBIP150CTX(4);
 
       //setup auth peers for server and client
-      authPeersPassLbd_ = [](const set<EncryptionKeyId>&)->SecureBinaryData
+      authPeersPassLbd_ = [](const std::set<EncryptionKeyId>&)
+      ->Armory::Passphrase::Result
       {
-         return SecureBinaryData();
+         return { {}, true };
       };
 
+      auto createWltLbd = []()->std::unique_ptr<Armory::Passphrase::Params>
+      {
+         return std::make_unique<Armory::Passphrase::Params>(
+            1ms, 0, SecureBinaryData{});
+      };
+
+      AuthorizedPeers::createWallet({
+         homedir_ / SERVER_AUTH_PEER_FILENAME, {createWltLbd}});
       AuthorizedPeers serverPeers(
-         homedir_, SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_);
+         {homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+
+      AuthorizedPeers::createWallet({
+         homedir_ / CLIENT_AUTH_PEER_FILENAME, {createWltLbd}});
       AuthorizedPeers clientPeers(
-         homedir_, CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_);
+         {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_});
 
       //share public keys between client and server
       auto& serverPubkey = serverPeers.getOwnPublicKey();
 
-      stringstream serverAddr;
-      serverAddr << "127.0.0.1:" << NetworkSettings::listenPort();
+      std::stringstream serverAddr;
+      serverAddr << "127.0.0.1:" << NetworkSettings::dbPort();
       clientPeers.addPeer(serverPubkey, serverAddr.str());
-      
+
       serverPubkey_ = BinaryData(serverPubkey.pubkey, 33);
       serverAddr_ = serverAddr.str();
 
       initBDM();
-
-      auto nodePtr = dynamic_pointer_cast<NodeUnitTest>(
+      auto nodePtr = std::dynamic_pointer_cast<NodeUnitTest>(
          NetworkSettings::bitcoinNodes().first);
       nodePtr->setIface(theBDMt_->bdm()->getIFace());
+      hexMagicBytes = BitcoinSettings::getMagicBytes().toHexStr();
    }
 
    /////////////////////////////////////////////////////////////////////////////
    virtual void TearDown(void)
    {
-      if (clients_ != nullptr)
-      {
-         clients_->exitRequestLoop();
-         clients_->shutdown();
-      }
+      WebSocketServer::shutdown();
+      WebSocketServer::waitOnShutdown();
+      theBDMt_->shutdown();
 
-      delete clients_;
       delete theBDMt_;
-
       theBDMt_ = nullptr;
-      clients_ = nullptr;
 
-      DBUtils::removeDirectory(blkdir_);
-      DBUtils::removeDirectory(homedir_);
-      DBUtils::removeDirectory("./ldbtestdir");
-
+      FileUtils::removeDirectory(blkdir_);
+      FileUtils::removeDirectory(homedir_);
+      FileUtils::removeDirectory(ldbdir_);
       Armory::Config::reset();
 
       LOGENABLESTDOUT();
       CLEANUP_ALL_TIMERS();
    }
 
+   BlockDataManagerThread *theBDMt_;
+   Armory::Passphrase::UnlockFunc authPeersPassLbd_;
    LMDBBlockDatabase* iface_;
    BinaryData zeros_;
 
-   string blkdir_;
-   string homedir_;
-   string ldbdir_;
-   string blk0dat_;
+   std::filesystem::path blkdir_{"./blkfiletest"sv};
+   std::filesystem::path homedir_{"./fakehomedir"sv};
+   std::filesystem::path ldbdir_{"./ldbtestdir"sv};
+   std::filesystem::path blk0dat_;
 
-   string wallet1id;
-   string wallet2id;
-   string LB1ID;
-   string LB2ID;
+   std::string wallet1id;
+   std::string wallet2id;
+   std::string LB1ID;
+   std::string LB2ID;
    BinaryData serverPubkey_;
-   string serverAddr_;
+   std::string serverAddr_;
+   std::string hexMagicBytes;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(WebSocketTests_1Way, WebSocketStack)
-{   
+{
    TestUtils::setBlocks({ "0", "1", "2", "3" }, blk0dat_);
 
-   WebSocketServer::initAuthPeers(authPeersPassLbd_);
-   WebSocketServer::start(theBDMt_, true);
+   WebSocketServer::initAuthPeers({
+      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+   WebSocketServer::start(theBDMt_->bdm(), true);
    theBDMt_->start(DBSettings::initMode());
 
-   auto pCallback = make_shared<DBTestUtils::UTCallback>();
-   auto&& bdvObj = AsyncClient::BlockDataViewer::getNewBDV(
-      "127.0.0.1", NetworkSettings::listenPort(), 
-      Armory::Config::getDataDir(),
-      authPeersPassLbd_, 
-      NetworkSettings::ephemeralPeers(), true, //public server
+   auto pCallback = std::make_shared<DBTestUtils::UTCallback>();
+   auto bdvObj = AsyncClient::BlockDataViewer::getNewBDV(
+      "127.0.0.1", NetworkSettings::dbPort(),
+      std::make_shared<AuthorizedPeers>(IO::ReadOnlyFileParams{
+         Armory::Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
+      true, //public server
       pCallback);
    bdvObj->connectToRemote();
-   bdvObj->registerWithDB(BitcoinSettings::getMagicBytes());
+   bdvObj->registerWithDB(hexMagicBytes);
 
-   auto createNAddresses = [](unsigned count)->vector<BinaryData>
+   auto createNAddresses = [](unsigned count)->std::vector<BinaryData>
    {
-      vector<BinaryData> result;
+      std::vector<BinaryData> result;
+      result.reserve(count);
+      for (unsigned i = 0; i < count; i++) {
+         auto addrData = CryptoPRNG::generateRandom(20);
 
-      for (unsigned i = 0; i < count; i++)
-      {
          BinaryWriter bw;
          bw.put_uint8_t(SCRIPT_PREFIX_HASH160);
-
-         auto&& addrData = CryptoPRNG::generateRandom(20);
          bw.put_BinaryData(addrData);
-
-         result.push_back(bw.getData());
+         result.emplace_back(bw.getData());
       }
-
       return result;
    };
 
-   auto&& scrAddrVec = createNAddresses(2000);
+   auto scrAddrVec = createNAddresses(2000);
    scrAddrVec.push_back(TestChain::scrAddrA);
    scrAddrVec.push_back(TestChain::scrAddrB);
    scrAddrVec.push_back(TestChain::scrAddrC);
    scrAddrVec.push_back(TestChain::scrAddrE);
 
-   const vector<BinaryData> lb1ScrAddrs
+   const std::vector<BinaryData> lb1ScrAddrs
    {
       TestChain::lb1ScrAddr,
       TestChain::lb1ScrAddrP2SH
    };
-   const vector<BinaryData> lb2ScrAddrs
+   const std::vector<BinaryData> lb2ScrAddrs
    {
       TestChain::lb2ScrAddr,
       TestChain::lb2ScrAddrP2SH
    };
 
-   vector<string> walletRegIDs;
+   std::vector<std::string> walletRegIDs {
+      "wallet1", "lb1", "lb2"
+   };
 
-   auto&& wallet1 = bdvObj->instantiateWallet("wallet1");
-   walletRegIDs.push_back(
-      wallet1.registerAddresses(scrAddrVec, false));
+   auto wallet1 = bdvObj->getWalletObj("wallet1");
+   wallet1.registerAddresses(scrAddrVec, false);
 
-   auto&& lb1 = bdvObj->instantiateLockbox("lb1");
-   walletRegIDs.push_back(
-      lb1.registerAddresses(lb1ScrAddrs, false));
+   auto lb1 = bdvObj->getLockboxObj("lb1");
+   lb1.registerAddresses(lb1ScrAddrs, false);
 
-   auto&& lb2 = bdvObj->instantiateLockbox("lb2");
-   walletRegIDs.push_back(
-      lb2.registerAddresses(lb2ScrAddrs, false));
-
-   //wait on registration ack
-   pCallback->waitOnManySignals(BDMAction_Refresh, walletRegIDs);
+   auto lb2 = bdvObj->getLockboxObj("lb2");
+   lb2.registerAddresses(lb2ScrAddrs, false);
 
    //go online
    bdvObj->goOnline();
    pCallback->waitOnSignal(BDMAction_Ready);
 
-   auto w1AddrBalances = DBTestUtils::getAddrBalancesFromDB(wallet1);
-   vector<uint64_t> balanceVec;
+   auto w1AddrBalances = DBTestUtils::getAddrBalancesFromDB(bdvObj, "wallet1");
+   std::vector<uint64_t> balanceVec;
    balanceVec = w1AddrBalances[TestChain::scrAddrA];
    EXPECT_EQ(balanceVec[0], 50 * COIN);
    balanceVec = w1AddrBalances[TestChain::scrAddrB];
@@ -1863,13 +2014,13 @@ TEST_F(WebSocketTests_1Way, WebSocketStack)
    EXPECT_EQ(spendableBalance, 65 * COIN);
    EXPECT_EQ(unconfirmedBalance, 165 * COIN);
 
-   auto lb1AddrBalances = DBTestUtils::getAddrBalancesFromDB(lb1);
+   auto lb1AddrBalances = DBTestUtils::getAddrBalancesFromDB(bdvObj, "lb1");
    balanceVec = lb1AddrBalances[TestChain::lb1ScrAddr];
    EXPECT_EQ(balanceVec[0], 10 * COIN);
    balanceVec = lb1AddrBalances[TestChain::lb1ScrAddrP2SH];
-   EXPECT_EQ(balanceVec.size(), 0ULL);
+   EXPECT_EQ(balanceVec[0], 0);
 
-   auto lb2AddrBalances = DBTestUtils::getAddrBalancesFromDB(lb2);
+   auto lb2AddrBalances = DBTestUtils::getAddrBalancesFromDB(bdvObj, "lb2");
    balanceVec = lb2AddrBalances[TestChain::lb2ScrAddr];
    EXPECT_EQ(balanceVec[0], 10 * COIN);
    balanceVec = lb2AddrBalances[TestChain::lb2ScrAddrP2SH];
@@ -1882,35 +2033,34 @@ TEST_F(WebSocketTests_1Way, WebSocketStack)
    EXPECT_EQ(lb2Balances[0], 15 * COIN);
 
    //add ZC
-   string zcPath(TestUtils::dataDir + "/ZCtx.tx");
+   std::filesystem::path zcPath(TestUtils::dataDir / "ZCtx.tx");
    BinaryData rawZC(TestChain::zcTxSize);
-   FILE *ff = fopen(zcPath.c_str(), "rb");
-   fread(rawZC.getPtr(), TestChain::zcTxSize, 1, ff);
-   fclose(ff);
+   std::ifstream zcStream(zcPath, std::ios::in | std::ios::binary);
+   zcStream.read(rawZC.getCharPtr(), TestChain::zcTxSize);
+   zcStream.close();
 
-   string lbPath(TestUtils::dataDir + "/LBZC.tx");
+   std::filesystem::path lbPath(TestUtils::dataDir / "LBZC.tx");
    BinaryData rawLBZC(TestChain::lbZCTxSize);
-   FILE *flb = fopen(lbPath.c_str(), "rb");
-   fread(rawLBZC.getPtr(), TestChain::lbZCTxSize, 1, flb);
-   fclose(flb);
+   std::ifstream lbStream(lbPath, std::ios::in | std::ios::binary);
+   lbStream.read(rawLBZC.getCharPtr(), TestChain::lbZCTxSize);
+   lbStream.close();
 
    DBTestUtils::ZcVector zcVec;
    zcVec.push_back(rawZC, 14000000);
    zcVec.push_back(rawLBZC, 14100000);
 
-   vector<string> hashVec;
+   std::vector<std::string> hashVec;
    auto hash1 = BtcUtils::getHash256(rawZC);
    auto hash2 = BtcUtils::getHash256(rawLBZC);
-   hashVec.push_back(string(hash1.getCharPtr(), hash1.getSize()));
-   hashVec.push_back(string(hash2.getCharPtr(), hash2.getSize()));
+   hashVec.push_back(hash1.toHexStr());
+   hashVec.push_back(hash2.toHexStr());
 
    DBTestUtils::pushNewZc(theBDMt_, zcVec);
    pCallback->waitOnManySignals(BDMAction_ZC, hashVec);
 
-   w1AddrBalances = DBTestUtils::getAddrBalancesFromDB(wallet1);
+   w1AddrBalances = DBTestUtils::getAddrBalancesFromDB(bdvObj, "wallet1");
    balanceVec = w1AddrBalances[TestChain::scrAddrA];
-   //value didn't change, shouldnt be getting a balance vector for this address
-   EXPECT_EQ(balanceVec.size(), 0ULL);
+   EXPECT_EQ(balanceVec[0], 50 * COIN);
    balanceVec = w1AddrBalances[TestChain::scrAddrB];
    EXPECT_EQ(balanceVec[0], 20 * COIN);
    balanceVec = w1AddrBalances[TestChain::scrAddrC];
@@ -1924,17 +2074,17 @@ TEST_F(WebSocketTests_1Way, WebSocketStack)
    EXPECT_EQ(spendableBalance, 35 * COIN);
    EXPECT_EQ(unconfirmedBalance, 165 * COIN);
 
-   lb1AddrBalances = DBTestUtils::getAddrBalancesFromDB(lb1);
+   lb1AddrBalances = DBTestUtils::getAddrBalancesFromDB(bdvObj, "lb1");
    balanceVec = lb1AddrBalances[TestChain::lb1ScrAddr];
    EXPECT_EQ(balanceVec[0], 5 * COIN);
    balanceVec = lb1AddrBalances[TestChain::lb1ScrAddrP2SH];
-   EXPECT_EQ(balanceVec.size(), 0ULL);
+   EXPECT_EQ(balanceVec[0], 0);
 
-   lb2AddrBalances = DBTestUtils::getAddrBalancesFromDB(lb2);
+   lb2AddrBalances = DBTestUtils::getAddrBalancesFromDB(bdvObj, "lb2");
    balanceVec = lb2AddrBalances[TestChain::lb2ScrAddr];
-   EXPECT_EQ(balanceVec.size(), 0ULL);
+   EXPECT_EQ(balanceVec[0], 10 * COIN);
    balanceVec = lb2AddrBalances[TestChain::lb2ScrAddrP2SH];
-   EXPECT_EQ(balanceVec.size(), 0ULL);
+   EXPECT_EQ(balanceVec[0], 5 * COIN);
 
    lb1Balances = DBTestUtils::getBalancesAndCount(lb1, 4);
    EXPECT_EQ(lb1Balances[0], 5 * COIN);
@@ -1943,14 +2093,14 @@ TEST_F(WebSocketTests_1Way, WebSocketStack)
    EXPECT_EQ(lb2Balances[0], 15 * COIN);
 
    //
-   TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
+   TestUtils::appendBlocks({ "4", "5" }, blk0dat_);
+   std::this_thread::sleep_for(1s);
    DBTestUtils::triggerNewBlockNotification(theBDMt_);
    pCallback->waitOnSignal(BDMAction_NewBlock);
 
-   w1AddrBalances = DBTestUtils::getAddrBalancesFromDB(wallet1);
+   w1AddrBalances = DBTestUtils::getAddrBalancesFromDB(bdvObj, "wallet1");
    balanceVec = w1AddrBalances[TestChain::scrAddrA];
-   //value didn't change, shouldnt be getting a balance vector for this address
-   EXPECT_EQ(balanceVec.size(), 0ULL);
+   EXPECT_EQ(balanceVec[0], 50 * COIN);
    balanceVec = w1AddrBalances[TestChain::scrAddrB];
    EXPECT_EQ(balanceVec[0], 70 * COIN);
    balanceVec = w1AddrBalances[TestChain::scrAddrC];
@@ -1964,13 +2114,13 @@ TEST_F(WebSocketTests_1Way, WebSocketStack)
    EXPECT_EQ(spendableBalance, 70 * COIN);
    EXPECT_EQ(unconfirmedBalance, 170 * COIN);
 
-   lb1AddrBalances = DBTestUtils::getAddrBalancesFromDB(lb1);
+   lb1AddrBalances = DBTestUtils::getAddrBalancesFromDB(bdvObj, "lb1");
    balanceVec = lb1AddrBalances[TestChain::lb1ScrAddr];
    EXPECT_EQ(balanceVec[0], 5 * COIN);
    balanceVec = lb1AddrBalances[TestChain::lb1ScrAddrP2SH];
    EXPECT_EQ(balanceVec[0], 25 * COIN);
 
-   lb2AddrBalances = DBTestUtils::getAddrBalancesFromDB(lb2);
+   lb2AddrBalances = DBTestUtils::getAddrBalancesFromDB(bdvObj, "lb2");
    balanceVec = lb2AddrBalances[TestChain::lb2ScrAddr];
    EXPECT_EQ(balanceVec[0], 30 * COIN);
    balanceVec = lb2AddrBalances[TestChain::lb2ScrAddrP2SH];
@@ -1983,10 +2133,8 @@ TEST_F(WebSocketTests_1Way, WebSocketStack)
    EXPECT_EQ(lb2Balances[0], 30 * COIN);
 
    //set wallet unconfirmed balance target to 2 blocks
-   auto&& confId = wallet1.setUnconfirmedTarget(2);
-   vector<string> confIdVec;
-   confIdVec.push_back(confId);
-   pCallback->waitOnManySignals(BDMAction_Refresh, confIdVec);
+   wallet1.setUnconfirmedTarget(2);
+   pCallback->waitOnManySignals(BDMAction_Refresh, {"wallet1"});
 
    //check new wallet balances
    w1Balances = DBTestUtils::getBalancesAndCount(wallet1, 5);
@@ -1997,49 +2145,45 @@ TEST_F(WebSocketTests_1Way, WebSocketStack)
    EXPECT_EQ(spendableBalance, 70 * COIN);
    EXPECT_EQ(unconfirmedBalance, 130 * COIN);
 
-
    //check rekey count
    auto rekeyCount = bdvObj->getRekeyCount();
-
-   EXPECT_EQ(rekeyCount.first, 2U);
-   EXPECT_EQ(rekeyCount.second, 1U);
+   EXPECT_EQ(rekeyCount.first, 3U);
+   EXPECT_GE(rekeyCount.second, 10U);
 
    //cleanup
-   bdvObj->shutdown(NetworkSettings::cookie());
-
+   WebSocketServer::shutdown();
    WebSocketServer::waitOnShutdown();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(WebSocketTests_1Way, WebSocketStack_Reconnect)
 {
-   //
    TestUtils::setBlocks({ "0", "1", "2", "3" }, blk0dat_);
 
-   auto&& firstHash = READHEX("b6b6f145742a9072fd85f96772e63a00eb4101709aa34ec5dd59e8fc904191a7");
+   auto firstHash = READHEX("b6b6f145742a9072fd85f96772e63a00eb4101709aa34ec5dd59e8fc904191a7");
    theBDMt_ = new BlockDataManagerThread();
-   WebSocketServer::initAuthPeers(authPeersPassLbd_);
-   WebSocketServer::start(theBDMt_, true);
+   WebSocketServer::initAuthPeers({
+      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+   WebSocketServer::start(theBDMt_->bdm(), true);
 
 
-   auto pubkeyPrompt = [this](const BinaryData& pubkey, const string& name)->bool
+   auto pubkeyPrompt = [this](const BinaryData& pubkey, const std::string& name)->bool
    {
-      if (pubkey != serverPubkey_ || name != serverAddr_)
+      if (pubkey != serverPubkey_ || name != serverAddr_) {
          return false;
-
+      }
       return true;
    };
 
-   auto createNAddresses = [](unsigned count)->vector<BinaryData>
+   auto createNAddresses = [](unsigned count)->std::vector<BinaryData>
    {
-      vector<BinaryData> result;
+      std::vector<BinaryData> result;
 
-      for (unsigned i = 0; i < count; i++)
-      {
+      for (unsigned i = 0; i < count; i++) {
          BinaryWriter bw;
          bw.put_uint8_t(SCRIPT_PREFIX_HASH160);
 
-         auto&& addrData = CryptoPRNG::generateRandom(20);
+         auto addrData = CryptoPRNG::generateRandom(20);
          bw.put_BinaryData(addrData);
 
          result.push_back(bw.getData());
@@ -2048,59 +2192,53 @@ TEST_F(WebSocketTests_1Way, WebSocketStack_Reconnect)
       return result;
    };
 
-   auto&& scrAddrVec = createNAddresses(2000);
+   auto scrAddrVec = createNAddresses(2000);
    theBDMt_->start(DBSettings::initMode());
 
    {
-      auto pCallback = make_shared<DBTestUtils::UTCallback>();
-      auto&& bdvObj = AsyncClient::BlockDataViewer::getNewBDV(
-         "127.0.0.1", NetworkSettings::listenPort(), 
-         Armory::Config::getDataDir(),
-         authPeersPassLbd_, 
-         true, true, //public server
+      auto pCallback = std::make_shared<DBTestUtils::UTCallback>();
+      auto bdvObj = AsyncClient::BlockDataViewer::getNewBDV(
+         "127.0.0.1", NetworkSettings::dbPort(),
+         std::make_shared<AuthorizedPeers>(IO::ReadOnlyFileParams{
+            Armory::Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
+         true, //public server
          pCallback);
       bdvObj->setCheckServerKeyPromptLambda(pubkeyPrompt);
       bdvObj->connectToRemote();
-      bdvObj->registerWithDB(BitcoinSettings::getMagicBytes());
+      bdvObj->registerWithDB(hexMagicBytes);
 
       scrAddrVec.push_back(TestChain::scrAddrA);
       scrAddrVec.push_back(TestChain::scrAddrB);
       scrAddrVec.push_back(TestChain::scrAddrC);
       scrAddrVec.push_back(TestChain::scrAddrE);
 
-      const vector<BinaryData> lb1ScrAddrs
-      {
+      const std::vector<BinaryData> lb1ScrAddrs {
          TestChain::lb1ScrAddr,
          TestChain::lb1ScrAddrP2SH
       };
-      const vector<BinaryData> lb2ScrAddrs
-      {
+      const std::vector<BinaryData> lb2ScrAddrs {
          TestChain::lb2ScrAddr,
          TestChain::lb2ScrAddrP2SH
       };
 
-      vector<string> walletRegIDs;
-      auto&& wallet1 = bdvObj->instantiateWallet("wallet1");
-      walletRegIDs.push_back(
-         wallet1.registerAddresses(scrAddrVec, false));
+      std::vector<std::string> walletRegIDs {
+         "wallet1", "lb1", "lb2"
+      };
+      auto wallet1 = bdvObj->getWalletObj("wallet1");
+      wallet1.registerAddresses(scrAddrVec, false);
 
-      auto&& lb1 = bdvObj->instantiateLockbox("lb1");
-      walletRegIDs.push_back(
-         lb1.registerAddresses(lb1ScrAddrs, false));
+      auto lb1 = bdvObj->getLockboxObj("lb1");
+      lb1.registerAddresses(lb1ScrAddrs, false);
 
-      auto&& lb2 = bdvObj->instantiateLockbox("lb2");
-      walletRegIDs.push_back(
-         lb2.registerAddresses(lb2ScrAddrs, false));
-
-      //wait on registration ack
-      pCallback->waitOnManySignals(BDMAction_Refresh, walletRegIDs);
+      auto lb2 = bdvObj->getLockboxObj("lb2");
+      lb2.registerAddresses(lb2ScrAddrs, false);
 
       //go online
       bdvObj->goOnline();
       pCallback->waitOnSignal(BDMAction_Ready);
 
-      auto w1AddrBalances = DBTestUtils::getAddrBalancesFromDB(wallet1);
-      vector<uint64_t> balanceVec;
+      auto w1AddrBalances = DBTestUtils::getAddrBalancesFromDB(bdvObj, "wallet1");
+      std::vector<uint64_t> balanceVec;
       balanceVec = w1AddrBalances[TestChain::scrAddrA];
       EXPECT_EQ(balanceVec[0], 50 * COIN);
       balanceVec = w1AddrBalances[TestChain::scrAddrB];
@@ -2116,13 +2254,17 @@ TEST_F(WebSocketTests_1Way, WebSocketStack_Reconnect)
       EXPECT_EQ(spendableBalance, 65 * COIN);
       EXPECT_EQ(unconfirmedBalance, 165 * COIN);
 
-      auto lb1AddrBalances = DBTestUtils::getAddrBalancesFromDB(lb1);
+      auto lb1AddrBalances = DBTestUtils::getAddrBalancesFromDB(bdvObj, "lb1");
       balanceVec = lb1AddrBalances[TestChain::lb1ScrAddr];
       EXPECT_EQ(balanceVec[0], 10 * COIN);
       balanceVec = lb1AddrBalances[TestChain::lb1ScrAddrP2SH];
-      EXPECT_EQ(balanceVec.size(), 0ULL);
+      EXPECT_EQ(balanceVec.size(), 4ULL);
+      EXPECT_EQ(balanceVec[0], 0ULL);
+      EXPECT_EQ(balanceVec[1], 0ULL);
+      EXPECT_EQ(balanceVec[2], 0ULL);
+      EXPECT_EQ(balanceVec[3], 2ULL);
 
-      auto lb2AddrBalances = DBTestUtils::getAddrBalancesFromDB(lb2);
+      auto lb2AddrBalances = DBTestUtils::getAddrBalancesFromDB(bdvObj, "lb2");
       balanceVec = lb2AddrBalances[TestChain::lb2ScrAddr];
       EXPECT_EQ(balanceVec[0], 10 * COIN);
       balanceVec = lb2AddrBalances[TestChain::lb2ScrAddrP2SH];
@@ -2139,10 +2281,9 @@ TEST_F(WebSocketTests_1Way, WebSocketStack_Reconnect)
       DBTestUtils::triggerNewBlockNotification(theBDMt_);
       pCallback->waitOnSignal(BDMAction_NewBlock);
 
-      w1AddrBalances = DBTestUtils::getAddrBalancesFromDB(wallet1);
+      w1AddrBalances = DBTestUtils::getAddrBalancesFromDB(bdvObj, "wallet1");
       balanceVec = w1AddrBalances[TestChain::scrAddrA];
-      //value didn't change, shouldnt be getting a balance vector for this address
-      EXPECT_EQ(balanceVec.size(), 0ULL);
+      EXPECT_EQ(balanceVec[0], 50 * COIN);
       balanceVec = w1AddrBalances[TestChain::scrAddrB];
       EXPECT_EQ(balanceVec[0], 70 * COIN);
       balanceVec = w1AddrBalances[TestChain::scrAddrC];
@@ -2156,13 +2297,13 @@ TEST_F(WebSocketTests_1Way, WebSocketStack_Reconnect)
       EXPECT_EQ(spendableBalance, 70 * COIN);
       EXPECT_EQ(unconfirmedBalance, 170 * COIN);
 
-      lb1AddrBalances = DBTestUtils::getAddrBalancesFromDB(lb1);
+      lb1AddrBalances = DBTestUtils::getAddrBalancesFromDB(bdvObj, "lb1");
       balanceVec = lb1AddrBalances[TestChain::lb1ScrAddr];
       EXPECT_EQ(balanceVec[0], 5 * COIN);
       balanceVec = lb1AddrBalances[TestChain::lb1ScrAddrP2SH];
       EXPECT_EQ(balanceVec[0], 25 * COIN);
 
-      lb2AddrBalances = DBTestUtils::getAddrBalancesFromDB(lb2);
+      lb2AddrBalances = DBTestUtils::getAddrBalancesFromDB(bdvObj, "lb2");
       balanceVec = lb2AddrBalances[TestChain::lb2ScrAddr];
       EXPECT_EQ(balanceVec[0], 30 * COIN);
       balanceVec = lb2AddrBalances[TestChain::lb2ScrAddrP2SH];
@@ -2177,54 +2318,45 @@ TEST_F(WebSocketTests_1Way, WebSocketStack_Reconnect)
       bdvObj->unregisterFromDB();
    }
 
-   for (int i = 0; i < 10; i++)
-   {
-      cout << ".iter " << i << endl;
+   for (int i = 0; i < 10; i++) {
+      std::cout << ".iter " << i << std::endl;
 
-      auto pCallback = make_shared<DBTestUtils::UTCallback>();
-      auto&& bdvObj = AsyncClient::BlockDataViewer::getNewBDV(
-         "127.0.0.1", NetworkSettings::listenPort(), 
-         Armory::Config::getDataDir(),
-         authPeersPassLbd_, 
-         true, true, //public server
+      auto pCallback = std::make_shared<DBTestUtils::UTCallback>();
+      auto bdvObj = AsyncClient::BlockDataViewer::getNewBDV(
+         "127.0.0.1", NetworkSettings::dbPort(),
+         std::make_shared<AuthorizedPeers>(IO::ReadOnlyFileParams{
+            Armory::Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
+         true, //public server
          pCallback);
       bdvObj->setCheckServerKeyPromptLambda(pubkeyPrompt);
       bdvObj->connectToRemote();
-      bdvObj->registerWithDB(BitcoinSettings::getMagicBytes());
+      bdvObj->registerWithDB(hexMagicBytes);
 
-      const vector<BinaryData> lb1ScrAddrs
+      const std::vector<BinaryData> lb1ScrAddrs
       {
          TestChain::lb1ScrAddr,
          TestChain::lb1ScrAddrP2SH
       };
-      const vector<BinaryData> lb2ScrAddrs
+      const std::vector<BinaryData> lb2ScrAddrs
       {
          TestChain::lb2ScrAddr,
          TestChain::lb2ScrAddrP2SH
       };
 
-      vector<string> walletRegIDs;
+      auto wallet1 = bdvObj->getWalletObj("wallet1");
+      wallet1.registerAddresses(scrAddrVec, false);
 
-      auto&& wallet1 = bdvObj->instantiateWallet("wallet1");
-      walletRegIDs.push_back(
-         wallet1.registerAddresses(scrAddrVec, false));
+      auto lb1 = bdvObj->getLockboxObj("lb1");
+      lb1.registerAddresses(lb1ScrAddrs, false);
 
-      auto&& lb1 = bdvObj->instantiateLockbox("lb1");
-      walletRegIDs.push_back(
-         lb1.registerAddresses(lb1ScrAddrs, false));
-
-      auto&& lb2 = bdvObj->instantiateLockbox("lb2");
-      walletRegIDs.push_back(
-         lb2.registerAddresses(lb2ScrAddrs, false));
-
-      //wait on registration ack
-      pCallback->waitOnManySignals(BDMAction_Refresh, walletRegIDs);
+      auto lb2 = bdvObj->getLockboxObj("lb2");
+      lb2.registerAddresses(lb2ScrAddrs, false);
 
       //go online
       bdvObj->goOnline();
       pCallback->waitOnSignal(BDMAction_Ready);
 
-      auto w1AddrBalances = DBTestUtils::getAddrBalancesFromDB(wallet1);
+      auto w1AddrBalances = DBTestUtils::getAddrBalancesFromDB(bdvObj, "wallet1");
       auto balanceVec = w1AddrBalances[TestChain::scrAddrA];
       EXPECT_EQ(balanceVec[0], 50 * COIN);
       balanceVec = w1AddrBalances[TestChain::scrAddrB];
@@ -2240,17 +2372,17 @@ TEST_F(WebSocketTests_1Way, WebSocketStack_Reconnect)
       EXPECT_EQ(spendableBalance, 70 * COIN);
       EXPECT_EQ(unconfirmedBalance, 170 * COIN);
 
-      auto lb1AddrBalances = DBTestUtils::getAddrBalancesFromDB(lb1);
+      auto lb1AddrBalances = DBTestUtils::getAddrBalancesFromDB(bdvObj, "lb1");
       balanceVec = lb1AddrBalances[TestChain::lb1ScrAddr];
       EXPECT_EQ(balanceVec[0], 5 * COIN);
       balanceVec = lb1AddrBalances[TestChain::lb1ScrAddrP2SH];
       EXPECT_EQ(balanceVec[0], 25 * COIN);
 
-      auto lb2AddrBalances = DBTestUtils::getAddrBalancesFromDB(lb2);
+      auto lb2AddrBalances = DBTestUtils::getAddrBalancesFromDB(bdvObj, "lb2");
       balanceVec = lb2AddrBalances[TestChain::lb2ScrAddr];
       EXPECT_EQ(balanceVec[0], 30 * COIN);
       balanceVec = lb2AddrBalances[TestChain::lb2ScrAddrP2SH];
-      EXPECT_EQ(balanceVec.size(), 0ULL);
+      EXPECT_EQ(balanceVec[0], 0 * COIN);
 
       auto lb1Balances = DBTestUtils::getBalancesAndCount(lb1, 5);
       EXPECT_EQ(lb1Balances[0], 30 * COIN);
@@ -2271,13 +2403,7 @@ TEST_F(WebSocketTests_1Way, WebSocketStack_Reconnect)
       bdvObj->unregisterFromDB();
    }
 
-   auto&& bdvObj2 = AsyncClient::BlockDataViewer::getNewBDV(
-      "127.0.0.1", NetworkSettings::listenPort(), Armory::Config::getDataDir(),
-     authPeersPassLbd_, true, true, nullptr);
-   bdvObj2->setCheckServerKeyPromptLambda(pubkeyPrompt);
-   bdvObj2->connectToRemote();
-
-   bdvObj2->shutdown(NetworkSettings::cookie());
+   WebSocketServer::shutdown();
    WebSocketServer::waitOnShutdown();
 }
 
@@ -2286,16 +2412,12 @@ class WebSocketTests_2Way : public ::testing::Test
 {
 protected:
    BlockDataManagerThread *theBDMt_;
-   Clients* clients_;
-   PassphraseLambda authPeersPassLbd_;
+   Armory::Passphrase::UnlockFunc authPeersPassLbd_;
 
    void initBDM(void)
    {
       theBDMt_ = new BlockDataManagerThread();
       iface_ = theBDMt_->bdm()->getIFace();
-
-      auto mockedShutdown = [](void)->void {};
-      clients_ = new Clients(theBDMt_, mockedShutdown);
    }
 
    /////////////////////////////////////////////////////////////////////////////
@@ -2304,22 +2426,18 @@ protected:
       LOGDISABLESTDOUT();
       zeros_ = READHEX("00000000");
 
-      blkdir_ = string("./blkfiletest");
-      homedir_ = string("./fakehomedir");
-      ldbdir_ = string("./ldbtestdir");
+      FileUtils::removeDirectory(blkdir_);
+      FileUtils::removeDirectory(homedir_);
+      FileUtils::removeDirectory(ldbdir_);
 
-      DBUtils::removeDirectory(blkdir_);
-      DBUtils::removeDirectory(homedir_);
-      DBUtils::removeDirectory(ldbdir_);
-
-      mkdir(blkdir_ + "/blocks");
-      mkdir(homedir_);
-      mkdir(ldbdir_);
+      FileUtils::createDirectory(blkdir_ / "blocks");
+      FileUtils::createDirectory(homedir_);
+      FileUtils::createDirectory(ldbdir_);
 
       DBSettings::setServiceType(SERVICE_UNITTEST_WITHWS);
 
       // Put the first 5 blocks into the blkdir
-      blk0dat_ = BtcUtils::getBlkFilename(blkdir_ + "/blocks", 0);
+      blk0dat_ = FileUtils::getBlkFilename(blkdir_ / "blocks", 0);
       TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
 
       Armory::Config::parseArgs({
@@ -2339,31 +2457,45 @@ protected:
       startupBIP150CTX(4);
 
       //setup auth peers for server and client
-      authPeersPassLbd_ = [](const set<EncryptionKeyId>&)->SecureBinaryData
+      authPeersPassLbd_ = [](const std::set<EncryptionKeyId>&)
+      ->Armory::Passphrase::Result
       {
-         return SecureBinaryData();
+         return { {}, true };
       };
 
+      auto createWltLbd = []()->std::unique_ptr<Armory::Passphrase::Params>
+      {
+         return std::make_unique<Armory::Passphrase::Params>(
+            1ms, 0, SecureBinaryData{});
+      };
+
+      AuthorizedPeers::createWallet({
+         homedir_ / SERVER_AUTH_PEER_FILENAME, {createWltLbd}});
       AuthorizedPeers serverPeers(
-         homedir_, SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_);
+         {homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+
+      AuthorizedPeers::createWallet({
+         homedir_ / CLIENT_AUTH_PEER_FILENAME, {createWltLbd}});
       AuthorizedPeers clientPeers(
-         homedir_, CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_);
+         {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_});
 
       //share public keys between client and server
       auto& serverPubkey = serverPeers.getOwnPublicKey();
       auto& clientPubkey = clientPeers.getOwnPublicKey();
 
-      stringstream serverAddr;
-      serverAddr << "127.0.0.1:" << NetworkSettings::listenPort();
+      std::stringstream serverAddr;
+      serverAddr << "127.0.0.1:" << NetworkSettings::dbPort();
       clientPeers.addPeer(serverPubkey, serverAddr.str());
       serverPeers.addPeer(clientPubkey, "127.0.0.1");
-      
+      serverPeers.setMasterKey(clientPubkey);
+
       serverPubkey_ = BinaryData(serverPubkey.pubkey, 33);
       serverAddr_ = serverAddr.str();
 
       initBDM();
+      hexMagicBytes = BitcoinSettings::getMagicBytes().toHexStr();
 
-      auto nodePtr = dynamic_pointer_cast<NodeUnitTest>(
+      auto nodePtr = std::dynamic_pointer_cast<NodeUnitTest>(
          NetworkSettings::bitcoinNodes().first);
       nodePtr->setIface(theBDMt_->bdm()->getIFace());
    }
@@ -2371,22 +2503,16 @@ protected:
    /////////////////////////////////////////////////////////////////////////////
    virtual void TearDown(void)
    {
-      if (clients_ != nullptr)
-      {
-         clients_->exitRequestLoop();
-         clients_->shutdown();
-      }
+      WebSocketServer::shutdown();
+      WebSocketServer::waitOnShutdown();
+      theBDMt_->shutdown();
 
-      delete clients_;
       delete theBDMt_;
-
       theBDMt_ = nullptr;
-      clients_ = nullptr;
 
-      DBUtils::removeDirectory(blkdir_);
-      DBUtils::removeDirectory(homedir_);
-      DBUtils::removeDirectory("./ldbtestdir");
-
+      FileUtils::removeDirectory(blkdir_);
+      FileUtils::removeDirectory(homedir_);
+      FileUtils::removeDirectory("./ldbtestdir");
       Armory::Config::reset();
 
       LOGENABLESTDOUT();
@@ -2396,17 +2522,18 @@ protected:
    LMDBBlockDatabase* iface_;
    BinaryData zeros_;
 
-   string blkdir_;
-   string homedir_;
-   string ldbdir_;
-   string blk0dat_;
+   std::filesystem::path blkdir_{"./blkfiletest"sv};
+   std::filesystem::path homedir_{"./fakehomedir"sv};
+   std::filesystem::path ldbdir_{"./ldbtestdir"sv};
+   std::filesystem::path blk0dat_;
 
-   string wallet1id;
-   string wallet2id;
-   string LB1ID;
-   string LB2ID;
+   std::string wallet1id;
+   std::string wallet2id;
+   std::string LB1ID;
+   std::string LB2ID;
    BinaryData serverPubkey_;
-   string serverAddr_;
+   std::string serverAddr_;
+   std::string hexMagicBytes;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2415,37 +2542,39 @@ TEST_F(WebSocketTests_2Way, GrabAddrLedger_PostReg)
    TestUtils::setBlocks({ "0", "1", "2", "3" }, blk0dat_);
 
    theBDMt_ = new BlockDataManagerThread();
-   WebSocketServer::initAuthPeers(authPeersPassLbd_);
-   WebSocketServer::start(theBDMt_, true);
+   WebSocketServer::initAuthPeers({
+      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+   WebSocketServer::start(theBDMt_->bdm(), true);
    theBDMt_->start(DBSettings::initMode());
 
-   auto pCallback = make_shared<DBTestUtils::UTCallback>();
-   auto&& bdvObj = AsyncClient::BlockDataViewer::getNewBDV(
-      "127.0.0.1", NetworkSettings::listenPort(), 
-      Armory::Config::getDataDir(),
-      authPeersPassLbd_, 
-      NetworkSettings::ephemeralPeers(), false, //private server
+   auto pCallback = std::make_shared<DBTestUtils::UTCallback>();
+   auto bdvObj = AsyncClient::BlockDataViewer::getNewBDV(
+      "127.0.0.1", NetworkSettings::dbPort(),
+      std::make_shared<AuthorizedPeers>(IO::ReadOnlyFileParams{
+         Armory::Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
+      false, //private server
       pCallback);
    bdvObj->connectToRemote();
-   bdvObj->registerWithDB(BitcoinSettings::getMagicBytes());
+   bdvObj->registerWithDB(hexMagicBytes);
 
-   vector<BinaryData> scrAddrVec;
-   scrAddrVec.push_back(TestChain::scrAddrA);
-   scrAddrVec.push_back(TestChain::scrAddrB);
-   scrAddrVec.push_back(TestChain::scrAddrC);
+   std::vector<BinaryData> scrAddrVec {
+      TestChain::scrAddrA,
+      TestChain::scrAddrB,
+      TestChain::scrAddrC
+   };
 
    //wait on signals
    bdvObj->goOnline();
    pCallback->waitOnSignal(BDMAction_Ready);
 
    const auto &walletId = CryptoPRNG::generateRandom(8).toHexStr();
-   auto&& wallet = bdvObj->instantiateWallet(walletId);
-   auto&& registrationId = wallet.registerAddresses(scrAddrVec, false);
-   pCallback->waitOnSignal(BDMAction_Refresh, registrationId);
+   auto wallet = bdvObj->getWalletObj(walletId);
+   wallet.registerAddresses(scrAddrVec, false);
+   pCallback->waitOnSignal(BDMAction_Refresh, walletId);
 
-   auto w1AddrBalances = DBTestUtils::getAddrBalancesFromDB(wallet);
+   auto w1AddrBalances = DBTestUtils::getAddrBalancesFromDB(bdvObj, walletId);
    ASSERT_NE(w1AddrBalances.size(), 0ULL);
-   vector<uint64_t> balanceVec;
+   std::vector<uint64_t> balanceVec;
    balanceVec = w1AddrBalances[TestChain::scrAddrA];	// crashes here, too
    EXPECT_EQ(balanceVec[0], 50 * COIN);
    balanceVec = w1AddrBalances[TestChain::scrAddrB];
@@ -2458,7 +2587,7 @@ TEST_F(WebSocketTests_2Way, GrabAddrLedger_PostReg)
    EXPECT_FALSE(DBTestUtils::getHistoryPage(ledgerDelegate, 0).empty());
 
    //cleanup
-   bdvObj->shutdown(NetworkSettings::cookie());
+   bdvObj->shutdown();
    WebSocketServer::waitOnShutdown();
 }
 
@@ -2468,41 +2597,38 @@ TEST_F(WebSocketTests_2Way, WebSocketStack_ManyZC)
    TestUtils::setBlocks({ "0", "1", "2", "3" }, blk0dat_);
 
    theBDMt_ = new BlockDataManagerThread();
-   WebSocketServer::initAuthPeers(authPeersPassLbd_);
-   WebSocketServer::start(theBDMt_, true);
+   WebSocketServer::initAuthPeers({
+      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+   WebSocketServer::start(theBDMt_->bdm(), true);
 
    theBDMt_->start(DBSettings::initMode());
 
-   auto pCallback = make_shared<DBTestUtils::UTCallback>();
-   auto&& bdvObj = AsyncClient::BlockDataViewer::getNewBDV(
-      "127.0.0.1", NetworkSettings::listenPort(), 
-      Armory::Config::getDataDir(),
-      authPeersPassLbd_, 
-      NetworkSettings::ephemeralPeers(), false, //private server
+   auto pCallback = std::make_shared<DBTestUtils::UTCallback>();
+   auto bdvObj = AsyncClient::BlockDataViewer::getNewBDV(
+      "127.0.0.1", NetworkSettings::dbPort(),
+      std::make_shared<AuthorizedPeers>(IO::ReadOnlyFileParams{
+         Armory::Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
+      false, //private server
       pCallback);
    bdvObj->connectToRemote();
-   bdvObj->registerWithDB(BitcoinSettings::getMagicBytes());
+   bdvObj->registerWithDB(hexMagicBytes);
 
-   vector<BinaryData> scrAddrVec;
-   scrAddrVec.push_back(TestChain::scrAddrA);
-   scrAddrVec.push_back(TestChain::scrAddrB);
-   scrAddrVec.push_back(TestChain::scrAddrC);
-   scrAddrVec.push_back(TestChain::scrAddrE);
+   std::vector<BinaryData> scrAddrVec {
+      TestChain::scrAddrA,
+      TestChain::scrAddrB,
+      TestChain::scrAddrC,
+      TestChain::scrAddrE
+   };
 
-   vector<string> walletRegIDs;
-   auto&& wallet1 = bdvObj->instantiateWallet("wallet1");
-   walletRegIDs.push_back(
-      wallet1.registerAddresses(scrAddrVec, false));
-
-   //wait on registration ack
-   pCallback->waitOnManySignals(BDMAction_Refresh, walletRegIDs);
+   auto wallet1 = bdvObj->getWalletObj("wallet1");
+   wallet1.registerAddresses(scrAddrVec, false);
 
    //go online
    bdvObj->goOnline();
    pCallback->waitOnSignal(BDMAction_Ready);
 
-   auto w1AddrBalances = DBTestUtils::getAddrBalancesFromDB(wallet1);
-   vector<uint64_t> balanceVec;
+   auto w1AddrBalances = DBTestUtils::getAddrBalancesFromDB(bdvObj, "wallet1");
+   std::vector<uint64_t> balanceVec;
    balanceVec = w1AddrBalances[TestChain::scrAddrA];
    EXPECT_EQ(balanceVec[0], 50 * COIN);
    balanceVec = w1AddrBalances[TestChain::scrAddrB];
@@ -2519,67 +2645,62 @@ TEST_F(WebSocketTests_2Way, WebSocketStack_ManyZC)
    EXPECT_EQ(unconfirmedBalance, 165 * COIN);
 
    //signer feed
-   auto feed = make_shared<ResolverUtils::TestResolverFeed>();
+   auto feed = std::make_shared<ResolverUtils::TestResolverFeed>();
    feed->addPrivKey(TestChain::privKeyAddrB);
    feed->addPrivKey(TestChain::privKeyAddrC);
    feed->addPrivKey(TestChain::privKeyAddrE);
 
    //create spender lambda
-   auto getSpenderPtr = [](const UTXO& utxo)->shared_ptr<ScriptSpender>
+   auto getSpenderPtr = [](const UTXO& utxo)->std::shared_ptr<ScriptSpender>
    {
-      auto spender = make_shared<ScriptSpender>(utxo);
+      auto spender = std::make_shared<ScriptSpender>(utxo);
       spender->setSequence(UINT32_MAX - 2);
-
       return spender;
    };
 
    //add 100 ZC
-   vector<BinaryData> allZcHash;
-   for (int i = 0; i < 100; i++)
-   {
+   std::vector<BinaryData> allZcHash;
+   for (int i = 0; i < 100; i++) {
       size_t spendVal = 1000000;
       Signer signer;
 
       //get utxo list for spend value
-      auto&& unspentVec = DBTestUtils::getSpendableTxOutListForValue(wallet1, spendVal);
-      auto&& zcOutputsVec = DBTestUtils::getSpendableZCList(wallet1);
+      auto unspentVec = DBTestUtils::getSpendableTxOutListForValue(wallet1, spendVal);
+      auto zcOutputsVec = DBTestUtils::getSpendableZCList(wallet1);
 
       unspentVec.insert(unspentVec.end(),
          zcOutputsVec.begin(), zcOutputsVec.end());
 
-      vector<UTXO> utxoVec;
+      std::vector<UTXO> utxoVec;
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
-      while (utxoIter != unspentVec.end())
-      {
+      while (utxoIter != unspentVec.end()) {
          tval += utxoIter->getValue();
          utxoVec.push_back(*utxoIter);
 
-         if (tval > spendVal)
+         if (tval > spendVal) {
             break;
-
+         }
          ++utxoIter;
       }
 
       //create script spender objects
       uint64_t total = 0;
-      for (auto& utxo : utxoVec)
-      {
+      for (auto& utxo : utxoVec) {
          total += utxo.getValue();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
       //spendVal to scrAddrD
-      auto recipientD = make_shared<Recipient_P2PKH>(
+      auto recipientD = std::make_shared<Recipient_P2PKH>(
          TestChain::scrAddrE.getSliceCopy(1, 20), spendVal);
       signer.addRecipient(recipientD);
 
       //change to scrAddrE, no fee
-      if (total > spendVal)
-      {
+      if (total > spendVal) {
          //deal with change, no fee
          auto changeVal = total - spendVal;
-         auto recipientChange = make_shared<Recipient_P2PKH>(
+         auto recipientChange = std::make_shared<Recipient_P2PKH>(
             TestChain::scrAddrE.getSliceCopy(1, 20), changeVal);
          signer.addRecipient(recipientChange);
       }
@@ -2593,30 +2714,29 @@ TEST_F(WebSocketTests_2Way, WebSocketStack_ManyZC)
       DBTestUtils::ZcVector zcVec;
       zcVec.push_back(rawTx, 14000000);
 
-      auto&& ZCHash = BtcUtils::getHash256(rawTx);
+      auto ZCHash = BtcUtils::getHash256(rawTx);
       allZcHash.push_back(ZCHash);
       DBTestUtils::pushNewZc(theBDMt_, zcVec);
-      pCallback->waitOnSignal(BDMAction_ZC, string(ZCHash.toCharPtr(), ZCHash.getSize()));
+      pCallback->waitOnSignal(BDMAction_ZC, ZCHash.toHexStr());
    }
 
    //grab ledger, check all zc hash are in there
-   auto&& ledgerDelegate = DBTestUtils::getLedgerDelegate(bdvObj);
+   auto ledgerDelegate = DBTestUtils::getLedgerDelegate(bdvObj);
    auto count = DBTestUtils::getPageCount(ledgerDelegate);
    EXPECT_EQ(count, 1U);
 
-   auto&& history = DBTestUtils::getHistoryPage(ledgerDelegate, 0);
-   set<BinaryData> ledgerHashes;
-   for (auto& le : history)
+   auto history = DBTestUtils::getHistoryPage(ledgerDelegate, 0);
+   std::set<BinaryData> ledgerHashes;
+   for (auto& le : history) {
       ledgerHashes.insert(le.getTxHash());
-
-   for (auto& zcHash : allZcHash)
-   {
+   }
+   for (auto& zcHash : allZcHash) {
       auto iter = ledgerHashes.find(zcHash);
       EXPECT_TRUE(iter != ledgerHashes.end());
    }
 
    //cleanup
-   bdvObj->shutdown(NetworkSettings::cookie());
+   bdvObj->shutdown();
    WebSocketServer::waitOnShutdown();
 }
 
@@ -2628,18 +2748,17 @@ GTEST_API_ int main(int argc, char **argv)
 {
    #ifdef _MSC_VER
       _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-   
       WSADATA wsaData;
       WORD wVersion = MAKEWORD(2, 0);
       WSAStartup(wVersion, &wsaData);
    #endif
 
-   GOOGLE_PROTOBUF_VERIFY_VERSION;
    srand(time(0));
    std::cout << "Running main() from gtest_main.cc\n";
 
    // Required by libbtc.
    CryptoECDSA::setupContext();
+   //LOGENABLESTDOUT();
 
    testing::InitGoogleTest(&argc, argv);
    int exitCode = RUN_ALL_TESTS();
@@ -2649,7 +2768,6 @@ GTEST_API_ int main(int argc, char **argv)
 
    FLUSHLOG();
    CLEANUPLOG();
-   google::protobuf::ShutdownProtobufLibrary();
 
    return exitCode;
 }

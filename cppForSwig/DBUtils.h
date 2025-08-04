@@ -5,9 +5,9 @@
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
 //                                                                            //
-//  Copyright (C) 2016, goatpig                                               //            
+//  Copyright (C) 2016-2024, goatpig                                          //
 //  Distributed under the MIT license                                         //
-//  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //                                   
+//  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -15,6 +15,7 @@
 #define _H_DBUTILS
 
 #include <string>
+#include <filesystem>
 #include "BinaryData.h"
 
 enum BLKDATA_TYPE
@@ -27,7 +28,7 @@ enum BLKDATA_TYPE
 
 enum DB_PREFIX
 {
-   DB_PREFIX_DBINFO,
+   DB_PREFIX_DBINFO = 0,
    DB_PREFIX_HEADHASH,
    DB_PREFIX_HEADHGT,
    DB_PREFIX_TXDATA,
@@ -40,17 +41,11 @@ enum DB_PREFIX
    DB_PREFIX_POOL,
    DB_PREFIX_MISSING_HASHES,
    DB_PREFIX_SUBSSH,
-   DB_PREFIX_TEMPSCRIPT
+   DB_PREFIX_TEMPSCRIPT,
+   DB_PREFIX_FLAGGED_BLOCKFILES
 };
 
-struct FileMap
-{
-   size_t size_;
-   uint8_t* filePtr_ = nullptr;
-
-   void unmap(void);
-};
-
+////////
 class DBUtils
 {
 public:
@@ -92,8 +87,6 @@ public:
       uint16_t txIdx,
       uint16_t txOutIdx);
 
-
-
    /////////////////////////////////////////////////////////////////////////////
    static BLKDATA_TYPE readBlkDataKey(BinaryRefReader & brr,
       uint32_t & height,
@@ -131,8 +124,6 @@ public:
       uint8_t  & dupID,
       uint16_t & txIdx,
       uint16_t & txOutIdx);
-
-
 
    static std::string getPrefixName(uint8_t prefixInt);
    static std::string getPrefixName(DB_PREFIX pref);
@@ -146,22 +137,69 @@ public:
 
    static BinaryData getFilterPoolKey(uint32_t filenum);
    static BinaryData getMissingHashesKey(uint32_t id);
-
-   static bool fileExists(const std::string& path, int mode);
-
-   static FileMap getMmapOfFile(const std::string&, bool write = false);
-   
-   static int removeDirectory(const std::string&);
-   static struct stat getPathStat(const std::string& path);
-   static struct stat getPathStat(const char* path, unsigned len);
-   static size_t getFileSize(const std::string& path);
-   static bool isFile(const std::string& path);
-   static bool isDir(const std::string& path);
-
-   static void appendPath(std::string& base, const std::string& add);
-   static void expandPath(std::string& path);
-   static std::string getBaseDir(const std::string& path);
-
    static BinaryDataRef getDataRefForPacket(const BinaryDataRef& packet);
+};
+
+namespace FileUtils
+{
+   //used for blk file parsing
+   class FileMap
+   {
+   private:
+      size_t offset_ = 0;
+      uint8_t* ptr_ = nullptr;
+      size_t size_ = 0;
+
+   public:
+      FileMap(const std::filesystem::path&, bool write=false, size_t offset=0);
+      ~FileMap(void);
+
+      size_t size(void) const;
+      uint8_t* ptr(void) const;
+      bool isValid(void) const;
+   };
+
+   class FileCopy
+   {
+   private:
+      size_t offset_ = 0;
+      std::vector<uint8_t> data_;
+
+   public:
+      FileCopy(const std::filesystem::path&, size_t offset=0);
+
+      size_t size(void) const;
+      const uint8_t* ptr(void) const;
+      bool isValid(void) const;
+   };
+
+   ////
+   bool fileExists(const std::filesystem::path&, int);
+   bool isFile(const std::filesystem::path&);
+   bool isDir(const std::filesystem::path&);
+   size_t getFileSize(const std::filesystem::path&);
+
+   //core blk file naming pattern
+   std::filesystem::path getBlkFilename(
+      const std::filesystem::path&, uint32_t);
+   uint32_t blkPathToIntID(const std::filesystem::path&);
+
+   //used in tests
+   bool copy(const std::filesystem::path&,
+      const std::filesystem::path&,
+      size_t nBytes=SIZE_MAX);
+   bool append(const std::filesystem::path&,
+      const std::filesystem::path&);
+
+   //folder stuff
+   int removeDirectory(const std::filesystem::path&);
+   void createDirectory(const std::filesystem::path&);
+   std::filesystem::path getUserHomePath(void);
+
+   //filename manipulation
+   std::filesystem::path appendTagToPath(
+      const std::filesystem::path&,
+      const std::string&
+   );
 };
 #endif

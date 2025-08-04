@@ -34,7 +34,7 @@ from ui.QrCodeMatrix import CreateQRMatrix
 from armoryengine.Block import PyBlockHeader
 
 from qtdialogs.qtdefines import USERMODE, GETFONT, tightSizeStr, \
-   determineWalletType, WLTTYPES, MSGBOX, QRichLabel
+   MSGBOX, QRichLabel
 
 from qtdialogs.ArmoryDialog import ArmoryDialog
 from qtdialogs.MsgBoxCustom import MsgBoxCustom
@@ -581,8 +581,8 @@ class DlgImportAddress(ArmoryDialog):
       self.txtPrivBulk = QtWidgets.QTextEdit()
       w, h = tightSizeStr(self.edtPrivData, 'X' * 70)
       self.txtPrivBulk.setMinimumWidth(w)
-      self.txtPrivBulk.setMinimumHeight(2.2 * h)
-      self.txtPrivBulk.setMaximumHeight(4.2 * h)
+      self.txtPrivBulk.setMinimumHeight(int(2.2 * h))
+      self.txtPrivBulk.setMaximumHeight(int(4.2 * h))
       frmMid = makeHorizFrame([lblPrivMany, self.txtPrivBulk, ttipPrivMany])
       stkMany = makeVertFrame([HLINE(), lblDescrMany, frmMid])
       self.stackedImport.addWidget(stkMany)
@@ -1140,7 +1140,7 @@ class DlgConfirmBulkImport(ArmoryDialog):
       txtDispAddr.setFont(fnt)
       txtDispAddr.setReadOnly(True)
       txtDispAddr.setMinimumWidth(min(w, 700))
-      txtDispAddr.setMinimumHeight(16.2 * h)
+      txtDispAddr.setMinimumHeight(int(16.2 * h))
       txtDispAddr.setText('\n'.join(addrList))
 
       buttonBox = QtWidgets.QDialogButtonBox()
@@ -1185,7 +1185,7 @@ class DlgDuplicateAddr(ArmoryDialog):
       txtDispAddr.setFont(fnt)
       txtDispAddr.setReadOnly(True)
       txtDispAddr.setMinimumWidth(w)
-      txtDispAddr.setMinimumHeight(8.2 * h)
+      txtDispAddr.setMinimumHeight(int(8.2 * h))
       txtDispAddr.setText('\n'.join(addrList))
 
       lblWarn = QRichLabel(self.tr(
@@ -1210,197 +1210,6 @@ class DlgDuplicateAddr(ArmoryDialog):
 
       self.setWindowTitle(self.tr('Duplicate Addresses'))
 
-#############################################################################
-class DlgImportPaperWallet(ArmoryDialog):
-
-   def __init__(self, parent=None, main=None):
-      super(DlgImportPaperWallet, self).__init__(parent, main)
-
-      self.wltDataLines = [[]] * 4
-      self.prevChars = [''] * 4
-
-      for i, edt in enumerate(self.lineEdits):
-         # I screwed up the ref/copy, this loop only connected the last one...
-         # theSlot = lambda: self.autoSpacerFunction(i)
-         # self.connect(edt, SIGNAL('textChanged(QString)'), theSlot)
-         edt.setMinimumWidth(tightSizeNChar(edt, 50)[0])
-
-      # Just do it manually because it's guaranteed to work!
-      slot = lambda: self.autoSpacerFunction(0)
-      self.connect(self.lineEdits[0], SIGNAL('textEdited(QString)'), slot)
-
-      slot = lambda: self.autoSpacerFunction(1)
-      self.connect(self.lineEdits[1], SIGNAL('textEdited(QString)'), slot)
-
-      slot = lambda: self.autoSpacerFunction(2)
-      self.connect(self.lineEdits[2], SIGNAL('textEdited(QString)'), slot)
-
-      slot = lambda: self.autoSpacerFunction(3)
-      self.connect(self.lineEdits[3], SIGNAL('textEdited(QString)'), slot)
-
-      buttonbox = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | \
-                                   QtWidgets.QDialogButtonBox.Cancel)
-      self.connect(buttonbox, SIGNAL('accepted()'), self.verifyUserInput)
-      self.connect(buttonbox, SIGNAL('rejected()'), self.reject)
-
-      self.labels = [QtWidgets.QLabel() for i in range(4)]
-      self.labels[0].setText(self.tr('Root Key:'))
-      self.labels[1].setText('')
-      self.labels[2].setText(self.tr('Chain Code:'))
-      self.labels[3].setText('')
-
-      lblDescr1 = QtWidgets.QLabel(self.tr(
-          'Enter the characters exactly as they are printed on the '
-          'paper-backup page.  Alternatively, you can scan the QR '
-          'code from another application, then copy&paste into the '
-          'entry boxes below.'))
-      lblDescr2 = QtWidgets.QLabel(self.tr(
-          'The data can be entered <i>with</i> or <i>without</i> '
-          'spaces, and up to '
-          'one character per line will be corrected automatically.'))
-      for lbl in (lblDescr1, lblDescr2):
-         lbl.setTextFormat(QtCore.Qt.RichText)
-         lbl.setWordWrap(True)
-
-      layout = QtWidgets.QGridLayout()
-      layout.addWidget(lblDescr1, 0, 0, 1, 2)
-      layout.addWidget(lblDescr2, 1, 0, 1, 2)
-      for i, edt in enumerate(self.lineEdits):
-         layout.addWidget(self.labels[i], i + 2, 0)
-         layout.addWidget(self.lineEdits[i], i + 2, 1)
-
-      self.chkEncrypt = QtWidgets.QCheckBox(self.tr('Encrypt Wallet'))
-      self.chkEncrypt.setChecked(True)
-
-      bottomFrm = makeHorizFrame([self.chkEncrypt, buttonbox])
-      layout.addWidget(bottomFrm, 6, 0, 1, 2)
-      layout.setVerticalSpacing(10)
-      self.setLayout(layout)
-
-
-      self.setWindowTitle(self.tr('Recover Wallet from Paper Backup'))
-      self.setWindowIcon(QtGui.QIcon(self.main.iconfile))
-
-
-   def autoSpacerFunction(self, i):
-      currStr = str(self.lineEdits[i].text())
-      rawStr = currStr.replace(' ', '')
-      if len(rawStr) > 36:
-         rawStr = rawStr[:36]
-
-      if len(rawStr) == 36:
-         quads = [rawStr[j:j + 4] for j in range(0, 36, 4)]
-         self.lineEdits[i].setText(' '.join(quads))
-
-
-   def verifyUserInput(self):
-      def englishNumberList(nums):
-         nums = map(str, nums)
-         if len(nums) == 1:
-            return nums[0]
-         return ', '.join(nums[:-1]) + ' and ' + nums[-1]
-
-      errorLines = []
-      for i in range(4):
-         hasError = False
-         try:
-            data, err = readSixteenEasyBytes(str(self.lineEdits[i].text()))
-         except (KeyError, TypeError):
-            data, err = ('', 'Exception')
-
-         if data == '':
-            reply = QtWidgets.QMessageBox.critical(self, self.tr('Verify Wallet ID'), self.tr(
-               'There is an error on line %d of the data you '
-               'entered, which could not be fixed automatically.  Please '
-               'double-check that you entered the text exactly as it appears '
-               'on the wallet-backup page.' % (i + 1)),
-               QtWidgets.QMessageBox.Ok)
-            LOGERROR('Error in wallet restore field')
-            self.labels[i].setText('<font color="red">' + str(self.labels[i].text()) + '</font>')
-            return
-         if err == 'Fixed_1' or err == 'No_Checksum':
-            errorLines += [i + 1]
-
-         self.wltDataLines[i] = data
-
-      if errorLines:
-         pluralChar = '' if len(errorLines) == 1 else 's'
-         article = ' an' if len(errorLines) == 1 else ''
-         QtWidgets.QMessageBox.question(self, self.tr('Errors Corrected!'), self.tr(
-            'Detected %d error(s) on line(s) %s '
-            'in the data you entered.  Armory attempted to fix the '
-            'error(s) but it is not always right.  Be sure '
-            'to verify the "Wallet Unique ID" closely on the next window.' % (len(errorLines),
-               englishNumberList(errorLines))), "", QtWidgets.QMessageBox.Ok)
-
-      # If we got here, the data is valid, let's create the wallet and accept the dlg
-      privKey = ''.join(self.wltDataLines[:2])
-      chain = ''.join(self.wltDataLines[2:])
-
-      root = PyBtcAddress().createFromPlainKeyData(SecureBinaryData(privKey))
-      root.chaincode = SecureBinaryData(chain)
-      first = root.extendAddressChain()
-      newWltID = binary_to_base58((ADDRBYTE + first.getAddr160()[:5])[::-1])
-
-      if newWltID in self.main.walletMap:
-         QtWidgets.QMessageBox.question(self, self.tr('Duplicate Wallet!'), self.tr(
-               'The data you entered is for a wallet with a ID: \n\n %s '
-               '\n\nYou already own this wallet! \n  '
-               'Nothing to do...' % newWltID), QtWidgets.QMessageBox.Ok)
-         self.reject()
-         return
-
-
-
-      reply = QtWidgets.QMessageBox.question(self, self.tr('Verify Wallet ID'), self.tr(
-               'The data you entered corresponds to a wallet with a wallet ID: \n\n '
-               '%s \n\nDoes this ID match the "Wallet Unique ID" '
-               'printed on your paper backup?  If not, click "No" and reenter '
-               'key and chain-code data again.' % newWltID), \
-               QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
-      if reply == QtWidgets.QMessageBox.No:
-         return
-
-      passwd = []
-      if self.chkEncrypt.isChecked():
-         dlgPasswd = DlgChangePassphrase(self, self.main)
-         if dlgPasswd.exec_():
-            passwd = SecureBinaryData(str(dlgPasswd.edtPasswd1.text()))
-         else:
-            QtWidgets.QMessageBox.critical(self, self.tr('Cannot Encrypt'), self.tr(
-               'You requested your restored wallet be encrypted, but no '
-               'valid passphrase was supplied.  Aborting wallet recovery.'), \
-               QtWidgets.QMessageBox.Ok)
-            return
-
-      if passwd:
-         self.newWallet = PyBtcWallet().createNewWallet(\
-                                 plainRootKey=SecureBinaryData(privKey), \
-                                 chaincode=SecureBinaryData(chain), \
-                                 shortLabel=self.tr('PaperBackup - %s' % newWltID), \
-                                 withEncrypt=True, \
-                                 securePassphrase=passwd, \
-                                 kdfTargSec=0.25, \
-                                 kdfMaxMem=32 * 1024 * 1024, \
-                                 isActuallyNew=False, \
-                                 doRegisterWithBDM=False)
-      else:
-         self.newWallet = PyBtcWallet().createNewWallet(\
-                                 plainRootKey=SecureBinaryData(privKey), \
-                                 chaincode=SecureBinaryData(chain), \
-                                 shortLabel=self.tr('PaperBackup - %s' % newWltID), \
-                                 withEncrypt=False, \
-                                 isActuallyNew=False, \
-                                 doRegisterWithBDM=False)
-
-      def fillAddrPoolAndAccept():
-         progressBar = DlgProgress(self, self.main, None, HBar=1,
-                                   Title=self.tr("Computing New Addresses"))
-         progressBar.exec_(self.newWallet.fillAddressPool)
-         self.accept()
-
-      # Will pop up a little "please wait..." window while filling addr pool
-      DlgExecLongProcess(fillAddrPoolAndAccept, self.tr("Recovering wallet..."), self, self.main).exec_()
 
 ################################################################################
 class DlgRemoveWallet(ArmoryDialog):
@@ -1696,7 +1505,7 @@ class DlgRemoveAddress(ArmoryDialog):
       self.wlt = wlt
       importStr = wlt.linearAddr160List[importIndex]
       self.addr = wlt.addrMap[importStr]
-      self.comm = wlt.getCommentForAddress(addr160)
+      self.comm = wlt.getComment(addr160)
 
       lblWarning = QtWidgets.QLabel(self.tr('<b>!!! WARNING !!!</b>\n\n'))
       lblWarning.setTextFormat(QtCore.Qt.RichText)
@@ -2481,7 +2290,7 @@ class DlgExpWOWltData(ArmoryDialog):
       self.txtLongDescr.setFont(GETFONT('Fixed', 9))
       self.txtLongDescr.setHtml(self.dispText)
       w,h = tightSizeNChar(self.txtLongDescr, 20)
-      self.txtLongDescr.setMaximumHeight(9.5*h)
+      self.txtLongDescr.setMaximumHeight(int(9.5*h))
 
       def clippy():
          clipb = QtWidgets.QApplication.clipboard()

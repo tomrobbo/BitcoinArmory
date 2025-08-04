@@ -1,12 +1,10 @@
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
 ##############################################################################
 #                                                                            #
 # Copyright (C) 2011-2015, Armory Technologies, Inc.                         #
 # Distributed under the GNU Affero General Public License (AGPL v3)          #
 # See LICENSE or http://www.gnu.org/licenses/agpl.html                       #
 #                                                                            #
-# Copyright (C) 2016-2024, goatpig                                           #
+# Copyright (C) 2016-2025, goatpig                                           #
 #  Distributed under the MIT license                                         #
 #  See LICENSE-MIT or https://opensource.org/licenses/MIT                    #
 #                                                                            #
@@ -15,6 +13,7 @@ import os
 import struct
 from tempfile import mkstemp
 import urllib
+import traceback
 
 from qtpy import QtCore, QtGui, QtWidgets
 
@@ -32,10 +31,8 @@ SETTINGS_PATH   = os.path.join(ARMORY_HOME_DIR, 'ArmorySettings.txt')
 USERMODE        = enum('Standard', 'Advanced', 'Expert')
 SATOSHIMODE     = enum('Auto', 'User')
 NETWORKMODE     = enum('Offline', 'Full', 'Disconnected')
-WLTTYPES        = enum('Plain', 'Crypt', 'WatchOnly', 'Offline')
-WLTFIELDS       = enum('Name', 'Descr', 'WltID', 'NumAddr', 'Secure', \
-                       'BelongsTo', 'Crypto', 'Time', 'Mem', 'Version')
-MSGBOX          = enum('Good','Info', 'Question', 'Warning', 'Critical', 'Error')
+WLTFIELDS       = enum('Name', 'Descr', 'WltID', 'NumAddr', 'Secure',
+   'BelongsTo', 'Crypto', 'Time', 'Mem', 'Version')
 MSGBOX          = enum('Good','Info', 'Question', 'Warning', 'Critical', 'Error')
 DASHBTNS        = enum('Close', 'Browse', 'Settings')
 
@@ -72,8 +69,6 @@ def VLINE(style=QtWidgets.QFrame.Plain):
    qf = QtWidgets.QFrame()
    qf.setFrameStyle(QtWidgets.QFrame.VLine | style)
    return qf
-
-
 
 # Setup fixed-width and var-width fonts
 def GETFONT(ftype, sz=10, bold=False, italic=False):
@@ -112,7 +107,6 @@ def GETFONT(ftype, sz=10, bold=False, italic=False):
 
    return fnt
 
-
 def UnicodeErrorBox(parent):
    QtWidgets.QMessageBox.warning(parent, 'ASCII Error', \
       toUnicode('Armory does not currently support non-ASCII characters in '
@@ -120,9 +114,6 @@ def UnicodeErrorBox(parent):
       'Please use only letters found '
       'on an English(US) keyboard.  This will be fixed in an upcoming '
       'release'), QtWidgets.QMessageBox.Ok)
-
-
-
 
 #######
 def UserModeStr(parent, mode):
@@ -132,7 +123,6 @@ def UserModeStr(parent, mode):
       return parent.tr('Advanced User')
    elif mode==USERMODE.Expert:
       return parent.tr('Expert User')
-
 
 #######
 def tightSizeNChar(obj, nChar):
@@ -149,7 +139,7 @@ def tightSizeNChar(obj, nChar):
       fm = QtGui.QFontMetricsF(QtGui.QFont())
    szWidth,szHeight = fm.boundingRect('abcfgijklm').width(), fm.height()
    szWidth = int(szWidth * nChar/10.0 + 0.5)
-   return szWidth, szHeight
+   return szWidth, int(szHeight)
 
 #######
 def tightSizeStr(obj, theStr):
@@ -159,7 +149,7 @@ def tightSizeStr(obj, theStr):
    except AttributeError:
       fm = QtGui.QFontMetricsF(QtGui.QFont())
    szWidth,szHeight = fm.boundingRect(theStr).width(), fm.height()
-   return szWidth, szHeight
+   return int(szWidth), int(szHeight)
 
 #######
 def relaxedSizeStr(obj, theStr):
@@ -171,7 +161,7 @@ def relaxedSizeStr(obj, theStr):
    except AttributeError:
       fm = QtGui.QFontMetricsF(QtGui.QFont())
    szWidth,szHeight = fm.boundingRect(theStr).width(), fm.height()
-   return (10 + szWidth*1.05), 1.5*szHeight
+   return int(10 + szWidth*1.05), int(1.5*szHeight)
 
 #######
 def relaxedSizeNChar(obj, nChar):
@@ -184,23 +174,7 @@ def relaxedSizeNChar(obj, nChar):
       fm = QtGui.QFontMetricsF(QtGui.QFont())
    szWidth,szHeight = fm.boundingRect('abcfg ijklm').width(), fm.height()
    szWidth = int(szWidth * nChar/10.0 + 0.5)
-   return (10 + szWidth*1.05), 1.5*szHeight
-
-#############################################################################
-def determineWalletType(wlt, wndw):
-   if wlt.watchingOnly:
-      if wndw.getWltSetting(wlt.uniqueIDB58, 'IsMine'):
-         return [WLTTYPES.Offline, wndw.tr('Offline')]
-      else:
-         return [WLTTYPES.WatchOnly, wndw.tr('Watching-Only')]
-   elif wlt.useEncryption:
-      return [WLTTYPES.Crypt, wndw.tr('Encrypted')]
-   else:
-      return [WLTTYPES.Plain, wndw.tr('No Encryption')]
-
-
-
-
+   return int(10 + szWidth*1.05), int(1.5*szHeight)
 
 #############################################################################
 def initialColResize(tblViewObj, sizeList):
@@ -224,23 +198,21 @@ def initialColResize(tblViewObj, sizeList):
          pctCols.append( (col, colVal) )
 
    for c,sz in fixedCols:
-      tblViewObj.horizontalHeader().resizeSection(c, sz)
+      tblViewObj.horizontalHeader().resizeSection(c, int(sz))
 
    totalFixed = sum([sz[1] for sz in fixedCols])
    szRemain = totalWidth-totalFixed
    for c,pct in pctCols:
-      tblViewObj.horizontalHeader().resizeSection(c, pct*szRemain)
+      tblViewObj.horizontalHeader().resizeSection(c, int(pct*szRemain))
 
    tblViewObj.horizontalHeader().setStretchLastSection(True)
 
-
-
-
+#############################################################################
 class QRichLabel(QtWidgets.QLabel):
-   def __init__(self, txt, doWrap=True, \
-                           hAlign=QtCore.Qt.AlignLeft, \
-                           vAlign=QtCore.Qt.AlignVCenter, \
-                           **kwargs):
+   def __init__(self, txt, doWrap=True,
+      hAlign=QtCore.Qt.AlignLeft,
+      vAlign=QtCore.Qt.AlignVCenter,
+      **kwargs):
       super(QRichLabel, self).__init__(txt)
       self.setTextFormat(QtCore.Qt.RichText)
       self.setWordWrap(doWrap)
@@ -273,14 +245,14 @@ class QRichLabel(QtWidgets.QLabel):
    def setItalic(self):
       self.setText('<i>' + self.text() + '</i>')
 
+#############################################################################
 class QRichLabel_AutoToolTip(QRichLabel):
-   def __init__(self, txt, doWrap=True, \
-                           hAlign=QtCore.Qt.AlignLeft, \
-                           vAlign=QtCore.Qt.AlignVCenter, \
-                           **kwargs):
-      super(QRichLabel_AutoToolTip, self).__init__(txt, \
-            doWrap, hAlign, vAlign, **kwargs)
-
+   def __init__(self, txt, doWrap=True,
+      hAlign=QtCore.Qt.AlignLeft,
+      vAlign=QtCore.Qt.AlignVCenter,
+      **kwargs):
+      super(QRichLabel_AutoToolTip, self).__init__(txt,
+         doWrap, hAlign, vAlign, **kwargs)
       self.toolTipMethod = None
 
    def setToolTipLambda(self, toolTipMethod):
@@ -292,21 +264,19 @@ class QRichLabel_AutoToolTip(QRichLabel):
          if self.toolTipMethod != None:
             txt = self.toolTipMethod()
             self.setToolTip(txt)
-
       return QtWidgets.QLabel.event(self,event)
 
-
+#############################################################################
 class QMoneyLabel(QRichLabel):
    def __init__(self, nSatoshi, ndec=8, maxZeros=2, wColor=True,
-                              wBold=False, txtSize=10):
+      wBold=False, txtSize=10):
       QtWidgets.QLabel.__init__(self, coin2str(nSatoshi))
 
       self.nSatoshi = nSatoshi
       self.setValueText(nSatoshi, ndec, maxZeros, wColor, wBold, txtSize)
 
-
    def setValueText(self, nSatoshi, ndec=None, maxZeros=None, wColor=None,
-                                             wBold=None, txtSize=10):
+      wBold=None, txtSize=10):
       """
       When we set the text of the QMoneyLabel, remember previous values unless
       explicitly respecified
@@ -341,7 +311,7 @@ class QMoneyLabel(QRichLabel):
          self.setText('%s' % valStr)
       self.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
 
-
+#############################################################################
 def setLayoutStretchRows(layout, *args):
    for i,st in enumerate(args):
       layout.setRowStretch(i, st)
@@ -387,7 +357,7 @@ class QLabelButton(QtWidgets.QLabel):
 
    def sizeHint(self):
       w,h = relaxedSizeStr(self, self.plainText)
-      return QtCore.QSize(w,1.2*h)
+      return QtCore.QSize(w, int(1.2*h))
 
    def mousePressEvent(self, ev):
       # Prevent click-bleed-through to dialogs being opened
@@ -466,7 +436,6 @@ def makeVertFrame(widgetList, style=QtWidgets.QFrame.NoFrame, condenseMargins=Fa
 def makeHorizFrame(widgetList, style=QtWidgets.QFrame.NoFrame, condenseMargins=False):
    return makeLayoutFrame(HORIZONTAL, widgetList, style, condenseMargins)
 
-
 def QImageLabel(imgfn, size=None, stretch='NoStretch'):
 
    lbl = QtWidgets.QLabel()
@@ -478,9 +447,6 @@ def QImageLabel(imgfn, size=None, stretch='NoStretch'):
 
    lbl.setPixmap(px)
    return lbl
-
-
-
 
 def restoreTableView(qtbl, hexBytes):
    try:
@@ -496,11 +462,9 @@ def restoreTableView(qtbl, hexBytes):
       for i,c in toRestore[:-1]:
          qtbl.setColumnWidth(i, c)
    except Exception as e:
-      print('- Error loading table view -')
-      print(e)
+      traceback.print_tb(e.__traceback__)
       pass
       # Don't want to crash the program just because couldn't load tbl data
-
 
 def saveTableView(qtbl):
    if qtbl.model() is None:
@@ -518,7 +482,6 @@ def saveTableView(qtbl):
    first = int_to_hex(nCol)
    rest  = [int_to_hex(s, widthBytes=2) for s in sz]
    return 'ff' + first + ''.join(rest)
-
 
 ################################################################################
 class QRadioButtonBackupCtr(QtWidgets.QRadioButton):
@@ -556,9 +519,6 @@ class ArmoryFrame(QtWidgets.QFrame):
       # Subclasses should implement a method that returns a boolean to control
       # when done, accept, next, or final button should be enabled.
       self.isComplete = None
-
-
-
 
 # Pure-python BMP creator taken from:
 #
@@ -766,7 +726,7 @@ def createToolTipWidget(tiptext, iconSz=2):
 
    def setAllText(wself, txt):
       def pressEv(ev):
-         QtWidgets.QWhatsThis.showText(ev.globalPos(), txt, self)
+         QtWidgets.QWhatsThis.showText(ev.globalPos(), txt)
       wself.mousePressEvent = pressEv
       wself.setToolTip('<u></u>' + txt)
 

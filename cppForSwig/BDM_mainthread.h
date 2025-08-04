@@ -39,25 +39,10 @@ public:
    )=0;
 };
 
-// let an outsider call functions from the BDM thread
-
-class BDMFailure : public std::exception
-{
-public:
-   BDMFailure() { }
-};
-
-class BlockDataManager_LevelDB;
-class BlockDataViewer;
-
 inline void StartCppLogging(std::string fname, int lvl) { STARTLOGGING(fname, (LogLevel)lvl); }
 inline void ChangeCppLogLevel(int lvl) { SETLOGLEVEL((LogLevel)lvl); }
 inline void DisableCppLogging() { SETLOGLEVEL(LogLvlDisabled); }
 inline void EnableCppLogStdOut() { LOGENABLESTDOUT(); }
 inline void DisableCppLogStdOut() { LOGDISABLESTDOUT(); }
-
-
-
-// kate: indent-width 3; replace-tabs on;
 
 #endif

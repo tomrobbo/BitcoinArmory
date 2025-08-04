@@ -196,7 +196,7 @@ class SignBroadcastOfflineTxFrame(ArmoryFrame):
       ustxStr = str(self.txtUSTX.toPlainText())
       if len(ustxStr) > 0:
          try:
-            ustxObj = UnsignedTransaction().unserialize(ustxStr)
+            ustxObj = UnsignedTransaction().fromTxSigCollect(ustxStr)
             self.signerTypeSelect.setUSTX(ustxObj)
 
             self.ustxObj = ustxObj
@@ -451,7 +451,7 @@ class SignBroadcastOfflineTxFrame(ArmoryFrame):
                   QtWidgets.QMessageBox.Ok)
          TheSignalExecution.executeMethod(signTxLastStep, success)
 
-      self.ustxObj.signTx(self.wlt.uniqueIDB58, completeSignProcess, self)
+      self.ustxObj.signTx(self.wlt.walletId, completeSignProcess, self)
 
    def broadTx(self):
       if self.main.netMode == NETWORKMODE.Disconnected:

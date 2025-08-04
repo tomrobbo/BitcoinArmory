@@ -236,7 +236,7 @@ SecureBinaryData BtcUtils::computeChainCode_Armory135(
    */
 
    auto hmacKey = BtcUtils::hash256(privateRoot);
-   auto hmacMsg = BinaryData::fromString("Derive Chaincode from Root Key");
+   auto hmacMsg = BinaryData::fromString("Derive Chaincode from Root Key"sv);
 
    //use key as is for invalid armory hmac256: armory erroneously uses the
    //output size for sha256 (32 bytes) instead of the block size (64 bytes)
@@ -432,24 +432,24 @@ TXOUT_SCRIPT_TYPE BtcUtils::getScriptTypeForScrAddr(BinaryDataRef scrAddr)
 std::string BtcUtils::getAddressStrFromScrAddr(BinaryDataRef scrAddrRef)
 {
    auto scrType = getScriptTypeForScrAddr(scrAddrRef);
-   switch (scrType) 
+   switch (scrType)
    {
-   case TXOUT_SCRIPT_P2WPKH:
-   case TXOUT_SCRIPT_P2WSH:
-   {
-      auto scrAddrNoPrefix = 
-         scrAddrRef.getSliceRef(1, scrAddrRef.getSize() -1);
-      return BtcUtils::scrAddrToSegWitAddress(scrAddrNoPrefix);
-   }
+      case TXOUT_SCRIPT_P2WPKH:
+      case TXOUT_SCRIPT_P2WSH:
+      {
+         auto scrAddrNoPrefix =
+            scrAddrRef.getSliceRef(1, scrAddrRef.getSize() -1);
+         return BtcUtils::scrAddrToSegWitAddress(scrAddrNoPrefix);
+      }
 
-   case TXOUT_SCRIPT_STDHASH160:
-   case TXOUT_SCRIPT_P2SH:
-   {
-      return BtcUtils::scrAddrToBase58(scrAddrRef);         
-   }
+      case TXOUT_SCRIPT_STDHASH160:
+      case TXOUT_SCRIPT_P2SH:
+      {
+         return BtcUtils::scrAddrToBase58(scrAddrRef);
+      }
 
-   default:
-      throw runtime_error("unsupported address type");
+      default:
+         throw std::runtime_error("unsupported address type");
    }
 }
 
@@ -822,4 +822,43 @@ map<BinaryDataRef, BinaryDataRef> BtcUtils::getPSBTDataPairs(
    }
 
    return result;
+}
+
+/////////////////////////////////////////////////////////////////////////////
+std::vector<BinaryDataRef> BtcUtils::splitPushOnlyScriptRefs(
+   BinaryDataRef script)
+{
+   std::vector<BinaryDataRef> opList;
+   opList.reserve(4);
+
+   BinaryRefReader brr(script);
+   uint8_t nextOp;
+   while (brr.getSizeRemaining() > 0) {
+      nextOp = brr.get_uint8_t();
+      if(nextOp == 0) {
+         // Implicit pushdata
+         brr.rewind(1);
+         opList.emplace_back(brr.get_BinaryDataRef(1));
+      } else if(nextOp < 76) {
+         // Implicit pushdata
+         opList.emplace_back(brr.get_BinaryDataRef(nextOp));
+      } else if(nextOp == 76) {
+         uint8_t nb = brr.get_uint8_t();
+         opList.emplace_back( brr.get_BinaryDataRef(nb));
+      } else if(nextOp == 77) {
+         uint16_t nb = brr.get_uint16_t();
+         opList.emplace_back( brr.get_BinaryDataRef(nb));
+      } else if(nextOp == 78) {
+         uint16_t nb = brr.get_uint32_t();
+         opList.push_back( brr.get_BinaryDataRef(nb));
+      }
+      else if(nextOp > 78 && nextOp < 97 && nextOp !=80) {
+         brr.rewind(1);
+         opList.push_back( brr.get_BinaryDataRef(1));
+      } else {
+         return {};
+      }
+   }
+
+   return opList;
 }

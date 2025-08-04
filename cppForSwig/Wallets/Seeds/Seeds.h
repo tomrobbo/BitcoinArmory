@@ -135,7 +135,7 @@ namespace Armory
             this seed is from.
 
             - seed type of LegacyType::Armory135 will generate
-              BackupType::Armory135 backups
+              BackupType::Armory135a/c backups
             - seed type of LegacyType::Armory200 will generate
               BackupType::Armory200a backups
             */

@@ -1,22 +1,24 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2011-2021, Armory Technologies, Inc.                        //
+//  Copyright (C) 2011-2016, Armory Technologies, Inc.                        //
 //  Distributed under the GNU Affero General Public License (AGPL v3)         //
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
 //                                                                            //
-//  Copyright (C) 2016-17, goatpig                                            //
+//  Copyright (C) 2016-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 #include <chrono>
+#include <filesystem>
 #include "TestUtils.h"
 #include "hkdf.h"
 #include "BlockchainDatabase/TxHashFilters.h"
+#include "../Wallets/KDF.h"
 
 using namespace std;
-using namespace Armory::Signer;
+using namespace Armory::Signing;
 using namespace Armory::Config;
 using namespace Armory::Wallets::Encryption;
 
@@ -330,8 +332,8 @@ TEST_F(BIP150_151Test, checkData_151_Only)
    // Check the encinit/encack data the client sends on its outbound session.
    BinaryData expectedCliEncinitData(34);
    std::copy(pubKeyClientOut.getPtr(),
-             pubKeyClientOut.getPtr() + 33,
-             expectedCliEncinitData.getPtr());
+      pubKeyClientOut.getPtr() + 33,
+      expectedCliEncinitData.getPtr());
    expectedCliEncinitData[BIP151PUBKEYSIZE] = \
       static_cast<uint8_t>(BIP151SymCiphers::CHACHA20POLY1305_OPENSSH);
    EXPECT_EQ(pubKeyClientIn, cliInEncackCliData);
@@ -340,8 +342,8 @@ TEST_F(BIP150_151Test, checkData_151_Only)
    // Check the encinit/encack data the server sends on its outbound session.
    BinaryData expectedSrvEncinitData(34);
    std::copy(pubKeyServerOut.getPtr(),
-             pubKeyServerOut.getPtr() + 33,
-             expectedSrvEncinitData.getPtr());
+      pubKeyServerOut.getPtr() + 33,
+      expectedSrvEncinitData.getPtr());
    expectedSrvEncinitData[BIP151PUBKEYSIZE] = \
       static_cast<uint8_t>(BIP151SymCiphers::CHACHA20POLY1305_OPENSSH);
    EXPECT_EQ(pubKeyServerIn, cliOutEncackCliData);
@@ -355,14 +357,14 @@ TEST_F(BIP150_151Test, checkData_151_Only)
 
    // Get that the size of the encrypted packet will be correct. The message
    // buffer is intentionally missized at first.
-   auto&& cmd = BinaryData::fromString("fake");
+   auto&& cmd = BinaryData::fromString("fake"sv);
    std::array<uint8_t, 4> payload = {0xde, 0xad, 0xbe, 0xef};
    BinaryData testMsgData(50);
    size_t finalMsgSize;
    BIP151Message testMsg(cmd.getPtr(), cmd.getSize(),
-                         payload.data(), payload.size());
+      payload.data(), payload.size());
    testMsg.getEncStructMsg(testMsgData.getPtr(), testMsgData.getSize(),
-                           finalMsgSize);
+      finalMsgSize);
    testMsgData.resize(finalMsgSize);
    EXPECT_EQ(finalMsgSize, 17ULL);
    EXPECT_EQ(msg, testMsgData);
@@ -512,8 +514,6 @@ TEST_F(BIP150_151Test, checkData_151_Only)
 // still functional afterwards.
 TEST_F(BIP150_151Test, checkData_150_151)
 {
-   // Get test files from the current (gtest) directory. C++17 would be nice
-   // since filesystem::current_path() has been added. Alas, for now....
    // Test IPv4, and then IPv6 later.
    // Ideally, the code would be smart enough to support two separate contexts
    // so that two separate key sets can be tested. There's no real reason to
@@ -521,25 +521,25 @@ TEST_F(BIP150_151Test, checkData_150_151)
    // now, just cheat and have two "separate" systems with the same input files.
 
    //grab serv private key from peer files
-   auto servFilePath = baseDir_;
-   servFilePath.append("/bip150v0_srv1/identity-key-ipv4");
+   auto servFilePath = std::filesystem::current_path();
+   servFilePath.append("input_files/bip150v0_srv1/identity-key-ipv4");
    fstream serv_isf(servFilePath);
    char prvHex[65];
    serv_isf.getline(prvHex, 65);
    SecureBinaryData privServ(READHEX(prvHex));
 
    //grab client private key from peer files
-   auto cliFilePath = baseDir_;
-   cliFilePath.append("/bip150v0_cli1/identity-key-ipv4");
+   auto cliFilePath = std::filesystem::current_path();
+   cliFilePath.append("input_files/bip150v0_cli1/identity-key-ipv4");
    fstream cli_isf(cliFilePath);
    char cliHex[65];
    cli_isf.getline(cliHex, 65);
    SecureBinaryData privCli(READHEX(cliHex));
-   
+
    //compute public keys
    auto&& pubServ = CryptoECDSA().ComputePublicKey(privServ);
    pubServ = CryptoECDSA().CompressPoint(pubServ);
-   
+
    auto&& pubCli = CryptoECDSA().ComputePublicKey(privCli);
    pubCli = CryptoECDSA().CompressPoint(pubCli);
 
@@ -777,8 +777,6 @@ TEST_F(BIP150_151Test, checkData_150_151)
 
 TEST_F(BIP150_151Test, checkData_150_151_1Way)
 {
-   // Get test files from the current (gtest) directory. C++17 would be nice
-   // since filesystem::current_path() has been added. Alas, for now....
    // Test IPv4, and then IPv6 later.
    // Ideally, the code would be smart enough to support two separate contexts
    // so that two separate key sets can be tested. There's no real reason to
@@ -786,16 +784,16 @@ TEST_F(BIP150_151Test, checkData_150_151_1Way)
    // now, just cheat and have two "separate" systems with the same input files.
 
    //grab serv private key from peer files
-   auto servFilePath = baseDir_;
-   servFilePath.append("/bip150v0_srv1/identity-key-ipv4");
+   auto servFilePath = std::filesystem::current_path();
+   servFilePath.append("input_files/bip150v0_srv1/identity-key-ipv4");
    fstream serv_isf(servFilePath);
    char prvHex[65];
    serv_isf.getline(prvHex, 65);
    SecureBinaryData privServ(READHEX(prvHex));
 
    //grab client private key from peer files
-   auto cliFilePath = baseDir_;
-   cliFilePath.append("/bip150v0_cli1/identity-key-ipv4");
+   auto cliFilePath = std::filesystem::current_path();
+   cliFilePath.append("input_files/bip150v0_cli1/identity-key-ipv4");
    fstream cli_isf(cliFilePath);
    char cliHex[65];
    cli_isf.getline(cliHex, 65);
@@ -1026,8 +1024,6 @@ TEST_F(BIP150_151Test, checkData_150_151_1Way)
 
 TEST_F(BIP150_151Test, checkData_150_151_privateClientToPublicServer)
 {
-   // Get test files from the current (gtest) directory. C++17 would be nice
-   // since filesystem::current_path() has been added. Alas, for now....
    // Test IPv4, and then IPv6 later.
    // Ideally, the code would be smart enough to support two separate contexts
    // so that two separate key sets can be tested. There's no real reason to
@@ -1035,16 +1031,16 @@ TEST_F(BIP150_151Test, checkData_150_151_privateClientToPublicServer)
    // now, just cheat and have two "separate" systems with the same input files.
 
    //grab serv private key from peer files
-   auto servFilePath = baseDir_;
-   servFilePath.append("/bip150v0_srv1/identity-key-ipv4");
+   auto servFilePath = std::filesystem::current_path();
+   servFilePath.append("input_files/bip150v0_srv1/identity-key-ipv4");
    fstream serv_isf(servFilePath);
    char prvHex[65];
    serv_isf.getline(prvHex, 65);
    SecureBinaryData privServ(READHEX(prvHex));
 
    //grab client private key from peer files
-   auto cliFilePath = baseDir_;
-   cliFilePath.append("/bip150v0_cli1/identity-key-ipv4");
+   auto cliFilePath = std::filesystem::current_path();
+   cliFilePath.append("input_files/bip150v0_cli1/identity-key-ipv4");
    fstream cli_isf(cliFilePath);
    char cliHex[65];
    cli_isf.getline(cliHex, 65);
@@ -1244,8 +1240,6 @@ TEST_F(BIP150_151Test, checkData_150_151_privateClientToPublicServer)
 
 TEST_F(BIP150_151Test, checkData_150_151_publicClientToPrivateServer)
 {
-   // Get test files from the current (gtest) directory. C++17 would be nice
-   // since filesystem::current_path() has been added. Alas, for now....
    // Test IPv4, and then IPv6 later.
    // Ideally, the code would be smart enough to support two separate contexts
    // so that two separate key sets can be tested. There's no real reason to
@@ -1253,16 +1247,16 @@ TEST_F(BIP150_151Test, checkData_150_151_publicClientToPrivateServer)
    // now, just cheat and have two "separate" systems with the same input files.
 
    //grab serv private key from peer files
-   auto servFilePath = baseDir_;
-   servFilePath.append("/bip150v0_srv1/identity-key-ipv4");
+   auto servFilePath = std::filesystem::current_path();
+   servFilePath.append("input_files/bip150v0_srv1/identity-key-ipv4");
    fstream serv_isf(servFilePath);
    char prvHex[65];
    serv_isf.getline(prvHex, 65);
    SecureBinaryData privServ(READHEX(prvHex));
 
    //grab client private key from peer files
-   auto cliFilePath = baseDir_;
-   cliFilePath.append("/bip150v0_cli1/identity-key-ipv4");
+   auto cliFilePath = std::filesystem::current_path();
+   cliFilePath.append("input_files/bip150v0_cli1/identity-key-ipv4");
    fstream cli_isf(cliFilePath);
    char cliHex[65];
    cli_isf.getline(cliHex, 65);
@@ -1552,7 +1546,6 @@ protected:
 
 };
 
-
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BinaryDataTest, Constructor)
 {
@@ -1567,7 +1560,7 @@ TEST_F(BinaryDataTest, Constructor)
    BinaryData c(ptr, 2);
    BinaryData d(ptr, 4);
    BinaryData e(b);
-   auto&& f = BinaryData::fromString("xyza");
+   auto&& f = BinaryData::fromString("xyza"sv);
 
    EXPECT_EQ(a.getSize(), 0ULL);
    EXPECT_EQ(b.getSize(), 4ULL);
@@ -2454,7 +2447,6 @@ TEST_F(BinaryDataRefTest, Equality)
    EXPECT_FALSE(bdr4_!=bd4_);
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 TEST(BitReadWriteTest, Writer8)
@@ -2490,7 +2482,6 @@ TEST(BitReadWriteTest, Writer8)
    EXPECT_EQ( bitp.getBitsUsed(), 8ULL);
    EXPECT_EQ( bitp.getBinaryData(), READHEX("a3"));
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 TEST(BitReadWriteTest, Writer16)
@@ -2531,7 +2522,6 @@ TEST(BitReadWriteTest, Writer16)
    EXPECT_EQ( bitp.getBitsUsed(), 16ULL);
    EXPECT_EQ( bitp.getBinaryData(), READHEX("a303"));
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 TEST(BitReadWriteTest, Writer32)
@@ -2590,7 +2580,6 @@ TEST(BitReadWriteTest, Reader16)
    EXPECT_EQ(   bitu.getBits(8), 3);
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 TEST(BitReadWriteTest, Reader32)
 {
@@ -2609,7 +2598,7 @@ TEST(BitReadWriteTest, Reader64)
 TEST(BinaryReadWriteTest, Writer)
 {
    BinaryData out = READHEX("01""0100""013200aa""ff00ff00ff00ff00"
-                            "ab""fdffff""fe013200aa""ffff00ff00ff00ff00");
+      "ab""fdffff""fe013200aa""ffff00ff00ff00ff00");
 
    BinaryWriter bw;
    bw.put_uint8_t(1);                       EXPECT_EQ(bw.getSize(), 1ULL);
@@ -2629,7 +2618,7 @@ TEST(BinaryReadWriteTest, Writer)
 TEST(BinaryReadWriteTest, WriterEndian)
 {
    BinaryData out = READHEX("01""0100""013200aa""ff00ff00ff00ff00"
-                            "ab""fdffff""fe013200aa""ffff00ff00ff00ff00");
+      "ab""fdffff""fe013200aa""ffff00ff00ff00ff00");
 
    BinaryWriter bw;
    bw.put_uint8_t(1);                          EXPECT_EQ(bw.getSize(), 1ULL);
@@ -2660,7 +2649,7 @@ TEST(BinaryReadWriteTest, WriterEndian)
 TEST(BinaryReadWriteTest, Reader)
 {
    BinaryData in = READHEX("01""0100""013200aa""ff00ff00ff00ff00"
-                           "ab""fdffff""fe013200aa""ffff00ff00ff00ff00");
+      "ab""fdffff""fe013200aa""ffff00ff00ff00ff00");
 
    BinaryReader br(in);
    EXPECT_EQ(br.get_uint8_t(), 1ULL);
@@ -2687,17 +2676,17 @@ TEST(BinaryReadWriteTest, Reader)
 TEST(BinaryReadWriteTest, ReaderEndian)
 {
    BinaryData in = READHEX("01""0100""013200aa""ff00ff00ff00ff00"
-                           "ab""fdffff""fe013200aa""ffff00ff00ff00ff00");
+      "ab""fdffff""fe013200aa""ffff00ff00ff00ff00");
 
    BinaryReader br(in);
    auto val8 = br.get_uint8_t();
-   EXPECT_EQ(val8, 1);                       
+   EXPECT_EQ(val8, 1);
 
    auto val16 = br.get_uint16_t(LE);
-   EXPECT_EQ(val16, 1);   
+   EXPECT_EQ(val16, 1);
 
    auto val32 = br.get_uint32_t(LE);
-   EXPECT_EQ(val32, 0xaa003201);   
+   EXPECT_EQ(val32, 0xaa003201);
 
    auto val64 = br.get_uint64_t(LE);
    EXPECT_EQ(val64, 0x00ff00ff00ff00ffULL);
@@ -2792,10 +2781,10 @@ class BtcUtilsTest : public ::testing::Test
 protected:
    virtual void SetUp(void) 
    {
-      homedir_ = string("./fakehomedir");
-      DBUtils::removeDirectory(homedir_);
-      mkdir(homedir_);
-         
+      homedir_ = std::filesystem::path("./fakehomedir");
+      FileUtils::removeDirectory(homedir_);
+      std::filesystem::create_directory(homedir_);
+
       Armory::Config::parseArgs({
          "--datadir=./fakehomedir",
          "--offline" },
@@ -2823,7 +2812,7 @@ protected:
 
    virtual void TearDown(void)
    {
-      DBUtils::removeDirectory(homedir_);
+      FileUtils::removeDirectory(homedir_);
       Armory::Config::reset();
    }
 
@@ -2837,7 +2826,7 @@ protected:
    BinaryData prevHashCB_;
    BinaryData prevHashReg_;
 
-   string homedir_;
+   std::filesystem::path homedir_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -3051,8 +3040,8 @@ TEST_F(BtcUtilsTest, BotchedArmoryHMAC)
    auto sha_efgh = READHEX("e5e088a0b66163a0a26a5e053d2a4496dc16ab6e0e3dd1adf2d16aa84a078c9d");
    auto hmac_1 = READHEX("edd2c945dc57a5eecdb4dbb2db8ae4f33f9669046e47acb517c8f6bcdf6ee591");
 
-   auto abcd = BinaryData::fromString("abcd");
-   auto efgh = BinaryData::fromString("efgh");
+   auto abcd = BinaryData::fromString("abcd"sv);
+   auto efgh = BinaryData::fromString("efgh"sv);
 
    EXPECT_EQ(BtcUtils::getSha256(abcd), sha_abcd);
    EXPECT_EQ(BtcUtils::getSha256(efgh), sha_efgh);
@@ -3171,7 +3160,6 @@ TEST_F(BtcUtilsTest, TxOutScriptID_Multisig)
    EXPECT_EQ(BtcUtils::getTxOutScrAddr(script, scrType), unique );
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BtcUtilsTest, TxOutScriptID_MultiList)
 {
@@ -3246,7 +3234,6 @@ TEST_F(BtcUtilsTest, TxInScriptID_StdCompr)
    EXPECT_EQ(BtcUtils::getTxInAddr(script, prevHash, scrType), a160);
    EXPECT_EQ(BtcUtils::getTxInAddrFromType(script,  scrType), a160);
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BtcUtilsTest, TxInScriptID_Coinbase)
@@ -3324,7 +3311,6 @@ TEST_F(BtcUtilsTest, TxInScriptID_SpendMultisig)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BtcUtilsTest, TxInScriptID_SpendP2SH)
 {
-
    // Spending P2SH output as above:  fd16d6bbf1a3498ca9777b9d31ceae883eb8cb6ede1fafbdd218bae107de66fe (TxIn: 1, 219 B)
    // Leading 0x00 byte is required due to a bug in OP_CHECKMULTISIG
    BinaryData script = READHEX(
@@ -4265,7 +4251,6 @@ TEST_F(StoredBlockObjTest, SHeaderUnserialize)
    EXPECT_EQ(   sbh_.stxMap_.size(), 0ULL);
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(StoredBlockObjTest, SHeaderDBSerFull_H)
 {
@@ -4289,9 +4274,6 @@ TEST_F(StoredBlockObjTest, SHeaderDBSerFull_B1)
 {
    // ARMORY_DB_FULL means no merkle string (cause all Tx are in the DB
    // so the merkle tree would be redundant.
-//    DBUtils::setArmoryDbType(ARMORY_DB_FULL);
-//    DBUtils::setDbPruneType(DB_PRUNE_NONE);
-
    sbh_.blockHeight_      = 65535;
    sbh_.duplicateID_      = 1;
    sbh_.merkle_           = READHEX("deadbeef");
@@ -4421,7 +4403,6 @@ TEST_F(StoredBlockObjTest, STxUnserUnfrag)
    EXPECT_EQ(   stx.stxoMap_[0].txOutIndex_, 0);
    EXPECT_EQ(   stx.stxoMap_[1].txOutIndex_, 1);
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(StoredBlockObjTest, STxUnserFragged)
@@ -4606,9 +4587,6 @@ TEST_F(StoredBlockObjTest, STxOutUnserialize)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(StoredBlockObjTest, STxOutSerDBValue_1)
 {
-//    DBUtils::setArmoryDbType(ARMORY_DB_FULL);
-//    DBUtils::setDbPruneType(DB_PRUNE_NONE);
-
    StoredTxOut stxo0;
 
    stxo0.unserialize(rawTxOut0_);
@@ -4629,9 +4607,6 @@ TEST_F(StoredBlockObjTest, STxOutSerDBValue_1)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(StoredBlockObjTest, STxOutSerDBValue_2)
 {
-//    DBUtils::setArmoryDbType(ARMORY_DB_FULL);
-//    DBUtils::setDbPruneType(DB_PRUNE_NONE);
-
    StoredTxOut stxo0;
    stxo0.unserialize(rawTxOut0_);
    stxo0.txVersion_ = 1;
@@ -4651,9 +4626,6 @@ TEST_F(StoredBlockObjTest, STxOutSerDBValue_2)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(StoredBlockObjTest, STxOutSerDBValue_3)
 {
-//    DBUtils::setArmoryDbType(ARMORY_DB_FULL);
-//    DBUtils::setDbPruneType(DB_PRUNE_NONE);
-
    StoredTxOut stxo0;
    stxo0.unserialize(rawTxOut0_);
    stxo0.txVersion_ = 1;
@@ -4674,7 +4646,7 @@ TEST_F(StoredBlockObjTest, STxOutSerDBValue_3)
 TEST_F(StoredBlockObjTest, STxOutUnserDBValue_1)
 {
    BinaryData input = READHEX( "0400ac4c8bd5000000001976a9148dce8946f1c7763b"
-                               "b60ea5cf16ef514cbed0633b88ac");
+      "b60ea5cf16ef514cbed0633b88ac");
    StoredTxOut stxo;
    stxo.unserializeDBValue(input);
 
@@ -4694,8 +4666,8 @@ TEST_F(StoredBlockObjTest, STxOutUnserDBValue_1)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(StoredBlockObjTest, STxOutUnserDBValue_2)
 {
-   BinaryData input = READHEX( "0500ac4c8bd5000000001976a9148dce8946f1c7763b"
-                               "b60ea5cf16ef514cbed0633b88ac01a086017f000f00");
+   BinaryData input = READHEX("0500ac4c8bd5000000001976a9148dce8946f1c7763b"
+      "b60ea5cf16ef514cbed0633b88ac01a086017f000f00");
    StoredTxOut stxo;
    stxo.unserializeDBValue(input);
 
@@ -4715,8 +4687,8 @@ TEST_F(StoredBlockObjTest, STxOutUnserDBValue_2)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(StoredBlockObjTest, STxOutUnserDBValue_3)
 {
-   BinaryData input = READHEX( "0680ac4c8bd5000000001976a9148dce8946f1c7763b"
-                               "b60ea5cf16ef514cbed0633b88ac");
+   BinaryData input = READHEX("0680ac4c8bd5000000001976a9148dce8946f1c7763b"
+      "b60ea5cf16ef514cbed0633b88ac");
    StoredTxOut stxo;
    stxo.unserializeDBValue(input);
 
@@ -4749,15 +4721,12 @@ TEST_F(StoredBlockObjTest, SHeaderFullBlock)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(StoredBlockObjTest, SUndoDataSer)
 {
-//    DBUtils::setArmoryDbType(ARMORY_DB_FULL);
-//    DBUtils::setDbPruneType(DB_PRUNE_NONE);
-
    BinaryData arbHash  = READHEX("11112221111222111122222211112222"
-                                 "11112221111222111122211112221111");
+      "11112221111222111122211112221111");
    BinaryData op0_str  = READHEX("aaaabbbbaaaabbbbaaaabbbbaaaabbbb"
-                                 "aaaabbbbaaaabbbbaaaabbbbaaaabbbb");
+      "aaaabbbbaaaabbbbaaaabbbbaaaabbbb");
    BinaryData op1_str  = READHEX("ffffbbbbffffbbbbffffbbbbffffbbbb"
-                                 "ffffbbbbffffbbbbffffbbbbffffbbbb");
+      "ffffbbbbffffbbbbffffbbbbffffbbbb");
 
    
    StoredUndoData sud;
@@ -4810,29 +4779,16 @@ TEST_F(StoredBlockObjTest, SUndoDataSer)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(StoredBlockObjTest, SUndoDataUnser)
 {
-//    DBUtils::setArmoryDbType(ARMORY_DB_FULL);
-//    DBUtils::setDbPruneType(DB_PRUNE_NONE);
-
    BinaryData arbHash  = READHEX("11112221111222111122222211112222"
-                                 "11112221111222111122211112221111");
+      "11112221111222111122211112221111");
    BinaryData op0_str  = READHEX("aaaabbbbaaaabbbbaaaabbbbaaaabbbb"
-                                 "aaaabbbbaaaabbbbaaaabbbbaaaabbbb");
+      "aaaabbbbaaaabbbbaaaabbbbaaaabbbb");
    BinaryData op1_str  = READHEX("ffffbbbbffffbbbbffffbbbbffffbbbb"
-                                 "ffffbbbbffffbbbbffffbbbbffffbbbb");
+      "ffffbbbbffffbbbbffffbbbbffffbbbb");
    OutPoint op0(op0_str, 1);
    OutPoint op1(op1_str, 2);
 
-   //BinaryData sudToUnser = READHEX( 
-      //"1111222111122211112222221111222211112221111222111122211112221111"
-      //"0200000024111122211112221111222222111122221111222111122211112221"
-      //"111222111105000000ac4c8bd5000000001976a9148dce8946f1c7763bb60ea5"
-      //"cf16ef514cbed0633b88ac241111222111122211112222221111222211112221"
-      //"11122211112221111222111105000000002f6859000000001976a9146a59ac0e"
-      //"8f553f292dfe5e9f3aaa1da93499c15e88ac02000000aaaabbbbaaaabbbbaaaa"
-      //"bbbbaaaabbbbaaaabbbbaaaabbbbaaaabbbbaaaabbbb01000000ffffbbbbffff"
-      //"bbbbffffbbbbffffbbbbffffbbbbffffbbbbffffbbbbffffbbbb02000000");
-
-   BinaryData sudToUnser = READHEX( 
+   BinaryData sudToUnser = READHEX(
       "1111222111122211112222221111222211112221111222111122211112221111"
       "02000000240186a0020011000511112221111222111122222211112222111122"
       "2111122211112221111222111105000000ac4c8bd5000000001976a9148dce89"
@@ -4967,11 +4923,11 @@ TEST_F(StoredBlockObjTest, SHeadHgtListSer)
    baseHHL.height_ = 123000;
    baseHHL.dupAndHashList_.resize(0);
    BinaryData hash0 = READHEX("aaaabbbbaaaabbbbaaaabbbbaaaabbbb"
-                              "aaaabbbbaaaabbbbaaaabbbbaaaabbbb");
+      "aaaabbbbaaaabbbbaaaabbbbaaaabbbb");
    BinaryData hash1 = READHEX("2222bbbb2222bbbb2222bbbb2222bbbb"
-                              "2222bbbb2222bbbb2222bbbb2222bbbb");
+      "2222bbbb2222bbbb2222bbbb2222bbbb");
    BinaryData hash2 = READHEX("2222ffff2222ffff2222ffff2222ffff"
-                              "2222ffff2222ffff2222ffff2222ffff");
+      "2222ffff2222ffff2222ffff2222ffff");
 
    uint8_t dup0 = 0;
    uint8_t dup1 = 1;
@@ -5026,7 +4982,6 @@ TEST_F(StoredBlockObjTest, SHeadHgtListSer)
    expectOut.put_uint8_t(dup2); expectOut.put_BinaryData(hash2);
    EXPECT_EQ(testHHL.serializeDBValue(), expectOut.getData());
 
-
    // Test writing with three entries, with preferred
    expectOut.reset();
    testHHL = baseHHL;
@@ -5045,11 +5000,11 @@ TEST_F(StoredBlockObjTest, SHeadHgtListSer)
 TEST_F(StoredBlockObjTest, SHeadHgtListUnser)
 {
    BinaryData hash0 = READHEX("aaaabbbbaaaabbbbaaaabbbbaaaabbbb"
-                              "aaaabbbbaaaabbbbaaaabbbbaaaabbbb");
+      "aaaabbbbaaaabbbbaaaabbbbaaaabbbb");
    BinaryData hash1 = READHEX("2222bbbb2222bbbb2222bbbb2222bbbb"
-                              "2222bbbb2222bbbb2222bbbb2222bbbb");
+      "2222bbbb2222bbbb2222bbbb2222bbbb");
    BinaryData hash2 = READHEX("2222ffff2222ffff2222ffff2222ffff"
-                              "2222ffff2222ffff2222ffff2222ffff");
+      "2222ffff2222ffff2222ffff2222ffff");
 
    vector<BinaryData> tests;
    tests.push_back( READHEX(
@@ -5342,10 +5297,9 @@ class LMDBTest : public ::testing::Test
 protected:
    virtual void SetUp(void) 
    {
-      homedir_ = string("./fakehomedir");
-      DBUtils::removeDirectory(homedir_);
-      mkdir(homedir_);
-      mkdir(homedir_ + "/databases");
+      homedir_ = std::filesystem::path("./fakehomedir");
+      FileUtils::removeDirectory(homedir_);
+      FileUtils::createDirectory(homedir_ / "databases");
 
       zeros_ = READHEX("00000000");
          
@@ -5369,7 +5323,7 @@ protected:
       headHashBE_ = READHEX(
          "000000000000479de7df494b25c838f0e102d696e08ad2bb74066d7a7ae69511");
 
-      rawTx0_ = READHEX( 
+      rawTx0_ = READHEX(
          "01000000016290dce984203b6a5032e543e9e272d8bce934c7de4d15fa0fe44d"
          "d49ae4ece9010000008b48304502204f2fa458d439f957308bca264689aa175e"
          "3b7c5f78a901cb450ebd20936b2c500221008ea3883a5b80128e55c9c6070aa6"
@@ -5379,7 +5333,7 @@ protected:
          "00001976a914c1b4695d53b6ee57a28647ce63e45665df6762c288ac80d1f008"
          "000000001976a9140e0aec36fe2545fb31a41164fb6954adcd96b34288ac0000"
          "0000");
-      rawTx1_ = READHEX( 
+      rawTx1_ = READHEX(
          "0100000001f658dbc28e703d86ee17c9a2d3b167a8508b082fa0745f55be5144"
          "a4369873aa010000008c49304602210041e1186ca9a41fdfe1569d5d807ca7ff"
          "6c5ffd19d2ad1be42f7f2a20cdc8f1cc0221003366b5d64fe81e53910e156914"
@@ -5553,7 +5507,7 @@ protected:
       delete iface_;
       iface_ = NULL;
 
-      DBUtils::removeDirectory(homedir_);
+      FileUtils::removeDirectory(homedir_);
       Armory::Config::reset();
 
       CLEANUP_ALL_TIMERS();
@@ -5673,7 +5627,7 @@ protected:
    BinaryData magic_;
    BinaryData zeros_;
 
-   string homedir_;
+   std::filesystem::path homedir_;
 
    BinaryData rawHead_;
    BinaryData headHashLE_;
@@ -6146,10 +6100,10 @@ class TestTxHashFilters : public ::testing::Test
 protected:
    virtual void SetUp(void)
    {
-      homedir_ = string("./fakehomedir");
-      DBUtils::removeDirectory(homedir_);
-      mkdir(homedir_);
-      mkdir(homedir_ + "/databases");
+      homedir_ = std::filesystem::path("./fakehomedir");
+      FileUtils::removeDirectory(homedir_);
+      std::filesystem::create_directory(homedir_);
+      std::filesystem::create_directory(homedir_ / "databases");
 
       Armory::Config::parseArgs({
          "--datadir=./fakehomedir",
@@ -6165,7 +6119,7 @@ protected:
       delete iface_;
       iface_ = NULL;
 
-      DBUtils::removeDirectory(homedir_);
+      FileUtils::removeDirectory(homedir_);
       Armory::Config::reset();
 
       CLEANUP_ALL_TIMERS();
@@ -6178,7 +6132,7 @@ protected:
    }
 
    LMDBBlockDatabase* iface_;
-   string homedir_;
+   std::filesystem::path homedir_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -6660,12 +6614,12 @@ protected:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(KdfTests, Romix)
+TEST_F(KdfTests, Romix_TargetTime)
 {
-   uint32_t targetUnlock_ms = 2000;
+   auto targetUnlock = 2000ms;
 
    //create a KDF object
-   KeyDerivationFunction_Romix kdfRom(targetUnlock_ms);
+   KeyDerivationFunction_Romix kdfRom(targetUnlock, 0);
    EXPECT_GE(kdfRom.memTarget(), 8092);
 
    //derive key with it, check it takes over 2sec
@@ -6677,8 +6631,8 @@ TEST_F(KdfTests, Romix)
 
       EXPECT_NE(derivedKey, keyToDerive);
       auto diff = chrono::duration_cast<chrono::milliseconds>(end - start);
-      EXPECT_GE(diff.count(), targetUnlock_ms);
-      EXPECT_LE(diff.count(), targetUnlock_ms + 1000);
+      EXPECT_GE(diff.count(), targetUnlock.count());
+      EXPECT_LE(diff.count(), targetUnlock.count() + 1000);
    }
    kdfRom.prettyPrint();
 
@@ -6697,8 +6651,8 @@ TEST_F(KdfTests, Romix)
 
       EXPECT_NE(derivedKey, keyToDerive);
       auto diff = chrono::duration_cast<chrono::milliseconds>(end - start);
-      EXPECT_GE(diff.count(), targetUnlock_ms);
-      EXPECT_LE(diff.count(), targetUnlock_ms + 1000);
+      EXPECT_GE(diff.count(), targetUnlock.count());
+      EXPECT_LE(diff.count(), targetUnlock.count() + 1000);
    }
    kdfRom2->prettyPrint();
 
@@ -6717,27 +6671,88 @@ TEST_F(KdfTests, Romix)
 
       EXPECT_NE(derivedKey, keyToDerive);
       auto diff = chrono::duration_cast<chrono::milliseconds>(end - start);
-      EXPECT_GE(diff.count(), targetUnlock_ms);
-      EXPECT_LE(diff.count(), targetUnlock_ms + 1000);
+      EXPECT_GE(diff.count(), targetUnlock.count());
+      EXPECT_LE(diff.count(), targetUnlock.count() + 1000);
    }
    kdfRom3.prettyPrint();
+}
+
+////////
+TEST_F(KdfTests, Romix_TargetMemory)
+{
+   //128MB target, no time target
+   KeyDerivationFunction_Romix kdfRom(0ms, 128);
+   EXPECT_EQ(kdfRom.memTarget(), 128 * 1024 * 1024);
+
+   auto keyToDerive = SecureBinaryData::fromString("0123456789AB");
+   {
+      auto start = chrono::system_clock::now();
+      auto derivedKey = kdfRom.deriveKey(keyToDerive);
+      auto end = chrono::system_clock::now();
+
+      EXPECT_NE(derivedKey, keyToDerive);
+      auto diff = end - start;
+      EXPECT_GE(diff, 2000ms) << diff.count();
+   }
+
+   //4MB target and 2000ms target
+   KeyDerivationFunction_Romix kdfRom2(2000ms, 4);
+   EXPECT_GE(kdfRom2.memTarget(), 4 * 1024 * 1024);
+
+   {
+      auto start = chrono::system_clock::now();
+      auto derivedKey = kdfRom2.deriveKey(keyToDerive);
+      auto end = chrono::system_clock::now();
+
+      EXPECT_NE(derivedKey, keyToDerive);
+      auto diff = end - start;
+      EXPECT_GE(diff, 2000ms) << diff.count();
+      EXPECT_LE(diff, 3000ms) << diff.count();
+   }
+
+   //16MB target and 2000ms target
+   KeyDerivationFunction_Romix kdfRom3(2000ms, 16);
+   EXPECT_GE(kdfRom3.memTarget(), 16 * 1024 * 1024);
+
+   {
+      auto start = chrono::system_clock::now();
+      auto derivedKey = kdfRom3.deriveKey(keyToDerive);
+      auto end = chrono::system_clock::now();
+
+      EXPECT_NE(derivedKey, keyToDerive);
+      auto diff = end - start;
+      EXPECT_GE(diff, 2000ms) << diff.count();
+      EXPECT_LE(diff, 4000ms) << diff.count();
+   }
+
+   //512MB target, no time target
+   KeyDerivationFunction_Romix kdfRom4(0ms, 512);
+   EXPECT_EQ(kdfRom4.memTarget(), 256 * 1024 * 1024);
+
+   {
+      auto start = chrono::system_clock::now();
+      auto derivedKey = kdfRom4.deriveKey(keyToDerive);
+      auto end = chrono::system_clock::now();
+
+      EXPECT_NE(derivedKey, keyToDerive);
+      auto diff = end - start;
+      EXPECT_GE(diff, 4000ms) << diff.count();
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 // Now actually execute all the tests
 ////////////////////////////////////////////////////////////////////////////////
-GTEST_API_ int main(int argc, char **argv) 
+GTEST_API_ int main(int argc, char **argv)
 {
    #ifdef _MSC_VER
       _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-   
       WSADATA wsaData;
       WORD wVersion = MAKEWORD(2, 0);
       WSAStartup(wVersion, &wsaData);
    #endif
 
-   GOOGLE_PROTOBUF_VERIFY_VERSION;
    srand(time(0));
    std::cout << "Running main() from gtest_main.cc\n";
 
@@ -6752,7 +6767,6 @@ GTEST_API_ int main(int argc, char **argv)
 
    FLUSHLOG();
    CLEANUPLOG();
-   google::protobuf::ShutdownProtobufLibrary();
 
    return exitCode;
 }

@@ -9,13 +9,14 @@
 #define _BINARYDATA_H_
 
 #include <stdio.h>
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#include <cstring>
+#if defined(__MINGW32__) || defined(_MSC_VER)
 	#if _MSC_PLATFORM_TOOLSET < 110
 		#include <stdint.h>
    #endif
 
    #ifndef ssize_t
-      #ifdef _WIN32
+      #ifdef _MSC_VER
          #define ssize_t SSIZE_T
       #else
          #define ssize_t long
@@ -24,8 +25,7 @@
 
 #else
    #include <stdlib.h>
-   #include <inttypes.h>   
-   #include <cstring>
+   #include <inttypes.h>
    #include <stdint.h>
 
    #ifndef PAGESIZE
@@ -193,33 +193,12 @@ public:
    
    /////////////////////////////////////////////////////////////////////////////
    // We allocate space as necesssary
-   void copyFrom(uint8_t const * start, uint8_t const * end) 
-                  { copyFrom( start, (end-start)); }  // [start, end)
-   
-   void copyFrom(const std::string& str)
-   {
-      copyFrom(str.c_str(), str.size());
-   }
-
-   void copyFrom(BinaryData const & bd)
-                  { copyFrom( bd.getPtr(), bd.getSize() ); }
-   void copyFrom(BinaryDataRef const & bdr);
-
-   void copyFrom(char const * inData, size_t sz)
-   {
-      copyFrom((uint8_t*)inData, sz);
-   }
-
-   void copyFrom(uint8_t const * inData, size_t sz)
-   { 
-      if(inData==NULL || sz == 0)
-         alloc(0);
-      else
-      {
-         alloc(sz); 
-         memcpy( &(data_[0]), inData, sz);
-      }
-   }
+   void copyFrom(const uint8_t*, const uint8_t*);
+   void copyFrom(const std::string&);
+   void copyFrom(const BinaryData&);
+   void copyFrom(const BinaryDataRef&);
+   void copyFrom(const char*, size_t);
+   void copyFrom(const uint8_t*, size_t);
 
    /////////////////////////////////////////////////////////////////////////////
    // UNSAFE -- you don't know if outData holds enough space for this
@@ -263,27 +242,10 @@ public:
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   // This is about as efficient as we're going to get...
-   BinaryData & append(BinaryData const & bd2)
-   {
-      if(bd2.getSize()==0) 
-         return (*this);
-   
-      if(getSize()==0) 
-         copyFrom(bd2.getPtr(), bd2.getSize());
-      else
-         data_.insert(data_.end(), bd2.data_.begin(), bd2.data_.end());
-      return (*this);
-   }
-
-   /////////////////////////////////////////////////////////////////////////////
-   BinaryData & append(BinaryDataRef const & bd2);
-
-   /////////////////////////////////////////////////////////////////////////////
-   BinaryData & append(uint8_t const * str, size_t sz);
-
-   /////////////////////////////////////////////////////////////////////////////
-   BinaryData & append(uint8_t byte)
+   BinaryData& append(const BinaryData&);
+   BinaryData& append(const BinaryDataRef&);
+   BinaryData& append(const uint8_t*, size_t);
+   BinaryData& append(uint8_t byte)
    {
       data_.insert(data_.end(), byte);
       return (*this);
@@ -468,19 +430,14 @@ public:
    static INTTYPE StrToIntLE(BinaryData binstr)
    {
       uint8_t const SZ = sizeof(INTTYPE);
-      if(binstr.getSize() != SZ)
-      {
+      if (binstr.getSize() != SZ) {
          LOGERR << "StrToInt: strsz: " << binstr.getSize() << " intsz: " << SZ;
          return (INTTYPE)0;
       }
-      
-      /*INTTYPE out = 0;
-      for(uint8_t i=0; i<SZ; i++)
-         out |= ((INTTYPE)binstr[i]) << (8*i);*/
 
-      auto intPtr = (INTTYPE*)binstr.getPtr();
-
-      return *intPtr;
+      INTTYPE result;
+      memcpy(&result, binstr.getPtr(), sizeof(INTTYPE));
+      return result;
    }
 
    /////////////////////////////////////////////////////////////////////////////
@@ -506,7 +463,7 @@ public:
    static INTTYPE StrToIntLE(uint8_t const * ptr)
    {
       //return  *((INTTYPE*)ptr);
-      //the kind of typecasts are undefined behavior, use memcpy 
+      //these kind of typecasts are undefined behavior, use memcpy
       //instead, TBAA will optimize it away
 
       INTTYPE result;
@@ -528,15 +485,8 @@ public:
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   static BinaryData fromString(const std::string& str, size_t len = SIZE_MAX)
-   {
-      if (len == SIZE_MAX)
-         len = str.size();
-         
-      BinaryData data;
-      data.copyFrom(str.c_str(), len);
-      return data;
-   }
+   static BinaryData fromString(const std::string&, size_t len=SIZE_MAX);
+   static BinaryData fromString(const std::string_view&, size_t len=SIZE_MAX);
 
    /////////////////////////////////////////////////////////////////////////////
    void createFromHex(const std::string& str);
@@ -1030,7 +980,7 @@ public:
    // Take the remaining buffer and shift it to the front
    // then return a pointer to where the old data ends
    //
-   //                                      
+   //
    //  Before:                             pos
    //                                       |
    //                                       V
@@ -1040,7 +990,7 @@ public:
    //               |               |
    //               V               V
    //             [ m n o p q r s t - - - - - - - - - - - -]
-   //                                 
+   //
    //
    std::pair<uint8_t*, size_t> rotateRemaining(void)
    {
@@ -1048,7 +998,7 @@ public:
       //if(pos_ > nRemain+1)
          //memcpy(bdStr_.getPtr(), bdStr_.getPtr() + pos_, nRemain);
       //else
-         memmove(bdStr_.getPtr(), bdStr_.getPtr() + pos_, nRemain);
+      memmove(bdStr_.getPtr(), bdStr_.getPtr() + pos_, nRemain);
 
       pos_ = 0;
 
@@ -1163,6 +1113,7 @@ public:
    void resetPosition(void);
    size_t getPosition(void) const;
    size_t getSize(void) const;
+   bool empty(void) const;
    size_t getSizeRemaining(void) const;
    bool isEndOfStream(void) const;
    uint8_t const* exposeDataPtr(void);
@@ -1522,7 +1473,7 @@ public:
          streamPtr_ = new std::ifstream;
          weOwnTheStream_ = true;
          std::ifstream* ifstreamPtr = static_cast<std::ifstream*>(streamPtr_);
-         ifstreamPtr->open(OS_TranslatePath(filename.c_str()), std::ios::in | std::ios::binary);
+         ifstreamPtr->open(filename.c_str(), std::ios::in | std::ios::binary);
          if( !ifstreamPtr->is_open() )
          {
             std::cerr << "Could not open file for reading!  File: " << filename.c_str() << std::endl;

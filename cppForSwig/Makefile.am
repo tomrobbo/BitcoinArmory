@@ -20,7 +20,6 @@ LIBARMORYCLI = libArmoryCLI.la
 LIBLMDBPP = liblmdbpp.la
 LIBSECP256K1 = $(LIBBTC_LIBDIR)/src/secp256k1/libsecp256k1.la
 LIBWEBSOCKETS_STATIC = $(WEBSOCKETS_LIBDIR)/libwebsockets.a
-LIBPROTOBUF_STATIC = -lprotobuf
 if BUILD_OPENSSL_SUPPORT
 LIBCRYPTO_STATIC = $(CRYPTO_LIBDIR)/libcrypto.a
 LIBSSL_STATIC = $(SSL_LIBDIR)/libssl.a
@@ -42,7 +41,7 @@ endif
 
 LIBBTC_FLAGS =
 
-AM_CXXFLAGS =
+AM_CXXFLAGS = -Wfatal-errors
 
 # Revisit this line later. RPATH is needed for portability purposes. For now,
 # install_name_tool works around portability issues on macOS but RPATH probably
@@ -57,8 +56,8 @@ AM_CXXFLAGS =
 # Source 4: https://stackoverflow.com/a/33862145
 #LDFLAGS += -Wl,-rpath,. -Wl,-rpath,'$$ORIGIN/../more/libs/here' -Wl,-z,origin
 
-protobuf/%.pb.cc protobuf/%.pb.h: protobuf/%.proto
-	protoc --cpp_out=protobuf --proto_path=$(srcdir)/protobuf $<
+capnp/%.capnp.c++ capnp/%.capnp.h: capnp/%.capnp
+	capnp compile --src-prefix=$(srcdir)/capnp -oc++:capnp $<
 
 INCLUDE_FILES = -I$(srcdir)/lmdbpp \
 	-I$(srcdir)/chacha20poly1305 -I$(LIBBTC_LIBDIR)/src/secp256k1/include -I$(LIBBTC_LIBDIR)/src \
@@ -71,21 +70,24 @@ INCLUDE_FILES = -I$(srcdir)/lmdbpp \
 KEYMANAGER_SOURCE_FILES = KeyManager.cpp
 
 CPPBRIDGE_SOURCE_FILES = BridgeAPI/CppBridge.cpp \
-	BridgeAPI/BridgeMain.cpp \
-	BridgeAPI/ProtobufConversions.cpp \
 	BridgeAPI/BridgeSocket.cpp \
-	BridgeAPI/WalletManager.cpp \
-	BridgeAPI/ProtobufCommandParser.cpp \
-	BridgeAPI/PassphrasePrompt.cpp
+	BridgeAPI/ProtoCommandParser.cpp \
+	BridgeAPI/PassphrasePrompt.cpp \
+	BridgeAPI/Wallets/Container.cpp \
+	BridgeAPI/Wallets/Loader.cpp \
+	BridgeAPI/Wallets/Manager.cpp \
+	BridgeAPI/Wallets/Notifications.cpp \
+	BridgeAPI/BlockchainDbClient.cpp
 
 LIBTREZORCRYPTO_SOURCE_FILES = $(LIBBTC_LIBDIR)/src/trezor-crypto/bip39.c \
 	$(LIBBTC_LIBDIR)/src/trezor-crypto/pbkdf2.c \
 	$(LIBBTC_LIBDIR)/src/trezor-crypto/memzero.c \
 	$(LIBBTC_LIBDIR)/src/trezor-crypto/hmac.c \
-	$(LIBBTC_LIBDIR)/src/trezor-crypto/sha2.c \
-	$(LIBBTC_LIBDIR)/src/trezor-crypto/rand.c
+	$(LIBBTC_LIBDIR)/src/trezor-crypto/sha2.c
 
 ARMORYWALLETS_SOURCE_FILES = Wallets/BIP32_Node.cpp \
+	capnp/Types.capnp.c++ \
+	capnp/Bridge.capnp.c++ \
 	Wallets/Addresses.cpp \
 	Wallets/DecryptedDataContainer.cpp \
 	Wallets/DerivationScheme.cpp \
@@ -101,17 +103,25 @@ ARMORYWALLETS_SOURCE_FILES = Wallets/BIP32_Node.cpp \
 	Wallets/AssetEncryption.cpp \
 	Wallets/Wallets.cpp \
 	Wallets/AuthorizedPeers.cpp \
+	Wallets/Progress.cpp \
 	Wallets/Seeds/Backups.cpp \
-	Wallets/Seeds/Seeds.cpp
+	Wallets/Seeds/Seeds.cpp \
+	Wallets/KDF.cpp \
+	Wallets/GetPassphrase.cpp \
+	Wallets/random_buffer.c
 
 ARMORYSIGNER_SOURCE_FILES = Signer/Script.cpp \
+	capnp/Types.capnp.c++ \
+	capnp/Signer.capnp.c++ \
 	Signer/ScriptRecipient.cpp \
 	Signer/Signer.cpp \
 	Signer/LegacySigner.cpp \
 	Signer/ResolverFeed.cpp \
 	Signer/ResolverFeed_Wallets.cpp \
 	Signer/Transactions.cpp \
-	Signer/TxEvalState.cpp
+	Signer/TxEvalState.cpp \
+	capnp/Signer.capnp.c++ \
+	capnp/Types.capnp.c++
 
 BLOCKCHAINDB_SOURCE_FILES = BlockchainDatabase/Blockchain.cpp \
 	BlockchainDatabase/BlockchainScanner.cpp \
@@ -131,6 +141,7 @@ ARMORYDB_SOURCE_FILES = main.cpp
 ARMORYGUI_SOURCE_FILES = TransactionBatch.cpp
 ARMORYCLI_SOURCE_FILES = BDM_mainthread.cpp \
 	BDM_Server.cpp \
+	BDV_Notification.cpp \
 	BIP150_151.cpp \
 	BIP15x_Handshake.cpp \
 	BitcoinP2P.cpp \
@@ -151,16 +162,17 @@ ARMORYCLI_SOURCE_FILES = BDM_mainthread.cpp \
 	ZeroConf.cpp \
 	ZeroConfNotifications.cpp \
 	TerminalPassphrasePrompt.cpp \
-	gtest/NodeUnitTest.cpp
+	gtest/MockedNode.cpp
 
-ARMORYCOMMON_SOURCE_FILES = AsyncClient.cpp \
+ARMORYCOMMON_SOURCE_FILES = capnp/Types.capnp.c++ \
+	capnp/BDV.capnp.c++ \
+	AsyncClient.cpp \
 	BinaryData.cpp \
 	ArmoryConfig.cpp \
 	BtcUtils.cpp \
 	DBClientClasses.cpp \
 	CoinSelection.cpp \
 	EncryptionUtils.cpp \
-	KDF.cpp \
 	log.cpp \
 	BitcoinSettings.cpp \
 	ReentrantLock.cpp \
@@ -171,42 +183,6 @@ ARMORYCOMMON_SOURCE_FILES = AsyncClient.cpp \
 	UniversalTimer.cpp \
 	WebSocketClient.cpp \
 	WebSocketMessage.cpp
-
-PROTOBUF_PROTO = protobuf/AddressBook.proto \
-	protobuf/AddressData.proto \
-	protobuf/BDVCommand.proto \
-	protobuf/BridgeProto.proto \
-	protobuf/CommonTypes.proto \
-	protobuf/FeeEstimate.proto \
-	protobuf/LedgerEntry.proto \
-	protobuf/NodeStatus.proto \
-	protobuf/Signer.proto \
-	protobuf/Utxo.proto
-
-PROTOBUF_CC = protobuf/AddressBook.pb.cc \
-	protobuf/AddressData.pb.cc \
-	protobuf/BDVCommand.pb.cc \
-	protobuf/BridgeProto.pb.cc \
-	protobuf/CommonTypes.pb.cc \
-	protobuf/FeeEstimate.pb.cc \
-	protobuf/LedgerEntry.pb.cc \
-	protobuf/NodeStatus.pb.cc \
-	protobuf/Signer.pb.cc \
-	protobuf/Utxo.pb.cc
-
-PROTOBUF_H = protobuf/AddressBook.pb.h \
-	protobuf/AddressData.pb.h \
-	protobuf/BDVCommand.pb.h \
-	protobuf/BridgeProto.pb.h \
-	protobuf/CommonTypes.pb.h \
-	protobuf/FeeEstimate.pb.h \
-	protobuf/LedgerEntry.pb.h \
-	protobuf/NodeStatus.pb.h \
-	protobuf/Signer.pb.h \
-	protobuf/Utxo.pb.h 
-
-# Protobuf files required for distribution but not installation.
-dist_noinst_DATA = $(PROTOBUF_PROTO)
 
 # LMDB (DB used by Armory). On macOS, don't use SYSV semaphores (the default),
 # which cause crashes due to mutex lock/unlock issues. Use POSIX semaphores
@@ -243,7 +219,9 @@ libArmorySigner_la_CXXFLAGS = $(AM_CXXFLAGS) $(LIBBTC_FLAGS) \
 			      $(UNIT_TEST_CXXFLAGS) -D__STDC_LIMIT_MACROS
 libArmorySigner_la_LIBADD = $(LIBBTC) \
 				$(LIBSECP256K1) \
-				$(LIBTREZORCRYPTO)
+				$(LIBTREZORCRYPTO) \
+				-lcapnp \
+				-lkj
 libArmorySigner_la_LDFLAGS = $(LDFLAGS)
 
 
@@ -262,7 +240,6 @@ libBlockchainDb_la_LDFLAGS = $(LDFLAGS)
 # Common functionality across GUI and command line
 noinst_LTLIBRARIES += $(LIBARMORYCOMMON)
 libArmoryCommon_la_SOURCES = $(ARMORYCOMMON_SOURCE_FILES)
-nodist_libArmoryCommon_la_SOURCES = $(PROTOBUF_CC) $(PROTOBUF_H)
 libArmoryCommon_la_CPPFLAGS = $(AM_CPPFLAGS) $(INCLUDE_FILES)
 libArmoryCommon_la_CXXFLAGS = $(AM_CXXFLAGS) $(LIBBTC_FLAGS) \
 			      $(UNIT_TEST_CXXFLAGS) -D__STDC_LIMIT_MACROS
@@ -274,7 +251,7 @@ libArmoryCommon_la_LIBADD = $(LIBHKDF) \
 				$(LIBARMORYSIGNER) \
 				$(LIBBLOCKCHAINDB) \
 				-lpthread
-libArmoryCommon_la_LDFLAGS = $(LDFLAGS) $(LWSLDFLAGS) $(PROTOBUF_FLAGS)
+libArmoryCommon_la_LDFLAGS = $(LDFLAGS) $(LWSLDFLAGS)
 
 # Command-line functionality library
 noinst_LTLIBRARIES += $(LIBARMORYCLI)
@@ -294,7 +271,8 @@ libArmoryCLI_la_LIBADD = $(LIBCHACHA20POLY1305) \
 			 $(LIBSECP256K1) \
 			 $(LIBTREZORCRYPTO) \
 			 -llmdb \
-			 -lpthread
+			 -lcapnp \
+			 -lkj
 libArmoryCLI_la_LDFLAGS = $(LDFLAGS) $(LWSLDFLAGS)
 
 # ArmoryDB binary
@@ -315,8 +293,9 @@ ArmoryDB_LDADD = $(LIBARMORYWALLETS) \
 		 $(LIBCHACHA20POLY1305) \
 		 $(LIBLMDBPP) \
 		 -llmdb \
-		 $(LIBPROTOBUF_STATIC) \
-		 $(LIBWEBSOCKETS_STATIC)
+		 $(LIBWEBSOCKETS_STATIC) \
+		 -lcapnp \
+		 -lkj
 if BUILD_OPENSSL_SUPPORT
 ArmoryDB_LDADD += $(LIBSSL_STATIC) \
 		 $(LIBCRYPTO_STATIC)
@@ -349,16 +328,18 @@ BIP150KeyManager_LDADD = $(LIBARMORYCOMMON) \
 		 $(LIBTREZORCRYPTO) \
 		 $(LIBLMDBPP) \
 		 -llmdb \
-		 $(LIBPROTOBUF_STATIC) \
-		 -lpthread
+		 -lpthread \
+		 -lcapnp \
+		 -lkj
 BIP150KeyManager_LDFLAGS = $(LWSLDFLAGS) $(LDFLAGS) -static
 
 if BUILD_CLIENT
 bin_PROGRAMS += CppBridge
-CppBridge_SOURCES = $(CPPBRIDGE_SOURCE_FILES)
+CppBridge_SOURCES = BridgeAPI/BridgeMain.cpp \
+	$(CPPBRIDGE_SOURCE_FILES)
 CppBridge_CXXFLAGS = $(AM_CXXFLAGS) $(LIBBTC_FLAGS) $(UNIT_TEST_CXXFLAGS) \
 		-D__STDC_LIMIT_MACROS
-CppBridge_CPPFLAGS = $(AM_CPPFLAGS) $(INCLUDE_FILES) -Iprotobuf
+CppBridge_CPPFLAGS = $(AM_CPPFLAGS) $(INCLUDE_FILES)
 CppBridge_LDADD = $(LIBARMORYCOMMON) \
 		 $(LIBARMORYCLI) \
 		 $(LIBHKDF) \
@@ -367,7 +348,6 @@ CppBridge_LDADD = $(LIBARMORYCOMMON) \
 		 $(LIBTREZORCRYPTO) \
 		 $(LIBLMDBPP) \
 		 -llmdb \
-		 $(LIBPROTOBUF_STATIC) \
 		 $(LIBWEBSOCKETS_STATIC)
 if BUILD_OPENSSL_SUPPORT
 CppBridge_LDADD += $(LIBSSL_STATIC) \
@@ -388,15 +368,9 @@ endif
 CppBridge_LDFLAGS = $(LWSLDFLAGS) $(LDFLAGS) -static
 endif
 
-MOSTLYCLEANFILES = $(PROTOBUF_CC) $(PROTOBUF_H)
-BUILT_SOURCES += $(PROTOBUF_CC)
-
 clean-local:
 	rm -f CppBridge
 	rm -f BIP150KeyManager
-
-protobuf_clean:
-	rm -f protobuf/*.pb.*
 
 # .include file prevents gtest subdir from building a second copy of Armory.
 # Also provides a convenient spot to place all test-related materials.

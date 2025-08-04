@@ -134,18 +134,17 @@ class DlgConfirmSend(ArmoryDialog):
       showAllMsg = ''
       if doShowAllMsg or (pytxOrUstx and self.main.usermode==USERMODE.Expert):
          showAllMsg = self.tr('To see complete transaction details '
-                             '<a href="None">click here</a></font>')
+            '<a href="None">click here</a></font>')
 
          def openDlgTxInfo(*args):
             DlgDispTxInfo(pytxOrUstx, wlt, self.parent, self.main).exec_()
-
          lblAfterBox.linkActivated.connect(openDlgTxInfo)
 
 
       lblMsg = QRichLabel(self.tr(
          'This transaction will spend <b>%s BTC</b> from '
          '<font color="%s">Wallet "<b>%s</b>" (%s)</font> to the following '
-         'recipients:' % (totalSendStr, htmlColor('TextBlue'), wlt.labelName, wlt.uniqueIDB58)))
+         'recipients:' % (totalSendStr, htmlColor('TextBlue'), wlt.labelName, wlt.getDisplayStr())))
 
       if doShowLeaveWlt:
          lblAfterBox.setText(self.tr(

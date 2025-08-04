@@ -11,6 +11,7 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 #include "ScrAddrObj.h"
+#include "BitcoinP2P.h"
 
 using namespace std;
 

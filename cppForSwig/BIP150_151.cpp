@@ -8,7 +8,7 @@
 
 #include <cassert>
 #include <fstream>
-#if defined(WIN32) || defined(_MSC_VER)
+#if defined(__MINGW32__) || defined(_MSC_VER)
 #include <Ws2tcpip.h>
 #else
 #include <arpa/inet.h>
@@ -23,6 +23,8 @@
 #include "BtcUtils.h"
 #include "log.h"
 #include "BIP150_151.h"
+
+using namespace std::string_view_literals;
 
 // Because libbtc doesn't export its libsecp256k1 context, and we need one for
 // direct access to libsecp256k1 calls, just create one.
@@ -236,13 +238,13 @@ int BIP151Session::symKeySetup(const uint8_t* peerPubKey,
 // RET: None
 void BIP151Session::calcChaCha20Poly1305Keys(const btc_key& sesECDHKey)
 {
-   auto&& salt = BinaryData::fromString("bitcoinecdh");
+   auto&& salt = BinaryData::fromString("bitcoinecdh"sv);
    std::array<uint8_t, 33> ikm;
    std::copy(sesECDHKey.privkey, sesECDHKey.privkey + BIP151PRVKEYSIZE,
              ikm.data());
    ikm[BIP151PRVKEYSIZE] = static_cast<uint8_t>(BIP151SymCiphers::CHACHA20POLY1305_OPENSSH);
-   auto&& info1 = BinaryData::fromString("BitcoinK1");
-   auto&& info2 = BinaryData::fromString("BitcoinK2");
+   auto&& info1 = BinaryData::fromString("BitcoinK1"sv);
+   auto&& info2 = BinaryData::fromString("BitcoinK2"sv);
 
    // NB: The ChaCha20Poly1305 library reverses the expected key order.
    hkdf_sha256(hkdfKeySet_.data(), BIP151PRVKEYSIZE, salt.getPtr(), salt.getSize(), ikm.data(),
@@ -260,12 +262,12 @@ void BIP151Session::calcChaCha20Poly1305Keys(const btc_key& sesECDHKey)
 // RET: None
 void BIP151Session::calcSessionID(const btc_key& sesECDHKey)
 {
-   auto&& salt = BinaryData::fromString("bitcoinecdh");
+   auto&& salt = BinaryData::fromString("bitcoinecdh"sv);
    std::array<uint8_t, BIP151PUBKEYSIZE> ikm;
    std::copy(sesECDHKey.privkey, sesECDHKey.privkey + BIP151PRVKEYSIZE,
              ikm.data());
    ikm[BIP151PRVKEYSIZE] = static_cast<uint8_t>(cipherType_);
-   auto&& info = BinaryData::fromString("BitcoinSessionID");
+   auto&& info = BinaryData::fromString("BitcoinSessionID"sv);
 
    hkdf_sha256(sessionID_.data(), sessionID_.size(), salt.getPtr(),
                salt.getSize(), ikm.data(), ikm.size(), info.getPtr(),
@@ -1073,7 +1075,7 @@ int BIP151Connection::getRekeyBuf(uint8_t* encackBuf, const size_t& encackSize)
       return retVal;
    }
 
-   auto&& cmd = BinaryData::fromString("encack");
+   auto&& cmd = BinaryData::fromString("encack"sv);
    std::array<uint8_t, BIP151PUBKEYSIZE> payload{};
    size_t finalMsgSize = 0;
    BIP151Message encackMsg(cmd.getPtr(), cmd.getSize(),

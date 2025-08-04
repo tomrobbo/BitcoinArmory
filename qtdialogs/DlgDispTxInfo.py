@@ -71,13 +71,11 @@ class DlgDisplayTxIn(ArmoryDialog):
          wltID  = self.main.getWalletForAddrHash(addrStr_to_hash160(senderAddr)[1])
          if wltID:
             wlt = self.main.walletMap[wltID]
-            srcStr = self.tr('Wallet "%s" (%s)' % (wlt.labelName, wlt.uniqueIDB58))
+            srcStr = self.tr('Wallet "%s" (%s)' % (wlt.labelName, wlt.getDisplayStr()))
          else:
             lbox = self.main.getLockboxByP2SHAddrStr(senderAddr)
             if lbox:
                srcStr = self.tr('Lockbox %d-of-%d "%s" (%s)' % (lbox.M, lbox.N, lbox.shortName, lbox.uniqueIDB58))
-
-
 
       dispLines = []
       dispLines.append(self.tr('<font size=4><u><b>Information on TxIn</b></u></font>:'))
@@ -286,9 +284,9 @@ class DlgDispTxInfo(ArmoryDialog):
          fee = self.data[FIELDS.SumOut] - self.data[FIELDS.SumIn]
 
       if ledgerEntry:
-         txAmt = ledgerEntry.value
+         txAmt = ledgerEntry.balance
 
-         if ledgerEntry.sent_to_self:
+         if ledgerEntry.isSTS:
             txdir = self.tr('Sent-to-Self')
             svPairDisp = []
             if len(self.pytx.outputs)==1:
@@ -305,11 +303,11 @@ class DlgDispTxInfo(ArmoryDialog):
                   else:
                      indicesMakeGray.append(i)
          else:
-            if ledgerEntry.value > 0:
+            if ledgerEntry.balance > 0:
                txdir = self.tr('Received')
                svPairDisp = svPairSelf
                indicesMakeGray.extend(indicesOther)
-            if ledgerEntry.value < 0:
+            if ledgerEntry.balance < 0:
                txdir = self.tr('Sent')
                svPairDisp = svPairOther
                indicesMakeGray.extend(indicesSelf)
@@ -610,7 +608,7 @@ class DlgDispTxInfo(ArmoryDialog):
       self.txInView.verticalHeader().setDefaultSectionSize(20)
       self.txInView.verticalHeader().hide()
       w, h = tightSizeNChar(self.txInView, 1)
-      self.txInView.setMinimumHeight(2 * (1.4 * h))
+      self.txInView.setMinimumHeight(int(2 * 1.4 * h))
       #self.txInView.setMaximumHeight(5 * (1.4 * h))
       self.txInView.hideColumn(TXINCOLS.OutPt)
       self.txInView.hideColumn(TXINCOLS.OutIdx)
@@ -644,7 +642,7 @@ class DlgDispTxInfo(ArmoryDialog):
       self.txOutView.setSelectionMode(QtWidgets.QTableView.SingleSelection)
       self.txOutView.verticalHeader().setDefaultSectionSize(20)
       self.txOutView.verticalHeader().hide()
-      self.txOutView.setMinimumHeight(2 * (1.3 * h))
+      self.txOutView.setMinimumHeight(int(2 * 1.3 * h))
       #self.txOutView.setMaximumHeight(5 * (1.3 * h))
       initialColResize(self.txOutView, [wWlt, 0.8 * wAddr, wAmt, 0.25, 0])
       self.txOutView.hideColumn(TXOUTCOLS.Script)
@@ -936,17 +934,24 @@ def extractTxInfo(pytx, rcvTime=None):
    txOutToList = pytx.makeRecipientsList()
    sumTxOut = sum([t[1] for t in txOutToList])
 
+   hashesToFetch = [txHash] if txHash else []
+   for i in range(pytx.getNumTxIn()):
+      txin = pytx.getTxIn(i)
+      hashesToFetch.append(txin.getOutPoint().txHash)
+   txns = TheBridge.service.getTxsByHash(hashesToFetch)
+
    if TheBDM.getState() == BDM_BLOCKCHAIN_READY and hasTxHash:
-      txProto = TheBridge.service.getTxByHash(txHash)
-      if txProto is not None:
+      if txHash in txns:
+         txProto = txns[txHash]
          hgt = txProto.height
          txWeight = pytx.getTxWeight()
          if hgt <= TheBDM.getTopBlockHeight():
             header = PyBlockHeader()
-            header.unserialize(TheBridge.service.getHeaderByHeight(hgt))
+            headersProto = TheBridge.service.getHeadersByHeight([hgt])
+            header.unserialize(headersProto[0])
             txTime = unixTimeToFormatStr(header.timestamp)
             txBlk = hgt
-            txIdx = txProto.tx_index
+            txIdx = txProto.txIndex
             txSize = pytx.getSize()
          else:
             if rcvTime == None:
@@ -968,16 +973,16 @@ def extractTxInfo(pytx, rcvTime=None):
          txin = pytx.getTxIn(i)
          prevTxHash = txin.getOutPoint().txHash
          prevTxIndex = txin.getOutPoint().txOutIndex
-         prevTxRaw = TheBridge.service.getTxByHash(prevTxHash)
-         if prevTxRaw != None:
-            prevTx = PyTx().unserialize(prevTxRaw.raw)
+         if prevTxHash in txns:
+            prevTxProto = txns[prevTxHash]
+            prevTx = PyTx().unserialize(prevTxProto.raw)
             prevTxOut = prevTx.getTxOut(prevTxIndex)
             txinFromList[-1].append(prevTxOut.getScrAddressStr())
             txinFromList[-1].append(prevTxOut.getValue())
             if prevTx.isInitialized():
-               txinFromList[-1].append(prevTxRaw.height)
+               txinFromList[-1].append(prevTxProto.height)
                txinFromList[-1].append(prevTxHash)
-               txinFromList[-1].append(prevTxRaw.tx_index)
+               txinFromList[-1].append(prevTxProto.txIndex)
                txinFromList[-1].append(prevTxOut.getScript())
             else:
                LOGERROR('How did we get a bad parent pointer? (extractTxInfo)')

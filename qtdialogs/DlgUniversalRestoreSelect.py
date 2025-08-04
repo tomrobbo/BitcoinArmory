@@ -4,7 +4,7 @@
 # Distributed under the GNU Affero General Public License (AGPL v3)          #
 # See LICENSE or http://www.gnu.org/licenses/agpl.html                       #
 #                                                                            #
-# Copyright (C) 2016-2024, goatpig                                           #
+# Copyright (C) 2016-2025, goatpig                                           #
 #  Distributed under the MIT license                                         #
 #  See LICENSE-MIT or https://opensource.org/licenses/MIT                    #
 #                                                                            #
@@ -24,7 +24,6 @@ class DlgUniversalRestoreSelect(ArmoryDialog):
    #############################################################################
    def __init__(self, parent, main):
       super(DlgUniversalRestoreSelect, self).__init__(parent, main)
-
 
       lblDescrTitle = QRichLabel(self.tr('<b><u>Restore Wallet from Backup</u></b>'))
       lblDescr = QRichLabel(self.tr('You can restore any kind of backup ever created by Armory using '
@@ -81,17 +80,14 @@ class DlgUniversalRestoreSelect(ArmoryDialog):
          self.chkTest.setEnabled(True)
 
    def clickedOkay(self):
-        # ## Test backup option
-
+      ### Test backup option
       doTest = self.chkTest.isChecked()
-
       if self.rdoSingle.isChecked():
          self.accept()
          dlg = DlgRestoreSingle(self.parent, self.main, doTest)
          if dlg.exec_():
             self.main.addWalletToApplication(dlg.newWallet)
             LOGINFO('Wallet Restore Complete!')
-
       elif self.rdoFragged.isChecked():
          self.accept()
          dlg = DlgRestoreFragged(self.parent, self.main, doTest)
@@ -107,6 +103,6 @@ class DlgUniversalRestoreSelect(ArmoryDialog):
          self.accept()
          dlg = DlgRestoreWOData(self.parent, self.main, doTest)
          if dlg.exec_():
-            LOGINFO('Watching-Only Wallet Restore Complete! Will ask for a' \
-                    'rescan.')
+            LOGINFO('Watching-Only Wallet Restore Complete! Will ask for a'
+               'rescan.')
             self.main.addWalletToApplication(dlg.newWallet)

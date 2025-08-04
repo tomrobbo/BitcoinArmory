@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2020 - 2023, goatpig                                        //
+//  Copyright (C) 2020 - 2025, goatpig                                        //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -19,17 +19,23 @@
 
 #define EASY16_INVALID_CHECKSUM_INDEX UINT8_MAX
 
-namespace BridgeProto
-{
-   class RestorePrompt;
-   class RestoreReply;
+namespace capnp {
+   class MessageBuilder;
 }
 
 namespace Armory
 {
+   namespace Passphrase
+   {
+      struct Params;
+   }
+
    namespace Wallets
    {
-      struct WalletCreationParams;
+      namespace IO
+      {
+         struct CreateWalletParams;
+      }
    }
 
    namespace Seeds
@@ -42,25 +48,24 @@ namespace Armory
       class RestoreUserException : public std::runtime_error
       {
       public:
-         RestoreUserException(const std::string& errMsg) :
-            std::runtime_error(errMsg)
-         {}
+         RestoreUserException(const std::string&);
       };
 
       ////
       class Easy16RepairError : public std::runtime_error
       {
       public:
-         Easy16RepairError(const std::string& errMsg) :
-            std::runtime_error(errMsg)
-         {}
+         Easy16RepairError(const std::string&);
       };
 
       ////
       enum class BackupType : int
       {
-         //easy16, seed (2 or 4 lines), hash index is always 0
-         Armory135  = 0,
+         //legacy easy16 root + chaincode (4 lines) hash index is always 0
+         Armory135a  = 0,
+
+         //legacy easy16 root (2 lines) hash index is always 0
+         Armory135c  = 1,
 
          /*
          easy16, seed (2 lines), hash index defines seed type:
@@ -118,7 +123,6 @@ namespace Armory
          The indexes for each line in a multiple line easy16 code need to match
          one another.
          ***/
-
          static const std::set<BackupType> eligibleIndexes_;
 
       private:
@@ -144,8 +148,6 @@ namespace Armory
 
          BinaryData iv16_;
          BinaryData salt_;
-         mutable KdfRomix kdf_;
-
          SecureBinaryData passphrase_;
 
       public:
@@ -155,8 +157,7 @@ namespace Armory
             BinaryDataRef, BinaryDataRef);
          SecureBinaryData decrypt(
             const SecureBinaryData&, const BinaryDataRef) const;
-
-         const SecureBinaryData& getPassphrase(void) const { return passphrase_; }
+         const SecureBinaryData& getPassphrase(void) const;
       };
 
       //////////////////////////////////////////////////////////////////////////
@@ -244,7 +245,7 @@ namespace Armory
       };
 
       ////////
-      enum RestorePromptType
+      enum class RestorePromptType : int
       {
          //invalid backup format
          FormatError = 1,
@@ -254,27 +255,52 @@ namespace Armory
 
          ChecksumError = 3,
 
+         //mismatch between expected backup type and resolved type
+         ChecksumMismatch = 4,
+
          //failed to decrypt secure print string
-         DecryptError = 4,
+         DecryptError = 5,
 
-         //requesting wallet's new passphrase
-         Passphrase = 5,
-
-         //requesting wallet's new control passphrase
-         Control = 6,
+         //requesting wallet privkey & control passphrases
+         ControlPassphrase = 6,
+         PrivatePassphrase = 7,
 
          //present restored wallet's id
-         Id = 7,
+         Id = 8,
 
          //unknown wallet type
-         TypeError = 8,
+         TypeError = 9,
+      };
+
+      struct RestorePrompt
+      {
+         const RestorePromptType promptType;
+         std::map<uint8_t, int> checksumResult{};
+         std::string walletId{};
+         BackupType backupType{};
+         std::string error{};
+
+         bool needsReply(void) const;
+      };
+
+      struct PromptReply
+      {
+         const bool success;
+         const bool merge;
+
+         Passphrase::Params passParams;
+      };
+
+      struct RestoreResult
+      {
+         std::shared_ptr<Wallets::AssetWallet> wltPtr;
+         const bool merge;
       };
 
       ////
       struct Helpers
       {
-         using UserPrompt = std::function<BridgeProto::RestoreReply(
-            BridgeProto::RestorePrompt)>;
+         using UserPrompt = std::function<PromptReply(const RestorePrompt&)>;
 
          //backup methods
          static std::unique_ptr<WalletBackup> getWalletBackup(
@@ -289,10 +315,13 @@ namespace Armory
          static std::unique_ptr<Backup_Base58> getBase58BackupString(
             std::unique_ptr<ClearTextSeed>);
 
-         //restore methods
-         static std::shared_ptr<Wallets::AssetWallet> restoreFromBackup(
+         //primary restore call
+         static RestoreResult restoreFromBackup(
             std::unique_ptr<WalletBackup>, const UserPrompt&,
-               const Wallets::WalletCreationParams&);
+            const Wallets::IO::CreateWalletParams&
+         );
+
+         //seed restore methods
          static std::unique_ptr<ClearTextSeed> restoreFromEasy16(
             std::unique_ptr<WalletBackup>, const UserPrompt&, BackupType&);
          static std::unique_ptr<ClearTextSeed> restoreFromBase58(
