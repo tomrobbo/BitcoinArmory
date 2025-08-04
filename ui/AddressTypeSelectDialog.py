@@ -41,7 +41,7 @@ selectorDescriptions[(AddressEntryType_P2SH + AddressEntryType_P2PK)] = str(
 
 selectorDescriptions[AddressEntryType_P2WPKH] = str(
       'Native SegWit. Requires Armory 0.96.4+ to spend to these '
-      'addresses, and Armory 0.97+ to generate them. Recommneded address '
+      'addresses, and Armory 0.97+ to generate them. Recommended address '
       'type when available.'
    )
 

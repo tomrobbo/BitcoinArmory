@@ -15,6 +15,7 @@ from qtpy import QtCore, QtGui, QtWidgets
 from armoryengine.ArmoryUtils import DEFAULT_RECEIVE_TYPE
 from armoryengine.Settings import TheSettings
 from armoryengine.BDM import TheBDM, BDM_OFFLINE
+from armoryengine.Settings import TheSettings
 from armoryengine.WalletUtils import WalletTypes, determineWalletType
 
 from armorycolors import Colors
