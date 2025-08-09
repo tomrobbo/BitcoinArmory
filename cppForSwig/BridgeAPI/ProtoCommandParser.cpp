@@ -262,7 +262,7 @@ namespace
          case WalletManagerRequest::MIGRATE_WALLET:
          {
             auto migrateReq = request.getMigrateWallet();
-            const std::filesystem::path walletId(migrateReq.getWalletPath());
+            const std::filesystem::path walletId(std::string{migrateReq.getWalletPath()});
             const std::string callbackId(migrateReq.getCallbackId());
             bridge->migrateWallet(walletId.filename().string(),
                callbackId, referenceId);
@@ -1071,7 +1071,7 @@ namespace
 
          case UtilsRequest::IMPORT_WALLET:
          {
-            std::filesystem::path importPath(request.getImportWallet());
+            std::filesystem::path importPath(std::string{request.getImportWallet()});
             bridge->importWallet(importPath, referenceId);
             break;
          }

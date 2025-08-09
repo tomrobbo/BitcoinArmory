@@ -10,7 +10,11 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/file.h>
+
+#ifndef _WIN32
 #include <sys/wait.h>
+#include "spawn.h"
+#endif
 
 #include "BlockchainDbClient.h"
 #include "Wallets/Manager.h"
@@ -19,7 +23,6 @@
 #include "../Wallets/IOHeader.h"
 #include "../AsyncClient.h"
 
-#include "spawn.h"
 #include <random>
 
 using namespace Armory::Bridge;
@@ -62,6 +65,11 @@ std::shared_ptr<Armory::Wallets::AuthorizedPeers> Armory::Bridge::spawnDb()
       5. CppBridge detects changes to the key file, grabs the pubkey and
          injects it into its own store. The lock is released, the file closed
          and removed.
+
+   Note:
+      On Windows, we implement the same design but use WinAPI specific calls,
+      namely CreateProcess to spawn ArmoryDB and CreateFile to acquire a file
+      handle that is inheritable by the child, instead of a file descriptor.
    */
 
    //sanity check
@@ -134,6 +142,16 @@ std::shared_ptr<Armory::Wallets::AuthorizedPeers> Armory::Bridge::spawnDb()
    std::filesystem::path keyFilePath{ Armory::Config::getDataDir() /
       std::string{ "keyFile_" + BtcUtils::fortuna_.generateRandom(7).toHexStr() }};
 
+#ifdef _WIN32 //windows
+   //TODO: need to implement the following in Windows
+   //1. use CreateFile to generate a inheritable file handle
+   //2. use CreateProcess to spawn ArmoryDB, and have it inherit the file handle
+   //3. figure out how/if there is a need to lock the file
+   //
+   // NOTE: need to get the test suite to build in Windows first. A blind
+   //       implementation would be a waste of time
+
+#else //sane operating systems
    //open file and lock it
    auto fd = open(keyFilePath.c_str(), O_CREAT | O_EXCL | O_RSYNC | O_RDWR);
    if (fd == -1) {
@@ -195,6 +213,8 @@ std::shared_ptr<Armory::Wallets::AuthorizedPeers> Armory::Bridge::spawnDb()
    if (close(fd) != 0) {
       throw std::runtime_error("failed to close key file");
    }
+#endif
+
    if (!std::filesystem::remove(keyFilePath)) {
       throw std::runtime_error("key file did not exists!");
       //fs::remove returns false if there was nothing to remove.
@@ -212,6 +232,9 @@ bool Armory::Bridge::isDbRunning()
       return false;
    }
 
+#ifdef _WIN32
+   //TODO: implement process monitoring via process id for Windows
+#else
    siginfo_t processInfo;
    memset(&processInfo, 0, sizeof(processInfo));
    if (waitid(P_PID, (pid_t)autoDbPid, &processInfo, WEXITED | WNOHANG) != 0) {
@@ -225,6 +248,8 @@ bool Armory::Bridge::isDbRunning()
       autoDbPid = -1;
       return false;
    }
+#endif
+
    return true;
 }
 

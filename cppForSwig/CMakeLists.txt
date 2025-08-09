@@ -42,7 +42,6 @@ FILE(GLOB BLOCKDB_SOURCES BlockchainDatabase/*.cpp)
 FILE(GLOB ACCOUNTS_SOURCES Wallets/Accounts/*.cpp)
 FILE(GLOB SEEDS_SOURCES Wallets/Seeds/*.cpp)
 FILE(GLOB SIGNER_SOURCES Signer/*.cpp)
-FILE(GLOB BRIDGE_SOURCES BridgeApi/*.cpp)
 
 FILE(GLOB WALLETS_SOURCES Wallets/*.cpp)
 LIST(APPEND WALLETS_SOURCES
@@ -243,6 +242,8 @@ ADD_EXECUTABLE(CppBridge
     BridgeAPI/Wallets/Loader.cpp
     BridgeAPI/Wallets/Container.cpp
     BridgeAPI/Wallets/Manager.cpp
+    BridgeAPI/Wallets/Notifications.cpp
+    BridgeAPI/BlockchainDbClient.cpp
 )
 
 SET_TARGET_PROPERTIES(CppBridge
