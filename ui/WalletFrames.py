@@ -249,10 +249,11 @@ class SelectWalletFrame(ArmoryFrame):
    def getWalletIdList(self, onlyOfflineWallets):
       result = []
       if onlyOfflineWallets:
-         result = self.main.getWatchingOnlyWallets()
+         result = self.main.getWalletIdList(watchingOnly=True)
       else:
-         result = list(self.main.walletIDList)
+         result = self.main.getWalletIdList()
       return result
+
    def getSelectedWltID(self):
       idx = -1
       if self.doVerticalLayout:

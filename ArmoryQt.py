@@ -2047,13 +2047,6 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
       return self.wallets.getWltForScrAddr(addrHash)
 
    #############################################################################
-   def getWalletForAddressString(self, addrStr):
-      for wltID, wlt in self.walletMap.items():
-         if wlt.hasAddrString(addrStr):
-            return wltID
-      return ''
-
-   #############################################################################
    # NB: armoryd has a similar function (Armory_Daemon::start()), and both share
    # common functionality in ArmoryUtils (finishLoadBlockchainCommon). If you
    # mod this function, please be mindful of what goes where, and make sure
