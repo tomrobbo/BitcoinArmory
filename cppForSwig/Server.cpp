@@ -210,9 +210,8 @@ int WebSocketServer::callback(struct lws *wsi,
 void WebSocketServer::initAuthPeers(const IO::ReadOnlyFileParams& params)
 {
    //init auth peer object
-   auto instance = getInstance();
    if (!Armory::Config::NetworkSettings::ephemeralPeers()) {
-      instance->authorizedPeers_ = std::make_shared<AuthorizedPeers>(params);
+      initAuthPeers(std::make_shared<AuthorizedPeers>(params));
    } else {
       if (Armory::Config::NetworkSettings::oneWayAuth()) {
          throw std::runtime_error(
@@ -220,6 +219,7 @@ void WebSocketServer::initAuthPeers(const IO::ReadOnlyFileParams& params)
       }
 
       //setup server with an ephemeral key store
+      auto instance = getInstance();
       instance->authorizedPeers_ = std::make_shared<AuthorizedPeers>();
 
       //grab caller pubkey
@@ -247,6 +247,16 @@ void WebSocketServer::initAuthPeers(const IO::ReadOnlyFileParams& params)
          exit(-2);
       }
    }
+}
+
+////
+void WebSocketServer::initAuthPeers(std::shared_ptr<AuthorizedPeers> peers)
+{
+   if (Armory::Config::NetworkSettings::ephemeralPeers()) {
+      throw std::runtime_error("no peers store loading on ephemeral peers");
+   }
+   auto instance = getInstance();
+   instance->authorizedPeers_ = peers;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -173,6 +173,7 @@ public:
       void *user, void *in, size_t len);
 
    static void initAuthPeers(const Armory::Wallets::IO::ReadOnlyFileParams&);
+   static void initAuthPeers(std::shared_ptr<Armory::Wallets::AuthorizedPeers>);
    static void start(std::shared_ptr<BlockDataManager>, bool);
    static void shutdown(void);
    static void waitOnShutdown(void);

@@ -26,9 +26,52 @@ using namespace std::chrono_literals;
 using namespace std::string_view_literals;
 
 ////////////////////////////////////////////////////////////////////////////////
+AuthorizedPeers::AuthorizedPeers(std::shared_ptr<AssetWallet> wltPtr) :
+   wallet_(wltPtr)
+{
+   initFromWallet();
+}
+
+////
 AuthorizedPeers::AuthorizedPeers(const IO::ReadOnlyFileParams& params)
 {
    loadWallet(params);
+   initFromWallet();
+}
+
+////
+AuthorizedPeers::AuthorizedPeers()
+{
+   //No filename was passed, create an ephemral peer db instead
+   auto privateKey = CryptoPRNG::generateRandom(32);
+
+   //compute the public key
+   auto ownPubKey = CryptoECDSA().ComputePublicKey(privateKey);
+   auto ownPubKey_compressed = CryptoECDSA().CompressPoint(ownPubKey);
+
+   //add to private keys map
+   privateKeys_.emplace(ownPubKey_compressed, privateKey);
+
+   //add to public key map as own
+   btc_pubkey btc_own;
+   btc_pubkey_init(&btc_own);
+   std::memcpy(btc_own.pubkey, ownPubKey_compressed.getPtr(), BIP151PUBKEYSIZE);
+   btc_own.compressed = true;
+   nameToKeyMap_.emplace("own", btc_own);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void AuthorizedPeers::loadWallet(const IO::ReadOnlyFileParams& params)
+{
+   if (!FileUtils::fileExists(params.filePath, 6)) {
+      throw PeerFileMissing();
+   }
+   wallet_ = AssetWallet::loadMainWalletFromFile(params);
+}
+
+////
+void AuthorizedPeers::initFromWallet()
+{
    if (wallet_ == nullptr) {
       throw AuthorizedPeersException("failed to initialize peer wallet");
    }
@@ -119,37 +162,8 @@ AuthorizedPeers::AuthorizedPeers(const IO::ReadOnlyFileParams& params)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-AuthorizedPeers::AuthorizedPeers()
-{
-   //No filename was passed, create an ephemral peer db instead
-   auto privateKey = CryptoPRNG::generateRandom(32);
-
-   //compute the public key
-   auto ownPubKey = CryptoECDSA().ComputePublicKey(privateKey);
-   auto ownPubKey_compressed = CryptoECDSA().CompressPoint(ownPubKey);
-
-   //add to private keys map
-   privateKeys_.emplace(ownPubKey_compressed, privateKey);
-
-   //add to public key map as own
-   btc_pubkey btc_own;
-   btc_pubkey_init(&btc_own);
-   std::memcpy(btc_own.pubkey, ownPubKey_compressed.getPtr(), BIP151PUBKEYSIZE);
-   btc_own.compressed = true;
-   nameToKeyMap_.emplace("own", btc_own);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void AuthorizedPeers::loadWallet(const IO::ReadOnlyFileParams& params)
-{
-   if (!FileUtils::fileExists(params.filePath, 6)) {
-      throw PeerFileMissing();
-   }
-   wallet_ = AssetWallet::loadMainWalletFromFile(params);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void AuthorizedPeers::createWallet(const IO::CreateFileParams& params)
+std::shared_ptr<AuthorizedPeers> AuthorizedPeers::createWallet(
+   const IO::CreateFileParams& params)
 {
    //Default peers wallet private keys password. Asset wallets always
    //encrypt private keys, we have to provide a password at creation.
@@ -210,6 +224,10 @@ void AuthorizedPeers::createWallet(const IO::CreateFileParams& params)
    }
    currentname.append("-lock");
    std::filesystem::remove(currentname);
+
+   IO::ReadOnlyFileParams roFileParams{params.filePath,
+      walletParams.setCtrlPassObj.getUnlockFunc()};
+   return std::make_shared<AuthorizedPeers>(roFileParams);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

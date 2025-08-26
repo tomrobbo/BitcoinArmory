@@ -77,7 +77,10 @@ namespace Armory
          SecureBinaryData masterKey_;
 
       private:
+         AuthorizedPeers(std::shared_ptr<AssetWallet>);
+
          void loadWallet(const IO::ReadOnlyFileParams&);
+         void initFromWallet(void);
          void addPeer(const SecureBinaryData&,
             const std::initializer_list<std::string>&);
          void addPeer(const btc_pubkey&,
@@ -140,7 +143,8 @@ namespace Armory
          static void changeControlPassphrase(const std::filesystem::path&);
          static AuthPeersLambdas getAuthPeersLambdas(
             std::shared_ptr<AuthorizedPeers>);
-         static void createWallet(const IO::CreateFileParams&);
+         static std::shared_ptr<AuthorizedPeers> createWallet(
+            const IO::CreateFileParams&);
       };
    }; //namespace Wallets
 }; //namespace Armory
