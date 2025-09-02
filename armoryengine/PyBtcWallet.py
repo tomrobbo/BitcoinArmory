@@ -435,8 +435,8 @@ class PyBtcWallet(object):
          from armoryengine.CoinSelection import PyUnspentTxOut
          utxos = self.bridgeWalletObj.getUtxos(rbf=True)
          utxoList = []
-         for i in range(len(utxos.utxo)):
-            utxoList.append(PyUnspentTxOut().createFromBridgeUtxo(utxos.utxo[i]))
+         for utxo in utxos:
+            utxoList.append(PyUnspentTxOut().createFromBridgeUtxo(utxo))
          return utxoList
       else:
          LOGERROR('***Blockchain is not available for accessing wallet-tx data')

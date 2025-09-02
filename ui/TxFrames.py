@@ -139,11 +139,12 @@ class CoinSelectionInstance(object):
 ################################################################################
 class SendBitcoinsFrame(ArmoryFrame):
    def __init__(self, parent, main, initLabel='',
-                 wlt=None, wltIDList=None,
-                 selectWltCallback = None, onlyOfflineWallets=False,
-                 sendCallback = None, createUnsignedTxCallback = None,
-                 spendFromLockboxID=None):
+      wlt=None, wltIDList=None,
+      selectWltCallback = None, onlyOfflineWallets=False,
+      sendCallback = None, createUnsignedTxCallback = None,
+      spendFromLockboxID=None):
       super(SendBitcoinsFrame, self).__init__(parent, main)
+
       self.maxHeight = tightSizeNChar(GETFONT('var'), 1)[1] + 8
       self.customUtxoList = []
       self.altBalance = None
@@ -1642,7 +1643,7 @@ class SendBitcoinsFrame(ArmoryFrame):
             hashDict[txoutid] = utxo
 
          customUtxoList = []
-         customBalance = 0 
+         customBalance = 0
          for spd in spenders:
             txhashstr = spd[0]
             txoutid = int(spd[1])
