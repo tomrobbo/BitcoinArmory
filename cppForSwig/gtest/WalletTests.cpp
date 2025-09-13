@@ -8117,7 +8117,7 @@ TEST_F(WalletsTest, ImportPublicKeys)
    ASSERT_TRUE(checkAddresses(wltWO));
 
    /* shutdown the wallet, reload and check addresses again */
-   const std::string wltPath = wltWO->getDbFilename();
+   const auto wltPath = wltWO->getDbFilename();
    wltWO.reset();
    ASSERT_EQ(wltWO, nullptr);
 

@@ -23,26 +23,23 @@ from ui.TxFrames import SendBitcoinsFrame
 ################################################################################
 class DlgSendBitcoins(ArmoryDialog):
    def __init__(self, wlt, parent=None, main=None,
-                              wltIDList=None, onlyOfflineWallets=False,
-                              spendFromLockboxID=None):
+      wltIDList=None, onlyOfflineWallets=False,
+      spendFromLockboxID=None):
       super(DlgSendBitcoins, self).__init__(parent, main)
       layout = QtWidgets.QVBoxLayout()
 
       self.spendFromLockboxID = spendFromLockboxID
-
       self.frame = SendBitcoinsFrame(self, main, self.tr('Send Bitcoins'),
-                   wlt, wltIDList, onlyOfflineWallets=onlyOfflineWallets,
-                   sendCallback=self.createTxAndBroadcast,
-                   createUnsignedTxCallback=self.createUnsignedTxAndDisplay,
-                   spendFromLockboxID=spendFromLockboxID)
+         wlt, wltIDList, onlyOfflineWallets=onlyOfflineWallets,
+         sendCallback=self.createTxAndBroadcast,
+         createUnsignedTxCallback=self.createUnsignedTxAndDisplay,
+         spendFromLockboxID=spendFromLockboxID)
       layout.addWidget(self.frame)
       self.setLayout(layout)
       self.sizeHint = lambda: QtCore.QSize(850, 600)
       self.setMinimumWidth(700)
       # Update the any controls based on the initial wallet selection
       self.frame.fireWalletChange()
-
-
 
    #############################################################################
    def createUnsignedTxAndDisplay(self, ustx):
@@ -53,7 +50,6 @@ class DlgSendBitcoins(ArmoryDialog):
       else:
          dlg = DlgMultiSpendReview(self.parent, self.main, ustx)
          dlg.exec_()
-
 
    #############################################################################
    def createTxAndBroadcast(self):

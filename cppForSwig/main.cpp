@@ -81,29 +81,32 @@ int main(int argc, char* argv[])
          exit(-3);
       }
       //initAuthPeers will setup the ephemeral keys
-      WebSocketServer::initAuthPeers({{}, nullptr});
+      WebSocketServer::initAuthPeers(
+         Armory::Wallets::IO::ReadOnlyFileParams{{}, nullptr});
    } else {
       //setup remote peers db, this will block the init process until
       //peers db is unlocked
       auto serverPeersFile = Armory::Config::getDataDir() / SERVER_AUTH_PEER_FILENAME;
-      auto passLbd = TerminalPassphrasePrompt::getLambda("peers db");
-      if (!FileUtils::fileExists(serverPeersFile, 0)) {
-         LOGINFO << "not peers db, creating one...";
-         auto passWrapper = [&passLbd]()->std::unique_ptr<Armory::Passphrase::Params>
+      if (!FileUtils::fileExists(serverPeersFile, 0) &&
+         !Armory::Config::NetworkSettings::ephemeralPeers()) {
+         LOGINFO << "no server peers store found, creating one...";
+         auto passWrapper = []()->std::unique_ptr<Armory::Passphrase::Params>
          {
+            auto passLbd = TerminalPassphrasePrompt::getLambda(
+               "new server peers store");
             auto result = passLbd({});
             if (!result.success) {
-               throw std::runtime_error("auth db unlock was rejected");
+               throw std::runtime_error("peers store init was rejected");
             }
             return std::make_unique<Armory::Passphrase::Params>(
                250ms, 0, std::move(result.passphrase));
          };
-         Armory::Wallets::IO::CreateFileParams params{serverPeersFile, {passWrapper}};
-         Armory::Wallets::AuthorizedPeers::createWallet(params);
-         WebSocketServer::initAuthPeers({
-            serverPeersFile, params.setCtrlPassObj.getUnlockFunc()
-         });
+         auto peers = Armory::Wallets::AuthorizedPeers::createWallet(
+            {serverPeersFile, {passWrapper}});
+         WebSocketServer::initAuthPeers(peers);
       } else {
+         auto passLbd = TerminalPassphrasePrompt::getLambda(
+            "server peers store");
          WebSocketServer::initAuthPeers({serverPeersFile, passLbd});
       }
    }

@@ -12,9 +12,9 @@ Multi-signature transactions are accommodated under-the-hood about 80%, and will
 
 ## Development
 
-Active development takes place in the dev branch
-Stable releases are in the master branch
-Current release target is 0.97
+* active development takes place in the `dev` branch
+* stable releases are in the `master` branch
+* current release target is `0.97`
 
 Follow development on projects page: https://github.com/users/goatpig/projects/1/views/1
 

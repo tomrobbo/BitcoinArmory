@@ -2047,13 +2047,6 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
       return self.wallets.getWltForScrAddr(addrHash)
 
    #############################################################################
-   def getWalletForAddressString(self, addrStr):
-      for wltID, wlt in self.walletMap.items():
-         if wlt.hasAddrString(addrStr):
-            return wltID
-      return ''
-
-   #############################################################################
    # NB: armoryd has a similar function (Armory_Daemon::start()), and both share
    # common functionality in ArmoryUtils (finishLoadBlockchainCommon). If you
    # mod this function, please be mindful of what goes where, and make sure
@@ -2384,10 +2377,9 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
 
    #############################################################################
    def getAddrCommentIfAvailAll(self, txHash):
-      if not TheBDM.getState()==BDM_BLOCKCHAIN_READY:
+      if TheBDM.getState() is not BDM_BLOCKCHAIN_READY:
          return ''
       else:
-
          appendedComments = []
          for wltID,wlt in self.walletMap.items():
             cmt = wlt.getAddrCommentIfAvail(txHash)
@@ -2798,7 +2790,7 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
             'the blockchain, but Armory is currently offline.  The address '
             'book will become available when Armory is online.'), QtWidgets.QMessageBox.Ok)
       else:
-         if len(self.walletMap)==0:
+         if self.wallets.empty():
             QtWidgets.QMessageBox.warning(self, self.tr('No wallets!'), self.tr('You have no wallets so '
                'there is no address book to display.'), QtWidgets.QMessageBox.Ok)
             return
@@ -2818,15 +2810,14 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
          fname='%s_%02d.wallet'%(base, newIndex)
          newIndex+=1
          if newIndex==99:
-            raise WalletExistsError('Cannot find unique filename for wallet.'
-                                                       'Too many duplicates!')
+            raise WalletExistsError(
+               'Cannot find unique filename for wallet.'
+               'Too many duplicates!')
       return fname
-
 
    #############################################################################
    def addrViewDblClicked(self, index, wlt):
       uacfv = lambda x: self.updateAddressCommentFromView(self.wltAddrView, self.wlt)
-
 
    #############################################################################
    def dblClickLedger(self, index):
@@ -2834,7 +2825,6 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
          self.updateTxCommentFromView(self.ledgerView)
       else:
          self.showLedgerTx()
-
 
    #############################################################################
    def showLedgerTx(self):
@@ -2864,9 +2854,9 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
          return leProto.txHash == txHashBin
       le = self.ledgerView.model().getRawDataEntry(filter)
 
-      DlgDispTxInfo(pytx, self.walletMap[wltID], self, self,
+      wlt = self.wallets.get(wltID)
+      DlgDispTxInfo(pytx, wlt, self, self,
          txtime=txtime, ledgerEntry=le).exec_()
-
 
    #############################################################################
    def showContextMenuLedger(self):
@@ -3020,7 +3010,7 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
             'next screen before hitting the "Send" button. ')
 
 
-      if len(self.walletMap)==0:
+      if self.wallets.empty():
          reply = QtWidgets.QMessageBox.information(self, self.tr('No Wallets!'), self.tr(
             'You just clicked on a "bitcoin:" link to send money, but you '
             'currently have no wallets!  Would you like to create a wallet '
@@ -3038,9 +3028,8 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
    def clickReceiveCoins(self):
       loading = None
       QAPP.processEvents()
-      wltID = None
       selectionMade = True
-      if len(self.walletMap)==0:
+      if self.wallets.empty():
          reply = QtWidgets.QMessageBox.information(self, self.tr('No Wallets!'), self.tr(
             'You have not created any wallets which means there is '
             'nowhere to store your bitcoins!  Would you like to '
@@ -3049,26 +3038,28 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
          if reply==QtWidgets.QMessageBox.Yes:
             self.startWalletWizard()
          return
-      elif len(self.walletMap)==1:
+      elif self.wallets.count() == 1:
          loading = LoadingDisp(self, self)
          loading.show()
-         wltID = next(iter(self.walletMap))
+         wlt = self.wallets.getByIndex(0)
       else:
+         wltID = None
          wltSelect = self.walletsView.selectedIndexes()
-         if len(wltSelect)>0:
+         if len(wltSelect) > 0:
             row = wltSelect[0].row()
             wltID = str(self.walletsView.model().index(row, WLTVIEWCOLS.ID).data())
-         dlg = DlgWalletSelect(self, self, self.tr('Receive coins with wallet...'), '', \
-                                       firstSelect=wltID, onlyMyWallets=False)
+         dlg = DlgWalletSelect(self, self,
+            self.tr('Receive coins with wallet...'), '',
+            firstSelect=wltID, onlyMyWallets=False)
          if dlg.exec_():
             loading = LoadingDisp(self, self)
             loading.show()
             wltID = dlg.selectedID
+            wlt = self.wallets.get(wltID)
          else:
             selectionMade = False
 
       if selectionMade:
-         wlt = self.walletMap[wltID]
          wlttype = determineWalletType(wlt, self)[0]
          if ShowRecvCoinsWarningIfNecessary(wlt, self, self):
             QAPP.processEvents()
@@ -3889,7 +3880,7 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
             'your wallet(s) if you have not done so already!  You are protected '
             '<i>forever</i> from hard-drive loss, or forgetting your password. '
             'If you do not have a backup, you could lose all of your '
-            'Bitcoins forever!', "", len(self.walletMap))
+            'Bitcoins forever!', "", self.wallets.count())
 
             return msg
          if state == 'OnlineDisconnected':
@@ -4739,9 +4730,8 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
       title = ''
       totalStr = coin2strNZS(txAmt)
 
-
-      if moneyID in self.walletMap:
-         wlt = self.walletMap[moneyID]
+      if self.wallets.hasWallet(moneyID):
+         wlt = self.wallets.get(moneyID)
          if len(wlt.labelName) <= 20:
             dispName = '"%(name)s"' % { 'name' : wlt.labelName }
          else:
@@ -4940,6 +4930,7 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
       LOGINFO('Attempting to close the main window!')
       TheSignalExecution.executeMethod(QAPP.quit)
 
+   '''
    #############################################################################
    def checkForNegImports(self):
       negativeImports = []
@@ -4980,12 +4971,11 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
          self.logDirs.append([wltID, logdir])
 
       return self.logDirs
+   '''
 
    #############################################################################
    def loadNewPage(self):
       pageInt = int(self.PageLineEdit.text())
-
-
       if pageInt == self.mainLedgerCurrentPage:
          return
 
@@ -5162,12 +5152,13 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
 
    #############################################################################
    def bumpFee(self, walletId, txHash):
+      wlt = self.wallets.get(walletId)
       #grab wallet
-      wlt = self.wallets[walletId]
 
       #grab ZC from DB
       txHashBin = hex_to_binary(txHash)
-      zctx = TheBridge.service.getTxByHash(txHashBin)
+      result = TheBridge.service.getTxsByHash([txHashBin])
+      zctx = result[txHashBin]
       pytx = PyTx().unserialize(zctx.raw)
 
       #init tx prefill data
@@ -5190,7 +5181,7 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
       prefill['recipients'] = []
       for txout in pytx.outputs:
          address = txout.getScrAddressStr()
-         addrComment = wlt.getCommentForAddress(address)
+         addrComment = wlt.getComment(address)
          prefill['recipients'].append([
             address,
             txout.getValue(),
@@ -5202,7 +5193,7 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
             prefill['change'] = address
 
       #feed batch to spend dlg
-      dlgSpend = DlgSendBitcoins(None, self, self)
+      dlgSpend = DlgSendBitcoins(wlt, self, self)
       dlgSpend.frame.prefill(prefill)
       dlgSpend.exec_()
 

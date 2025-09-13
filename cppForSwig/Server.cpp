@@ -210,9 +210,8 @@ int WebSocketServer::callback(struct lws *wsi,
 void WebSocketServer::initAuthPeers(const IO::ReadOnlyFileParams& params)
 {
    //init auth peer object
-   auto instance = getInstance();
    if (!Armory::Config::NetworkSettings::ephemeralPeers()) {
-      instance->authorizedPeers_ = std::make_shared<AuthorizedPeers>(params);
+      initAuthPeers(std::make_shared<AuthorizedPeers>(params));
    } else {
       if (Armory::Config::NetworkSettings::oneWayAuth()) {
          throw std::runtime_error(
@@ -220,6 +219,7 @@ void WebSocketServer::initAuthPeers(const IO::ReadOnlyFileParams& params)
       }
 
       //setup server with an ephemeral key store
+      auto instance = getInstance();
       instance->authorizedPeers_ = std::make_shared<AuthorizedPeers>();
 
       //grab caller pubkey
@@ -235,18 +235,43 @@ void WebSocketServer::initAuthPeers(const IO::ReadOnlyFileParams& params)
       if (!instance->authorizedPeers_->setMasterKey(callerPubKey)) {
          throw std::runtime_error("ephemeral peers db setup snafu");
       }
+      const auto& ownKey = instance->authorizedPeers_->getOwnPublicKey();
 
-      //grab shared file descriptor
+   #ifdef _WIN32
+      //grab inherited key file handle
+      std::string handleStr{std::getenv("KEYFILE_HANDLE")};
+      uint64_t fd = std::stoi(handleStr);
+      auto fHandle = (HANDLE)fd;
+
+      DWORD bytesWritten = 0;
+      if (!WriteFile(fHandle, ownKey.pubkey, 33, &bytesWritten, NULL)
+         || bytesWritten != 33) {
+         LOGERR << "failed to set server autodb pubkey";
+         exit(-2);
+      }
+      CloseHandle(fHandle);
+   #else
+      //grab inherited key file descriptor
       std::string fdStr{std::getenv("KEYFILE_FD")};
       int fd = std::stoi(fdStr);
 
       //write own pubkey to file
-      const auto& ownKey = instance->authorizedPeers_->getOwnPublicKey();
       if (::write(fd, ownKey.pubkey, 33) != 33) {
          LOGERR << "failed to set server autodb pubkey";
          exit(-2);
       }
+   #endif
    }
+}
+
+////
+void WebSocketServer::initAuthPeers(std::shared_ptr<AuthorizedPeers> peers)
+{
+   if (Armory::Config::NetworkSettings::ephemeralPeers()) {
+      throw std::runtime_error("no peers store loading on ephemeral peers");
+   }
+   auto instance = getInstance();
+   instance->authorizedPeers_ = peers;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -207,9 +207,11 @@ namespace Armory
          static void selectNetwork(NETWORK_MODE);
 
          static const std::string& btcPort(void);
+         static std::wstring btcPortW(void);
          static const std::string& dbPort(void);
          static const std::string& dbIP(void);
          static const std::string& rpcPort(void);
+         static std::wstring rpcPortW(void);
 
          static const NodePair& bitcoinNodes(void);
          static RpcPtr rpcNode(void);
@@ -246,7 +248,6 @@ namespace Armory
          static const std::filesystem::path& blkFilePath(void);
          static const std::filesystem::path& dbDir(void);
          static const std::filesystem::path& runningDir(void);
-         static void setRunningDir(const std::filesystem::path&);
       };
 
       //////////////////////////////////////////////////////////////////////////

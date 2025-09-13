@@ -221,7 +221,6 @@ class DlgOfflineSelect(ArmoryDialog):
    def __init__(self, parent=None, main=None):
       super(DlgOfflineSelect, self).__init__(parent, main)
 
-
       self.do_review = False
       self.do_create = False
       self.do_broadc = False
@@ -246,16 +245,17 @@ class DlgOfflineSelect(ArmoryDialog):
       broadcastButton = QtWidgets.QPushButton(self.tr('Sign and/or Broadcast Transaction'))
       if not TheBDM.getState() == BDM_BLOCKCHAIN_READY:
          btnCreate.setEnabled(False)
-         if len(self.main.walletMap) == 0:
+         if self.main.wallets.empty():
             broadcastButton = QtWidgets.QPushButton(self.tr('No wallets available!'))
             broadcastButton.setEnabled(False)
          else:
             broadcastButton = QtWidgets.QPushButton(self.tr('Sign Offline Transaction'))
       else:
-         if len(self.main.getWatchingOnlyWallets()) == 0:
+         woIdList = self.main.wallets.getWalletIdList(watchingOnly=True)
+         if len(woIdList) == 0:
             btnCreate = QtWidgets.QPushButton(self.tr('No watching-only wallets available!'))
             btnCreate.setEnabled(False)
-         if len(self.main.walletMap) == 0 and self.main.netMode == NETWORKMODE.Full:
+         if self.main.wallets.empty() and self.main.netMode == NETWORKMODE.Full:
             broadcastButton = QtWidgets.QPushButton('Broadcast Signed Transaction')
 
       btnCancel = QtWidgets.QPushButton(self.tr('<<< Go Back'))
