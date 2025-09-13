@@ -30,6 +30,17 @@ using namespace std::string_view_literals;
 using namespace std::chrono_literals;
 
 namespace {
+#ifdef _WIN32
+   size_t getFileSize(HANDLE fHandle)
+   {
+      auto size = GetFileSize(fHandle, NULL);
+      if (size == INVALID_FILE_SIZE) {
+         throw std::runtime_error("failed to grab file size");
+      }
+      return size_t(size);
+   }
+
+#else
    size_t getFileSize(int fd)
    {
       struct stat buf;
@@ -39,11 +50,183 @@ namespace {
       }
       return buf.st_size;
    }
+#endif
 }
 
-int Armory::Bridge::autoDbPid = -1;
+#ifdef _WIN32
+   void* Armory::Bridge::autoDbHandle = INVALID_HANDLE_VALUE;
+#else
+   int Armory::Bridge::autoDbPid = -1;
+#endif
 
+#ifdef _WIN32
 ////////////////////////////////////////////////////////////////////////////////
+std::shared_ptr<Armory::Wallets::AuthorizedPeers> Armory::Bridge::spawnDb()
+{
+   //sanity check
+   if (autoDbHandle != INVALID_HANDLE_VALUE) {
+      throw std::runtime_error("already have an instance of ArmoryDB");
+   }
+
+   const std::filesystem::path armoryDbPath{
+      Armory::Config::Pathing::runningDir() / L"ArmoryDB.exe" };
+   if (!FileUtils::fileExists(armoryDbPath, 0)) {
+      throw std::runtime_error("invalid db binary path: " + armoryDbPath.string());
+   }
+
+   //1. setup ephemeral authPeers
+   auto peers = std::make_shared<Armory::Wallets::AuthorizedPeers>();
+
+   //generate random db port & set it
+   uint32_t port = (rand() % 10000) + 50000;
+   Armory::Config::NetworkSettings::setDbPort(std::to_string(port));
+   std::wstring dbPortStr{ L"--armorydb-port=" + std::to_wstring(port) };
+
+   //db paths
+   std::wstring dbDir{ L"--dbdir=" + Armory::Config::Pathing::dbDir().wstring() };
+   std::wstring dataDir{ L"--datadir=" + Armory::Config::getDataDir().wstring() };
+
+   //btc network
+   std::wstring network;
+   switch (Armory::Config::BitcoinSettings::getMode())
+   {
+      case Armory::Config::NETWORK_MODE_TESTNET:
+         network = std::wstring{L"--testnet"};
+         break;
+
+      case Armory::Config::NETWORK_MODE_REGTEST:
+         network = std::wstring{L"--regtest"};
+         break;
+
+      default:
+         network = std::wstring{L"--mainnet"};
+   }
+
+   //core settings
+   std::wstring satoshiDir{
+      L"--satoshi-datadir=" + Armory::Config::Pathing::blkFilePath().wstring() };
+   std::wstring satoshiPort{
+      L"--satoshi-port=" + Armory::Config::NetworkSettings::btcPortW() };
+
+   std::wstring rpcPort{
+      L"--satoshirpc-port=" + Armory::Config::NetworkSettings::rpcPortW() };
+
+   //2. randomize a file name
+   std::filesystem::path keyFilePath{ Armory::Config::getDataDir() /
+      std::string{ "keyFile_" + BtcUtils::fortuna_.generateRandom(7).toHexStr() }};
+
+   //1. use CreateFile to generate a inheritable file handle
+   SECURITY_DESCRIPTOR secDep;
+   if (!InitializeSecurityDescriptor(&secDep, SECURITY_DESCRIPTOR_REVISION)) {
+      throw std::runtime_error("failed to init keyFile security descriptor");
+   }
+   SECURITY_ATTRIBUTES secAtt;
+   secAtt.nLength = sizeof(SECURITY_ATTRIBUTES);
+   secAtt.lpSecurityDescriptor = &secDep;
+   secAtt.bInheritHandle = true;
+
+   auto fileHandle = CreateFileW(keyFilePath.c_str(),
+      //child process (ArmoryDB) will inherit the handle for writing
+      GENERIC_READ | GENERIC_WRITE,
+
+      //no other process should be allowed to open the file while own it
+      0,
+
+      //handle should be inheritable
+      &secAtt,
+      CREATE_ALWAYS,
+      FILE_ATTRIBUTE_NORMAL,
+      NULL
+   );
+   if (fileHandle == INVALID_HANDLE_VALUE) {
+      auto lastError = GetLastError();
+      throw std::runtime_error("failed to create key file with error: " + lastError);
+   }
+
+   //2. use CreateProcess to spawn ArmoryDB, and have it inherit the file handle
+   std::wstring commandLine{ armoryDbPath.wstring() + L" " +
+      L"--ephemeral " + dbPortStr + L" " + dataDir + L" " + dbDir + L" " +
+      network + L" " + satoshiDir + L" " + satoshiPort + L" " + rpcPort
+   };
+
+   //mandatory, process handle is writting in pi after start
+   STARTUPINFOW si;
+   PROCESS_INFORMATION pi;
+   ZeroMemory( &si, sizeof(si) );
+   si.cb = sizeof(si);
+   ZeroMemory( &pi, sizeof(pi) );
+
+   /*
+   On Windows we add envvars to the parent instead of creating custom ones.
+   The child will inherit them.
+
+   It seems that there is a set of undocumented envvars to provide for a
+   binary to even run on Windows.
+   */
+   const auto& pubkey = peers->getOwnPublicKey();
+   BinaryDataRef keyRef{pubkey.pubkey, 33};
+   SetEnvironmentVariable("CALLER_PUBKEY", keyRef.toHexStr().c_str());
+   SetEnvironmentVariable("KEYFILE_HANDLE", std::to_string((uint64_t)fileHandle).c_str());
+
+   if (!CreateProcessW(NULL,
+      commandLine.data(),
+      NULL,
+      NULL,
+      true, //inherit parent handles where possible
+      NORMAL_PRIORITY_CLASS,
+      NULL, //no explicit envvars on windows, let child inherit parent's
+      NULL,
+      &si, &pi
+   )) {
+      auto lastError = GetLastError();
+      throw std::runtime_error("failed to spawn ArmorDB with error: " + std::to_string(lastError));
+   }
+   autoDbHandle = pi.hProcess;
+   CloseHandle(pi.hThread);
+
+   //5. wait for db to set pubkey in shared file
+   unsigned count = 0;
+   while (true) {
+      if (count >= 100) {
+         throw std::runtime_error("autodb handshake timeout");
+      }
+
+      if (getFileSize(fileHandle) != 33) {
+         //key file hasnt changed, keep polling
+         std::this_thread::sleep_for(100ms);
+         ++count;
+         continue;
+      }
+
+      //grab db pubkey from shared file
+      SecureBinaryData serverPubkey(33);
+      DWORD sizeRead = 0;
+      SetFilePointer(fileHandle, 0, NULL, FILE_BEGIN);
+      if (!ReadFile(fileHandle, serverPubkey.getPtr(), 33, &sizeRead, NULL) || sizeRead != 33) {
+         throw std::runtime_error("failed to read pubkey from key file");
+      }
+
+      //add db key to custom store
+      std::string addr{"127.0.0.1:" + std::to_string(port)};
+      peers->addPeer(serverPubkey, addr);
+      break;
+   }
+
+   //close & delete the file
+   if (!CloseHandle(fileHandle)) {
+      throw std::runtime_error("failed to close key file handle");
+   }
+
+   if (!std::filesystem::remove(keyFilePath)) {
+      throw std::runtime_error("key file did not exists!");
+      //fs::remove returns false if there was nothing to remove.
+      //it will throw on failure.
+   }
+
+   //return ephemeral key store
+   return peers;
+}
+#else
 std::shared_ptr<Armory::Wallets::AuthorizedPeers> Armory::Bridge::spawnDb()
 {
    /*
@@ -142,16 +325,6 @@ std::shared_ptr<Armory::Wallets::AuthorizedPeers> Armory::Bridge::spawnDb()
    std::filesystem::path keyFilePath{ Armory::Config::getDataDir() /
       std::string{ "keyFile_" + BtcUtils::fortuna_.generateRandom(7).toHexStr() }};
 
-#ifdef _WIN32 //windows
-   //TODO: need to implement the following in Windows
-   //1. use CreateFile to generate a inheritable file handle
-   //2. use CreateProcess to spawn ArmoryDB, and have it inherit the file handle
-   //3. figure out how/if there is a need to lock the file
-   //
-   // NOTE: need to get the test suite to build in Windows first. A blind
-   //       implementation would be a waste of time
-
-#else //sane operating systems
    //open file and lock it
    auto fd = open(keyFilePath.c_str(), O_CREAT | O_EXCL | O_RSYNC | O_RDWR);
    if (fd == -1) {
@@ -213,7 +386,6 @@ std::shared_ptr<Armory::Wallets::AuthorizedPeers> Armory::Bridge::spawnDb()
    if (close(fd) != 0) {
       throw std::runtime_error("failed to close key file");
    }
-#endif
 
    if (!std::filesystem::remove(keyFilePath)) {
       throw std::runtime_error("key file did not exists!");
@@ -224,17 +396,27 @@ std::shared_ptr<Armory::Wallets::AuthorizedPeers> Armory::Bridge::spawnDb()
    //return ephemeral key store
    return peers;
 }
+#endif
 
 ////
 bool Armory::Bridge::isDbRunning()
 {
+#ifdef _WIN32
+   if (autoDbHandle == INVALID_HANDLE_VALUE) {
+      return false;
+   }
+
+   if (WaitForSingleObject(autoDbHandle, 0) != WAIT_TIMEOUT) {
+      //we need to close this handle after use
+      CloseHandle(autoDbHandle);
+      autoDbHandle = INVALID_HANDLE_VALUE;
+      return false;
+   }
+#else
    if (autoDbPid == -1) {
       return false;
    }
 
-#ifdef _WIN32
-   //TODO: implement process monitoring via process id for Windows
-#else
    siginfo_t processInfo;
    memset(&processInfo, 0, sizeof(processInfo));
    if (waitid(P_PID, (pid_t)autoDbPid, &processInfo, WEXITED | WNOHANG) != 0) {

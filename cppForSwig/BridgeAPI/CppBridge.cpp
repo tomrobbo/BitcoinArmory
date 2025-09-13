@@ -840,7 +840,7 @@ void CppBridge::cleanupDb(MessageId refId)
    } else if (bdvPtr_ == nullptr) {
       reply.setSuccess(false);
       reply.setError("no connection to db");
-   } else if (autoDbPid == -1) {
+   } else if (!isDbRunning()) {
       reply.setSuccess(false);
       reply.setError("db is not running");
    } else {

@@ -100,7 +100,7 @@ namespace {
          capnWlt.getLabel(), capnWlt.getDesc(),
          capnWlt.getUsesEncryption(), capnWlt.getWatchingOnly(),
          std::move(addresses), capnWlt.getLookupCount(),
-         std::filesystem::path(capnWlt.getPath()), capnWlt.getKdfMemReq()
+         std::filesystem::path(std::string{capnWlt.getPath()}), capnWlt.getKdfMemReq()
       };
    }
 
@@ -848,6 +848,9 @@ TEST_F(WalletManagerWebsocketsTests, Connect)
    } catch (const std::exception&) {
       ASSERT_TRUE(false);
    }
+
+   //cleanup
+   bdvPtr->unregisterFromDB();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1250,7 +1253,7 @@ protected:
                      if (notifCount++ != 0) {
                         throw std::runtime_error("count != 0");
                      }
-                     path = std::filesystem::path(wltNotif.getCreateFile());
+                     path = std::filesystem::path(std::string{wltNotif.getCreateFile()});
                      break;
                   }
 
@@ -1315,7 +1318,8 @@ protected:
             }
 
             default:
-               throw std::runtime_error("unexpected wallet notif");
+               throw std::runtime_error(std::string{
+                  "unexpected wallet notif: " + std::to_string(notif.which())});
          }
       }
 
@@ -2312,7 +2316,7 @@ TEST_F(BridgeTests, ImportWallet_Legacy)
       auto wltList = listWallets(bridge_);
       ASSERT_EQ(wltList.size(), 1);
 
-      auto wltInfoLegacy = wltList.at(legacyWalletFile.filename());
+      auto wltInfoLegacy = wltList.at(legacyWalletFile.filename().string());
       ASSERT_EQ(wltInfoLegacy.walletId, walletId);
       ASSERT_FALSE(wltInfoLegacy.staged);
       ASSERT_EQ(wltInfoLegacy.loadState, 1);
@@ -2798,7 +2802,11 @@ protected:
       blk0dat_ = FileUtils::getBlkFilename(blkdir_ / "blocks", 0);
       TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
 
-      auto buildPath = fullBinPath.parent_path().parent_path().string();
+      #ifdef _WIN32
+         auto buildPath = fullBinPath.string();
+      #else
+         auto buildPath = fullBinPath.parent_path().parent_path().string();
+      #endif
       char* argv[] = {
          buildPath.data(),
          (char*)"--datadir=./fakehomedir"sv.data(),
@@ -2963,7 +2971,14 @@ TEST_F(BridgeWebsocketsAutoDB, Connect)
             break;
          }
 
+         case Bridge::Notification::NODE_STATUS:
+         {
+            //ignore
+            break;
+         }
+
          default:
+            std::cout << "unexpected db init notif: " << notif.which() << std::endl;
             EXPECT_TRUE(false);
             break;
       }

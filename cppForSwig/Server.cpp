@@ -235,17 +235,32 @@ void WebSocketServer::initAuthPeers(const IO::ReadOnlyFileParams& params)
       if (!instance->authorizedPeers_->setMasterKey(callerPubKey)) {
          throw std::runtime_error("ephemeral peers db setup snafu");
       }
+      const auto& ownKey = instance->authorizedPeers_->getOwnPublicKey();
 
-      //grab shared file descriptor
+   #ifdef _WIN32
+      //grab inherited key file handle
+      std::string handleStr{std::getenv("KEYFILE_HANDLE")};
+      uint64_t fd = std::stoi(handleStr);
+      auto fHandle = (HANDLE)fd;
+
+      DWORD bytesWritten = 0;
+      if (!WriteFile(fHandle, ownKey.pubkey, 33, &bytesWritten, NULL)
+         || bytesWritten != 33) {
+         LOGERR << "failed to set server autodb pubkey";
+         exit(-2);
+      }
+      CloseHandle(fHandle);
+   #else
+      //grab inherited key file descriptor
       std::string fdStr{std::getenv("KEYFILE_FD")};
       int fd = std::stoi(fdStr);
 
       //write own pubkey to file
-      const auto& ownKey = instance->authorizedPeers_->getOwnPublicKey();
       if (::write(fd, ownKey.pubkey, 33) != 33) {
          LOGERR << "failed to set server autodb pubkey";
          exit(-2);
       }
+   #endif
    }
 }
 

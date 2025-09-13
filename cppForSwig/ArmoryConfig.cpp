@@ -810,6 +810,11 @@ const std::string& NetworkSettings::btcPort()
    return btcPort_;
 }
 
+std::wstring NetworkSettings::btcPortW()
+{
+   return std::to_wstring(std::stoi(btcPort_));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 const std::string& NetworkSettings::dbPort()
 {
@@ -826,6 +831,11 @@ const std::string& NetworkSettings::dbIP()
 const std::string& NetworkSettings::rpcPort()
 {
    return rpcPort_;
+}
+
+std::wstring NetworkSettings::rpcPortW()
+{
+   return std::to_wstring(std::stoi(rpcPort_));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

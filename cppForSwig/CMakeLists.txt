@@ -209,6 +209,31 @@ TARGET_COMPILE_DEFINITIONS(ArmoryCLI
     PUBLIC -D__STDC_LIMIT_MACROS
 )
 
+ADD_LIBRARY(BridgeLib
+    STATIC
+    BridgeAPI/BridgeSocket.cpp
+    BridgeAPI/CppBridge.cpp
+    BridgeAPI/PassphrasePrompt.cpp
+    BridgeAPI/ProtoCommandParser.cpp
+    BridgeAPI/Wallets/Loader.cpp
+    BridgeAPI/Wallets/Container.cpp
+    BridgeAPI/Wallets/Manager.cpp
+    BridgeAPI/Wallets/Notifications.cpp
+    BridgeAPI/BlockchainDbClient.cpp
+)
+
+TARGET_INCLUDE_DIRECTORIES(BridgeLib
+    ${LIBARMORYCOMMON_INCLUDE_DIRECTORIES}
+)
+
+TARGET_LINK_LIBRARIES(BridgeLib
+    ArmoryCommon
+)
+
+TARGET_COMPILE_DEFINITIONS(BridgeLib
+    PUBLIC -D__STDC_LIMIT_MACROS
+)
+
 ## armorydb ##
 ADD_EXECUTABLE(ArmoryDB
     main.cpp
@@ -235,15 +260,6 @@ INSTALL(TARGETS ArmoryDB DESTINATION ${CMAKE_INSTALL_BINDIR})
 ## cppbridge ##
 ADD_EXECUTABLE(CppBridge
     BridgeAPI/BridgeMain.cpp
-    BridgeAPI/BridgeSocket.cpp
-    BridgeAPI/CppBridge.cpp
-    BridgeAPI/PassphrasePrompt.cpp
-    BridgeAPI/ProtoCommandParser.cpp
-    BridgeAPI/Wallets/Loader.cpp
-    BridgeAPI/Wallets/Container.cpp
-    BridgeAPI/Wallets/Manager.cpp
-    BridgeAPI/Wallets/Notifications.cpp
-    BridgeAPI/BlockchainDbClient.cpp
 )
 
 SET_TARGET_PROPERTIES(CppBridge
@@ -255,6 +271,7 @@ TARGET_INCLUDE_DIRECTORIES(CppBridge
 )
 
 TARGET_LINK_LIBRARIES(CppBridge
+    BridgeLib
     ArmoryCommon
     ${LIBWEBSOCKETS_LIB}
     ${OS_SPECIFIC_LIBS}

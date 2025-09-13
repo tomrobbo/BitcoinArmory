@@ -8,6 +8,8 @@ set(TEST_SOURCES
     MockedNode.cpp
 )
 
+################################################################################
+## BIP151RekeyTest
 add_executable(BIP151RekeyTest
     BIP151RekeyTest.cpp
     ${TEST_SOURCES}
@@ -19,12 +21,14 @@ target_include_directories(BIP151RekeyTest
     ${LIBARMORYCOMMON_INCLUDE_DIRECTORIES}
 )
 target_link_libraries(BIP151RekeyTest
-    ${GTEST_LIB}
     ArmoryCommon
+    ${LIBWEBSOCKETS_LIB}
     ${OS_SPECIFIC_LIBS}
-    ${WINSOCK_LIB}
+    ${GTEST_LIBS}
 )
 
+################################################################################
+## ContainerTests
 #add_executable(ContainerTests
 #    ContainerTests.cpp
 #    ${TEST_SOURCES}
@@ -41,6 +45,8 @@ target_link_libraries(BIP151RekeyTest
 #    ${OS_SPECIFIC_LIBS}
 #)
 
+################################################################################
+## CppBlockUtilsTests
 add_executable(CppBlockUtilsTests
     CppBlockUtilsTests.cpp
     ${TEST_SOURCES}
@@ -52,14 +58,14 @@ target_include_directories(CppBlockUtilsTests
     ${LIBARMORYCOMMON_INCLUDE_DIRECTORIES}
 )
 target_link_libraries(CppBlockUtilsTests
-    ${GTEST_LIB}
     ArmoryCommon
+    ${LIBWEBSOCKETS_LIB}
     ${OS_SPECIFIC_LIBS}
-    ${WINSOCK_LIB}
-    capnp
-    kj
+    ${GTEST_LIBS}
 )
 
+################################################################################
+## DB1kIterTest
 # Seems to be outdated - re-enable when fixed
 #add_executable(DB1kIterTest
 #    DB1kIterTest.cpp
@@ -76,6 +82,8 @@ target_link_libraries(CppBlockUtilsTests
 #    ArmoryCommon
 #)
 
+################################################################################
+## SignerTests
 add_executable(SignerTests
     SignerTests.cpp
     ${TEST_SOURCES}
@@ -87,14 +95,14 @@ target_include_directories(SignerTests
     ${LIBARMORYCOMMON_INCLUDE_DIRECTORIES}
 )
 target_link_libraries(SignerTests
-    ${GTEST_LIB}
     ArmoryCommon
+    ${LIBWEBSOCKETS_LIB}
     ${OS_SPECIFIC_LIBS}
-    ${WINSOCK_LIB}
-    capnp
-    kj
+    ${GTEST_LIBS}
 )
 
+################################################################################
+## SupernodeTests
 add_executable(SupernodeTests
     SupernodeTests.cpp
     ${TEST_SOURCES}
@@ -106,14 +114,14 @@ target_include_directories(SupernodeTests
     ${LIBARMORYCOMMON_INCLUDE_DIRECTORIES}
 )
 target_link_libraries(SupernodeTests
-    ${GTEST_LIB}
     ArmoryCommon
+    ${LIBWEBSOCKETS_LIB}
     ${OS_SPECIFIC_LIBS}
-    ${WINSOCK_LIB}
-    capnp
-    kj
+    ${GTEST_LIBS}
 )
 
+################################################################################
+## UtilsTests
 add_executable(UtilsTests
     UtilsTests.cpp
     ${TEST_SOURCES}
@@ -125,14 +133,14 @@ target_include_directories(UtilsTests
     ${LIBARMORYCOMMON_INCLUDE_DIRECTORIES}
 )
 target_link_libraries(UtilsTests
-    ${GTEST_LIB}
     ArmoryCommon
+    ${LIBWEBSOCKETS_LIB}
     ${OS_SPECIFIC_LIBS}
-    ${WINSOCK_LIB}
-    capnp
-    kj
+    ${GTEST_LIBS}
 )
 
+################################################################################
+## WalletTests
 add_executable(WalletTests
     WalletTests.cpp
     ${TEST_SOURCES}
@@ -146,14 +154,14 @@ target_include_directories(WalletTests
     ${LIBARMORYCOMMON_INCLUDE_DIRECTORIES}
 )
 target_link_libraries(WalletTests
-    ${GTEST_LIB}
     ArmoryCommon
+    ${LIBWEBSOCKETS_LIB}
     ${OS_SPECIFIC_LIBS}
-    ${WINSOCK_LIB}
-    capnp
-    kj
+    ${GTEST_LIBS}
 )
 
+################################################################################
+## ZeroConfTests
 add_executable(ZeroConfTests
     ZeroConfTests.cpp
     ${TEST_SOURCES}
@@ -165,10 +173,28 @@ target_include_directories(ZeroConfTests
     ${LIBARMORYCOMMON_INCLUDE_DIRECTORIES}
 )
 target_link_libraries(ZeroConfTests
-    ${GTEST_LIB}
     ArmoryCommon
+    ${LIBWEBSOCKETS_LIB}
     ${OS_SPECIFIC_LIBS}
-    ${WINSOCK_LIB}
-    capnp
-    kj
+    ${GTEST_LIBS}
+)
+
+################################################################################
+## BridgeTests
+add_executable(BridgeTests
+    BridgeTests.cpp
+    ${TEST_SOURCES}
+)
+set_target_properties(BridgeTests
+    PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+)
+target_include_directories(BridgeTests
+    ${LIBARMORYCOMMON_INCLUDE_DIRECTORIES}
+)
+target_link_libraries(BridgeTests
+    ArmoryCommon
+    BridgeLib
+    ${LIBWEBSOCKETS_LIB}
+    ${OS_SPECIFIC_LIBS}
+    ${GTEST_LIBS}
 )

@@ -30,7 +30,11 @@ namespace Armory
    {
       class WalletManager;
       using BdvPtr = std::shared_ptr<AsyncClient::BlockDataViewer>;
+   #ifdef _WIN32
+      extern void* autoDbHandle;
+   #else
       extern int autoDbPid;
+   #endif;
 
       ////////
       std::shared_ptr<Wallets::AuthorizedPeers> spawnDb(void);
