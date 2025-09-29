@@ -165,6 +165,8 @@ namespace Armory
             MessageId);
          void createBackupStringForWallet(const std::string&,
             const std::string&, SecureBinaryData, MessageId);
+         void changeWalletPassphrase(const std::string&,
+            const std::string&, bool, MessageId);
          void restoreWallet(
             const std::vector<std::string_view>&,
             const std::string_view&,

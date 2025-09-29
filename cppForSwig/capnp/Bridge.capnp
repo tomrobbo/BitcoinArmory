@@ -80,12 +80,6 @@ struct WalletData {
 # Notifications
 ###############################
 
-struct SetPassphraseStruct {
-   passphrase  @0 : Text;
-   kdfTargetMs @1 : UInt32;
-   kdfTargetMB @2 : UInt32;
-}
-
 struct Notification {
    ## Wallet creation progress notifs
    struct WalletProgress {
@@ -105,11 +99,11 @@ struct Notification {
    }
 
    ## Wallet creation prompts
-   struct WalletCreation {
+   struct SetPassphraseRequest {
       union {
          unset       @0 : Void;
-         setCtrlPass @1 : Void;
-         setPrivPass @2 : Void;
+         privatePass @1 : Void;
+         controlPass @2 : Void;
       }
    }
 
@@ -156,7 +150,7 @@ struct Notification {
       cleanup        @13: Void;
       unlockRequest  @14: List(Text);
       walletProgress @15: WalletProgress;
-      walletCreation @16: WalletCreation;
+      setPassphrase  @16: SetPassphraseRequest;
       restore        @17: RestorePrompt;
    }
 }
@@ -167,13 +161,19 @@ struct NotificationReply {
       merge          @1;
    }
 
+   struct SetPassphraseReply {
+      passphrase     @0 : Text;
+      kdfTargetMs    @1 : UInt32;
+      kdfTargetMB    @2 : UInt32;
+   }
+
    success           @0 : Bool;
    counter           @1 : UInt32;
 
    union {
       unlockRequest  @2 : Text;
       restore        @3 : RestoreMode;
-      walletCreation @4 : SetPassphraseStruct;
+      setPassphrase  @4 : SetPassphraseReply;
    }
 }
 
@@ -270,6 +270,8 @@ struct WalletManagerRequest {
 
       #load staged wallets
       loadWallets             @5 : Void;
+
+      deleteWallet            @6 : Types.WalletId;
    }
 }
 
@@ -312,38 +314,46 @@ struct WalletRequest {
    }
 
    struct ExtendAddressPool {
-      count       @0 : UInt32;
-      callbackId  @1 : Types.CallbackId;
+      count          @0 : UInt32;
+      callbackId     @1 : Types.CallbackId;
    }
 
    struct BackupStringStruct {
       union {
-         callbackId @0 : Types.CallbackId;
-         passphrase @1 : Text;
+         callbackId  @0 : Types.CallbackId;
+         passphrase  @1 : Text;
+      }
+   }
+
+   struct ChangePassphraseRequest {
+      callbackId     @0 : Types.CallbackId;
+      union {
+         private     @1 : Void;
+         control     @2 : Void;
       }
    }
 
    struct SetAddressTypeFor {
-      assetId       @0 : Data;
-      addressType   @1 : UInt32;
+      assetId        @0 : Data;
+      addressType    @1 : UInt32;
    }
 
    struct OutputRequest {
       union {
-         value @0 : Types.CoinAmount;
-         zc    @1 : Void;
-         rbf   @2 : Void;
+         value       @0 : Types.CoinAmount;
+         zc          @1 : Void;
+         rbf         @2 : Void;
       }
    }
 
    struct SetComment {
-      key      @0 : Text;
-      comment  @1 : Text;
+      key            @0 : Text;
+      comment        @1 : Text;
    }
 
    struct SetLabels {
-      title        @0 : Text;
-      description  @1 : Text;
+      title          @0 : Text;
+      description    @1 : Text;
    }
 
    walletId                         @0 : Types.WalletId;
@@ -356,7 +366,7 @@ struct WalletRequest {
       extendAddressPool             @5 : ExtendAddressPool;
 
       createBackupString            @6 : BackupStringStruct;
-      deleteWallet                  @7 : Void;
+      changePassphrase              @7 : ChangePassphraseRequest;
       getData                       @8 : Void;
 
       getAddrCombinedList           @9 : Void;

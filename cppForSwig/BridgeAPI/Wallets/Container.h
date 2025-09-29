@@ -104,10 +104,10 @@ namespace Armory
          void getUTXOs(uint64_t, bool, bool,
             const std::function<void(ReturnMessage<std::vector<UTXO>>)>& lbd);
 
-         uint64_t getFullBalance(void) const { return totalBalance_; }
-         uint64_t getSpendableBalance(void) const { return spendableBalance_; }
-         uint64_t getUnconfirmedBalance(void) const { return unconfirmedBalance_; }
-         uint64_t getTxIOCount(void) const { return txioCount_; }
+         uint64_t getFullBalance(void) const;
+         uint64_t getSpendableBalance(void) const;
+         uint64_t getUnconfirmedBalance(void) const;
+         uint64_t getTxIOCount(void) const;
 
          std::map<BinaryData, std::vector<uint64_t>> getAddrBalanceMap(void) const;
          Wallets::AssetKeyType getHighestUsedIndex(void) const;
@@ -115,6 +115,8 @@ namespace Armory
 
          std::unique_ptr<Seeds::WalletBackup> getBackupStrings(
             const Passphrase::UnlockFunc&) const;
+         void changePassphrase(const Passphrase::UnlockFunc&,
+            Passphrase::SetNew&, bool);
 
          void setComment(const std::string&, const std::string&);
          void setLabels(const std::string&, const std::string&);

@@ -447,11 +447,11 @@ namespace
          auto notif = fromBridge.initNotification();
          notif.setCallbackId(callbackId);
          notif.setCounter(notifCounter);
-         auto wltCrt = notif.initWalletCreation();
+         auto wltCrt = notif.initSetPassphrase();
          if (priv) {
-            wltCrt.setSetPrivPass();
+            wltCrt.setPrivatePass();
          } else {
-            wltCrt.setSetCtrlPass();
+            wltCrt.setControlPass();
          }
          auto notifSerialized = serializeCapnp(notifMessage);
 
@@ -884,8 +884,7 @@ void CppBridge::registerWallet(const std::string& wltId,
 void CppBridge::createBackupStringForWallet(const std::string& wltId,
    const std::string& callbackId, SecureBinaryData passphrase, MessageId msgId)
 {
-   auto backupStringLbd =
-   [this, wltId, msgId, callbackId, passphrase=std::move(passphrase)]()
+   auto func = [this, wltId, msgId, callbackId, passphrase=std::move(passphrase)]()
    {
       std::shared_ptr<BridgePassphrasePrompt> passPromptObj;
       if (passphrase.empty()) {
@@ -906,10 +905,17 @@ void CppBridge::createBackupStringForWallet(const std::string& wltId,
             auto lbd = passPromptObj->getLambda();
             backupData = std::move(wltContainer->getBackupStrings(lbd));
          } else {
+            int count = 0;
             backupData = std::move(wltContainer->getBackupStrings(
-               [passphrase=std::move(passphrase)]
+               [passphrase=std::move(passphrase), &count]
                (const std::set<Wallets::EncryptionKeyId>&)->Passphrase::Result
-               { return { passphrase, true }; }
+               {
+                  if (count++ == 0) {
+                     return { passphrase, true };
+                  } else {
+                     return { {}, false };
+                  }
+               }
             ));
          }
       } catch (const std::exception& e) {
@@ -998,7 +1004,52 @@ void CppBridge::createBackupStringForWallet(const std::string& wltId,
       writeToClient(payload);
    };
 
-   std::thread thr(backupStringLbd);
+   std::thread thr(func);
+   if (thr.joinable()) {
+      thr.detach();
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void CppBridge::changeWalletPassphrase(const std::string& wltId,
+   const std::string& callbackId, bool isPriv, MessageId msgId)
+{
+   auto func = [this, wltId, callbackId, isPriv, msgId]()
+   {
+      std::shared_ptr<BridgePassphrasePrompt> unlockObj;
+      unlockObj = std::make_shared<BridgePassphrasePrompt>(
+         callbackId, [this](ServerPushWrapper wrapper){
+            this->callbackWriter(wrapper);
+         });
+      Armory::Passphrase::SetNew setNewFunc = getSetPassFunc(
+         this, callbackId, isPriv);
+
+      capnp::MallocMessageBuilder message;
+      auto fromBridge = message.initRoot<FromBridge>();
+      auto reply = fromBridge.initReply();
+      reply.setReferenceId(msgId);
+
+      try {
+         //grab wallet
+         auto wltContainer = wltManager_->getWalletContainer(wltId);
+
+         //trigger passphrase change
+         auto unlockFunc = unlockObj->getLambda();
+         wltContainer->changePassphrase(unlockFunc, setNewFunc, isPriv);
+         reply.setSuccess(true);
+      } catch (const std::exception& e) {
+         reply.setSuccess(false);
+         reply.setError(e.what());
+      }
+
+      auto payload = serializeCapnp(message);
+      writeToClient(payload);
+
+      //tell caller to cleanup the callback id
+      unlockObj->cleanup();
+   };
+
+   std::thread thr(func);
    if (thr.joinable()) {
       thr.detach();
    }
@@ -1086,15 +1137,15 @@ void CppBridge::restoreWallet(
 
             case Seeds::RestorePromptType::ControlPassphrase:
             {
-               auto wltCreation = notifCapnp.initWalletCreation();
-               wltCreation.setSetCtrlPass();
+               auto wltCreation = notifCapnp.initSetPassphrase();
+               wltCreation.setControlPass();
                break;
             }
 
             case Seeds::RestorePromptType::PrivatePassphrase:
             {
-               auto wltCreation = notifCapnp.initWalletCreation();
-               wltCreation.setSetPrivPass();
+               auto wltCreation = notifCapnp.initSetPassphrase();
+               wltCreation.setPrivatePass();
                break;
             }
 

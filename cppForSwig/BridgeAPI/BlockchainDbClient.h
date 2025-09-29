@@ -34,7 +34,7 @@ namespace Armory
       extern void* autoDbHandle;
    #else
       extern int autoDbPid;
-   #endif;
+   #endif
 
       ////////
       std::shared_ptr<Wallets::AuthorizedPeers> spawnDb(void);

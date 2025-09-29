@@ -417,7 +417,7 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
    def processSetNewPassphrase(self, isPriv, reusePassphrase=False):
       """Process the request to set a new passphrase."""
       packet = self.getNewPacket()
-      passPacket = packet.init("walletCreation")
+      passPacket = packet.init("setPassphrase")
 
       if isPriv:
          # private keys passphrase, do we reuse old one or get a fresh one?
@@ -509,10 +509,10 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
          self.processUnlockRequest(payload.unlockRequest)
          return
 
-      elif payload.which() == 'walletCreation':
+      elif payload.which() == 'setPassphrase':
          # No need to close unlock dialog or get passphrase here; already handled
-         notif = payload.walletCreation
-         if notif.which() == 'setCtrlPass':
+         notif = payload.setPassphrase
+         if notif.which() == 'controlPass':
             # Store passphrase before cleaning up unlock dialog for potential reuse
             if self.dlgUnlock:
                self.storedPassphrase = self.dlgUnlock.getPassphrase()
@@ -520,7 +520,7 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
                del self.dlgUnlock
                self.dlgUnlock = None
             self.processSetNewPassphrase(False)
-         elif notif.which() == 'setPrivPass':
+         elif notif.which() == 'privatePass':
             choice = self.promptPassphraseReuseChoice()
             if choice == 'reuse':
                # User chose to reuse old passphrase
@@ -599,7 +599,6 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
          self.migrationFailed = True
          if not self.cancellationSent:
             packet = self.getNewPacket()
-            packet.init("walletCreation")
             packet.success = False
             self.reply()
             self.cancellationSent = True

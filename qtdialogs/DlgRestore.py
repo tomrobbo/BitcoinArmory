@@ -236,7 +236,7 @@ class DlgRestoreSingle(ArmoryDialog, ServerPush):
    #############################################################################
    def setPassphrase(self, isPriv):
       packet = self.getNewPacket()
-      passPacket = packet.init("walletCreation")
+      passPacket = packet.init("setPassphrase")
       if isPriv:
          if self.chkEncrypt.isChecked():
             dlgPasswd = DlgChangePassphrase(self, self.main)
@@ -277,11 +277,11 @@ class DlgRestoreSingle(ArmoryDialog, ServerPush):
          TheBDM.unregisterPrompt(self.callbackId)
          return
 
-      elif payload.which() == 'walletCreation':
-         notif = payload.walletCreation
-         if notif.which() == 'setCtrlPass':
+      elif payload.which() == 'setPassphrase':
+         notif = payload.setPassphrase
+         if notif.which() == 'privatePass':
             self.setPassphrase(False)
-         elif notif.which() == 'setPrivPass':
+         elif notif.which() == 'controlPass':
             self.setPassphrase(True)
          return
 

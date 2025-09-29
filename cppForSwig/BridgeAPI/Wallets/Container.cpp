@@ -141,6 +141,26 @@ void WalletContainer::updateWalletBalanceState(
    }
 }
 
+uint64_t WalletContainer::getFullBalance() const
+{
+   return totalBalance_;
+}
+
+uint64_t WalletContainer::getSpendableBalance() const
+{
+   return spendableBalance_;
+}
+
+uint64_t WalletContainer::getUnconfirmedBalance() const
+{
+   return unconfirmedBalance_;
+}
+
+uint64_t WalletContainer::getTxIOCount() const
+{
+   return txioCount_;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 Wallets::AssetKeyType WalletContainer::getHighestUsedIndex(void) const
 {
@@ -350,6 +370,25 @@ std::unique_ptr<Seeds::WalletBackup> WalletContainer::getBackupStrings(
    wltSingle->resetPassphrasePromptLambda();
 
    return backupStrings;
+}
+
+void WalletContainer::changePassphrase(const Passphrase::UnlockFunc& unlockLbd,
+   Passphrase::SetNew& setLbd, bool isPriv)
+{
+   auto wltSingle = std::dynamic_pointer_cast<Wallets::AssetWallet_Single>(wallet_);
+   if (wltSingle == nullptr) {
+      LOGERR << "WalletContainer::changePassphrase: unexpected wallet type";
+      throw std::runtime_error(
+         "WalletContainer::changePassphrase: unexpected wallet type");
+   }
+
+   if (isPriv) {
+      wltSingle->setPassphrasePromptLambda(unlockLbd);
+      wltSingle->changePrivateKeyPassphrase(setLbd);
+      wltSingle->resetPassphrasePromptLambda();
+   } else {
+      wltSingle->changeControlPassphrase(setLbd, unlockLbd);
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
