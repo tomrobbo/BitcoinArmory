@@ -4066,8 +4066,7 @@ TEST_F(WalletsTest, RejectCreationAtPassphrase)
       if (FileUtils::fileExists(filename, 0)) {
          fileExists = true;
       }
-      return std::make_unique<Armory::Passphrase::Params>(
-         0ms, 0, SecureBinaryData{}, false);
+      return std::make_unique<Armory::Passphrase::Params>();
    };
 
    IO::CreateWalletParams params{

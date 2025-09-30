@@ -471,7 +471,7 @@ namespace
          //wait on reply
          auto reply = std::move(fut.get());
          if (!reply.success) {
-            return nullptr;
+            return std::make_unique<Passphrase::Params>();
          }
          return std::make_unique<Passphrase::Params>(reply.passParams);
       };

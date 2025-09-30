@@ -1269,10 +1269,8 @@ namespace
                auto pass = SecureBinaryData::fromString(notif.getUnlockRequest());
                return handler(Seeds::PromptReply{
                   notif.getSuccess(), false,
-                  Passphrase::Params{
-                     1ms, 0,
-                     std::move(pass)
-                  }});
+                  Passphrase::Params{std::move(pass)}
+               });
             }
 
             default:

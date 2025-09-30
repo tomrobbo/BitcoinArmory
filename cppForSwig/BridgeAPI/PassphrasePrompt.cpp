@@ -111,6 +111,9 @@ Passphrase::UnlockFunc BridgePassphrasePrompt::getLambda()
    ->Passphrase::Result
    {
       auto reply = processFeedRequest(ids);
+      if (reply.passParams.type != Passphrase::Params::Type::Unlock) {
+         return { {}, false };
+      }
       return { std::move(reply.passParams.passphrase), reply.success };
    };
 }

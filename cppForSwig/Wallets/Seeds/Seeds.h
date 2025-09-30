@@ -126,8 +126,8 @@ namespace Armory
          enum class LegacyType : int
          {
             /*
-            Legacy type defines what kinda of backup can be created from this
-            seed. By default, legacy wallets would be created with a Armory200a
+            Legacy type defines what kind of backup can be created from this
+            seed. By default, legacy wallets would be created with a Armory200
             backup type, which would set the hash index to 3.
 
             A wallet restored from an older backup would then yield backups that

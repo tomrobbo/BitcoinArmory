@@ -18,12 +18,17 @@ using namespace std::chrono_literals;
 //
 ////////////////////////////////////////////////////////////////////////////////
 Params::Params() :
-   unlockMs(0ms)
+   type(Type::Invalid), unlockMs(0ms)
 {}
 
 Params::Params(std::chrono::milliseconds target, uint32_t mb,
-   SecureBinaryData pass, bool succ) :
-   unlockMs(target), memTargetMB(mb), passphrase{std::move(pass)}, success(succ)
+   SecureBinaryData pass) :
+   type(Type::SetNew), unlockMs(target), memTargetMB(mb),
+   passphrase{std::move(pass)}
+{}
+
+Params::Params(SecureBinaryData pass) :
+   type(Type::Unlock), unlockMs(0ms), passphrase{std::move(pass)}
 {}
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -71,7 +76,7 @@ const Params& SetNew::get() const
       }
 
       params_ = std::move(setNewPassphrase_());
-      if (params_ == nullptr || params_->success == false) {
+      if (params_ == nullptr || params_->type != Params::Type::SetNew) {
          throw std::runtime_error("passphrase request was rejected");
       }
    }

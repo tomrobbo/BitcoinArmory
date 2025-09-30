@@ -2070,9 +2070,7 @@ TEST_F(BridgeTests, RestoreWallet_Legacy)
       auto notifReply = notifBridge.initNotification();
       notifReply.setSuccess(true);
       notifReply.setCounter(notif.getCounter());
-      auto capnPass = notifReply.initSetPassphrase();
-      capnPass.setPassphrase(passphrase);
-      capnPass.setKdfTargetMs(1);
+      notifReply.setUnlockRequest(passphrase);
 
       auto rawNotif = serializeCapnp(notifMsg);
       pushRequest(bridge_, rawNotif);
