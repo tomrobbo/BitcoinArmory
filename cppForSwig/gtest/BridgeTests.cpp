@@ -72,6 +72,7 @@ namespace {
       const bool watchingOnly;
       const std::set<AddressData> addresses;
       const int64_t lookup;
+      const int64_t useCount;
 
       const std::filesystem::path path;
       const uint32_t kdfMemReq;
@@ -99,7 +100,7 @@ namespace {
          walletId, capnWlt.getAccountId(), capnWlt.getMasterId(),
          capnWlt.getLabel(), capnWlt.getDesc(),
          capnWlt.getUsesEncryption(), capnWlt.getWatchingOnly(),
-         std::move(addresses), capnWlt.getLookupCount(),
+         std::move(addresses), capnWlt.getLookupCount(), capnWlt.getUseCount(),
          std::filesystem::path(std::string{capnWlt.getPath()}), capnWlt.getKdfMemReq()
       };
    }
@@ -268,7 +269,6 @@ namespace {
 
       //start passphrase change sequence
       {
-
          capnp::MallocMessageBuilder message;
          auto toBridge = message.initRoot<Bridge::ToBridge>();
          toBridge.setReferenceId(refId);
@@ -392,6 +392,140 @@ namespace {
       }
 
       return true;
+   }
+
+   WalletData extendAddressPool(
+      std::shared_ptr<Armory::Bridge::CppBridge> bridge,
+      const std::string& walletId, const std::string& accountId,
+      unsigned count)
+   {
+      auto callbackId = BtcUtils::fortuna_.generateRandom(10).toHexStr();
+      auto refId = rand();
+
+      //start chain extension sequence
+      {
+         capnp::MallocMessageBuilder message;
+         auto toBridge = message.initRoot<Bridge::ToBridge>();
+         toBridge.setReferenceId(refId);
+         auto request = toBridge.initWallet();
+         request.setWalletId(walletId);
+         request.setAccountId(accountId);
+
+         auto extendReq = request.initExtendAddressPool();
+         extendReq.setCallbackId(callbackId);
+         extendReq.setCount(count);
+
+         auto rawReq = serializeCapnp(message);
+         pushRequest(bridge, rawReq);
+      }
+
+      bool run = true;
+      MsgPtr rawReply;
+      int notifCount = 0;
+      int lastKnownCount = 0;
+      while (run) {
+         auto rawPrompt = waitOnReply();
+         kj::ArrayPtr<const capnp::word> words(
+            reinterpret_cast<const capnp::word*>(rawPrompt->data.getPtr()),
+            rawPrompt->data.getSize() / sizeof(capnp::word));
+         capnp::FlatArrayMessageReader reader(words);
+         auto fromBridge = reader.getRoot<Bridge::FromBridge>();
+
+         switch (fromBridge.which())
+         {
+            case Bridge::FromBridge::NOTIFICATION:
+            {
+               auto notif = fromBridge.getNotification();
+               switch (notif.which())
+               {
+                  case Bridge::Notification::WALLET_PROGRESS:
+                  {
+                     auto wltNotif = notif.getWalletProgress();
+                     switch (wltNotif.which())
+                     {
+                        case Bridge::Notification::WalletProgress::EXTEND_CHAIN:
+                        {
+                           auto extNotif = wltNotif.getExtendChain();
+                           if (extNotif.getTotal() != count) {
+                              throw std::runtime_error("invalid total count");
+                           }
+                           ++notifCount;
+                           lastKnownCount = extNotif.getCurrent();
+                           break;
+                        }
+
+                        default:
+                           throw std::runtime_error("invalid wallet progress which");
+                     }
+                     break;
+                  }
+
+                  default:
+                     throw std::runtime_error("invalid notif which");
+               }
+               break;
+            }
+
+            case Bridge::FromBridge::REPLY:
+            {
+               auto reply = fromBridge.getReply();
+               if (!reply.getSuccess() || reply.getReferenceId() != refId) {
+                  throw std::runtime_error("request failed");
+               }
+               if (reply.which() != Bridge::RpcReply::WALLET) {
+                  throw std::runtime_error("invalid reply which");
+               }
+
+               auto wltReply = reply.getWallet();
+               if (wltReply.which() != Bridge::WalletReply::EXTEND_ADDRESS_POOL) {
+                  throw std::runtime_error("invalid wallet which");
+               }
+               rawReply = std::move(rawPrompt);
+               run = false;
+               break;
+            }
+
+            default:
+               throw std::runtime_error("invalid bridge which");
+         }
+      }
+
+      if (notifCount < 3) {
+         throw std::runtime_error("too few notifs");
+      }
+      if (lastKnownCount != count) {
+         throw std::runtime_error("invalid count in final notif");
+      }
+
+      //expect cleanup notif
+      {
+         auto rawPrompt = waitOnReply();
+         kj::ArrayPtr<const capnp::word> words(
+            reinterpret_cast<const capnp::word*>(rawPrompt->data.getPtr()),
+            rawPrompt->data.getSize() / sizeof(capnp::word));
+         capnp::FlatArrayMessageReader reader(words);
+         auto fromBridge = reader.getRoot<Bridge::FromBridge>();
+         if (fromBridge.which() != Bridge::FromBridge::NOTIFICATION) {
+            throw std::runtime_error("expected cleanup notif");
+         }
+
+         auto notif = fromBridge.getNotification();
+         if (notif.getCallbackId() != callbackId) {
+            throw std::runtime_error("expected cleanup notif");
+         }
+         if (notif.which() != Bridge::Notification::CLEANUP) {
+            throw std::runtime_error("expected cleanup notif");
+         }
+      }
+
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(rawReply->data.getPtr()),
+         rawReply->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+      auto fromBridge = reader.getRoot<Bridge::FromBridge>();
+      auto reply = fromBridge.getReply();
+      auto wltReply = reply.getWallet();
+      return capnToWalletData(wltReply.getExtendAddressPool());
    }
 
    /////////////////////////////////////////////////////////////////////////////
@@ -1464,7 +1598,7 @@ protected:
       return WalletData{
          {}, {}, masterId,
          {}, {},
-         true, false, {}, 0,
+         true, false, {}, 0, 0,
          path
       };
    }
@@ -2634,6 +2768,73 @@ TEST_F(BridgeTests, ChangeWalletPassphrase)
    } catch (const std::exception& e) {
       ASSERT_TRUE(false);
    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(BridgeTests, ExtendAddressChain)
+{
+   /* 1. create a wallet */
+   std::filesystem::path walletPath;
+   std::string walletId;
+   std::string accountId;
+
+   //wallet 1
+   {
+      IO::CreateWalletParams params{
+         homedir,
+         {1ms, 0, SecureBinaryData::fromString("pass1")},
+         {1ms, 0, {}},
+         nullptr, 4
+      };
+
+      std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
+         new Armory::Seeds::ClearTextSeed_Armory135());
+      auto assetWlt = AssetWallet_Single::createFromSeed(
+         std::move(seed), params);
+      walletPath = assetWlt->getDbFilename();
+      walletId = assetWlt->getID();
+   }
+   ASSERT_FALSE(walletId.empty());
+
+   /* 2. load it into bridge */
+   auto wltList = listWallets(bridge_);
+   ASSERT_EQ(wltList.size(), 1);
+   ASSERT_EQ(wltList.begin()->first, walletPath.filename().string());
+
+   {
+      const auto& wltEntry = wltList.begin()->second;
+      ASSERT_EQ(wltEntry.loadState, (int)Armory::Bridge::WalletLoadState::Ready);
+      ASSERT_TRUE(wltEntry.staged);
+      EXPECT_EQ(wltEntry.walletId, walletId);
+   }
+
+   {
+      auto wallets = loadWallets(bridge_);
+      ASSERT_EQ(wallets.size(), 1);
+      auto wltIter = wallets.begin();
+      ASSERT_EQ(wltIter->first, walletId);
+      ASSERT_EQ(wltIter->second.lookup, 4);
+      ASSERT_EQ(wltIter->second.useCount, -1);
+      accountId = wltIter->second.accountId;
+   }
+
+   /* 3. extend its address chain */
+   try {
+      auto wltData = extendAddressPool(bridge_, walletId, accountId, 10000);
+      ASSERT_EQ(wltData.walletId, walletId);
+      ASSERT_EQ(wltData.accountId, accountId);
+      EXPECT_EQ(wltData.useCount, -1);
+      EXPECT_EQ(wltData.lookup, 10004);
+   } catch (const std::runtime_error& e) {
+      ASSERT_TRUE(false) << e.what();
+   }
+
+   /* grab wallet data explicitly, check chain again */
+   auto walletData = getWalletData(bridge_, walletId);
+   ASSERT_EQ(walletData.walletId, walletId);
+   ASSERT_EQ(walletData.accountId, accountId);
+   EXPECT_EQ(walletData.useCount, -1);
+   EXPECT_EQ(walletData.lookup, 10004);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
