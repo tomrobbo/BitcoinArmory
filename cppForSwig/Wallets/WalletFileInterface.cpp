@@ -16,7 +16,6 @@
 #include "Seeds/Seeds.h"
 #include "KDF.h"
 
-using namespace std;
 using namespace Armory::Seeds;
 using namespace Armory::Wallets::IO;
 using namespace Armory::Wallets::Encryption;
@@ -32,7 +31,7 @@ using namespace Armory::Wallets::Encryption;
 ////////////////////////////////////////////////////////////////////////////////
 WalletDBInterface::WalletDBInterface()
 {
-   fortuna_ = make_unique<PRNG_Fortuna>();
+   fortuna_ = std::make_unique<PRNG_Fortuna>();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -44,7 +43,7 @@ WalletDBInterface::~WalletDBInterface()
 ////////////////////////////////////////////////////////////////////////////////
 void WalletDBInterface::createEnv(const CreateFileParams& params)
 {
-   auto lock = std::unique_lock<mutex>(setupMutex_);
+   auto lock = std::unique_lock<std::mutex>(setupMutex_);
    if (dbEnv_ != nullptr) {
       return;
    }
@@ -62,7 +61,7 @@ void WalletDBInterface::createEnv(const CreateFileParams& params)
 ////////////////////////////////////////////////////////////////////////////////
 void WalletDBInterface::setupEnv(const ReadOnlyFileParams& params)
 {
-   auto lock = std::unique_lock<mutex>(setupMutex_);
+   auto lock = std::unique_lock<std::mutex>(setupMutex_);
    if (dbEnv_ == nullptr) {
       path_ = params.filePath;
       dbCount_ = 2;
@@ -102,7 +101,7 @@ void WalletDBInterface::setupEnv(const ReadOnlyFileParams& params)
 
    //load wallet header db
    {
-      auto headrPtr = make_shared<WalletHeader_Control>();
+      auto headrPtr = std::make_shared<WalletHeader_Control>();
       headrPtr->walletID_ = WALLETHEADER_DBNAME;
       headrPtr->controlSalt_ = controlHeader->controlSalt_;
       encryptionVersion_ = headrPtr->encryptionVersion_;
@@ -141,37 +140,32 @@ BinaryDataRef WalletDBInterface::getDataRefForKey(
 ////////////////////////////////////////////////////////////////////////////////
 void WalletDBInterface::loadHeaders()
 {
-   auto&& tx = beginReadTransaction(WALLETHEADER_DBNAME);
-
-   //meta map
+   auto tx = beginReadTransaction(WALLETHEADER_DBNAME);
    auto dbIter = tx->getIterator();
 
    BinaryWriter bwKey;
    bwKey.put_uint8_t(WALLETHEADER_PREFIX);
    dbIter->seek(bwKey.getDataRef());
 
-   while (dbIter->isValid())
-   {
+   while (dbIter->isValid()) {
       auto iterkey = dbIter->key();
       auto itervalue = dbIter->value();
 
       //check value's advertized size is packet size and strip it
       BinaryRefReader brrVal(itervalue);
       auto valsize = brrVal.get_var_int();
-      if (valsize != brrVal.getSizeRemaining())
+      if (valsize != brrVal.getSizeRemaining()) {
          throw WalletInterfaceException("entry val size mismatch");
+      }
 
-      try
-      {
+      try {
          auto headerPtr = WalletHeader::deserialize(
             iterkey, brrVal.get_BinaryDataRef(brrVal.getSizeRemaining()));
-         //headerPtr->masterID_ = masterID_;
 
-         if (headerPtr->shouldLoad())
-            headerMap_.insert(make_pair(headerPtr->getWalletID(), headerPtr));
-      }
-      catch (exception& e)
-      {
+         if (headerPtr->shouldLoad()) {
+            headerMap_.emplace(headerPtr->getWalletID(), headerPtr);
+         }
+      } catch (const std::exception& e) {
          LOGERR << e.what();
          break;
       }
@@ -194,9 +188,10 @@ void WalletDBInterface::openControlDb()
 ////////////////////////////////////////////////////////////////////////////////
 void WalletDBInterface::shutdown()
 {
-   auto lock = unique_lock<mutex>(setupMutex_);
-   if (DBIfaceTransaction::hasTx())
+   auto lock = std::unique_lock<std::mutex>(setupMutex_);
+   if (DBIfaceTransaction::hasTx()) {
       throw WalletInterfaceException("live transactions, cannot shutdown env");
+   }
 
    if (controlDb_ != nullptr) {
       controlDb_->close();
@@ -206,7 +201,6 @@ void WalletDBInterface::shutdown()
    controlLock_.reset();
    decryptedData_.reset();
    controlSeed_.reset();
-
    dbMap_.clear();
 
    if (dbEnv_ != nullptr) {
@@ -229,9 +223,9 @@ void WalletDBInterface::openDB(std::shared_ptr<WalletHeader> headerPtr,
    }
 
    //create db object
-   auto dbiPtr = make_unique<DBInterface>(
+   auto dbiPtr = std::make_unique<DBInterface>(
       dbEnv_.get(), dbName, headerPtr->controlSalt_, encrVersion);
-   
+
    /*
    Load all db entries in RAM. This call also decrypts the on disk data.
    */
@@ -239,7 +233,6 @@ void WalletDBInterface::openDB(std::shared_ptr<WalletHeader> headerPtr,
 
    //insert in dbMap
    dbMap_.insert(make_pair(dbName, move(dbiPtr)));
-
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -268,8 +261,8 @@ std::unique_ptr<DBIfaceTransaction> WalletDBInterface::beginWriteTransaction(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-unique_ptr<DBIfaceTransaction> WalletDBInterface::beginReadTransaction(
-   const string& dbName)
+std::unique_ptr<DBIfaceTransaction> WalletDBInterface::beginReadTransaction(
+   const std::string& dbName)
 {
    auto iter = dbMap_.find(dbName);
    if (iter == dbMap_.end()) {
@@ -283,7 +276,7 @@ unique_ptr<DBIfaceTransaction> WalletDBInterface::beginReadTransaction(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-shared_ptr<WalletHeader> WalletDBInterface::loadControlHeader()
+std::shared_ptr<WalletHeader> WalletDBInterface::loadControlHeader()
 {
    //grab meta object
    BinaryWriter bw;
@@ -300,15 +293,17 @@ shared_ptr<WalletHeader> WalletDBInterface::loadControlHeader()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void WalletDBInterface::loadDataContainer(shared_ptr<WalletHeader> headerPtr)
+void WalletDBInterface::loadDataContainer(
+   std::shared_ptr<WalletHeader> headerPtr)
 {
    //grab decrypted data object
-   auto getWriteTx = [this](const string& name)->unique_ptr<DBIfaceTransaction>
+   auto getWriteTx = [this](const std::string& name)
+   ->std::unique_ptr<DBIfaceTransaction>
    {
       return this->beginWriteTransaction(name);
    };
 
-   decryptedData_ = make_unique<DecryptedDataContainer>(
+   decryptedData_ = std::make_unique<DecryptedDataContainer>(
       getWriteTx, headerPtr->getDbName(),
       headerPtr->getDefaultEncryptionKey(),
       headerPtr->getDefaultEncryptionKeyId(),
@@ -319,17 +314,18 @@ void WalletDBInterface::loadDataContainer(shared_ptr<WalletHeader> headerPtr)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void WalletDBInterface::loadSeed(shared_ptr<WalletHeader> headerPtr)
+void WalletDBInterface::loadSeed(std::shared_ptr<WalletHeader> headerPtr)
 {
-   auto&& tx = beginReadTransaction(headerPtr->getDbName());
+   auto tx = beginReadTransaction(headerPtr->getDbName());
 
    BinaryWriter bwKey;
    bwKey.put_uint32_t(WALLET_SEED_KEY);
    auto rootAssetRef = getDataRefForKey(tx.get(), bwKey.getData());
 
    controlSeed_ = EncryptedSeed::deserialize(rootAssetRef);
-   if (controlSeed_ == nullptr)
+   if (controlSeed_ == nullptr) {
       throw WalletException("failed to deser wallet seed");
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -455,7 +451,7 @@ MasterKeyStruct WalletDBInterface::initWalletHeaderObject(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-shared_ptr<WalletHeader_Control> WalletDBInterface::setupControlDB(
+std::shared_ptr<WalletHeader_Control> WalletDBInterface::setupControlDB(
    const CreateFileParams& params)
 {
    openControlDb();
@@ -501,7 +497,8 @@ shared_ptr<WalletHeader_Control> WalletDBInterface::setupControlDB(
 
       auto cipherCopy = keyStruct.cipher_->getCopy();
       auto cipherText = decryptedData->encryptData(cipherCopy.get(), seed);
-      auto cipherData = std::make_unique<CipherData>(cipherText, move(cipherCopy));
+      auto cipherData = std::make_unique<CipherData>(
+         cipherText, std::move(cipherCopy));
       auto encrSeed = std::make_shared<EncryptedSeed>(
          std::move(cipherData), SeedType::Raw);
 
@@ -521,24 +518,23 @@ shared_ptr<WalletHeader_Control> WalletDBInterface::setupControlDB(
       //write decrypted data container to disk
       decryptedData->updateOnDisk(std::move(tx));
    }
-
    return headerPtr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void WalletDBInterface::putHeader(shared_ptr<WalletHeader> headerPtr)
+void WalletDBInterface::putHeader(std::shared_ptr<WalletHeader> headerPtr)
 {
-   auto&& key = headerPtr->getDbKey();
-   auto&& val = headerPtr->serialize();
+   auto key = headerPtr->getDbKey();
+   auto val = headerPtr->serialize();
 
-   auto&& tx = beginWriteTransaction(WALLETHEADER_DBNAME);
+   auto tx = beginWriteTransaction(WALLETHEADER_DBNAME);
    tx->insert(key, val);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 void WalletDBInterface::addHeader(std::shared_ptr<WalletHeader> headerPtr)
 {
-   auto lock = unique_lock<mutex>(setupMutex_);
+   auto lock = std::unique_lock<std::mutex>(setupMutex_);
 
    auto iter = headerMap_.find(headerPtr->walletID_);
    if (iter != headerMap_.end()) {
@@ -553,20 +549,20 @@ void WalletDBInterface::addHeader(std::shared_ptr<WalletHeader> headerPtr)
       throw WalletInterfaceException("empty dbname");
    }
 
-   auto& rootEncrKey =
+   const auto& rootEncrKey =
       decryptedData_->getClearTextAssetData(controlSeed_.get());
-   auto dbiPtr = make_unique<DBInterface>(
+   auto dbiPtr = std::make_unique<DBInterface>(
       dbEnv_.get(), dbName, headerPtr->controlSalt_, encryptionVersion_);
    dbiPtr->loadAllEntries(rootEncrKey);
 
    putHeader(headerPtr);
-   dbMap_.insert(make_pair(dbName, move(dbiPtr)));
-   headerMap_.insert(make_pair(headerPtr->walletID_, headerPtr));
+   dbMap_.emplace(dbName, std::move(dbiPtr));
+   headerMap_.emplace(headerPtr->walletID_, headerPtr);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-shared_ptr<WalletHeader> WalletDBInterface::getWalletHeader(
-   const string& name) const
+std::shared_ptr<WalletHeader> WalletDBInterface::getWalletHeader(
+   const std::string& name) const
 {
    auto iter = headerMap_.find(name);
    if (iter == headerMap_.end())
@@ -575,8 +571,8 @@ shared_ptr<WalletHeader> WalletDBInterface::getWalletHeader(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-const map<string, shared_ptr<WalletHeader>>& 
-   WalletDBInterface::getHeaderMap() const
+const std::map<std::string, std::shared_ptr<WalletHeader>>&
+WalletDBInterface::getHeaderMap() const
 {
    return headerMap_;
 }
@@ -584,18 +580,18 @@ const map<string, shared_ptr<WalletHeader>>&
 ////////////////////////////////////////////////////////////////////////////////
 unsigned WalletDBInterface::getDbCount() const
 {
-   auto lock = unique_lock<mutex>(setupMutex_);
+   auto lock = std::unique_lock<std::mutex>(setupMutex_);
    return headerMap_.size();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 unsigned WalletDBInterface::getFreeDbCount() const
 {
-   auto lock = unique_lock<mutex>(setupMutex_);
+   auto lock = std::unique_lock<std::mutex>(setupMutex_);
    auto count = headerMap_.size() + 2;
-   if (count >= dbCount_)
+   if (count >= dbCount_) {
       return 0;
-
+   }
    return dbCount_ - count;
 }
 
@@ -623,7 +619,7 @@ void WalletDBInterface::openDbEnv(bool fileExists)
       throw WalletInterfaceException("[openEnv] dbEnv already instantiated");
    }
 
-   dbEnv_ = make_unique<LMDBEnv>(dbCount_);
+   dbEnv_ = std::make_unique<LMDBEnv>(dbCount_);
    dbEnv_->open(path_, MDB_NOTLS);
    dbEnv_->setMapSize(100*1024*1024ULL);
 }
@@ -656,18 +652,19 @@ void WalletDBInterface::closeEnv()
 ////////////////////////////////////////////////////////////////////////////////
 void WalletDBInterface::setDbCount(unsigned count, bool doLock)
 {
-   if (DBIfaceTransaction::hasTx())
-   {
+   if (DBIfaceTransaction::hasTx()) {
       throw WalletInterfaceException(
          "live transactions, cannot change dbCount");
    }
 
-   if (count <= dbCount_)
+   if (count <= dbCount_) {
       return;
+   }
 
-   auto lock = unique_lock<mutex>(setupMutex_, defer_lock);
-   if (doLock)
+   auto lock = std::unique_lock<std::mutex>(setupMutex_, std::defer_lock);
+   if (doLock) {
       lock.lock();
+   }
 
    //close env
    closeEnv();
@@ -684,7 +681,7 @@ void WalletDBInterface::lockControlContainer(
    if (controlLock_ != nullptr) {
       throw WalletInterfaceException("control container already locked");
    }
-   controlLock_ = make_unique<ReentrantLock>(decryptedData_.get());
+   controlLock_ = std::make_unique<ReentrantLock>(decryptedData_.get());
    decryptedData_->setPassphrasePromptLambda(passLbd);
 }
 
@@ -722,9 +719,10 @@ void WalletDBInterface::changeControlPassphrase(
 
    //grab the encryption key
    const auto& masterKeyId = decryptedData_->getMasterEncryptionKeyId();
-   auto masterKey = decryptedData_->getEncryptionKey(masterKeyId);
 
    /*
+   TODO: update this comment, make sure the default kdf is used in doubt
+
    To change a passphrase, we need to tell container which kdf the old
    passphrase was derived with (so that it can decrypt the key) and which
    kdf we want to derive the new passphrase with.
@@ -736,22 +734,7 @@ void WalletDBInterface::changeControlPassphrase(
    blindly pass the kdf used for the current passphrase. We will use the default
    kdf instead, until code is introduced to change that kdf too.
    */
-
-   //look for the kdf used for the current encryption of the master key
-   //NOTE: there should only be 1!
-   auto kdfIdSet = masterKey->getKdfIds();
-   if (kdfIdSet.size() != 1) {
-      throw std::runtime_error(
-         "control db master key is encrypted by more than 1 passphrase!");
-   }
-   const auto& currentKdfId = *kdfIdSet.begin();
-
-   auto& defaultKdfId = decryptedData_->getDefaultKdfId();
-   decryptedData_->encryptEncryptionKey(
-      masterKeyId,
-      currentKdfId, defaultKdfId,
-      newPassObj
-   );
+   decryptedData_->encryptEncryptionKey(masterKeyId, newPassObj);
 
    //clear the lambda
    decryptedData_->resetPassphraseLambda();
@@ -777,7 +760,7 @@ void WalletDBInterface::eraseControlPassphrase(
    }
 
    //hold tx write mutex until the file is compacted
-   unique_lock<recursive_mutex> lock(DBIfaceTransaction::writeMutex_);
+   std::unique_lock<std::recursive_mutex> lock(DBIfaceTransaction::writeMutex_);
 
    //set the lambda to unlock the control encryption key
    decryptedData_->setPassphrasePromptLambda(passLbd);
@@ -805,11 +788,12 @@ void WalletDBInterface::compactFile()
    */
 
    //lock the write mutex before alterning the underlying file
-   unique_lock<recursive_mutex> lock(DBIfaceTransaction::writeMutex_);
+   std::unique_lock<std::recursive_mutex> lock(DBIfaceTransaction::writeMutex_);
 
    //create copy name
    auto fullDbPath = getFilename();
-   auto swapFolder = std::filesystem::path(fullDbPath).replace_filename(COMPACT_FILE_FOLDER);
+   auto swapFolder = std::filesystem::path(fullDbPath).replace_filename(
+      COMPACT_FILE_FOLDER);
    if (!FileUtils::fileExists(swapFolder, 0)) {
       if (!std::filesystem::create_directory(swapFolder)) {
          throw WalletInterfaceException("could not create wallet swap folder");
@@ -818,7 +802,7 @@ void WalletDBInterface::compactFile()
 
    std::filesystem::path copyName;
    while (true) {
-      stringstream ss;
+      std::stringstream ss;
       ss << COMPACT_FILE_COPY_NAME << "-" << fortuna_->generateRandom(16).toHexStr();
       auto fullpath = swapFolder / std::filesystem::path(ss.str());
       if (!FileUtils::fileExists(fullpath, 0)) {
@@ -836,7 +820,7 @@ void WalletDBInterface::compactFile()
    //swap files
    std::filesystem::path swapPath;
    while (true) {
-      stringstream ss;
+      std::stringstream ss;
       ss << COMPACT_FILE_SWAP_NAME << "-" << fortuna_->generateRandom(16).toHexStr();
       auto fullpath = swapFolder / std::filesystem::path(ss.str());
       if (FileUtils::fileExists(fullpath, 0)) {
@@ -895,6 +879,16 @@ void WalletDBInterface::eraseFromDisk()
 ////////////////////////////////////////////////////////////////////////////////
 //// WalletIfaceIterator
 ////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+WalletIfaceIterator::WalletIfaceIterator(const WalletIfaceTransaction* tx) :
+   txPtr_(tx)
+{
+   if (tx == nullptr) {
+      throw WalletInterfaceException("null tx");
+   }
+   iterator_ = tx->dataMapPtr_->dataMap_.begin();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 bool WalletIfaceIterator::isValid() const
 {
@@ -956,19 +950,19 @@ const std::string& WalletIfaceTransaction::getDbName() const
 ////////////////////////////////////////////////////////////////////////////////
 void WalletIfaceTransaction::closeTx()
 {
-   unique_ptr<LMDBEnv::Transaction> tx;
-   unique_ptr<unique_lock<recursive_mutex>> writeTxLock = nullptr;
+   std::unique_ptr<LMDBEnv::Transaction> tx;
+   std::unique_ptr<std::unique_lock<std::recursive_mutex>> writeTxLock = nullptr;
 
    {
-      auto lock = unique_lock<mutex>(txMutex_);
-      writeTxLock = move(eraseTx(this));
+      auto lock = std::unique_lock<std::mutex>(txMutex_);
+      writeTxLock = std::move(eraseTx(this));
       if (writeTxLock == nullptr || !commit_) {
          return;
       }
-      tx = make_unique<LMDBEnv::Transaction>(dbPtr_->dbEnv_, LMDB::ReadWrite);
+      tx = std::make_unique<LMDBEnv::Transaction>(dbPtr_->dbEnv_, LMDB::ReadWrite);
    }
 
-   auto dataMapCopy = make_shared<IfaceDataMap>(*dataMapPtr_);
+   auto dataMapCopy = std::make_shared<IfaceDataMap>(*dataMapPtr_);
    bool needsWiped = false;
 
    //this is the top tx, need to commit all this data to the db object
@@ -1005,8 +999,8 @@ void WalletIfaceTransaction::closeTx()
          dbKey = dataMapCopy->getNewDbKey();
 
          //commit erasure packet
-         auto&& dbVal = DBInterface::createDataPacket(
-            dbKey, BinaryData(), erasedBw.getData(), 
+         auto dbVal = DBInterface::createDataPacket(
+            dbKey, BinaryData(), erasedBw.getData(),
             dbPtr_->encrPubKey_, dbPtr_->macKey_, dbPtr_->encrVersion_);
 
          CharacterArrayRef carData(dbVal.getSize(), dbVal.getPtr());
@@ -1046,8 +1040,8 @@ void WalletIfaceTransaction::closeTx()
    dataMapCopy->update(insertVec_);
 
    //swap in the data struct
-   atomic_store_explicit(
-      &dbPtr_->dataMapPtr_, dataMapCopy, memory_order_release);
+   std::atomic_store_explicit(
+      &dbPtr_->dataMapPtr_, dataMapCopy, std::memory_order_release);
 
    if (!needsWiped) {
       return;
@@ -1069,28 +1063,27 @@ bool WalletIfaceTransaction::insertTx(WalletIfaceTransaction* txPtr)
    if (txPtr == nullptr) {
       throw WalletInterfaceException("null tx ptr");
    }
-   auto lock = unique_lock<mutex>(txMutex_);
+   auto lock = std::unique_lock<std::mutex>(txMutex_);
 
    auto dbIter = dbMap_.find(txPtr->dbPtr_->getName());
    if (dbIter == dbMap_.end()) {
-      auto structPtr = make_shared<DbTxStruct>();
-      dbIter = dbMap_.insert(make_pair(
-         txPtr->dbPtr_->getName(), structPtr)).first;
+      auto structPtr = std::make_shared<DbTxStruct>();
+      dbIter = dbMap_.emplace(txPtr->dbPtr_->getName(), structPtr).first;
    }
 
    auto& txStruct = dbIter->second;
    auto& txMap = txStruct->txMap_;
 
    //save tx by thread id
-   auto thrId = this_thread::get_id();
+   auto thrId = std::this_thread::get_id();
    auto iter = txMap.find(thrId);
    if (iter != txMap.end()) {
       /*we already have a tx for this thread, we will nest the new one within it*/
-      
-      //make sure the commit type between parent and nested tx match
-      if (iter->second->commit_ != txPtr->commit_)
-         return false;
 
+      //make sure the commit type between parent and nested tx match
+      if (iter->second->commit_ != txPtr->commit_) {
+         return false;
+      }
       //set lambdas
       txPtr->insertLbd_ = iter->second->insertLbd_;
       txPtr->eraseLbd_ = iter->second->eraseLbd_;
@@ -1104,10 +1097,10 @@ bool WalletIfaceTransaction::insertTx(WalletIfaceTransaction* txPtr)
    }
 
    //this is the parent tx, create the lambdas and setup the struct
-   auto ptx = make_shared<ParentTx>();
+   auto ptx = std::make_shared<ParentTx>();
    ptx->commit_ = txPtr->commit_;
-      
-   txMap.insert(make_pair(thrId, ptx));
+
+   txMap.emplace(thrId, ptx);
    ++txStruct->txCount_;
 
    //release the dbMap lock
@@ -1115,16 +1108,17 @@ bool WalletIfaceTransaction::insertTx(WalletIfaceTransaction* txPtr)
 
    if (txPtr->commit_) {
       //write tx, lock db write mutex
-      ptx->writeLock_ = make_unique<unique_lock<recursive_mutex>>(writeMutex_);
+      ptx->writeLock_ =
+         std::make_unique<std::unique_lock<std::recursive_mutex>>(writeMutex_);
 
       auto insertLbd = [thrId, txPtr](const BinaryData& key, BothBinaryDatas& val)
       {
-         if (thrId != this_thread::get_id()) {
+         if (thrId != std::this_thread::get_id()) {
             throw WalletInterfaceException("insert operation thread id mismatch");
          }
-         auto dataPtr = make_shared<InsertData>();
+         auto dataPtr = std::make_shared<InsertData>();
          dataPtr->key_ = key;
-         dataPtr->value_ = move(val);
+         dataPtr->value_ = std::move(val);
 
          unsigned vecSize = txPtr->insertVec_.size();
          txPtr->insertVec_.emplace_back(dataPtr);
@@ -1134,7 +1128,7 @@ bool WalletIfaceTransaction::insertTx(WalletIfaceTransaction* txPtr)
          Replace the index if it's already there as we want to track
          the final effect for each key.
          */
-         auto insertPair = txPtr->keyToDataMap_.insert(make_pair(key, vecSize));
+         auto insertPair = txPtr->keyToDataMap_.emplace(key, vecSize);
          if (!insertPair.second) {
             insertPair.first->second = vecSize;
          }
@@ -1142,24 +1136,24 @@ bool WalletIfaceTransaction::insertTx(WalletIfaceTransaction* txPtr)
 
       auto eraseLbd = [thrId, txPtr](const BinaryData& key)
       {
-         if (thrId != this_thread::get_id()) {
+         if (thrId != std::this_thread::get_id()) {
             throw WalletInterfaceException("insert operation thread id mismatch");
          }
-         auto dataPtr = make_shared<InsertData>();
+         auto dataPtr = std::make_shared<InsertData>();
          dataPtr->key_ = key;
          dataPtr->write_ = false; //set to false to signal deletion
 
          unsigned vecSize = txPtr->insertVec_.size();
          txPtr->insertVec_.emplace_back(dataPtr);
 
-         auto insertPair = txPtr->keyToDataMap_.insert(make_pair(key, vecSize));
+         auto insertPair = txPtr->keyToDataMap_.emplace(key, vecSize);
          if (!insertPair.second) {
             insertPair.first->second = vecSize;
          }
       };
 
       auto getDataLbd = [thrId, txPtr](const BinaryData& key)->
-         const shared_ptr<InsertData>&
+         const std::shared_ptr<InsertData>&
       {
          auto iter = txPtr->keyToDataMap_.find(key);
          if (iter == txPtr->keyToDataMap_.end()) {
@@ -1177,14 +1171,15 @@ bool WalletIfaceTransaction::insertTx(WalletIfaceTransaction* txPtr)
       ptx->getDataLbd_ = getDataLbd;
    }
 
-   ptx->dataMapPtr_ = atomic_load_explicit(
-      &txPtr->dbPtr_->dataMapPtr_, memory_order_acquire);
+   ptx->dataMapPtr_ = std::atomic_load_explicit(
+      &txPtr->dbPtr_->dataMapPtr_, std::memory_order_acquire);
    txPtr->dataMapPtr_ = ptx->dataMapPtr_;
    return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-unique_ptr<unique_lock<recursive_mutex>> WalletIfaceTransaction::eraseTx(
+std::unique_ptr<std::unique_lock<std::recursive_mutex>>
+WalletIfaceTransaction::eraseTx(
    WalletIfaceTransaction* txPtr)
 {
    if (txPtr == nullptr) {
@@ -1200,7 +1195,7 @@ unique_ptr<unique_lock<recursive_mutex>> WalletIfaceTransaction::eraseTx(
    auto& txMap = txStruct->txMap_;
 
    //thread id has to be present too
-   auto thrId = this_thread::get_id();
+   auto thrId = std::this_thread::get_id();
    auto iter = txMap.find(thrId);
    if (iter == txMap.end()) {
       throw WalletInterfaceException("missing thread id in tx map");
@@ -1214,7 +1209,7 @@ unique_ptr<unique_lock<recursive_mutex>> WalletIfaceTransaction::eraseTx(
    }
 
    //counter is 1, this is the parent tx, clean up the entry and return true
-   auto lockPtr = move(iter->second->writeLock_);
+   auto lockPtr = std::move(iter->second->writeLock_);
    txMap.erase(iter);
    return lockPtr;
 }
@@ -1266,7 +1261,7 @@ std::shared_ptr<DBIfaceIterator> WalletIfaceTransaction::getIterator() const
    if (commit_) {
       throw WalletInterfaceException("cannot iterate over a write transaction");
    }
-   return make_shared<WalletIfaceIterator>(this);
+   return std::make_shared<WalletIfaceIterator>(this);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
