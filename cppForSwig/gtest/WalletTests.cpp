@@ -31,6 +31,65 @@ using namespace Armory::Seeds;
 using namespace std::chrono_literals;
 using namespace std::string_view_literals;
 
+namespace
+{
+   struct EncryptionKeyEx : public EncryptionKey
+   {
+      const std::map<EncryptionKeyId, std::unique_ptr<CipherData>>&
+         getCipherDataMap() const
+      {
+         return cipherDataMap_;
+      }
+   };
+
+   struct DecryptedDataContainerEx : private DecryptedDataContainer
+   {
+      std::vector<SecureBinaryData> getMasterKeyIVs() const
+      {
+         std::vector<SecureBinaryData> result;
+         for (auto& keyPair : encryptedKeys_) {
+            auto encrKeyPtr = (EncryptionKeyEx*)keyPair.second.get();
+            auto& cipherMap = encrKeyPtr->getCipherDataMap();
+
+            for (auto& cipherPair : cipherMap) {
+               auto cipherData = cipherPair.second.get();
+               result.push_back(cipherData->cipher_->getIV());
+            }
+         }
+         return result;
+      }
+
+      std::vector<SecureBinaryData> getMasterEncryptionKeys() const
+      {
+         std::vector<SecureBinaryData> result;
+         for (auto& keyPair : encryptedKeys_) {
+            auto encrKeyPtr = (EncryptionKeyEx*)keyPair.second.get();
+            auto& cipherMap = encrKeyPtr->getCipherDataMap();
+
+            for (auto& cipherPair : cipherMap) {
+               auto cipherData = cipherPair.second.get();
+               result.push_back(cipherData->cipherText_);
+            }
+         }
+         return result;
+      }
+
+      const std::map<KdfId, std::shared_ptr<KeyDerivationFunction>>&
+      getKdfMap() const
+      {
+         return kdfMap_;
+      }
+   };
+
+   struct AssetWalletEx : public AssetWallet_Single
+   {
+      std::shared_ptr<DecryptedDataContainer> getDecryptedDataContainer() const
+      {
+         return decryptedData_;
+      }
+   };
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 #define METHOD_ASSERT_EQ(a, b) \
    if (a != b) { EXPECT_EQ(a, b); return false; }
@@ -5312,7 +5371,7 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(WalletsTest, SignPassphrase_Test)
+TEST_F(WalletsTest, SignPassphrase)
 {
    //create wallet from priv key
    IO::CreateWalletParams params{
@@ -5393,7 +5452,7 @@ TEST_F(WalletsTest, SignPassphrase_Test)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(WalletsTest, WrongPassphrase_BIP32_Test)
+TEST_F(WalletsTest, WrongPassphrase_BIP32)
 {
    //create wallet from priv key
    IO::CreateWalletParams params{
@@ -5542,7 +5601,7 @@ TEST_F(WalletsTest, WrongPassphrase_BIP32_Test)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(WalletsTest, ChangePassphrase_Test)
+TEST_F(WalletsTest, ChangePassphrase)
 {
    //create wallet from priv key
    IO::CreateWalletParams params{
@@ -5562,60 +5621,9 @@ TEST_F(WalletsTest, ChangePassphrase_Test)
    auto privkey_ex = CryptoECDSA().ComputeChainedPrivateKey(rawEntropy, chaincode);
    auto filename = assetWlt->getDbFilename();
 
-
    //grab all IVs and encrypted private keys
    std::vector<SecureBinaryData> ivVec;
    std::vector<SecureBinaryData> privateKeys;
-
-   struct EncryptionKeyEx : public EncryptionKey
-   {
-      const std::map<EncryptionKeyId, std::unique_ptr<CipherData>>&
-         getCipherDataMap() const
-      {
-         return cipherDataMap_;
-      }
-   };
-
-   struct DecryptedDataContainerEx : private DecryptedDataContainer
-   {
-      std::vector<SecureBinaryData> getMasterKeyIVs() const
-      {
-         std::vector<SecureBinaryData> result;
-         for (auto& keyPair : encryptedKeys_) {
-            auto encrKeyPtr = (EncryptionKeyEx*)keyPair.second.get();
-            auto& cipherMap = encrKeyPtr->getCipherDataMap();
-
-            for (auto& cipherPair : cipherMap) {
-               auto cipherData = cipherPair.second.get();
-               result.push_back(cipherData->cipher_->getIV());
-            }
-         }
-         return result;
-      }
-
-      std::vector<SecureBinaryData> getMasterEncryptionKeys() const
-      {
-         std::vector<SecureBinaryData> result;
-         for (auto& keyPair : encryptedKeys_) {
-            auto encrKeyPtr = (EncryptionKeyEx*)keyPair.second.get();
-            auto& cipherMap = encrKeyPtr->getCipherDataMap();
-
-            for (auto& cipherPair : cipherMap) {
-               auto cipherData = cipherPair.second.get();
-               result.push_back(cipherData->cipherText_);
-            }
-         }
-         return result;
-      }
-   };
-
-   struct AssetWalletEx : public AssetWallet_Single
-   {
-      std::shared_ptr<DecryptedDataContainer> getDecryptedDataContainer() const
-      {
-         return decryptedData_;
-      }
-   };
 
    {
       auto assetWltEx = (AssetWalletEx*)assetWlt.get();
@@ -5820,7 +5828,403 @@ TEST_F(WalletsTest, ChangePassphrase_Test)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
+TEST_F(WalletsTest, ChangePassphrase_ChangeKDF)
+{
+   //create wallet
+   auto passphrase = SecureBinaryData::fromString("test");
+   IO::CreateWalletParams params{
+      homedir_,
+      Armory::Passphrase::SetNew{1ms, 0, passphrase},
+      Armory::Passphrase::SetNew{},
+      nullptr, 4
+   };
+
+   auto rawEntropy = CryptoPRNG::generateRandom(32);
+   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
+      new Armory::Seeds::ClearTextSeed_Armory135(rawEntropy));
+   auto assetWlt = AssetWallet_Single::createFromSeed(
+      std::move(seed), params);
+   auto chaincode = BtcUtils::computeChainCode_Armory135(rawEntropy);
+   auto privkey_ex = CryptoECDSA().ComputeChainedPrivateKey(rawEntropy, chaincode);
+
+   auto asset0 = TestUtils::getMainAccountAssetForIndex(assetWlt, 0);
+   auto asset0_single = std::dynamic_pointer_cast<AssetEntry_Single>(asset0);
+   ASSERT_NE(asset0_single, nullptr);
+   asset0.reset();
+
+   auto timeUnlock = [&privkey_ex](
+      std::shared_ptr<AssetWallet_Single> wltPtr,
+      std::shared_ptr<AssetEntry_Single> assetPtr,
+      const SecureBinaryData& pass)->std::chrono::milliseconds
+   {
+      wltPtr->setPassphrasePromptLambda(
+         [&pass](const std::set<EncryptionKeyId>&)
+         ->Armory::Passphrase::Result
+         { return { pass, true }; }
+      );
+
+      auto lock = wltPtr->lockDecryptedContainer();
+      auto start = std::chrono::system_clock::now();
+      auto& decryptedKey = wltPtr->getDecryptedValue(assetPtr->getPrivKey());
+      auto end = std::chrono::system_clock::now();
+      if (decryptedKey != privkey_ex) {
+         return 0ms;
+      }
+      wltPtr->resetPassphrasePromptLambda();
+      return std::chrono::duration_cast<std::chrono::milliseconds>(end-start);
+   };
+
+   auto failUnlock = [](
+      std::shared_ptr<AssetWallet_Single> wltPtr,
+      const SecureBinaryData& pass)->bool
+   {
+      int count = 0;
+      wltPtr->setPassphrasePromptLambda(
+         [&pass, &count](const std::set<EncryptionKeyId>&)
+         ->Armory::Passphrase::Result
+         {
+            if (count++ > 0) {
+               return { {}, false };
+            }
+            return { pass, true };
+         }
+      );
+
+      auto root = wltPtr->getRoot();
+      auto rootSingle = std::dynamic_pointer_cast<AssetEntry_Single>(root);
+
+      auto lock = wltPtr->lockDecryptedContainer();
+      try {
+         wltPtr->getDecryptedValue(rootSingle->getPrivKey());
+         return false;
+      } catch (const DecryptedDataContainerException& e) {
+         return e.what() == std::string{"unlock request rejected"};
+      }
+   };
+
+   //test wallet unlock time, should be <10ms
+   auto elapsed = timeUnlock(assetWlt, asset0_single, passphrase);
+   EXPECT_LE(elapsed, 10ms);
+
+   //check wallet has 1 KDF on record
+   std::shared_ptr<KeyDerivationFunction_Romix> firstKdf;
+   {
+      auto assetWltEx = (AssetWalletEx*)assetWlt.get();
+      auto decryptedDataEx = (DecryptedDataContainerEx*)
+         assetWltEx->getDecryptedDataContainer().get();
+      auto kdfs = decryptedDataEx->getKdfMap();
+      EXPECT_EQ(kdfs.size(), 2);
+
+      for (const auto& kdf : kdfs) {
+         if (kdf.first == passthroughKdfId) {
+            continue;
+         }
+
+         auto kdfRomix = std::dynamic_pointer_cast<KeyDerivationFunction_Romix>(
+            kdf.second);
+         ASSERT_NE(kdfRomix, nullptr);
+         ASSERT_GE(kdfRomix->iterations(), 1);
+         ASSERT_LE(kdfRomix->memTarget(), 65536);
+         firstKdf = kdfRomix;
+      }
+   }
+
+   //encrypt the wallet
+   auto newPassphrase = SecureBinaryData::fromString("new pass");
+   {
+      assetWlt->setPassphrasePromptLambda(
+         [&passphrase](const std::set<EncryptionKeyId>&)
+         ->Armory::Passphrase::Result
+         { return { passphrase, true }; }
+      );
+      Armory::Passphrase::SetNew newPass{500ms, 0, newPassphrase};
+      assetWlt->changePrivateKeyPassphrase(newPass);
+      assetWlt->resetPassphrasePromptLambda();
+   }
+
+   //try to decrypt with first passphrase, should fail
+   ASSERT_TRUE(failUnlock(assetWlt, passphrase));
+
+   //test unlock with new passphrase and stronger kdf, should be >500ms
+   elapsed = timeUnlock(assetWlt, asset0_single, newPassphrase);
+   EXPECT_GE(elapsed, 500ms) << elapsed.count();
+
+   //check wallet has 2 KDFs on record now
+   std::shared_ptr<KeyDerivationFunction_Romix> secondKdf;
+   {
+      auto assetWltEx = (AssetWalletEx*)assetWlt.get();
+      auto decryptedDataEx = (DecryptedDataContainerEx*)
+         assetWltEx->getDecryptedDataContainer().get();
+      auto kdfs = decryptedDataEx->getKdfMap();
+      EXPECT_EQ(kdfs.size(), 3);
+
+      for (const auto& kdf : kdfs) {
+         if (kdf.first == passthroughKdfId) {
+            continue;
+         }
+
+         auto kdfRomix = std::dynamic_pointer_cast<KeyDerivationFunction_Romix>(
+            kdf.second);
+         ASSERT_NE(kdfRomix, nullptr);
+         if (kdfRomix->isSame(firstKdf.get())) {
+            continue;
+         }
+
+         //new kdf should be bigger
+         ASSERT_NE(kdfRomix, nullptr);
+         ASSERT_GE(kdfRomix->iterations(), 1);
+         ASSERT_GE(kdfRomix->memTarget(), 8388608);
+         secondKdf = kdfRomix;
+      }
+   }
+
+   //shutdown wallet, reopen, check new kdf is there
+   auto walletId = assetWlt->getID();
+   auto filename = assetWlt->getDbFilename();
+   asset0_single.reset();
+   assetWlt.reset();
+
+   auto reloadWlt = AssetWallet::loadMainWalletFromFile({filename, {}});
+   ASSERT_EQ(walletId, reloadWlt->getID());
+   auto reloadAssetWlt = std::dynamic_pointer_cast<AssetWallet_Single>(reloadWlt);
+   ASSERT_NE(reloadAssetWlt, nullptr);
+
+   asset0 = TestUtils::getMainAccountAssetForIndex(reloadAssetWlt, 0);
+   auto asset0_reloaded = std::dynamic_pointer_cast<AssetEntry_Single>(asset0);
+   ASSERT_NE(asset0_reloaded, nullptr);
+   asset0.reset();
+
+   //try to decrypt with first passphrase, should fail
+   ASSERT_TRUE(failUnlock(reloadAssetWlt, passphrase));
+
+   //test unlock with new passphrase and stronger kdf, should be >500ms
+   elapsed = timeUnlock(reloadAssetWlt, asset0_reloaded, newPassphrase);
+   EXPECT_GE(elapsed, 500ms) << elapsed.count();
+
+   //add another passphrase, reuse kdf
+   auto thirdPass = SecureBinaryData::fromString("thrid passphrase");
+   {
+      reloadAssetWlt->setPassphrasePromptLambda(
+         [&newPassphrase](const std::set<EncryptionKeyId>&)
+         ->Armory::Passphrase::Result
+         {
+            std::string passStr{newPassphrase.toCharPtr(), newPassphrase.getSize()};
+            return { newPassphrase, true }; }
+      );
+      Armory::Passphrase::SetNew pass3{
+         [&thirdPass](void)->std::unique_ptr<Armory::Passphrase::Params>
+         { return std::make_unique<Armory::Passphrase::Params>(thirdPass, true); }
+      };
+      auto start = std::chrono::system_clock::now();
+      reloadAssetWlt->addPrivateKeyPassphrase(pass3);
+      reloadAssetWlt->resetPassphrasePromptLambda();
+      auto end = std::chrono::system_clock::now();
+      auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(end-start);
+
+      //one pass to unlock, one pass to encrypt
+      EXPECT_GE(dur, 1000ms) << dur.count();
+      EXPECT_LE(dur, 1500ms) << dur.count();
+   }
+
+   //unlock with 3rd pass
+   elapsed = timeUnlock(reloadAssetWlt, asset0_reloaded, thirdPass);
+   EXPECT_GE(elapsed, 500ms) << elapsed.count();
+   EXPECT_LE(elapsed, 750ms) << elapsed.count();
+
+   //add a 4th passphrase, same unlock target as current kdf
+   auto fourthPass = SecureBinaryData::fromString("4th passphrase");
+   {
+      reloadAssetWlt->setPassphrasePromptLambda(
+         [&newPassphrase](const std::set<EncryptionKeyId>&)
+         ->Armory::Passphrase::Result
+         { return { newPassphrase, true }; }
+      );
+      Armory::Passphrase::SetNew pass4{
+         [&fourthPass](void)->std::unique_ptr<Armory::Passphrase::Params>
+         { return std::make_unique<Armory::Passphrase::Params>(500ms, 0, fourthPass); }
+      };
+      auto start = std::chrono::system_clock::now();
+      reloadAssetWlt->addPrivateKeyPassphrase(pass4);
+      reloadAssetWlt->resetPassphrasePromptLambda();
+      auto end = std::chrono::system_clock::now();
+      auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(end-start);
+
+      //one pass to unlock, one pass to compare kdfs, one pass to encrypt
+      EXPECT_GE(dur, 1500ms) << dur.count();
+      EXPECT_LE(dur, 1950ms) << dur.count();
+   }
+
+   //check wallet still only has 2 KDFs on record
+   {
+      auto assetWltEx = (AssetWalletEx*)reloadAssetWlt.get();
+      auto decryptedDataEx = (DecryptedDataContainerEx*)
+         assetWltEx->getDecryptedDataContainer().get();
+      auto kdfs = decryptedDataEx->getKdfMap();
+      EXPECT_EQ(kdfs.size(), 3);
+
+      for (const auto& kdf : kdfs) {
+         if (kdf.first == passthroughKdfId) {
+            continue;
+         }
+
+         if (kdf.second->isSame(firstKdf.get()) ||
+            kdf.second->isSame(secondKdf.get())) {
+            continue;
+         }
+         ASSERT_TRUE(false);
+      }
+   }
+
+   //add 5th pass, with new KDF
+   auto fifthPass = SecureBinaryData::fromString("passphrase 5");
+   {
+      reloadAssetWlt->setPassphrasePromptLambda(
+         [&fourthPass](const std::set<EncryptionKeyId>&)
+         ->Armory::Passphrase::Result
+         { return { fourthPass, true }; }
+      );
+      Armory::Passphrase::SetNew pass5{
+         [&fifthPass](void)->std::unique_ptr<Armory::Passphrase::Params>
+         { return std::make_unique<Armory::Passphrase::Params>(1500ms, 0, fifthPass); }
+      };
+      auto start = std::chrono::system_clock::now();
+      reloadAssetWlt->addPrivateKeyPassphrase(pass5);
+      reloadAssetWlt->resetPassphrasePromptLambda();
+      auto end = std::chrono::system_clock::now();
+      auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(end-start);
+
+      //one pass to unlock, one pass to compare kdfs, one pass to encrypt
+      EXPECT_GE(dur, 3500ms) << dur.count();
+      EXPECT_LE(dur, 4800ms) << dur.count();
+   }
+
+   //check wallet has 3 KDFs now
+   std::shared_ptr<KeyDerivationFunction_Romix> thirdKdf;
+   {
+      auto assetWltEx = (AssetWalletEx*)reloadAssetWlt.get();
+      auto decryptedDataEx = (DecryptedDataContainerEx*)
+         assetWltEx->getDecryptedDataContainer().get();
+      auto kdfs = decryptedDataEx->getKdfMap();
+      EXPECT_EQ(kdfs.size(), 4);
+
+      for (const auto& kdf : kdfs) {
+         if (kdf.first == passthroughKdfId) {
+            continue;
+         }
+
+         if (kdf.second->isSame(firstKdf.get()) ||
+            kdf.second->isSame(secondKdf.get())) {
+            continue;
+         }
+
+         auto kdfRomix = std::dynamic_pointer_cast<KeyDerivationFunction_Romix>(
+            kdf.second);
+         ASSERT_NE(kdfRomix, nullptr);
+
+         //new kdf should be bigger
+         ASSERT_NE(kdfRomix, nullptr);
+         ASSERT_GE(kdfRomix->iterations(), 3);
+         ASSERT_GE(kdfRomix->memTarget(), 33554432);
+         thirdKdf = kdfRomix;
+      }
+   }
+   auto baseline = 0ms;
+   if (thirdKdf->getId() < secondKdf->getId()) {
+      auto now = std::chrono::system_clock::now();
+      thirdKdf->deriveKey(SecureBinaryData::fromString("test key"));
+      baseline = std::chrono::duration_cast<std::chrono::milliseconds>(
+         std::chrono::system_clock::now() - now);
+   }
+
+   //unlock with 5th pass
+   elapsed = timeUnlock(reloadAssetWlt, asset0_reloaded, fifthPass);
+   EXPECT_GE(elapsed, 1500ms) << elapsed.count();
+
+   //change pass 2, reuse kdf
+   auto newPass2 = SecureBinaryData::fromString("new pass2");
+   {
+      reloadAssetWlt->setPassphrasePromptLambda(
+         [&newPassphrase](const std::set<EncryptionKeyId>&)
+         ->Armory::Passphrase::Result
+         { return { newPassphrase, true }; }
+      );
+      Armory::Passphrase::SetNew nPass2{
+         [&newPass2](void)->std::unique_ptr<Armory::Passphrase::Params>
+         { return std::make_unique<Armory::Passphrase::Params>(newPass2, true); }
+      };
+      auto start = std::chrono::system_clock::now();
+      reloadAssetWlt->changePrivateKeyPassphrase(nPass2);
+      reloadAssetWlt->resetPassphrasePromptLambda();
+      auto end = std::chrono::system_clock::now();
+      auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(end-start);
+      EXPECT_GE(dur, baseline+1000ms) << dur.count();
+      EXPECT_LE(dur, baseline+1300ms) << dur.count();
+   }
+
+   //fail unlock with old pass 2
+   ASSERT_TRUE(failUnlock(reloadAssetWlt, newPassphrase));
+
+   //unlock with new pass 2
+   elapsed = timeUnlock(reloadAssetWlt, asset0_reloaded, newPass2);
+   EXPECT_GE(elapsed, baseline+500ms) << elapsed.count();
+   EXPECT_LE(elapsed, baseline+800ms) << elapsed.count();
+
+   //change pass 3, change kdf
+   auto newPass3 = SecureBinaryData::fromString("new pass3");
+   {
+      reloadAssetWlt->setPassphrasePromptLambda(
+         [&thirdPass](const std::set<EncryptionKeyId>&)
+         ->Armory::Passphrase::Result
+         { return { thirdPass, true }; }
+      );
+      Armory::Passphrase::SetNew nPass3{
+         [&newPass3](void)->std::unique_ptr<Armory::Passphrase::Params>
+         { return std::make_unique<Armory::Passphrase::Params>(1500ms, 0, newPass3); }
+      };
+      auto start = std::chrono::system_clock::now();
+      reloadAssetWlt->changePrivateKeyPassphrase(nPass3);
+      reloadAssetWlt->resetPassphrasePromptLambda();
+      auto end = std::chrono::system_clock::now();
+      auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(end-start);
+      EXPECT_GE(dur, 3500ms+baseline) << dur.count();
+      EXPECT_LE(dur, 5000ms+baseline) << dur.count();
+   }
+
+   //fail unlock with old pass 3
+   ASSERT_TRUE(failUnlock(reloadAssetWlt, thirdPass));
+
+   //unlock with new pass 3
+   auto extraBaseline = (baseline == 0ms) ? 500ms : 0ms;
+   elapsed = timeUnlock(reloadAssetWlt, asset0_reloaded, newPass3);
+   EXPECT_GE(elapsed, extraBaseline+1500ms) << elapsed.count();
+   EXPECT_LE(elapsed, extraBaseline+2000ms) << elapsed.count();
+
+   //check wallet has 3 KDFs still
+   {
+      auto assetWltEx = (AssetWalletEx*)reloadAssetWlt.get();
+      auto decryptedDataEx = (DecryptedDataContainerEx*)
+         assetWltEx->getDecryptedDataContainer().get();
+      auto kdfs = decryptedDataEx->getKdfMap();
+      EXPECT_EQ(kdfs.size(), 4);
+
+      for (const auto& kdf : kdfs) {
+         if (kdf.first == passthroughKdfId) {
+            continue;
+         }
+
+         if (kdf.second->isSame(firstKdf.get()) ||
+            kdf.second->isSame(secondKdf.get()) ||
+            kdf.second->isSame(thirdKdf.get())) {
+            continue;
+         }
+
+         ASSERT_TRUE(false);
+      }
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet)
 {
    //create wallet from priv key
    IO::CreateWalletParams params{
@@ -5880,10 +6284,30 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
       EXPECT_LE(end-start, 50ms);
    }
 
+   //try to set new passphrase with reused kdf
+   //should fail since no encryption is applied yet
+   auto reuseKdfLbd = [&newPass](void)->std::unique_ptr<Armory::Passphrase::Params>
+   {
+      return std::make_unique<Armory::Passphrase::Params>(newPass, true);
+   };
+
+   try {
+      Armory::Passphrase::SetNew newPassObj{reuseKdfLbd};
+      assetWlt->changePrivateKeyPassphrase(newPassObj);
+      ASSERT_TRUE(false);
+   } catch (const DecryptedDataContainerException& e) {
+      EXPECT_EQ(e.what(), std::string{"target key has no kdf"});
+   }
+
+
    //try to add passhrase to an unencrypted wallet, should fail
    auto changePassLbd = [&newPass](void)->std::unique_ptr<Armory::Passphrase::Params>
    {
       return std::make_unique<Armory::Passphrase::Params>(1200ms, 0, newPass);
+   };
+   auto reusePassLbd = [&newPass](void)->std::unique_ptr<Armory::Passphrase::Params>
+   {
+      return std::make_unique<Armory::Passphrase::Params>(newPass, true);
    };
 
    try {
@@ -5900,9 +6324,13 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
       Armory::Passphrase::SetNew newPassObj{changePassLbd};
       assetWlt->changePrivateKeyPassphrase(newPassObj);
       auto end = std::chrono::system_clock::now();
-      auto diff = end - start;
-      EXPECT_GE(diff, 1200ms) << diff.count();
-      EXPECT_LE(diff, 1320ms) << diff.count();
+      auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+
+      //should compute the kdf twice:
+      // once to test params for comparison purposes (~75% of target unlock)
+      // once to apply it to the key
+      EXPECT_GE(diff, 2100ms) << diff.count();
+      EXPECT_LE(diff, 2600ms) << diff.count();
    }
 
    //check the wallet can't be decrypted without a passphrase anymore
@@ -5935,15 +6363,17 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
    };
    assetWlt->setPassphrasePromptLambda(newPassLbd);
 
+   std::chrono::milliseconds baseline;
    {
       auto start = std::chrono::system_clock::now();
       auto lock = assetWlt->lockDecryptedContainer();
       auto& decryptedKey = assetWlt->getDecryptedValue(asset0_single->getPrivKey());
       auto end = std::chrono::system_clock::now();
       ASSERT_EQ(decryptedKey, privkey_ex);
-      auto diff = end - start;
-      EXPECT_GE(diff, 1200ms) << diff.count();
-      EXPECT_LE(diff, 1320ms) << diff.count();
+      baseline = std::chrono::duration_cast<std::chrono::milliseconds>(end - start) - 20ms;
+
+      EXPECT_GE(baseline, 1160ms) << baseline.count();
+      EXPECT_LE(baseline, 1600ms) << baseline.count();
    }
 
    {
@@ -5953,13 +6383,13 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
       auto end = std::chrono::system_clock::now();
       ASSERT_EQ(decryptedKey, clearRoot);
       auto diff = end - start;
-      EXPECT_GE(diff, 1200ms) << diff.count();
-      EXPECT_LE(diff, 1320ms) << diff.count();
+      EXPECT_GE(diff, baseline) << diff.count();
+      EXPECT_LE(diff, baseline*1.2) << diff.count();
    }
 
    //try to add the same passphrase
    try {
-      Armory::Passphrase::SetNew newPassObj{changePassLbd};
+      Armory::Passphrase::SetNew newPassObj{reusePassLbd};
       assetWlt->addPrivateKeyPassphrase(newPassObj);
       ASSERT_TRUE(false);
    } catch (const DecryptedDataContainerException& e) {
@@ -5977,7 +6407,8 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
    auto newPass2 = SecureBinaryData::fromString("another pass");
    auto changePass2Lbd = [&newPass2](void)->std::unique_ptr<Armory::Passphrase::Params>
    {
-      return std::make_unique<Armory::Passphrase::Params>(1200ms, 0, newPass2);
+      //set to reuse existing kdf
+      return std::make_unique<Armory::Passphrase::Params>(newPass2, true);
    };
    {
       auto start = std::chrono::system_clock::now();
@@ -5985,8 +6416,10 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
       assetWlt->addPrivateKeyPassphrase(newPassObj);
       auto end = std::chrono::system_clock::now();
       auto diff = end - start;
-      EXPECT_GE(diff, 2400ms) << diff.count();
-      EXPECT_LE(diff, 2640ms) << diff.count();
+
+      //2 KDF extensions: one for current key, one for new key
+      EXPECT_GE(diff, baseline*2) << diff.count();
+      EXPECT_LE(diff, baseline*2.4) << diff.count();
    }
 
    //check old pass works
@@ -6000,8 +6433,10 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
       ASSERT_EQ(decryptedKey, clearRoot);
       auto end = std::chrono::system_clock::now();
       auto diff = end - start;
-      EXPECT_GE(diff, 2400ms) << diff.count();
-      EXPECT_LE(diff, 2640ms) << diff.count();
+
+      //only need to extend passprhase once for both decryption
+      EXPECT_GE(diff, baseline) << diff.count();
+      EXPECT_LE(diff, baseline*1.2) << diff.count();
    }
 
    //check new pass works
@@ -6021,8 +6456,8 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
       ASSERT_EQ(decryptedKey, clearRoot);
       auto end = std::chrono::system_clock::now();
       auto diff = end - start;
-      EXPECT_GE(diff, 1200ms) << diff.count();
-      EXPECT_LE(diff, 1320ms) << diff.count();
+      EXPECT_GE(diff, baseline) << diff.count();
+      EXPECT_LE(diff, baseline*1.2) << diff.count();
    }
 
    //reload the wallet
@@ -6060,8 +6495,8 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
       ASSERT_EQ(decryptedKey, clearRoot);
       auto end = std::chrono::system_clock::now();
       auto diff = end - start;
-      EXPECT_GE(diff, 1200ms) << diff.count();
-      EXPECT_LE(diff, 1320ms) << diff.count();
+      EXPECT_GE(diff, baseline) << diff.count();
+      EXPECT_LE(diff, baseline*1.2) << diff.count();
    }
 
    {
@@ -6074,8 +6509,8 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
       ASSERT_EQ(decryptedKey, clearRoot);
       auto end = std::chrono::system_clock::now();
       auto diff = end - start;
-      EXPECT_GE(diff, 1200ms) << diff.count();
-      EXPECT_LE(diff, 1320ms) << diff.count();
+      EXPECT_GE(diff, baseline) << diff.count();
+      EXPECT_LE(diff, baseline*1.2) << diff.count();
    }
 
    //delete old pass
@@ -6122,8 +6557,8 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
       auto end = std::chrono::system_clock::now();
       ASSERT_EQ(decryptedKey, privkey_ex);
       auto diff = end - start;
-      EXPECT_GE(diff, 1200ms) << diff.count();
-      EXPECT_LE(diff, 1320ms) << diff.count();
+      EXPECT_GE(diff, baseline) << diff.count();
+      EXPECT_LE(diff, baseline*1.2) << diff.count();
    }
 
    {
@@ -6133,8 +6568,8 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
       auto end = std::chrono::system_clock::now();
       ASSERT_EQ(decryptedKey, clearRoot);
       auto diff = end - start;
-      EXPECT_GE(diff, 1200ms) << diff.count();
-      EXPECT_LE(diff, 1320ms) << diff.count();
+      EXPECT_GE(diff, baseline) << diff.count();
+      EXPECT_LE(diff, baseline*1.2) << diff.count();
    }
 
    //delete new pass
@@ -6175,7 +6610,7 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet_Test)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(WalletsTest, ChangePassphrase_SeedBIP32_Test)
+TEST_F(WalletsTest, ChangePassphrase_SeedBIP32)
 {
    //create wallet from priv key
    IO::CreateWalletParams params{
@@ -6233,8 +6668,8 @@ TEST_F(WalletsTest, ChangePassphrase_SeedBIP32_Test)
       assetWlt->changePrivateKeyPassphrase(newPassObj);
       auto end = std::chrono::system_clock::now();
       auto diff = end - start;
-      EXPECT_GE(diff, 1200ms) << diff.count();
-      EXPECT_LE(diff, 1320ms) << diff.count();
+      EXPECT_GE(diff, 2100ms) << diff.count();
+      EXPECT_LE(diff, 2600ms) << diff.count();
    }
 
    //check the wallet can't be decrypted without a passphrase anymore
@@ -6367,7 +6802,7 @@ TEST_F(WalletsTest, ChangePassphrase_SeedBIP32_Test)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(WalletsTest, ChangeControlPassphrase_Test)
+TEST_F(WalletsTest, ChangeControlPassphrase)
 {
 
    auto newPass = SecureBinaryData::fromString("newpass");
@@ -6505,7 +6940,7 @@ TEST_F(WalletsTest, ChangeControlPassphrase_Test)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(WalletsTest, MultiplePassphrase_Test)
+TEST_F(WalletsTest, MultiplePassphrase)
 {
    //create wallet from priv key
    IO::CreateWalletParams params{

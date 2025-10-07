@@ -18,17 +18,18 @@ using namespace std::chrono_literals;
 //
 ////////////////////////////////////////////////////////////////////////////////
 Params::Params() :
-   type(Type::Invalid), unlockMs(0ms)
+   type(Type::Invalid), unlockMs(0ms), reuseKdf(false)
 {}
 
 Params::Params(std::chrono::milliseconds target, uint32_t mb,
    SecureBinaryData pass) :
    type(Type::SetNew), unlockMs(target), memTargetMB(mb),
-   passphrase{std::move(pass)}
+   passphrase{std::move(pass)}, reuseKdf(false)
 {}
 
-Params::Params(SecureBinaryData pass) :
-   type(Type::Unlock), unlockMs(0ms), passphrase{std::move(pass)}
+Params::Params(SecureBinaryData pass, bool reuseKdf) :
+   type(reuseKdf ? Type::SetNew : Type::Unlock),
+   unlockMs(0ms), passphrase{std::move(pass)}, reuseKdf(reuseKdf)
 {}
 
 ////////////////////////////////////////////////////////////////////////////////

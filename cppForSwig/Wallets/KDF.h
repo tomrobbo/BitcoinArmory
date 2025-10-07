@@ -93,6 +93,7 @@ namespace Armory
             virtual SecureBinaryData deriveKey(
                const SecureBinaryData&) const = 0;
             virtual bool isSame(const KeyDerivationFunction*) const = 0;
+            virtual bool isSimilar(const KeyDerivationFunction*) const = 0;
             bool operator<(const KeyDerivationFunction&);
 
             virtual const KdfId& getId(void) const = 0;
@@ -118,13 +119,14 @@ namespace Armory
 
          public:
             KeyDerivationFunction_Romix(const std::chrono::milliseconds&,
-               uint32_t memTargetMB/*=DEFAULT_KDF_START_MEMORY_MB*/);
+               uint32_t /*memTargetMB*/);
             KeyDerivationFunction_Romix(unsigned, unsigned, SecureBinaryData);
             ~KeyDerivationFunction_Romix(void) override;
 
             //overrides
             SecureBinaryData deriveKey(const SecureBinaryData&) const override;
             bool isSame(const KeyDerivationFunction*) const override;
+            bool isSimilar(const KeyDerivationFunction*) const override;
             BinaryData serialize(void) const override;
             const KdfId& getId(void) const override;
 
@@ -146,6 +148,7 @@ namespace Armory
             //overrides
             SecureBinaryData deriveKey(const SecureBinaryData&) const override;
             bool isSame(const KeyDerivationFunction*) const override;
+            bool isSimilar(const KeyDerivationFunction*) const override;
             BinaryData serialize(void) const override;
             const KdfId& getId(void) const override;
          };

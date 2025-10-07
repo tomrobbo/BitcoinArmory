@@ -711,6 +711,22 @@ bool KdfId::operator==(const KdfId& rhs) const
    return data_ == rhs.data_;
 }
 
+bool KdfId::operator==(const std::string_view& rhs) const
+{
+   if (rhs.size() != data_.getSize()) {
+      return false;
+   }
+   return (std::memcmp(data_.getPtr(), rhs.data(), rhs.size()) == 0);
+}
+
+bool KdfId::operator!=(const std::string_view& rhs) const
+{
+   if (rhs.size() != data_.getSize()) {
+      return true;
+   }
+   return (std::memcmp(data_.getPtr(), rhs.data(), rhs.size()) != 0);
+}
+
 bool KdfId::operator<(const KdfId& rhs) const
 {
    return data_ < rhs.data_;
@@ -719,6 +735,11 @@ bool KdfId::operator<(const KdfId& rhs) const
 bool KdfId::isValid() const
 {
    return !data_.empty();
+}
+
+std::string KdfId::toHexStr() const
+{
+   return data_.toHexStr();
 }
 
 ///////////////////////// - wallet & master id - ///////////////////////////////

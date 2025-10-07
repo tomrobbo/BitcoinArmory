@@ -210,10 +210,12 @@ namespace Armory
 
          bool operator<(const KdfId&) const;
          bool operator==(const KdfId&) const;
+         bool operator==(const std::string_view&) const;
+         bool operator!=(const std::string_view&) const;
          KdfId& operator=(const KdfId&);
 
          bool isValid(void) const;
-         bool toHexStr(void) const;
+         std::string toHexStr(void) const;
          const BinaryData& data(void) const;
 
          BinaryData getSerializedKey(void) const;

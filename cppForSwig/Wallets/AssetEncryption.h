@@ -238,7 +238,6 @@ namespace Armory
             BinaryData serialize(void) const;
             static std::unique_ptr<EncryptionKey> deserialize(
                const BinaryDataRef&);
-            std::set<KdfId> getKdfIds(void) const;
 
             /*
             TODO:
@@ -250,7 +249,7 @@ namespace Armory
          };
 
          //////////////////////////////////////////////////////////////////////////
-         struct ClearTextEncryptionKey
+         class ClearTextEncryptionKey
          {
             friend class DecryptedDataContainer;
             friend class Cipher_AES;

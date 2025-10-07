@@ -52,12 +52,13 @@ namespace Armory
          const Type type;
          const std::chrono::milliseconds unlockMs;
          const uint32_t memTargetMB=0;
+         const bool reuseKdf;
          SecureBinaryData passphrase{};
 
          Params(void);
          Params(std::chrono::milliseconds, uint32_t,
             SecureBinaryData);
-         Params(SecureBinaryData);
+         Params(SecureBinaryData, bool reuseKdf=false);
       };
 
       class SetNew
