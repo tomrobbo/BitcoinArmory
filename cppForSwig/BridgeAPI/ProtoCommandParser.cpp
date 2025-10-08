@@ -1245,14 +1245,24 @@ namespace
             case NotificationReply::SET_PASSPHRASE:
             {
                auto capnpPassStruct = notif.getSetPassphrase();
-               auto pass = SecureBinaryData::fromString(capnpPassStruct.getPassphrase());
-               auto kdfMs = std::chrono::milliseconds{capnpPassStruct.getKdfTargetMs()};
-               return handler(Seeds::PromptReply{
-                  notif.getSuccess(), false,
-                  Passphrase::Params{
-                     kdfMs, capnpPassStruct.getKdfTargetMB(),
-                     std::move(pass)
-                  }});
+               auto pass = SecureBinaryData::fromString(
+                  capnpPassStruct.getPassphrase());
+
+               if (capnpPassStruct.getReuseKdf()) {
+                  return handler(Seeds::PromptReply{
+                     notif.getSuccess(), false,
+                     Passphrase::Params{std::move(pass), true}
+                  });
+               } else {
+                  auto kdfMs = std::chrono::milliseconds{
+                     capnpPassStruct.getKdfTargetMs()};
+                  return handler(Seeds::PromptReply{
+                     notif.getSuccess(), false,
+                     Passphrase::Params{
+                        kdfMs, capnpPassStruct.getKdfTargetMB(),
+                        std::move(pass)
+                     }});
+               }
             }
 
             case NotificationReply::RESTORE:

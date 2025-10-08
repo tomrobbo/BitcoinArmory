@@ -261,8 +261,7 @@ namespace {
    bool changeWalletPassphrase(
       std::shared_ptr<Armory::Bridge::CppBridge> bridge,
       const std::string& walletId,
-      const std::string& currentPass, const std::string& newPass,
-      std::chrono::milliseconds unlockTarget)
+      const std::string& currentPass, const std::string& newPass)
    {
       auto callbackId = BtcUtils::fortuna_.generateRandom(10).toHexStr();
       auto refId = rand();
@@ -345,8 +344,7 @@ namespace {
          notifReply.setCounter(counter);
          auto capnSetPass = notifReply.initSetPassphrase();
          capnSetPass.setPassphrase(newPass);
-         capnSetPass.setKdfTargetMB(0);
-         capnSetPass.setKdfTargetMs(unlockTarget.count());
+         capnSetPass.setReuseKdf(true);
 
          auto rawReq = serializeCapnp(message);
          pushRequest(bridge, rawReq);
@@ -2743,7 +2741,7 @@ TEST_F(BridgeTests, ChangeWalletPassphrase)
 
    /* 4. change its passphrase */
    EXPECT_TRUE(changeWalletPassphrase(bridge_, walletId,
-      currentPass, newPass, 500ms));
+      currentPass, newPass));
 
    /* 5. check current passphrase fails to unlock wallet */
    try {

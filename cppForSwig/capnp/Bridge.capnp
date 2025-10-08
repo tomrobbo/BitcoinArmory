@@ -165,6 +165,7 @@ struct NotificationReply {
       passphrase     @0 : Text;
       kdfTargetMs    @1 : UInt32;
       kdfTargetMB    @2 : UInt32;
+      reuseKdf       @3 : Bool = false;
    }
 
    success           @0 : Bool;
