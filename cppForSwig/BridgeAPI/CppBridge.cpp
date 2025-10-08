@@ -796,11 +796,21 @@ void CppBridge::setupDB(MessageId refId)
    if (Config::NetworkSettings::automateDb()) {
       peers = spawnDb();
    } else {
-      peers = std::make_shared<Wallets::AuthorizedPeers>(
-         Wallets::IO::ReadOnlyFileParams {
-            path_ / CLIENT_AUTH_PEER_FILENAME,
-            TerminalPassphrasePrompt::getLambda("db identification key")
-      });
+      try {
+         peers = std::make_shared<Wallets::AuthorizedPeers>(
+            Wallets::IO::ReadOnlyFileParams{
+               path_ / CLIENT_AUTH_PEER_FILENAME,
+               TerminalPassphrasePrompt::getLambda("db identification key")
+         });
+      } catch (const Wallets::PeerFileMissing&) {
+         //NOTE (SHORT TERM SOLUTION): auto generation of auth peer db
+         Wallets::IO::CreateFileParams parms{
+            path_ / CLIENT_AUTH_PEER_FILENAME, {}};
+         peers = Wallets::AuthorizedPeers::createWallet(
+            Wallets::IO::CreateFileParams{
+               path_ / CLIENT_AUTH_PEER_FILENAME, {}
+         });
+      }
    }
 
    //connect to db

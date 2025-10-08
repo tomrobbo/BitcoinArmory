@@ -6229,7 +6229,7 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet)
    //create wallet from priv key
    IO::CreateWalletParams params{
       homedir_,
-      Armory::Passphrase::SetNew{1200ms, 0, {}},
+      Armory::Passphrase::SetNew{},
       Armory::Passphrase::SetNew{100ms, 0, SecureBinaryData::fromString("control")},
       nullptr, 4
    };
@@ -8605,6 +8605,16 @@ protected:
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(WalletMetaDataTest, AuthPeers)
 {
+   {
+      //unlocked auth peers
+      auto authPeers = AuthorizedPeers::createWallet(
+         IO::CreateFileParams{
+            homedir_ / "unlocked.peers",
+            Armory::Passphrase::SetNew{}
+      });
+      ASSERT_NE(authPeers, nullptr);
+   }
+
    auto authPeersPass = SecureBinaryData::fromString("authpeerpass");
    auto peerPassLbd = [&authPeersPass]()->std::unique_ptr<Armory::Passphrase::Params>
    {
@@ -9410,6 +9420,29 @@ TEST_F(WalletMetaDataTest, AuthPeers_Ephemeral)
          EXPECT_EQ(memcmp(iter2->second.pubkey, btckey5.pubkey, BIP151PUBKEYSIZE), 0);
          EXPECT_TRUE(pubkeySet.find(pubkey5_compressed) != pubkeySet.end());
       }
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(WalletMetaDataTest, AuthPeers_Unlocked)
+{
+   auto path = homedir_ / "unlocked.peers";
+   {
+      //create auth peers db without a control pass
+      auto authPeers = AuthorizedPeers::createWallet(
+         IO::CreateFileParams{path, Armory::Passphrase::SetNew{}
+      });
+      ASSERT_NE(authPeers, nullptr);
+   }
+
+   //try to load it
+   try {
+      auto authPeers = std::make_shared<AuthorizedPeers>(
+         IO::ReadOnlyFileParams{path, nullptr}
+      );
+      ASSERT_NE(authPeers, nullptr);
+   } catch (const std::exception&) {
+      ASSERT_TRUE(false);
    }
 }
 

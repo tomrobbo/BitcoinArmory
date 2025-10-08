@@ -97,7 +97,6 @@ namespace Armory
 
          //these objects are the core of the bridge
          std::shared_ptr<WalletManager> wltManager_;
-         //std::shared_ptr<BridgeCallback> callbackPtr_;
          std::shared_ptr<AsyncClient::BlockDataViewer> bdvPtr_;
 
          //various states cache

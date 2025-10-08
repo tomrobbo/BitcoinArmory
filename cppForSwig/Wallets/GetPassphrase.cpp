@@ -38,7 +38,7 @@ Params::Params(SecureBinaryData pass, bool reuseKdf) :
 //
 ////////////////////////////////////////////////////////////////////////////////
 SetNew::SetNew() :
-   params_(std::make_unique<Params>(2000ms, 0, SecureBinaryData{})),
+   params_(std::make_unique<Params>()),
    setNewPassphrase_(nullptr)
 {}
 
@@ -89,7 +89,12 @@ SetNew SetNew::copy() const
 {
    //allows for a copy when the object is setup with
    //a lambda that wasnt called yet
-   if (params_ != nullptr || setNewPassphrase_ == nullptr) {
+   if (params_ != nullptr) {
+      if (params_->type == Params::Type::Invalid) {
+         return {};
+      }
+      throw std::runtime_error("this SetNew is not copyable");
+   } else if (setNewPassphrase_ == nullptr) {
       throw std::runtime_error("this SetNew is not copyable");
    }
    return SetNew(setNewPassphrase_);
