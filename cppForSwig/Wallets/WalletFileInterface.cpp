@@ -608,7 +608,8 @@ void WalletDBInterface::openDbEnv(bool fileExists)
    if (FileUtils::fileExists(path_, 0) != fileExists) {
       if (!fileExists) {
          throw WalletInterfaceException(
-            "[openEnv] trying to create a file that already exists");
+            "[openEnv] trying to create a file that already exists: " +
+            path_.string());
       } else {
          throw WalletInterfaceException(
             "[openEnv] trying to read a file that does not exists");
@@ -618,7 +619,6 @@ void WalletDBInterface::openDbEnv(bool fileExists)
    if (dbEnv_ != nullptr) {
       throw WalletInterfaceException("[openEnv] dbEnv already instantiated");
    }
-
    dbEnv_ = std::make_unique<LMDBEnv>(dbCount_);
    dbEnv_->open(path_, MDB_NOTLS);
    dbEnv_->setMapSize(100*1024*1024ULL);

@@ -1210,7 +1210,7 @@ void CppBridge::restoreWallet(
          auto reply = callback(Seeds::RestorePrompt{
             Seeds::RestorePromptType::ControlPassphrase});
          if (!reply.success) {
-            return nullptr;
+            return std::make_unique<Passphrase::Params>();
          }
          return std::make_unique<Passphrase::Params>(reply.passParams);
       };
@@ -1220,7 +1220,7 @@ void CppBridge::restoreWallet(
          auto reply = callback(Seeds::RestorePrompt{
             Seeds::RestorePromptType::PrivatePassphrase});
          if (!reply.success) {
-            return nullptr;
+            return std::make_unique<Passphrase::Params>();
          }
          return std::make_unique<Passphrase::Params>(reply.passParams);
       };

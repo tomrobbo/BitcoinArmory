@@ -1465,16 +1465,12 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::initWalletDb(
    try {
       auto paramsCopy = params.setPrivPassObj.get();
       if (paramsCopy.passphrase.empty()) {
-      LOGWARN << "!! No private passphrase provided !!";
-      LOGWARN << "!! Private keys in this wallet will not be encrypted !!";
-         Passphrase::Params defaultParams{2000ms, 0, {}};
-         masterKeyStruct = std::move(IO::WalletDBInterface::initWalletHeaderObject(
-            headerPtr, defaultParams));
-      } else {
-         masterKeyStruct = std::move(IO::WalletDBInterface::initWalletHeaderObject(
-            headerPtr, paramsCopy));
+         LOGWARN << "!! No private passphrase provided !!";
+         LOGWARN << "!! Private keys in this wallet will not be encrypted !!";
       }
-   } catch (const std::exception& e) {
+      masterKeyStruct = std::move(IO::WalletDBInterface::initWalletHeaderObject(
+         headerPtr, paramsCopy));
+   } catch (const Passphrase::PassphraseException& e) {
       //user rejected password request, cleanup and rethrow
       auto path = iface->getFilename();
       iface->shutdown();

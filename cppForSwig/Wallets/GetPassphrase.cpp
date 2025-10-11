@@ -12,6 +12,10 @@
 using namespace Armory::Passphrase;
 using namespace std::chrono_literals;
 
+PassphraseException::PassphraseException(const std::string& err)
+   : std::runtime_error(err)
+{}
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 //// Params
@@ -60,11 +64,13 @@ SetNew::SetNew(const SetNewPassFunc& func) :
 SetNew::SetNew(const SetNew& rhs) :
    setNewPassphrase_(rhs.setNewPassphrase_)
 {
-   if (rhs.params_ != nullptr) {
+   if (rhs.params_ != nullptr && rhs.params_->type != Params::Type::Invalid) {
       params_ = std::make_unique<Params>(
          rhs.params_->unlockMs,
          rhs.params_->memTargetMB,
          rhs.params_->passphrase);
+   } else if (setNewPassphrase_ == nullptr) {
+      params_ = std::make_unique<Params>();
    }
 }
 
@@ -73,12 +79,12 @@ const Params& SetNew::get() const
 {
    if (params_ == nullptr) {
       if (setNewPassphrase_ == nullptr) {
-         throw std::runtime_error("cannot get passphrase");
+         throw PassphraseException("cannot get passphrase");
       }
 
       params_ = std::move(setNewPassphrase_());
       if (params_ == nullptr || params_->type != Params::Type::SetNew) {
-         throw std::runtime_error("passphrase request was rejected");
+         throw PassphraseException("passphrase request was rejected");
       }
    }
    return *params_;
@@ -93,9 +99,9 @@ SetNew SetNew::copy() const
       if (params_->type == Params::Type::Invalid) {
          return {};
       }
-      throw std::runtime_error("this SetNew is not copyable");
+      throw PassphraseException("this SetNew is not copyable");
    } else if (setNewPassphrase_ == nullptr) {
-      throw std::runtime_error("this SetNew is not copyable");
+      throw PassphraseException("this SetNew is not copyable");
    }
    return SetNew(setNewPassphrase_);
 }
@@ -104,7 +110,7 @@ SetNew SetNew::copy() const
 std::unique_ptr<Params> SetNew::moveParams()
 {
    if (params_->passphrase.empty()) {
-      throw std::runtime_error("cannot get passphrase");
+      throw PassphraseException("cannot get passphrase");
    }
    return std::move(params_);
 }
@@ -113,7 +119,16 @@ std::unique_ptr<Params> SetNew::moveParams()
 UnlockFunc SetNew::getUnlockFunc() const
 {
    if (params_ == nullptr) {
-      throw std::runtime_error("call get first");
+      throw PassphraseException("call get first");
+   } else if (params_->type == Params::Type::Invalid) {
+      return [](const std::set<Armory::Wallets::EncryptionKeyId>&)->Result {
+         /*
+         Typical scenario for reaching this block is to create an encrypted
+         container with no password provided, then trying to unlock it.
+         In such setup, this lambda will never fire. Otherwise, throw.
+         */
+         throw std::runtime_error("invalid SetNew");
+      };
    }
 
    return [&pass=params_->passphrase]

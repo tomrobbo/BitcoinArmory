@@ -25,7 +25,7 @@ namespace Armory
          struct ReadOnlyFileParams
          {
             const std::filesystem::path filePath;
-            const Passphrase::UnlockFunc& unlockFunc;
+            const Passphrase::UnlockFunc unlockFunc;
          };
 
          struct CreateFileParams

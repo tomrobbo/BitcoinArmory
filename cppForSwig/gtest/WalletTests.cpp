@@ -104,6 +104,35 @@ namespace
    if (a) { EXPECT_FALSE(true); return false; }
 
 ////////////////////////////////////////////////////////////////////////////////
+class PassphraseTests : public ::testing::Test
+{};
+
+TEST_F(PassphraseTests, InvalidParams)
+{
+   using namespace Armory::Passphrase;
+
+   Params invalidParams{};
+   ASSERT_EQ(invalidParams.type, Params::Type::Invalid);
+
+   SetNew invalidObj{};
+   const auto& params = invalidObj.get();
+   ASSERT_EQ(params.type, Params::Type::Invalid);
+
+   try {
+      auto unlockFunc = invalidObj.getUnlockFunc();
+      unlockFunc({});
+      ASSERT_TRUE(false);
+   } catch (const std::runtime_error& e) {
+      ASSERT_EQ(e.what(), std::string{"invalid SetNew"});
+   }
+
+   IO::CreateWalletParams wltParams{
+      {}, {}, {}, nullptr, 0};
+   ASSERT_EQ(wltParams.setPrivPassObj.get().type, Params::Type::Invalid);
+   ASSERT_EQ(wltParams.setCtrlPassObj.get().type, Params::Type::Invalid);
+}
+
+////////////////////////////////////////////////////////////////////////////////
 class AddressTests : public ::testing::Test
 {
 protected:
@@ -4140,13 +4169,14 @@ TEST_F(WalletsTest, RejectCreationAtPassphrase)
    try {
       auto assetWlt = AssetWallet_Single::createFromSeed(
          std::move(seed), params);
+      ASSERT_TRUE(false);
    } catch (const std::exception& e) {
       EXPECT_EQ(e.what(), std::string{"passphrase request was rejected"});
    }
 
    //check file is deleted
-   ASSERT_TRUE(fileExists);
-   ASSERT_FALSE(FileUtils::fileExists(filename, 0));
+   EXPECT_TRUE(fileExists);
+   EXPECT_FALSE(FileUtils::fileExists(filename, 0));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -6194,7 +6224,7 @@ TEST_F(WalletsTest, ChangePassphrase_ChangeKDF)
    ASSERT_TRUE(failUnlock(reloadAssetWlt, thirdPass));
 
    //unlock with new pass 3
-   auto extraBaseline = (baseline == 0ms) ? 500ms : 0ms;
+   auto extraBaseline = (baseline == 0ms) ? 600ms : 0ms;
    elapsed = timeUnlock(reloadAssetWlt, asset0_reloaded, newPass3);
    EXPECT_GE(elapsed, extraBaseline+1500ms) << elapsed.count();
    EXPECT_LE(elapsed, extraBaseline+2000ms) << elapsed.count();
@@ -6374,6 +6404,7 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet)
 
       EXPECT_GE(baseline, 1160ms) << baseline.count();
       EXPECT_LE(baseline, 1600ms) << baseline.count();
+      std::cout << "baseline is: " << baseline.count() << "ms" << std::endl;
    }
 
    {
@@ -9585,7 +9616,11 @@ public:
       auto loadedWlt = AssetWallet::loadMainWalletFromFile(
          IO::ReadOnlyFileParams{path, controlPassLbd});
       METHOD_ASSERT_NE(loadedWlt, nullptr);
-      METHOD_ASSERT_EQ(controlPassCount, 1U);
+      if (control.empty()) {
+         METHOD_ASSERT_EQ(controlPassCount, 0U);
+      } else {
+         METHOD_ASSERT_EQ(controlPassCount, 1U);
+      }
 
       //check wallet id
       EXPECT_EQ(assetWlt->getID(), loadedWlt->getID());
@@ -9939,22 +9974,17 @@ TEST_F(BackupTests, BackupStrings_Legacy)
    auto backupEasy16 = dynamic_cast<Backup_Easy16*>(backupData.get());
 
    auto newPass = CryptoPRNG::generateRandom(10).toHexStr();
-   auto newCtrl = CryptoPRNG::generateRandom(10).toHexStr();
-   auto callback = [&backupData, &newPass, &newCtrl](
+   auto callback = [&backupData](
       const RestorePrompt& prompt)->PromptReply
    {
       capnp::MallocMessageBuilder reply;
       switch (prompt.promptType)
       {
          case RestorePromptType::ControlPassphrase:
-            return PromptReply{true, false,
-               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newCtrl)}
-            };
+            throw std::runtime_error("restore should not callback for a ctrl pass");
 
          case RestorePromptType::PrivatePassphrase:
-            return PromptReply{true, false,
-               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)}
-            };
+            throw std::runtime_error("restore should not callback for a priv pass");
 
          case RestorePromptType::Id:
          {
@@ -9983,7 +10013,7 @@ TEST_F(BackupTests, BackupStrings_Legacy)
          std::move(backupCopy), callback, IO::CreateWalletParams{
             newHomeDir,
             Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass)},
-            Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newCtrl)},
+            Armory::Passphrase::SetNew{},
             nullptr, 10});
       EXPECT_NE(restoreResult.wltPtr, nullptr);
 
@@ -10007,7 +10037,7 @@ TEST_F(BackupTests, BackupStrings_Legacy)
       filename = restoreResult.wltPtr->getDbFilename();
    }
 
-   EXPECT_TRUE(compareWalletWithBackup(assetWlt, filename, newPass, newCtrl));
+   EXPECT_TRUE(compareWalletWithBackup(assetWlt, filename, newPass, {}));
    FileUtils::removeDirectory(newHomeDir);
 }
 
@@ -10038,20 +10068,16 @@ TEST_F(BackupTests, BackupStrings_Legacy_Armory200a)
 
    auto newPass = CryptoPRNG::generateRandom(10).toHexStr();
    auto newCtrl = CryptoPRNG::generateRandom(10).toHexStr();
-   auto callback = [&backupData, &newPass, &newCtrl](
+   auto callback = [&backupData](
       const RestorePrompt& prompt)->PromptReply
    {
       switch (prompt.promptType)
       {
          case RestorePromptType::ControlPassphrase:
-            return PromptReply{true, false,
-               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newCtrl)}
-            };
+            throw std::runtime_error("restore should not callback for a ctrl pass");
 
          case RestorePromptType::PrivatePassphrase:
-            return PromptReply{true, false,
-               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)}
-            };
+            throw std::runtime_error("restore should not callback for a priv pass");
 
          case RestorePromptType::Id:
          {
@@ -10137,20 +10163,16 @@ TEST_F(BackupTests, BackupStrings_Legacy_SecurePrint)
 
    auto newPass = CryptoPRNG::generateRandom(10).toHexStr();
    auto newCtrl = CryptoPRNG::generateRandom(10).toHexStr();
-   auto callback = [&backupData, &newPass, &newCtrl](
+   auto callback = [&backupData](
       const RestorePrompt& prompt)->PromptReply
    {
       switch (prompt.promptType)
       {
          case RestorePromptType::ControlPassphrase:
-            return PromptReply{true, false,
-               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newCtrl)}
-            };
+            throw std::runtime_error("restore should not callback for a ctrl pass");
 
          case RestorePromptType::PrivatePassphrase:
-            return PromptReply{true, false,
-               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)}
-            };
+            throw std::runtime_error("restore should not callback for a priv pass");
 
          case RestorePromptType::Id:
          {
@@ -10409,21 +10431,16 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode)
    };
    int corruptionCounter = 0;
 
-   auto callback = [&backupData, &newPass, &newCtrl,
-      &corruptions, &corruptionCounter](
+   auto callback = [&backupData, &corruptions, &corruptionCounter](
       const RestorePrompt& prompt)->PromptReply
    {
       switch (prompt.promptType)
       {
          case RestorePromptType::ControlPassphrase:
-            return PromptReply{true, false,
-               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newCtrl)}
-            };
+            throw std::runtime_error("restore should not callback for a ctrl pass");
 
          case RestorePromptType::PrivatePassphrase:
-            return PromptReply{true, false,
-               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)}
-            };
+            throw std::runtime_error("restore should not callback for a priv pass");
 
          case RestorePromptType::Id:
          {
@@ -10568,20 +10585,16 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode_SecurePrint)
 
    auto newPass = CryptoPRNG::generateRandom(10).toHexStr();
    auto newCtrl = CryptoPRNG::generateRandom(10).toHexStr();
-   auto callback = [&backupData, &newPass, &newCtrl](
+   auto callback = [&backupData](
       const RestorePrompt& prompt)->PromptReply
    {
       switch (prompt.promptType)
       {
          case RestorePromptType::ControlPassphrase:
-            return PromptReply{true, false,
-               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newCtrl)},
-            };
+            throw std::runtime_error("restore should not callback for a ctrl pass");
 
          case RestorePromptType::PrivatePassphrase:
-            return PromptReply{true, false,
-               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)},
-            };
+            throw std::runtime_error("restore should not callback for a priv pass");
 
          case RestorePromptType::Id:
          {
@@ -10692,20 +10705,16 @@ TEST_F(BackupTests, BackupStrings_BIP32)
 
    auto newPass = CryptoPRNG::generateRandom(10).toHexStr();
    auto newCtrl = CryptoPRNG::generateRandom(10).toHexStr();
-   auto callback = [&backupData, &newPass, &newCtrl](
+   auto callback = [&backupData](
       const RestorePrompt& prompt)->PromptReply
    {
       switch (prompt.promptType)
       {
          case RestorePromptType::ControlPassphrase:
-            return PromptReply{true, false,
-               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newCtrl)}
-            };
+            throw std::runtime_error("restore should not callback for a ctrl pass");
 
          case RestorePromptType::PrivatePassphrase:
-            return PromptReply{true, false,
-               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)}
-            };
+            throw std::runtime_error("restore should not callback for a priv pass");
 
          case RestorePromptType::Id:
          {
@@ -10792,20 +10801,16 @@ TEST_F(BackupTests, BackupStrings_BIP32_Virgin)
 
    auto newPass = CryptoPRNG::generateRandom(10).toHexStr();
    auto newCtrl = CryptoPRNG::generateRandom(10).toHexStr();
-   auto callback = [&backupData, &newPass, &newCtrl](
+   auto callback = [&backupData](
       const RestorePrompt& prompt)->PromptReply
    {
       switch (prompt.promptType)
       {
          case RestorePromptType::ControlPassphrase:
-            return PromptReply{true, false,
-               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newCtrl)},
-            };
+            throw std::runtime_error("restore should not callback for a ctrl pass");
 
          case RestorePromptType::PrivatePassphrase:
-            return PromptReply{true, false,
-               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)},
-            };
+            throw std::runtime_error("restore should not callback for a priv pass");
 
          case RestorePromptType::Id:
          {
@@ -10873,20 +10878,15 @@ TEST_F(BackupTests, BackupStrings_BIP32_FromBase58)
 
    auto newPass = CryptoPRNG::generateRandom(10).toHexStr();
    auto newCtrl = CryptoPRNG::generateRandom(10).toHexStr();
-   auto callback = [&newPass, &newCtrl](
-      const RestorePrompt& prompt)->PromptReply
+   auto callback = [](const RestorePrompt& prompt)->PromptReply
    {
       switch (prompt.promptType)
       {
          case RestorePromptType::ControlPassphrase:
-            return PromptReply{true, false,
-               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newCtrl)},
-            };
+            throw std::runtime_error("restore should not callback for a ctrl pass");
 
          case RestorePromptType::PrivatePassphrase:
-            return PromptReply{true, false,
-               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)},
-            };
+            throw std::runtime_error("restore should not callback for a priv pass");
 
          case RestorePromptType::Id:
          {
@@ -10987,20 +10987,16 @@ TEST_F(BackupTests, BackupStrings_BIP39)
    //restore Armory200d lambda
    auto newPass = CryptoPRNG::generateRandom(10).toHexStr();
    auto newCtrl = CryptoPRNG::generateRandom(10).toHexStr();
-   auto callback = [&walletId, &newPass, &newCtrl](
+   auto callback = [&walletId](
       const RestorePrompt& prompt)->PromptReply
    {
       switch (prompt.promptType)
       {
          case RestorePromptType::ControlPassphrase:
-            return PromptReply{true, false,
-               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newCtrl)}
-            };
+            throw std::runtime_error("restore should not callback for a ctrl pass");
 
          case RestorePromptType::PrivatePassphrase:
-            return PromptReply{true, false,
-               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass)}
-            };
+            throw std::runtime_error("restore should not callback for a priv pass");
 
          case RestorePromptType::Id:
          {
@@ -11060,20 +11056,16 @@ TEST_F(BackupTests, BackupStrings_BIP39)
    //restore BIP39 lambda
    auto newPass2 = CryptoPRNG::generateRandom(10).toHexStr();
    auto newCtrl2 = CryptoPRNG::generateRandom(10).toHexStr();
-   auto callbackBip39 = [&walletId, &newPass2, &newCtrl2](
+   auto callbackBip39 = [&walletId](
       const RestorePrompt& prompt)->PromptReply
    {
       switch (prompt.promptType)
       {
          case RestorePromptType::ControlPassphrase:
-            return PromptReply{true, false,
-               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newCtrl2)}
-            };
+            throw std::runtime_error("restore should not callback for a ctrl pass");
 
          case RestorePromptType::PrivatePassphrase:
-            return PromptReply{true, false,
-               Armory::Passphrase::Params{1ms, 0, SecureBinaryData::fromString(newPass2)}
-            };
+            throw std::runtime_error("restore should not callback for a priv pass");
 
          case RestorePromptType::Id:
          {

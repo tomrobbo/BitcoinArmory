@@ -579,7 +579,7 @@ TEST_F(WalletManagerTests, ListStageLoad)
       IO::CreateWalletParams params{
          homedir_,
          {1ms, 0, SecureBinaryData::fromString("privpass1")},
-         {1ms, 0, {}},
+         {},
          nullptr, 4
       };
 
@@ -1467,12 +1467,8 @@ protected:
                      capnp::MallocMessageBuilder message;
                      auto toBridge = message.initRoot<Bridge::ToBridge>();
                      auto notifReply = toBridge.initNotification();
-                     notifReply.setSuccess(true);
+                     notifReply.setSuccess(false);
                      notifReply.setCounter(counter);
-                     auto capnSetPass = notifReply.initSetPassphrase();
-                     capnSetPass.setKdfTargetMs(250);
-                     capnSetPass.setKdfTargetMB(0);
-
                      auto rawReq = serializeCapnp(message);
                      pushRequest(bridge_, rawReq);
                      break;
@@ -1581,6 +1577,13 @@ protected:
             {
                run = false;
                break;
+            }
+
+            case Bridge::Notification::RESTORE:
+            {
+               auto restoreNotif = notif.getRestore();
+               std::cout << "fail notif: " << std::string{restoreNotif.getFailure()} << std::endl;
+               throw std::runtime_error("got a restore notif in wallet creation progress!");
             }
 
             default:
@@ -1845,7 +1848,7 @@ TEST_F(BridgeTests, ListStageLoad)
       IO::CreateWalletParams params{
          homedir,
          {1ms, 0, SecureBinaryData::fromString("privpass1")},
-         {1ms, 0, {}},
+         {},
          nullptr, 4
       };
 

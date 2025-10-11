@@ -29,6 +29,12 @@ namespace Armory
 
    namespace Passphrase
    {
+      class PassphraseException : public std::runtime_error
+      {
+      public:
+         PassphraseException(const std::string&);
+      };
+
       struct Result
       {
          SecureBinaryData passphrase;
