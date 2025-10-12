@@ -846,9 +846,21 @@ class BridgeWalletWrapper(ProtoWrapper):
       return reply.wallet.getLedgerDelegateIdForScrAddr
 
    ####
-   def getUnlockTime(self, callback):
+   def getUnlockTime(self, callback: callable):
       packet = self.getPacket()
       packet.wallet.getUnlockTime = None
+      self.send(packet, callback=callback)
+
+   ####
+   def changePassphrase(self, isPriv: bool,
+      callbackId: str, callback: callable):
+      packet = self.getPacket()
+      changeRequest = packet.wallet.init('changePassphrase')
+      changeRequest.callbackId = callbackId
+      if isPriv:
+         changeRequest.private = None
+      else:
+         changeRequest.control = None
       self.send(packet, callback=callback)
 
 ################################################################################

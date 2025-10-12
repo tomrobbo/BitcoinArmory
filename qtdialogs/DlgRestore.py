@@ -265,10 +265,7 @@ class DlgRestoreSingle(ArmoryDialog, ServerPush):
                packet.success = False
                self.reject()
       else:
-         packet.success = True
-         passPacket.passphrase = ""
-         passPacket.kdfTargetMs = 250
-         passPacket.kdfTargetMB = 0
+         packet.success = False
       self.reply()
 
    ########
@@ -280,9 +277,9 @@ class DlgRestoreSingle(ArmoryDialog, ServerPush):
       elif payload.which() == 'setPassphrase':
          notif = payload.setPassphrase
          if notif.which() == 'privatePass':
-            self.setPassphrase(False)
-         elif notif.which() == 'controlPass':
             self.setPassphrase(True)
+         elif notif.which() == 'controlPass':
+            self.setPassphrase(False)
          return
 
       elif payload.which() == 'walletProgress':
@@ -299,7 +296,15 @@ class DlgRestoreSingle(ArmoryDialog, ServerPush):
       which = restorePayload.which()
       if which == 'checkWalletId':
          newWltID = restorePayload.checkWalletId.walletId
-         print (f" .. btype: {restorePayload.checkWalletId.backupType}")
+         if self.thisIsATest:
+            #stop here if this was just a test
+            verifyRecoveryTestID(self, newWltID, self.testWltID)
+            replyToBridge = self.getNewPacket()
+            replyToBridge.success = False
+            self.reply()
+            self.reject()
+            return
+
          wltType = getBackupTypeString(restorePayload.checkWalletId.backupType)
          if not newWltID:
             LOGWARN("empty wallet id in backup restore process")
@@ -316,26 +321,22 @@ class DlgRestoreSingle(ArmoryDialog, ServerPush):
             QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
 
          if userAccept == QtWidgets.QMessageBox.Yes:
-            if self.thisIsATest:
-               #stop here if this was just a test
-               verifyRecoveryTestID(self, newWltID, self.testWltID)
-            else:
-               self.newWltID = newWltID
-               replyToBridge.success = True
+            self.newWltID = newWltID
+            replyToBridge.success = True
 
-               #check if this wallet is already loaded
-               dlgOwnWlt = None
-               if self.main.wallets.hasWallet(newWltID):
-                  dlgOwnWlt = DlgReplaceWallet(newWltID, self.parent, self.main)
-                  if (dlgOwnWlt.exec_()):
-                     #unload existing wallet
-                     self.main.removeWalletFromApplication(newWltID)
-                     if dlgOwnWlt.output == 2:
-                        replyToBridge.restore = 'merge'
-                     else:
-                        replyToBridge.restore = 'overwrite'
+            #check if this wallet is already loaded
+            dlgOwnWlt = None
+            if self.main.wallets.hasWallet(newWltID):
+               dlgOwnWlt = DlgReplaceWallet(newWltID, self.parent, self.main)
+               if (dlgOwnWlt.exec_()):
+                  #unload existing wallet
+                  self.main.removeWalletFromApplication(newWltID)
+                  if dlgOwnWlt.output == 2:
+                     replyToBridge.restore = 'merge'
                   else:
-                     replyToBridge.success = False
+                     replyToBridge.restore = 'overwrite'
+               else:
+                  replyToBridge.success = False
 
          if replyToBridge.success == False:
             self.reject()
