@@ -677,7 +677,7 @@ TxOut BlockDataViewer::getTxOutCopy(
    TxOut txOut;
    
    {
-      auto&& tx = db_->beginTransaction(STXO, LMDB::ReadOnly);
+      auto&& tx = db_->beginTransaction(STXO, LMDB::Mode::ReadOnly);
       BinaryData bdkey = db_->getDBKeyForHash(txHash);
       if (bdkey.getSize() != 0)
          txOut = db_->getTxOutCopy(bdkey, index);
@@ -699,7 +699,7 @@ TxOut BlockDataViewer::getTxOutCopy(const BinaryData& dbKey) const
    if (dbKey.getSize() != 8)
       throw runtime_error("invalid txout key length");
 
-   auto&& tx = db_->beginTransaction(STXO, LMDB::ReadOnly);
+   auto&& tx = db_->beginTransaction(STXO, LMDB::Mode::ReadOnly);
 
    auto&& bdkey = dbKey.getSliceRef(0, 6);
    auto index = READ_UINT16_BE(dbKey.getSliceRef(6, 2));
@@ -720,7 +720,7 @@ StoredTxOut BlockDataViewer::getStoredTxOut(const BinaryData& dbKey) const
    if (dbKey.getSize() != 8)
       throw runtime_error("invalid txout key length");
 
-   auto&& tx = db_->beginTransaction(STXO, LMDB::ReadOnly);
+   auto&& tx = db_->beginTransaction(STXO, LMDB::Mode::ReadOnly);
 
    StoredTxOut stxo;
    db_->getStoredTxOut(stxo, dbKey);
@@ -1050,7 +1050,7 @@ BlockDataViewer::getOutputsForOutpoints(
       zcSS = zc_->getSnapshot();
    }
 
-   auto stxo_tx = db_->beginTransaction(STXO, LMDB::ReadOnly);
+   auto stxo_tx = db_->beginTransaction(STXO, LMDB::Mode::ReadOnly);
    for (auto& opSet : outpoints) {
       //get dbkey for this txhash
       auto dbkey = db_->getDBKeyForHash(opSet.first);

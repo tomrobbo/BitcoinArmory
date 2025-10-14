@@ -10,6 +10,7 @@
 #include <memory>
 #include "../../SecureBinaryData.h"
 #include "../../Wallets/GetPassphrase.h"
+#include "../../Wallets/WalletIdTypes.h"
 
 #define A135_NOERROR          0
 #define A135_ERROR_NOTAWALLET -1
@@ -61,7 +62,7 @@ namespace Armory
          void setStaged(bool);
          WalletLoadState state(void) const;
 
-         virtual const std::string& walletId(void) const = 0;
+         virtual const Wallets::WalletId& walletId(void) const = 0;
          virtual const std::string& name(void) const = 0;
       };
 
@@ -70,7 +71,7 @@ namespace Armory
       {
       private:
          std::shared_ptr<Wallets::AssetWallet> wltPtr_;
-         mutable std::string walletId_;
+         mutable Wallets::WalletId walletId_;
          mutable std::string name_;
 
       public:
@@ -78,7 +79,7 @@ namespace Armory
             std::shared_ptr<Wallets::AssetWallet>);
 
          void unlockControlHeader(const Passphrase::UnlockFunc&);
-         const std::string& walletId(void) const override;
+         const Wallets::WalletId& walletId(void) const override;
          const std::string& name(void) const override;
          std::shared_ptr<Wallets::AssetWallet>&& moveWltPtr(void);
       };
@@ -144,7 +145,7 @@ namespace Armory
          const std::filesystem::path path_;
 
          //meta data
-         std::string walletID_;
+         Wallets::WalletId walletID_;
          uint32_t version_ = UINT32_MAX;
          uint64_t timestamp_ = UINT64_MAX;
          int32_t errorCode_ = INT32_MAX;
@@ -181,7 +182,7 @@ namespace Armory
          const std::filesystem::path& path(void) const;
          bool isInitialized(void) const;
          int errorCode(void) const;
-         const std::string& getID(void) const;
+         const Wallets::WalletId& getID(void) const;
          const std::string& getLabel(void) const;
 
          //static
@@ -201,7 +202,7 @@ namespace Armory
             const Passphrase::UnlockFunc&,
             const Wallets::IO::CreateWalletParams&) const;
 
-         const std::string& walletId(void) const override;
+         const Wallets::WalletId& walletId(void) const override;
          const std::string& name(void) const override;
 
          bool isEncrypted(void) const;

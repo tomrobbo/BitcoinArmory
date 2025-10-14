@@ -1423,7 +1423,7 @@ TEST_F(DerivationTests, DerivationTree_FromWalletRoot)
       //generate bip32 encrypted root
       auto whs = std::make_shared<IO::WalletHeader_Single>(
          Armory::Config::BitcoinSettings::getMagicBytes());
-      whs->walletID_ = "abc";
+      whs->walletID_ = "abc"sv;
       Armory::Passphrase::Params params{1ms, 0, {}};
       auto mks = IO::WalletDBInterface::initWalletHeaderObject(whs, params);
 
@@ -1880,7 +1880,7 @@ protected:
    {
       std::map<BinaryData, BinaryData> keyValMap;
 
-      auto tx = LMDBEnv::Transaction(dbEnv.get(), LMDB::ReadOnly);
+      auto tx = LMDBEnv::Transaction(dbEnv.get(), LMDB::Mode::ReadOnly);
       auto iter = db.begin();
       while(iter.isValid()) {
          auto keyData = iter.key();
@@ -2437,7 +2437,7 @@ TEST_F(WalletInterfaceTest, EncryptionTest)
    //open LMDB object
    LMDB dbObj;
    {
-      auto tx = LMDBEnv::Transaction(dbEnv.get(), LMDB::ReadWrite);
+      auto tx = LMDBEnv::Transaction(dbEnv.get(), LMDB::Mode::ReadWrite);
       dbObj.open(dbEnv.get(), dbName);
    }
 
@@ -2647,7 +2647,7 @@ TEST_F(WalletInterfaceTest, EncryptionTest_AmendValues)
    //open LMDB object
    LMDB dbObj;
    {
-      auto tx = LMDBEnv::Transaction(dbEnv.get(), LMDB::ReadWrite);
+      auto tx = LMDBEnv::Transaction(dbEnv.get(), LMDB::Mode::ReadWrite);
       dbObj.open(dbEnv.get(), dbName);
    }
 
@@ -2872,7 +2872,7 @@ TEST_F(WalletInterfaceTest, EncryptionTest_OpenCloseAmend)
    //open LMDB object
    LMDB dbObj;
    {
-      auto tx = LMDBEnv::Transaction(dbEnv.get(), LMDB::ReadWrite);
+      auto tx = LMDBEnv::Transaction(dbEnv.get(), LMDB::Mode::ReadWrite);
       dbObj.open(dbEnv.get(), dbName);
    }
 
@@ -3047,7 +3047,7 @@ TEST_F(WalletInterfaceTest, EncryptionTest_OpenCloseAmend)
    //open LMDB object
    LMDB dbObj2;
    {
-      auto tx = LMDBEnv::Transaction(dbEnv.get(), LMDB::ReadWrite);
+      auto tx = LMDBEnv::Transaction(dbEnv.get(), LMDB::Mode::ReadWrite);
       dbObj2.open(dbEnv.get(), dbName);
    }
 
@@ -3351,7 +3351,7 @@ TEST_F(WalletInterfaceTest, DbCount_Test)
       EXPECT_EQ(dbIface.getDbCount(), 0U);
 
       auto headerPtr = std::make_shared<IO::WalletHeader_Custom>();
-      headerPtr->walletID_ = "db1";
+      headerPtr->walletID_ = "db1"sv;
 
       dbIface.lockControlContainer(unlockLbd);
       dbIface.addHeader(headerPtr);
@@ -3421,7 +3421,7 @@ TEST_F(WalletInterfaceTest, DbCount_Test)
    {
       EXPECT_EQ(dbIface.getDbCount(), 1U);
       auto headerPtr = std::make_shared<IO::WalletHeader_Custom>();
-      headerPtr->walletID_ = "db2";
+      headerPtr->walletID_ = "db2"sv;
 
       dbIface.lockControlContainer(unlockLbd);
       dbIface.addHeader(headerPtr);
@@ -3457,7 +3457,7 @@ TEST_F(WalletInterfaceTest, DbCount_Test)
    try {
       EXPECT_EQ(dbIface.getDbCount(), 2U);
       auto headerPtr = std::make_shared<IO::WalletHeader_Custom>();
-      headerPtr->walletID_ = "db3";
+      headerPtr->walletID_ = "db3"sv;
 
       dbIface.lockControlContainer(unlockLbd);
       dbIface.addHeader(headerPtr);
@@ -3517,7 +3517,7 @@ TEST_F(WalletInterfaceTest, DbCount_Test)
    //add 3rd db
    {
       auto headerPtr = std::make_shared<IO::WalletHeader_Custom>();
-      headerPtr->walletID_ = "db3";
+      headerPtr->walletID_ = "db3"sv;
 
       dbIface.lockControlContainer(unlockLbd);
       dbIface.addHeader(headerPtr);
@@ -3573,7 +3573,7 @@ TEST_F(WalletInterfaceTest, DbCount_Test)
    try {
       EXPECT_EQ(dbIface.getDbCount(), 3U);
       auto headerPtr = std::make_shared<IO::WalletHeader_Custom>();
-      headerPtr->walletID_ = "db3";
+      headerPtr->walletID_ = "db3"sv;
 
       dbIface.lockControlContainer(unlockLbd);
       dbIface.addHeader(headerPtr);
@@ -3617,7 +3617,7 @@ TEST_F(WalletInterfaceTest, WipeEntries_Test)
       Armory::Passphrase::SetNew{1ms, 0, {}}});
    iface->setupEnv(IO::ReadOnlyFileParams{dbPath_, {}});
 
-   std::string dbName{"test"};
+   auto dbName = "test"sv;
    auto dbHeader = std::make_shared<IO::WalletHeader_Custom>();
    dbHeader->walletID_ = dbName;
    iface->lockControlContainer({});
@@ -3653,7 +3653,7 @@ TEST_F(WalletInterfaceTest, WipeEntries_Test)
    {
       //open control db
       LMDB dbCtrl;
-      auto tx = LMDBEnv::Transaction(dbEnv.get(), LMDB::ReadWrite);
+      auto tx = LMDBEnv::Transaction(dbEnv.get(), LMDB::Mode::ReadWrite);
       dbCtrl.open(dbEnv.get(), CONTROL_DB_NAME.data());
 
       //grab control header
@@ -3723,8 +3723,8 @@ TEST_F(WalletInterfaceTest, WipeEntries_Test)
    {
       LMDB headerDb;
       {
-         auto tx = LMDBEnv::Transaction(dbEnv.get(), LMDB::ReadWrite);
-         headerDb.open(dbEnv.get(), WALLETHEADER_DBNAME);
+         auto tx = LMDBEnv::Transaction(dbEnv.get(), LMDB::Mode::ReadWrite);
+         headerDb.open(dbEnv.get(), std::string{WALLETHEADER_DBNAME});
       }
       auto keyValMap = getAllEntries(dbEnv, headerDb);
 
@@ -3755,7 +3755,7 @@ TEST_F(WalletInterfaceTest, WipeEntries_Test)
 
       BinaryWriter bwKey;
       bwKey.put_uint8_t(WALLETHEADER_PREFIX);
-      bwKey.put_String(dbName);
+      bwKey.put_StringView(dbName);
 
       auto iter = decrKeyValMap.find(bwKey.getData());
       BinaryRefReader brr(iter->second);
@@ -3770,7 +3770,7 @@ TEST_F(WalletInterfaceTest, WipeEntries_Test)
    {
       LMDB headerDb;
       {
-         auto tx = LMDBEnv::Transaction(dbEnv.get(), LMDB::ReadWrite);
+         auto tx = LMDBEnv::Transaction(dbEnv.get(), LMDB::Mode::ReadWrite);
          headerDb.open(dbEnv.get(), dbName);
       }
       auto keyValMap = getAllEntries(dbEnv, headerDb);
@@ -7149,7 +7149,7 @@ TEST_F(WalletsTest, BIP32_Public_Chain)
    mainAccType->addAddressType(AddressEntryType_P2WPKH);
 
    auto assetWlt = AssetWallet_Single::createBlank(
-      "a wallet", IO::CreateWalletParams{
+      "a wallet"sv, IO::CreateWalletParams{
          homedir_,
          Armory::Passphrase::SetNew{1ms, 0, {}},
          Armory::Passphrase::SetNew{1ms, 0, controlPass_},
@@ -7547,7 +7547,7 @@ TEST_F(WalletsTest, BIP32_WatchingOnly_FromXPub)
 
    //1: create wallet
    auto wltWO = AssetWallet_Single::createBlank(
-      "walletWO1", IO::CreateWalletParams{
+      "walletWO1"sv, IO::CreateWalletParams{
          homedir_,
          Armory::Passphrase::SetNew{1ms, 0, {}},
          Armory::Passphrase::SetNew{1ms, 0, controlPass_},
@@ -8403,7 +8403,7 @@ TEST_F(WalletsTest, AssetPathResolution)
    {
       //empty WO wallet
       auto wltWO = AssetWallet_Single::createBlank(
-         "walletWO1", IO::CreateWalletParams{
+         "walletWO1"sv, IO::CreateWalletParams{
             homedir_,
             Armory::Passphrase::SetNew{1ms, 0, {}},
             Armory::Passphrase::SetNew{1ms, 0, {}},
@@ -8504,7 +8504,7 @@ TEST_F(WalletsTest, ImportPublicKeys)
    };
 
    //create a blank WO wallet
-   auto wltWO = AssetWallet_Single::createBlank("walletWO1", params);
+   auto wltWO = AssetWallet_Single::createBlank("walletWO1"sv, params);
 
    try {
       //setup the import account

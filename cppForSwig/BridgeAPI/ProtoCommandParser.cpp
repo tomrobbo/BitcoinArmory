@@ -121,7 +121,7 @@ namespace
          case BlockchainServiceRequest::REGISTER_WALLET:
          {
             auto regWallet = request.getRegisterWallet();
-            auto wltId = regWallet.getWalletId();
+            Wallets::WalletId wltId = regWallet.getWalletId();
             auto accIdCapn = regWallet.getAccountId();
             auto accId = Wallets::AddressAccountId::fromHex(accIdCapn);
             bridge->registerWallet(wltId, accId, regWallet.getIsNew());
@@ -264,8 +264,7 @@ namespace
             auto migrateReq = request.getMigrateWallet();
             const std::filesystem::path walletPath(std::string{migrateReq.getWalletPath()});
             const std::string callbackId(migrateReq.getCallbackId());
-            bridge->migrateWallet(walletPath.filename().string(),
-               callbackId, referenceId);
+            bridge->migrateWallet(walletPath, callbackId, referenceId);
             break;
          }
 
@@ -303,11 +302,11 @@ namespace
       std::shared_ptr<CppBridge> bridge, MessageId referenceId,
       WalletRequest::Reader& request)
    {
-      const std::string walletId = request.getWalletId();
-      const std::string accountIdStr = request.getAccountId();
+      const Wallets::WalletId walletId = request.getWalletId();
       Wallets::AddressAccountId accountId;
       try {
-         accountId = Wallets::AddressAccountId::fromHex(accountIdStr);
+         accountId = Wallets::AddressAccountId::fromHex(
+            request.getAccountId());
       } catch (const Wallets::IdException&) {
          //nothing to do, accountId wont be set
       }
@@ -446,7 +445,8 @@ namespace
          {
             auto args = request.getExtendAddressPool();
             bridge->extendAddressPool(walletId, accountId,
-               args.getCount(), args.getCallbackId(), referenceId);
+               args.getCount(), args.getIsNew(), args.getCallbackId(),
+               referenceId);
             break;
          }
 

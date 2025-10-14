@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2011-2015, Armory Technologies, Inc.                        //
+//  Copyright (C) 2011-2025, Armory Technologies, Inc.                        //
 //  Distributed under the GNU Affero General Public License (AGPL v3)         //
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
@@ -14,67 +14,45 @@
 #include <algorithm>
 #include <iostream>
 
-static std::string errorString(int rc)
-{
-   return mdb_strerror(rc);
-}
-
-inline void LMDB::Iterator::checkHasDb() const
-{
-   if (!db_) {
-      throw std::logic_error("Iterator is not associated with a db");
+namespace {
+   std::string errorString(int rc)
+   {
+      return mdb_strerror(rc);
    }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// exceptions
+LMDBException::LMDBException(const std::string& what)
+   : std::runtime_error(what)
+{}
 
-inline void LMDB::Iterator::checkOk() const
-{
-   if (!isValid()) {
-      throw std::logic_error("Tried to use invalid LMDB Iterator");
-   }
+NoValue::NoValue(const std::string& what)
+   : LMDBException(what)
+{}
 
-   if (!hasTx) {
-      const_cast<Iterator*>(this)->openCursor();
-      hasTx=true;
+////////////////////////////////////////////////////////////////////////////////
+// CharacterArrayRef
+CharacterArrayRef::CharacterArrayRef(const size_t _len, const char *_data)
+   : len(_len), data(_data)
+{}
 
-      if (has_) {
-         CharacterArrayRef keydata(
-            key_.mv_size,
-            (const char*)key_.mv_data);
+CharacterArrayRef::CharacterArrayRef(const size_t _len, const unsigned char *_data)
+   : len(_len), data(reinterpret_cast<const char*>(_data))
+{}
 
-         const_cast<Iterator*>(this)->seek(keydata);
-         if (!has_) {
-            throw LMDBException("Cursor could not be regenerated");
-         }
-      }
-   }
-}
+CharacterArrayRef::CharacterArrayRef(const std::string &_data)
+   : len(_data.size()), data(&_data[0])
+{}
 
-void LMDB::Iterator::openCursor()
-{
-   auto tID = std::this_thread::get_id();
-   LMDBEnv *const _env = db_->env;
-   std::unique_lock<std::mutex> lock(_env->threadTxMutex_);
+CharacterArrayRef::CharacterArrayRef(const std::vector<char> &_data)
+   : len(_data.size()), data(&_data.front())
+{}
 
-   auto txnIter = _env->txForThreads_.find(tID);
-   if (txnIter == _env->txForThreads_.end()) {
-      throw std::runtime_error("Iterator must be created within Transaction");
-   }
-   lock.unlock();
-
-   if (txnIter->second.transactionLevel_ == 0) {
-      throw std::runtime_error("Iterator must be created within Transaction");
-   }
-   txnPtr_ = &txnIter->second;
-
-   int rc = mdb_cursor_open(txnPtr_->txn_, db_->dbi, &csr_);
-   if (rc != MDB_SUCCESS) {
-      csr_=nullptr;
-      LMDBException e("Failed to open cursor (" + errorString(rc) + ")");
-      throw e;
-   }
-   txnPtr_->iterators_.push_back(this);
-}
+////////////////////////////////////////////////////////////////////////////////
+// LMDB::Iterator
+LMDB::Iterator::Iterator()
+{}
 
 LMDB::Iterator::Iterator(LMDB *db)
    : db_(db), csr_(nullptr), has_(false)
@@ -88,28 +66,10 @@ LMDB::Iterator::Iterator(const Iterator &copy)
    if (copy.txnPtr_ == nullptr)
       throw std::runtime_error("Iterator must be created within Transaction");
 
-   if (copy.txnPtr_->transactionLevel_ == 0)
+   if (copy.txnPtr_->transactionLevel == 0)
       throw std::runtime_error("Iterator must be created within Transaction");
 
    operator=(copy);
-}
-
-inline void LMDB::Iterator::reset()
-{
-   if (csr_)
-      mdb_cursor_close(csr_);
-   csr_ = nullptr;
-
-   if (txnPtr_)
-   {
-      std::vector<Iterator*>::reverse_iterator i =
-         std::find(txnPtr_->iterators_.rbegin(), txnPtr_->iterators_.rend(), this);
-      // below has a silly workaround to delete reverse_iterators
-      if (i != txnPtr_->iterators_.rend())
-         txnPtr_->iterators_.erase(std::next(i).base());
-
-      txnPtr_ = nullptr;
-   }
 }
 
 LMDB::Iterator::~Iterator()
@@ -122,84 +82,190 @@ LMDB::Iterator::Iterator(Iterator &&move)
    operator=(std::move(move));
 }
 
-LMDB::Iterator& LMDB::Iterator::operator=(Iterator &&move)
+////////////////////////////////////////////////////////////////////////////////
+inline void LMDB::Iterator::checkHasDb() const
+{
+   if (!db_) {
+      throw std::logic_error("Iterator is not associated with a db");
+   }
+}
+
+inline void LMDB::Iterator::checkOk() const
+{
+   if (!isValid()) {
+      throw std::logic_error("Tried to use invalid LMDB Iterator");
+   }
+
+   if (!hasTx) {
+      const_cast<Iterator*>(this)->openCursor();
+      hasTx=true;
+
+      if (has_) {
+         CharacterArrayRef keydata{
+            key_.mv_size,
+            (const char*)key_.mv_data
+         };
+
+         const_cast<Iterator*>(this)->seek(keydata);
+         if (!has_) {
+            throw LMDBException("Cursor could not be regenerated");
+         }
+      }
+   }
+}
+
+bool LMDB::Iterator::isValid() const
+{
+   return has_;
+}
+
+bool LMDB::Iterator::isEOF() const
+{
+   return !isValid();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+LMDB::Iterator& LMDB::Iterator::operator=(Iterator&& move)
 {
    reset();
-   
-   txnPtr_ = move.txnPtr_;
-   std::swap(csr_, move.csr_);
-   std::swap(has_, move.has_);
-   std::swap(key_, move.key_);
-   std::swap(val_, move.val_);
-   std::swap(hasTx, move.hasTx);
-   std::swap(db_, move.db_);
-   
-   move.reset();
-   
-   txnPtr_->iterators_.push_back(this);
 
+   txnPtr_ = move.txnPtr_;
+   std::swap(csr_ , move.csr_);
+   std::swap(has_ , move.has_);
+   std::swap(key_ , move.key_);
+   std::swap(val_ , move.val_);
+   std::swap(hasTx, move.hasTx);
+   std::swap(db_  , move.db_);
+
+   move.reset();
+   txnPtr_->iterators.emplace_back(this);
    return *this;
 }
 
-LMDB::Iterator& LMDB::Iterator::operator=(const Iterator &copy)
+LMDB::Iterator& LMDB::Iterator::operator=(const Iterator& copy)
 {
-   if (&copy == this)
+   if (&copy == this) {
       return *this;
+   }
    reset();
-   
+
    db_ = copy.db_;
    has_ = copy.has_;
    txnPtr_ = copy.txnPtr_;
 
-   txnPtr_->iterators_.push_back(this);
-   
+   txnPtr_->iterators.emplace_back(this);
    openCursor();
-   
-   if (copy.has_)
-   {
-      CharacterArrayRef keydata(
-         copy.key_.mv_size, 
-         (const char*)copy.key_.mv_data);
+
+   if (copy.has_) {
+      CharacterArrayRef keydata{
+         copy.key_.mv_size,
+         (const char*)copy.key_.mv_data};
 
       seek(keydata);
-      if (!has_)
+      if (!has_) {
          throw LMDBException("Cursor could not be copied");
+      }
    }
    return *this;
 }
 
-bool LMDB::Iterator::operator==(const Iterator &other) const
+bool LMDB::Iterator::operator==(const Iterator& other) const
 {
-   if (this == &other)
+   if (this == &other) {
       return true;
-
-   {
-      bool a = isEOF();
-      bool b = other.isEOF();
-      if (a && b) return true;
-      if (a || b) return false;
    }
-   
+
+   bool a = isEOF();
+   bool b = other.isEOF();
+   if (a && b) {
+      return true;
+   } else if (a || b) {
+      return false;
+   }
+
    //make sure this is a proper check
    return key().mv_data == other.key().mv_data &&
       key().mv_size == key().mv_size;
 }
 
+bool LMDB::Iterator::operator!=(const Iterator& other) const
+{
+   return !operator==(other);
+}
+
+LMDB::Iterator& LMDB::Iterator::operator++()
+{
+   advance();
+   return *this;
+}
+
+LMDB::Iterator& LMDB::Iterator::operator--()
+{
+   retreat();
+   return *this;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void LMDB::Iterator::openCursor()
+{
+   auto tID = std::this_thread::get_id();
+   LMDBEnv *const _env = db_->env_;
+   std::unique_lock<std::mutex> lock(_env->threadTxMutex_);
+
+   auto txnIter = _env->txForThreads_.find(tID);
+   if (txnIter == _env->txForThreads_.end()) {
+      throw std::runtime_error("Iterator must be created within Transaction");
+   }
+   lock.unlock();
+
+   if (txnIter->second.transactionLevel == 0) {
+      throw std::runtime_error("Iterator must be created within Transaction");
+   }
+   txnPtr_ = &txnIter->second;
+
+   int rc = mdb_cursor_open(txnPtr_->txn, db_->dbi_, &csr_);
+   if (rc != MDB_SUCCESS) {
+      csr_=nullptr;
+      LMDBException e("Failed to open cursor (" + errorString(rc) + ")");
+      throw e;
+   }
+   txnPtr_->iterators.emplace_back(this);
+}
+
+inline void LMDB::Iterator::reset()
+{
+   if (csr_) {
+      mdb_cursor_close(csr_);
+   }
+   csr_ = nullptr;
+
+   if (txnPtr_) {
+      auto iter = std::find(
+         txnPtr_->iterators.rbegin(),
+         txnPtr_->iterators.rend(),
+         this);
+
+      // below has a silly workaround to delete reverse_iterators
+      if (iter != txnPtr_->iterators.rend()) {
+         txnPtr_->iterators.erase(std::next(iter).base());
+      }
+      txnPtr_ = nullptr;
+   }
+}
+
 void LMDB::Iterator::advance()
 {
    checkOk();
-   
+
    MDB_val mkey;
    MDB_val mval;
-   
-   int rc = mdb_cursor_get(csr_, &mkey, &mval, MDB_NEXT);
 
-   if (rc == MDB_NOTFOUND)
+   int rc = mdb_cursor_get(csr_, &mkey, &mval, MDB_NEXT);
+   if (rc == MDB_NOTFOUND) {
       has_ = false;
-   else if (rc != MDB_SUCCESS)
+   } else if (rc != MDB_SUCCESS) {
       throw LMDBException("Failed to seek (" + errorString(rc) +")");
-   else
-   {
+   } else {
       has_ = true;
       key_ = mkey;
       val_ = mval;
@@ -209,18 +275,16 @@ void LMDB::Iterator::advance()
 void LMDB::Iterator::retreat()
 {
    checkOk();
-   
+
    MDB_val mkey;
    MDB_val mval;
-   
-   int rc = mdb_cursor_get(csr_, &mkey, &mval, MDB_PREV);
 
-   if (rc == MDB_NOTFOUND)
+   int rc = mdb_cursor_get(csr_, &mkey, &mval, MDB_PREV);
+   if (rc == MDB_NOTFOUND) {
       has_ = false;
-   else if (rc != MDB_SUCCESS)
+   } else if (rc != MDB_SUCCESS) {
       throw LMDBException("Failed to seek (" + errorString(rc) +")");
-   else
-   {
+   } else {
       has_ = true;
       key_ = mkey;
       val_ = mval;
@@ -230,18 +294,16 @@ void LMDB::Iterator::retreat()
 void LMDB::Iterator::toFirst()
 {
    checkHasDb();
-   
+
    MDB_val mkey;
    MDB_val mval;
-   
-   int rc = mdb_cursor_get(csr_, &mkey, &mval, MDB_FIRST);
 
-   if (rc == MDB_NOTFOUND)
+   int rc = mdb_cursor_get(csr_, &mkey, &mval, MDB_FIRST);
+   if (rc == MDB_NOTFOUND) {
       has_ = false;
-   else if (rc != MDB_SUCCESS)
+   } else if (rc != MDB_SUCCESS) {
       throw LMDBException("Failed to seek (" + errorString(rc) +")");
-   else
-   {
+   } else {
       has_ = true;
       key_ = mkey;
       val_ = mval;
@@ -256,13 +318,11 @@ void LMDB::Iterator::toLast()
    MDB_val mval;
 
    int rc = mdb_cursor_get(csr_, &mkey, &mval, MDB_LAST);
-
-   if (rc == MDB_NOTFOUND)
+   if (rc == MDB_NOTFOUND) {
       has_ = false;
-   else if (rc != MDB_SUCCESS)
+   } else if (rc != MDB_SUCCESS) {
       throw LMDBException("Failed to seek (" + errorString(rc) + ")");
-   else
-   {
+   } else {
       has_ = true;
       key_ = mkey;
       val_ = mval;
@@ -272,63 +332,80 @@ void LMDB::Iterator::toLast()
 void LMDB::Iterator::seek(const CharacterArrayRef &key, SeekBy e)
 {
    checkHasDb();
-   
+
    MDB_val mkey = { key.len, const_cast<char*>(key.data) };
-   MDB_val mval = {0, 0};
+   MDB_val mval = { 0, 0 };
 
    MDB_cursor_op op=MDB_SET;
-   if (e == Seek_GE)
+   if (e == SeekBy::GE) {
       op = MDB_SET_RANGE;
-   else if (e == Seek_LE)
+   } else if (e == SeekBy::LE) {
       op = MDB_SET_RANGE;
+   }
 
    int rc = mdb_cursor_get(csr_, &mkey, &mval, op);
-   if (e == Seek_LE)
-   {
-      if (rc == MDB_NOTFOUND)
+   if (e == SeekBy::LE) {
+      if (rc == MDB_NOTFOUND) {
          rc = mdb_cursor_get(csr_, &mkey, &mval, MDB_LAST);
+      }
       // now make sure mkey is less than key
-      if (rc == MDB_NOTFOUND)
-      {
+      if (rc == MDB_NOTFOUND) {
          has_ = false;
          return;
-      }
-      else if (rc != MDB_SUCCESS)
+      } else if (rc != MDB_SUCCESS) {
          throw LMDBException("Failed to seek (" + errorString(rc) +")");
-      
-      if (mkey.mv_size > key.len)
-      {
+      }
+
+      if (mkey.mv_size > key.len) {
          // mkey can't possibly be before key if it's longer than key
          has_ = false;
          return;
       }
+
       const int cmp = std::memcmp(mkey.mv_data, key.data, key.len);
-      if (cmp <= 0)
-      {
+      if (cmp <= 0) {
          // key is longer and the earlier bytes are the same,
          // therefor, mkey is before key
          has_ = true;
          key_ = mkey;
          val_ = mval;
          return;
-      }
-      else
-      {
+      } else {
          has_ = false;
          return;
       }
    }
    
-   if (rc == MDB_NOTFOUND)
+   if (rc == MDB_NOTFOUND) {
       has_ = false;
-   else if (rc != MDB_SUCCESS)
+   } else if (rc != MDB_SUCCESS) {
       throw LMDBException("Failed to seek (" + errorString(rc) +")");
-   else
-   {
+   } else {
       has_ = true;
       key_ = mkey;
       val_ = mval;
    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+const MDB_val& LMDB::Iterator::key() const
+{
+   return key_;
+}
+
+const MDB_val& LMDB::Iterator::value() const
+{
+   return val_;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// LMDBEnv
+LMDBEnv::LMDBEnv(void)
+{}
+
+LMDBEnv::LMDBEnv(unsigned dbCount)
+{
+   dbCount_ = dbCount;
 }
 
 LMDBEnv::~LMDBEnv()
@@ -401,6 +478,15 @@ void LMDBEnv::compactCopy(const std::filesystem::path& fname)
    }
 }
 
+const std::filesystem::path& LMDBEnv::getFilename() const
+{
+   return path_;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// LMDBEnv::Transaction
+LMDBEnv::Transaction::Transaction()
+{}
 
 LMDBEnv::Transaction::Transaction(LMDBEnv *_env, LMDB::Mode mode)
    : env(_env), mode_(mode)
@@ -425,6 +511,12 @@ LMDBEnv::Transaction::Transaction(Transaction&& mv)
    mv.began = false;
 }
 
+LMDBEnv::Transaction::~Transaction()
+{
+   commit();
+}
+
+////////////////////////////////////////////////////////////////////////////////
 LMDBEnv::Transaction& LMDBEnv::Transaction::operator=(Transaction&& mv)
 {
    if (this == &mv) {
@@ -444,50 +536,44 @@ LMDBEnv::Transaction& LMDBEnv::Transaction::operator=(Transaction&& mv)
    return *this;
 }
 
-LMDBEnv::Transaction::~Transaction()
-{
-   commit();
-}
-
+////////////////////////////////////////////////////////////////////////////////
 void LMDBEnv::Transaction::begin()
 {
    if (began) {
       return;
    }
-   
    began = true;
 
    auto tID = std::this_thread::get_id();
-   
    std::unique_lock<std::mutex> lock(env->threadTxMutex_);
    LMDBThreadTxInfo& thTx = env->txForThreads_[tID];
    lock.unlock();
 
-   if (thTx.transactionLevel_ != 0 && mode_ == LMDB::ReadWrite &&
-      thTx.mode_ == LMDB::ReadOnly) {
+   if (thTx.transactionLevel != 0 && mode_ == LMDB::Mode::ReadWrite &&
+      thTx.mode == LMDB::Mode::ReadOnly) {
       throw LMDBException("Cannot access ReadOnly Transaction in ReadWrite mode");
    }
 
-   if (thTx.transactionLevel_++ != 0) {
+   if (thTx.transactionLevel++ != 0) {
       return;
    }
    if (!env->dbenv) {
       throw LMDBException("Cannot start transaction without db env");
    }
    int modef = MDB_RDONLY;
-   thTx.mode_ = LMDB::ReadOnly;
+   thTx.mode = LMDB::Mode::ReadOnly;
 
-   if (mode_ == LMDB::ReadWrite) {
+   if (mode_ == LMDB::Mode::ReadWrite) {
       modef = 0;
-      thTx.mode_ = LMDB::ReadWrite;
+      thTx.mode = LMDB::Mode::ReadWrite;
    }
 
-   int rc = mdb_txn_begin(env->dbenv, nullptr, modef, &thTx.txn_);
+   int rc = mdb_txn_begin(env->dbenv, nullptr, modef, &thTx.txn);
    if (rc != MDB_SUCCESS) {
       lock.lock();
       env->txForThreads_.erase(tID);
       lock.unlock();
-      
+
       began = false;
       throw LMDBException("Failed to create transaction (" + errorString(rc) +")");
    }
@@ -500,7 +586,6 @@ void LMDBEnv::Transaction::open(LMDBEnv *_env, LMDB::Mode mode)
    }
    this->env = _env;
    this->mode_ = mode;
-   
    begin();
 }
 
@@ -523,9 +608,9 @@ void LMDBEnv::Transaction::commit()
 
    LMDBThreadTxInfo& thTx = txnIter->second;
 
-   if (thTx.transactionLevel_-- == 1) {
-      int rc = mdb_txn_commit(thTx.txn_);
-      for (LMDB::Iterator *i : thTx.iterators_) {
+   if (thTx.transactionLevel-- == 1) {
+      int rc = mdb_txn_commit(thTx.txn);
+      for (LMDB::Iterator *i : thTx.iterators) {
          i->hasTx=false;
          i->csr_=nullptr;
       }
@@ -543,6 +628,16 @@ void LMDBEnv::Transaction::rollback()
    throw std::runtime_error("unimplemented");
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// LMDB
+LMDB::LMDB()
+{}
+
+LMDB::LMDB(LMDBEnv* _env, const std::string_view& name)
+{
+   open(_env, name);
+}
+
 LMDB::~LMDB()
 {
    try {
@@ -552,34 +647,32 @@ LMDB::~LMDB()
    }
 }
 
-
+////////////////////////////////////////////////////////////////////////////////
 void LMDB::close()
 {
-   if (dbi != 0) {
-      {
-         std::unique_lock<std::mutex> lock(env->threadTxMutex_);
-         if (!env->txForThreads_.empty()) {
-            throw std::runtime_error("Tried to close database with open txes");
-         }
+   if (dbi_ != 0) {
+      std::unique_lock<std::mutex> lock(env_->threadTxMutex_);
+      if (!env_->txForThreads_.empty()) {
+         throw std::runtime_error("Tried to close database with open txes");
       }
-      mdb_dbi_close(env->dbenv, dbi);
-      dbi=0;
-      env=nullptr;
+      mdb_dbi_close(env_->dbenv, dbi_);
+      dbi_=0;
+      env_=nullptr;
    }
 }
 
 bool LMDB::isOpen() const
 {
-   return this->env != nullptr;
+   return this->env_ != nullptr;
 }
 
-void LMDB::open(LMDBEnv *_env, const std::string &name)
+void LMDB::open(LMDBEnv *_env, const std::string_view &name)
 {
    if (isOpen()) {
       throw LMDBException("LMDB already open");
    }
-   this->env = _env;
-   
+   this->env_ = _env;
+
    LMDBEnv::Transaction tx(_env);
    auto tID = std::this_thread::get_id();
    std::unique_lock<std::mutex> lock(_env->threadTxMutex_);
@@ -590,34 +683,35 @@ void LMDB::open(LMDBEnv *_env, const std::string &name)
    }
    lock.unlock();
 
-   int rc = mdb_open(txnIter->second.txn_, name.c_str(), MDB_CREATE, &dbi);
+   int rc = mdb_open(txnIter->second.txn, name.data(), MDB_CREATE, &dbi_);
    if (rc != MDB_SUCCESS) {
       // cleanup here
       throw LMDBException("Failed to open dbi (" + errorString(rc) +")");
    }
 }
 
+////////////////////////////////////////////////////////////////////////////////
 void LMDB::insert(
    const CharacterArrayRef& key,
    const CharacterArrayRef& value
 )
 {
-   MDB_val mkey = { key.len, const_cast<char*>(key.data) };
-   MDB_val mval = { value.len, const_cast<char*>(value.data) };
+   MDB_val mkey{ key.len, const_cast<char*>(key.data) };
+   MDB_val mval{ value.len, const_cast<char*>(value.data) };
 
    auto tID = std::this_thread::get_id();
+   std::unique_lock<std::mutex> lock(env_->threadTxMutex_);
+   auto txnIter = env_->txForThreads_.find(tID);
 
-   std::unique_lock<std::mutex> lock(env->threadTxMutex_);
-
-   auto txnIter = env->txForThreads_.find(tID);
-
-   if (txnIter == env->txForThreads_.end())
+   if (txnIter == env_->txForThreads_.end()) {
       throw LMDBException("Failed to insert: need transaction");
+   }
    lock.unlock();
 
-   int rc = mdb_put(txnIter->second.txn_, dbi, &mkey, &mval, 0);
-   if (rc == MDB_SUCCESS)
+   int rc = mdb_put(txnIter->second.txn, dbi_, &mkey, &mval, 0);
+   if (rc == MDB_SUCCESS) {
       return;
+   }
 
    std::cout << "failed to insert data, returned following error string: " <<
       errorString(rc) << std::endl;
@@ -627,17 +721,17 @@ void LMDB::insert(
 void LMDB::erase(const CharacterArrayRef& key)
 {
    auto tID = std::this_thread::get_id();
-   std::unique_lock<std::mutex> lock(env->threadTxMutex_);
-   auto txnIter = env->txForThreads_.find(tID);
+   std::unique_lock<std::mutex> lock(env_->threadTxMutex_);
+   auto txnIter = env_->txForThreads_.find(tID);
 
-   if (txnIter == env->txForThreads_.end())
+   if (txnIter == env_->txForThreads_.end()) {
       throw LMDBException("Failed to insert: need transaction");
+   }
    lock.unlock();
-      
+
    MDB_val mkey = { key.len, const_cast<char*>(key.data) };
-   int rc = mdb_del(txnIter->second.txn_, dbi, &mkey, 0);
-   if (rc != MDB_SUCCESS && rc != MDB_NOTFOUND)
-   {
+   int rc = mdb_del(txnIter->second.txn, dbi_, &mkey, 0);
+   if (rc != MDB_SUCCESS && rc != MDB_NOTFOUND) {
       std::cout << "failed to erase data, returned following error string: " << errorString(rc) << std::endl;
       throw LMDBException("Failed to erase (" + errorString(rc) + ")");
    }
@@ -646,41 +740,38 @@ void LMDB::erase(const CharacterArrayRef& key)
 void LMDB::wipe(const CharacterArrayRef& key)
 {
    auto tID = std::this_thread::get_id();
-   std::unique_lock<std::mutex> lock(env->threadTxMutex_);
-   auto txnIter = env->txForThreads_.find(tID);
+   std::unique_lock<std::mutex> lock(env_->threadTxMutex_);
+   auto txnIter = env_->txForThreads_.find(tID);
 
-   if (txnIter == env->txForThreads_.end())
+   if (txnIter == env_->txForThreads_.end()) {
       throw LMDBException("Failed to insert: need transaction");
+   }
    lock.unlock();
 
-   try
-   {
+   try {
       MDB_val mdb_data_obj;
       mdb_data_obj = value(key);
-      if (mdb_data_obj.mv_data != nullptr)
-         memset(mdb_data_obj.mv_data, 0, mdb_data_obj.mv_size); 
-   }
-   catch (NoValue&)
-   {
+      if (mdb_data_obj.mv_data != nullptr) {
+         memset(mdb_data_obj.mv_data, 0, mdb_data_obj.mv_size);
+      }
+   } catch (const NoValue&) {
       return;
-   }   
+   }
 
-   MDB_val mkey = { key.len, const_cast<char*>(key.data) };
-   int rc = mdb_del(txnIter->second.txn_, dbi, &mkey, 0); // , MDB_WIPE_DATA);
-   if (rc != MDB_SUCCESS && rc != MDB_NOTFOUND)
-   {
+   MDB_val mkey{ key.len, const_cast<char*>(key.data) };
+   int rc = mdb_del(txnIter->second.txn, dbi_, &mkey, 0); // , MDB_WIPE_DATA);
+   if (rc != MDB_SUCCESS && rc != MDB_NOTFOUND) {
       std::cout << "failed to erase data, returned following error string: " << errorString(rc) << std::endl;
       throw LMDBException("Failed to erase (" + errorString(rc) + ")");
    }
-
 }
 
 MDB_val LMDB::value(const CharacterArrayRef& key) const
 {
    Iterator c = find(key);
-   if (!c.isValid())
+   if (!c.isValid()) {
       throw NoValue("No such value with specified key");
-   
+   }
    return c.value();
 }
 
@@ -689,25 +780,25 @@ CharacterArrayRef LMDB::get_NoCopy(const CharacterArrayRef& key) const
    //simple get without the use of iterators
 
    auto tID = std::this_thread::get_id();
-   std::unique_lock<std::mutex> lock(env->threadTxMutex_);
-   
-   auto txnIter = env->txForThreads_.find(tID);
-   if (txnIter == env->txForThreads_.end())
+   std::unique_lock<std::mutex> lock(env_->threadTxMutex_);
+
+   auto txnIter = env_->txForThreads_.find(tID);
+   if (txnIter == env_->txForThreads_.end()) {
       throw std::runtime_error("Need transaction to get data");
-   
+   }
    /*
-   TODO: this is slow, set get routines within the tx directly to avoid 
+   TODO: this is slow, set get routines within the tx directly to avoid
    locking the txmap
    */
-   lock.unlock(); 
+   lock.unlock();
 
-   MDB_val mkey = { key.len, const_cast<char*>(key.data) };
-   MDB_val mdata = { 0, 0 };
+   MDB_val mkey{ key.len, const_cast<char*>(key.data) };
+   MDB_val mdata{ 0, 0 };
 
-   int rc = mdb_get(txnIter->second.txn_, dbi, &mkey, &mdata);
-   if (rc == MDB_NOTFOUND)
+   int rc = mdb_get(txnIter->second.txn, dbi_, &mkey, &mdata);
+   if (rc == MDB_NOTFOUND) {
       return CharacterArrayRef(0, (char*)nullptr);
-   
+   }
    CharacterArrayRef ref(
       mdata.mv_size,
       static_cast<uint8_t*>(mdata.mv_data)
@@ -715,19 +806,37 @@ CharacterArrayRef LMDB::get_NoCopy(const CharacterArrayRef& key) const
    return ref;
 }
 
-void LMDB::drop(void)
+void LMDB::drop()
 {
    auto tID = std::this_thread::get_id();
-   std::unique_lock<std::mutex> lock(env->threadTxMutex_);
+   std::unique_lock<std::mutex> lock(env_->threadTxMutex_);
 
-   auto txnIter = env->txForThreads_.find(tID);
-   if (txnIter == env->txForThreads_.end())
+   auto txnIter = env_->txForThreads_.find(tID);
+   if (txnIter == env_->txForThreads_.end()) {
       throw std::runtime_error("Need transaction to get data");
-
+   }
    lock.unlock();
 
-   if (mdb_drop(txnIter->second.txn_, dbi, 0) != MDB_SUCCESS)
+   if (mdb_drop(txnIter->second.txn, dbi_, 0) != MDB_SUCCESS) {
       throw std::runtime_error("Failed to drop DB!");
+   }
 }
 
-// kate: indent-width 3; replace-tabs on;
+////////////////////////////////////////////////////////////////////////////////
+LMDB::Iterator LMDB::begin() const
+{
+   Iterator c(const_cast<LMDB*>(this));
+   c.toFirst();
+   return c;
+}
+
+LMDB::Iterator LMDB::end() const
+{
+   Iterator c(const_cast<LMDB*>(this));
+   return c;
+}
+
+LMDB::Iterator LMDB::cursor() const
+{
+   return end();
+}

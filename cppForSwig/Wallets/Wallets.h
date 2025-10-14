@@ -67,8 +67,8 @@ namespace Armory
       {
       public:
          const std::string dbName_;
-         const std::string masterID_;
-         const std::string walletID_;
+         const WalletId masterID_;
+         const WalletId walletID_;
          const AddressAccountId mainAccountID_;
 
          std::shared_ptr<Assets::AssetEntry_Single> pubRoot_{};
@@ -81,8 +81,8 @@ namespace Armory
          std::string description;
 
       public:
-         WalletPublicData(const std::string&, const std::string&,
-            const std::string&, const AddressAccountId&);
+         WalletPublicData(const std::string&, const WalletId&,
+            const WalletId&, const AddressAccountId&);
       };
 
       //////////////////////////////////////////////////////////////////////////
@@ -95,8 +95,8 @@ namespace Armory
          virtual void initAfterLock(void) override {}
          virtual void cleanUpBeforeUnlock(void) override {}
 
-         static std::string getMasterID(std::shared_ptr<IO::WalletDBInterface>);
-         void checkMasterID(const std::string& masterID);
+         static WalletId getMasterID(std::shared_ptr<IO::WalletDBInterface>);
+         void checkMasterID(const WalletId& masterID);
 
       protected:
          std::shared_ptr<IO::WalletDBInterface> iface_;
@@ -111,8 +111,8 @@ namespace Armory
          AddressAccountId mainAccountId_;
 
          ////
-         std::string walletID_;
-         std::string masterID_;
+         WalletId walletID_;
+         WalletId masterID_;
 
          ////
          std::string label_;
@@ -121,7 +121,7 @@ namespace Armory
       protected:
          //tors
          AssetWallet(std::shared_ptr<IO::WalletDBInterface>,
-            std::shared_ptr<IO::WalletHeader>, const std::string&);
+            std::shared_ptr<IO::WalletHeader>, const WalletId&);
 
          static std::shared_ptr<IO::WalletDBInterface> createIface(
             const IO::CreateFileParams&, const Progress::Func& prog=nullptr);
@@ -158,8 +158,8 @@ namespace Armory
          void updateAddressEntryType(const AssetId&,
             AddressEntryType);
 
-         const std::string& getID(void) const;
-         const std::string& getMasterID(void) const;
+         const WalletId& getID(void) const;
+         const WalletId& getMasterID(void) const;
          virtual ReentrantLock lockDecryptedContainer(void);
          std::shared_ptr<Encryption::KeyDerivationFunction>
             getPrimaryKdf(void) const;
@@ -177,16 +177,16 @@ namespace Armory
          void extendPrivateChainToIndex(int32_t);
          void extendPrivateChainToIndex(const AddressAccountId&, int32_t);
 
-         bool hasScrAddr(const BinaryData& scrAddr) const;
-         bool hasAddrStr(const std::string& scrAddr) const;
+         bool hasScrAddr(const BinaryData&) const;
+         bool hasAddrStr(const std::string&) const;
          bool isAssetUsed(const AssetId&) const;
 
          std::shared_ptr<Assets::AssetEntry> getAssetForID(
             const AssetId&) const;
          const std::pair<AssetId, AddressEntryType>&
-            getAssetIDForAddrStr(const std::string& scrAddr) const;
+            getAssetIDForAddrStr(const std::string&) const;
          const std::pair<AssetId, AddressEntryType>&
-            getAssetIDForScrAddr(const BinaryData& scrAddr) const;
+            getAssetIDForScrAddr(const BinaryData&) const;
 
          AddressEntryType getAddrTypeForID(const AssetId&) const;
          std::shared_ptr<AddressEntry> getAddressEntryForID(
@@ -209,7 +209,7 @@ namespace Armory
             std::shared_ptr<Accounts::AccountType>,
             const Progress::Func& prog);
 
-         void addSubDB(const std::string& dbName,
+         void addSubDB(const std::string&,
             const Passphrase::UnlockFunc&);
          std::shared_ptr<IO::WalletIfaceTransaction> beginSubDBTransaction(
             const std::string&, bool);
@@ -272,7 +272,7 @@ namespace Armory
          //static
          static std::shared_ptr<AssetWallet_Single> initWalletDb(
             std::shared_ptr<IO::WalletDBInterface> iface,
-            const std::string& masterID, const std::string& walletID,
+            const WalletId& masterID, const WalletId& walletID,
             const SecureBinaryData& privateRoot,
             const SecureBinaryData& chaincode,
             const IO::CreateWalletParams&,
@@ -280,7 +280,7 @@ namespace Armory
 
          static std::shared_ptr<AssetWallet_Single> initWalletDbWithPubRoot(
             std::shared_ptr<IO::WalletDBInterface>,
-            const std::string& masterID, const std::string& walletID,
+            const WalletId& masterID, const WalletId& walletID,
             std::shared_ptr<Assets::AssetEntry_Single> pubRoot,
             const IO::CreateWalletParams&);
 
@@ -305,7 +305,7 @@ namespace Armory
       public:
          //tors
          AssetWallet_Single(std::shared_ptr<IO::WalletDBInterface>,
-            std::shared_ptr<IO::WalletHeader>, const std::string&);
+            std::shared_ptr<IO::WalletHeader>, const WalletId&);
 
          //locals
          void addPrivateKeyPassphrase(Passphrase::SetNew&);
@@ -362,7 +362,7 @@ namespace Armory
             const IO::CreateWalletParams&);
 
          static std::shared_ptr<AssetWallet_Single> createBlank(
-            const std::string& walletID, const IO::CreateWalletParams&);
+            const WalletId&, const IO::CreateWalletParams&);
 
          static WalletPublicData exportPublicData(
             std::shared_ptr<AssetWallet_Single>);
@@ -387,7 +387,7 @@ namespace Armory
       public:
          //tors
          AssetWallet_Multisig(std::shared_ptr<IO::WalletDBInterface>,
-            std::shared_ptr<IO::WalletHeader>, const std::string&);
+            std::shared_ptr<IO::WalletHeader>, const WalletId&);
 
          //virtual
          std::shared_ptr<Assets::AssetEntry> getRoot(void) const override

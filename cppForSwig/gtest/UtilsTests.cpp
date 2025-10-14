@@ -5608,7 +5608,7 @@ protected:
    bool standardOpenDBs(void)
    {
       iface_->openDatabases(Pathing::dbDir());
-      auto&& tx = iface_->beginTransaction(HISTORY, LMDB::ReadWrite);
+      auto&& tx = iface_->beginTransaction(HISTORY, LMDB::Mode::ReadWrite);
 
       BinaryData DBINFO = StoredDBInfo().getDBKey();
       BinaryData flags = READHEX("95021000");
@@ -5722,8 +5722,8 @@ TEST_F(LMDBTest, PutGetDelete)
    iface_->openDatabases(Pathing::dbDir());
    ASSERT_TRUE(iface_->databasesAreOpen());
    
-   auto&& txh = iface_->beginTransaction(HEADERS, LMDB::ReadWrite);
-   auto&& txH = iface_->beginTransaction(HISTORY, LMDB::ReadWrite);
+   auto&& txh = iface_->beginTransaction(HEADERS, LMDB::Mode::ReadWrite);
+   auto&& txH = iface_->beginTransaction(HISTORY, LMDB::Mode::ReadWrite);
 
    DB_PREFIX TXDATA = DB_PREFIX_TXDATA;
    BinaryData DBINFO = StoredDBInfo().getDBKey();
@@ -5775,8 +5775,8 @@ TEST_F(LMDBTest, DISABLED_STxOutPutGet)
    BinaryData stxoKey = TXP + READHEX("01e078""0f""0007""0001");
    
    ASSERT_TRUE(standardOpenDBs());
-   auto&& txh = iface_->beginTransaction(HEADERS, LMDB::ReadWrite);
-   auto&& txH = iface_->beginTransaction(STXO, LMDB::ReadWrite);
+   auto&& txh = iface_->beginTransaction(HEADERS, LMDB::Mode::ReadWrite);
+   auto&& txH = iface_->beginTransaction(STXO, LMDB::Mode::ReadWrite);
 
    StoredTxOut stxo0;
    stxo0.txVersion_   = 1;
@@ -5841,8 +5841,8 @@ TEST_F(LMDBTest, PutGetBareHeader)
    BinaryData header0 = sbh.thisHash_;
 
    ASSERT_TRUE(standardOpenDBs());
-   auto&& txh = iface_->beginTransaction(HEADERS, LMDB::ReadWrite);
-   auto&& txH = iface_->beginTransaction(HISTORY, LMDB::ReadWrite);
+   auto&& txh = iface_->beginTransaction(HEADERS, LMDB::Mode::ReadWrite);
+   auto&& txH = iface_->beginTransaction(HISTORY, LMDB::Mode::ReadWrite);
 
    uint8_t sdup = iface_->putBareHeader(sbh);
    EXPECT_EQ(sdup, 0);
@@ -5902,7 +5902,7 @@ TEST_F(LMDBTest, PutGetBareHeader)
 TEST_F(LMDBTest, PutGetStoredTxHints)
 {
    ASSERT_TRUE(standardOpenDBs());
-   auto&& tx = iface_->beginTransaction(TXHINTS, LMDB::ReadWrite);
+   auto&& tx = iface_->beginTransaction(TXHINTS, LMDB::Mode::ReadWrite);
 
    BinaryData prefix = READHEX("aabbccdd");
 
@@ -6291,7 +6291,7 @@ TEST_F(TestTxHashFilters, FilterALot)
       }
 
       //write pools to disk
-      auto tx = iface_->beginTransaction(TXFILTERS, LMDB::ReadWrite);
+      auto tx = iface_->beginTransaction(TXFILTERS, LMDB::Mode::ReadWrite);
       for (const auto& pool : pools)
          iface_->putFilterPoolForFileNum(pool.first, pool.second);
 

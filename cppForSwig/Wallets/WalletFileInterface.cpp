@@ -181,7 +181,7 @@ void WalletDBInterface::openControlDb()
       throw WalletInterfaceException("controlDb is not null");
    }
    controlDb_ = std::make_unique<LMDB>();
-   auto tx = LMDBEnv::Transaction(dbEnv_.get(), LMDB::ReadWrite);
+   auto tx = LMDBEnv::Transaction(dbEnv_.get(), LMDB::Mode::ReadWrite);
    controlDb_->open(dbEnv_.get(), CONTROL_DB_NAME.data());
 }
 
@@ -246,7 +246,7 @@ const std::filesystem::path& WalletDBInterface::getFilename() const
 
 ////////////////////////////////////////////////////////////////////////////////
 std::unique_ptr<DBIfaceTransaction> WalletDBInterface::beginWriteTransaction(
-   const std::string& dbName)
+   const std::string_view& dbName)
 {
    auto iter = dbMap_.find(dbName);
    if (iter == dbMap_.end()) {
@@ -262,7 +262,7 @@ std::unique_ptr<DBIfaceTransaction> WalletDBInterface::beginWriteTransaction(
 
 ////////////////////////////////////////////////////////////////////////////////
 std::unique_ptr<DBIfaceTransaction> WalletDBInterface::beginReadTransaction(
-   const std::string& dbName)
+   const std::string_view& dbName)
 {
    auto iter = dbMap_.find(dbName);
    if (iter == dbMap_.end()) {
@@ -959,7 +959,7 @@ void WalletIfaceTransaction::closeTx()
       if (writeTxLock == nullptr || !commit_) {
          return;
       }
-      tx = std::make_unique<LMDBEnv::Transaction>(dbPtr_->dbEnv_, LMDB::ReadWrite);
+      tx = std::make_unique<LMDBEnv::Transaction>(dbPtr_->dbEnv_, LMDB::Mode::ReadWrite);
    }
 
    auto dataMapCopy = std::make_shared<IfaceDataMap>(*dataMapPtr_);

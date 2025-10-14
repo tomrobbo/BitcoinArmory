@@ -34,6 +34,7 @@ namespace Armory
 
    namespace Wallets
    {
+      class WalletId;
       class AddressAccountId;
       class AssetWallet;
       class EncryptionKeyId;
@@ -79,17 +80,17 @@ namespace Armory
          /* pre wallets loading calls */
          std::map<std::string, std::shared_ptr<WalletFileInfo>> listWallets(void);
          void unlockControlHeader(const std::string&, const Passphrase::UnlockFunc&);
-         const std::string& migrateWallet(const std::string&,
+         const std::string& migrateWallet(const std::filesystem::path&,
             const Passphrase::UnlockFunc&,
             const Wallets::IO::CreateWalletParams&
          );
-         bool stageWallet(const std::string&, bool);
+         bool stageWallet(const Wallets::WalletId&, bool);
          void loadWallets(void);
          std::shared_ptr<WalletFileInfo> importFile(const std::filesystem::path&);
 
          /* db setup */
          void registerWallets(void);
-         void registerWallet(const std::string&,
+         void registerWallet(const Wallets::WalletId&,
             const Wallets::AddressAccountId&, bool);
          std::shared_ptr<Callback> setupBdvCallback(
             const std::function<void(BinaryData&)>&);

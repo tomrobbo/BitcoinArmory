@@ -31,7 +31,7 @@ void ScrAddrFilter::cleanUpPreviousChildren(LMDBBlockDatabase* lmdb)
 
    //clean up SUBSSH SDBIs
    {
-      auto tx = lmdb->beginTransaction(SSH, LMDB::ReadWrite);
+      auto tx = lmdb->beginTransaction(SSH, LMDB::Mode::ReadWrite);
       auto dbIter = lmdb->getIterator(SSH);
 
       while (dbIter->advanceAndRead(DB_PREFIX_DBINFO)) {
@@ -55,7 +55,7 @@ void ScrAddrFilter::cleanUpPreviousChildren(LMDBBlockDatabase* lmdb)
    //clean up SSH SDBIs
    sdbiKeys.clear();
    {
-      auto tx = lmdb->beginTransaction(SUBSSH, LMDB::ReadWrite);
+      auto tx = lmdb->beginTransaction(SUBSSH, LMDB::Mode::ReadWrite);
       auto dbIter = lmdb->getIterator(SUBSSH);
 
       while (dbIter->advanceAndRead(DB_PREFIX_DBINFO)) {
@@ -79,7 +79,7 @@ void ScrAddrFilter::cleanUpPreviousChildren(LMDBBlockDatabase* lmdb)
    //clean up missing hashes entries in TXFILTERS
    std::set<BinaryData> missingHashKeys;
    {
-      auto tx = lmdb->beginTransaction(TXFILTERS, LMDB::ReadWrite);
+      auto tx = lmdb->beginTransaction(TXFILTERS, LMDB::Mode::ReadWrite);
       auto dbIter = lmdb->getIterator(TXFILTERS);
 
       while (dbIter->advanceAndRead(DB_PREFIX_MISSING_HASHES)) {
@@ -107,7 +107,7 @@ void ScrAddrFilter::updateAddressMerkleInDB()
    auto addrMerkle = getAddressMapMerkle();
 
    StoredDBInfo sshSdbi;
-   auto tx = lmdb_->beginTransaction(SSH, LMDB::ReadWrite);
+   auto tx = lmdb_->beginTransaction(SSH, LMDB::Mode::ReadWrite);
 
    try {
       sshSdbi = std::move(lmdb_->getStoredDBInfo(SSH, sdbiKey_));
@@ -126,7 +126,7 @@ void ScrAddrFilter::updateAddressMerkleInDB()
 StoredDBInfo ScrAddrFilter::getSubSshSDBI() const
 {
    StoredDBInfo sdbi;
-   auto tx = lmdb_->beginTransaction(SUBSSH, LMDB::ReadOnly);
+   auto tx = lmdb_->beginTransaction(SUBSSH, LMDB::Mode::ReadOnly);
    sdbi = std::move(lmdb_->getStoredDBInfo(SUBSSH, sdbiKey_));
    return sdbi;
 }
@@ -134,21 +134,21 @@ StoredDBInfo ScrAddrFilter::getSubSshSDBI() const
 ///////////////////////////////////////////////////////////////////////////////
 void ScrAddrFilter::putSubSshSDBI(const StoredDBInfo& sdbi)
 {
-   auto tx = lmdb_->beginTransaction(SUBSSH, LMDB::ReadWrite);
+   auto tx = lmdb_->beginTransaction(SUBSSH, LMDB::Mode::ReadWrite);
    lmdb_->putStoredDBInfo(SUBSSH, sdbi, sdbiKey_);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 StoredDBInfo ScrAddrFilter::getSshSDBI() const
 {
-   auto tx = lmdb_->beginTransaction(SSH, LMDB::ReadOnly);
+   auto tx = lmdb_->beginTransaction(SSH, LMDB::Mode::ReadOnly);
    return lmdb_->getStoredDBInfo(SSH, sdbiKey_);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 void ScrAddrFilter::putSshSDBI(const StoredDBInfo& sdbi)
 {
-   auto tx = lmdb_->beginTransaction(SSH, LMDB::ReadWrite);
+   auto tx = lmdb_->beginTransaction(SSH, LMDB::Mode::ReadWrite);
    lmdb_->putStoredDBInfo(SSH, sdbi, sdbiKey_);
 }
 
@@ -161,7 +161,7 @@ std::set<BinaryData> ScrAddrFilter::getMissingHashes() const
 ///////////////////////////////////////////////////////////////////////////////
 void ScrAddrFilter::putMissingHashes(const std::set<BinaryData>& hashSet)
 {
-   auto tx = lmdb_->beginTransaction(TXFILTERS, LMDB::ReadWrite);
+   auto tx = lmdb_->beginTransaction(TXFILTERS, LMDB::Mode::ReadWrite);
    lmdb_->putMissingHashes(hashSet, sdbiKey_);
 }
 
@@ -169,7 +169,7 @@ void ScrAddrFilter::putMissingHashes(const std::set<BinaryData>& hashSet)
 void ScrAddrFilter::getScrAddrCurrentSyncState()
 {
    auto scraddrmap = scanFilterAddrMap_->get();
-   auto tx = lmdb_->beginTransaction(SSH, LMDB::ReadOnly);
+   auto tx = lmdb_->beginTransaction(SSH, LMDB::Mode::ReadOnly);
 
    for (const auto& scrAddr : *scraddrmap) {
       StoredScriptHistory ssh;
@@ -182,7 +182,7 @@ void ScrAddrFilter::getScrAddrCurrentSyncState()
 void ScrAddrFilter::setSSHLastScanned(std::set<BinaryData>& addrSet,
    unsigned height)
 {
-   auto tx = lmdb_->beginTransaction(SSH, LMDB::ReadWrite);
+   auto tx = lmdb_->beginTransaction(SSH, LMDB::Mode::ReadWrite);
    for (const auto& scrAddr : addrSet) {
       StoredScriptHistory ssh;
       lmdb_->getStoredScriptHistorySummary(ssh, scrAddr);
@@ -390,7 +390,7 @@ int32_t ScrAddrFilter::scanFrom() const
 ///////////////////////////////////////////////////////////////////////////////
 void ScrAddrFilter::resetSshDB()
 {
-   auto tx = lmdb_->beginTransaction(SSH, LMDB::ReadWrite);
+   auto tx = lmdb_->beginTransaction(SSH, LMDB::Mode::ReadWrite);
    auto scraddrmap = scanFilterAddrMap_->get();
 
    for (const auto& regScrAddr : *scraddrmap) {
@@ -405,7 +405,7 @@ void ScrAddrFilter::resetSshDB()
 ///////////////////////////////////////////////////////////////////////////////
 void ScrAddrFilter::getAllScrAddrInDB()
 {
-   auto tx = lmdb_->beginTransaction(SSH, LMDB::ReadOnly);
+   auto tx = lmdb_->beginTransaction(SSH, LMDB::Mode::ReadOnly);
    auto dbIter = lmdb_->getIterator(SSH);
    std::map<BinaryData, std::shared_ptr<AddrAndHash>> scrAddrMap;
 
@@ -453,7 +453,7 @@ bool ScrAddrFilter::hasNewAddresses(void) const
    BinaryData dbMerkle;
 
    {
-      auto&& tx = lmdb_->beginTransaction(SSH, LMDB::ReadOnly);
+      auto&& tx = lmdb_->beginTransaction(SSH, LMDB::Mode::ReadOnly);
       auto&& sdbi = getSshSDBI();
       dbMerkle = sdbi.metaHash_;
    }
@@ -497,19 +497,19 @@ void ScrAddrFilter::cleanUpSdbis()
 {
    //SSH
    {
-      auto tx = lmdb_->beginTransaction(SSH, LMDB::ReadWrite);
+      auto tx = lmdb_->beginTransaction(SSH, LMDB::Mode::ReadWrite);
       lmdb_->deleteValue(SSH, StoredDBInfo::getDBKey(sdbiKey_));
    }
 
    //SUBSSH
    {
-      auto tx = lmdb_->beginTransaction(SUBSSH, LMDB::ReadWrite);
+      auto tx = lmdb_->beginTransaction(SUBSSH, LMDB::Mode::ReadWrite);
       lmdb_->deleteValue(SUBSSH, StoredDBInfo::getDBKey(sdbiKey_));
    }
 
    //TXFILTERS
    {
-      auto tx = lmdb_->beginTransaction(TXFILTERS, LMDB::ReadWrite);
+      auto tx = lmdb_->beginTransaction(TXFILTERS, LMDB::Mode::ReadWrite);
       lmdb_->deleteValue(TXFILTERS, DBUtils::getMissingHashesKey(sdbiKey_));
    }
 }

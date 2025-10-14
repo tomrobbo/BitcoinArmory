@@ -79,7 +79,7 @@ LMDBWalletInfo::LMDBWalletInfo(const std::filesystem::path& path,
 {}
 
 ////////
-const std::string& LMDBWalletInfo::walletId() const
+const Wallets::WalletId& LMDBWalletInfo::walletId() const
 {
    if (walletId_.empty()) {
       if (wltPtr_ == nullptr) {
@@ -129,7 +129,7 @@ A135FileInfo::A135FileInfo(std::shared_ptr<Armory135Header> headerPtr) :
    a135Ptr_(headerPtr)
 {}
 
-const std::string& A135FileInfo::walletId() const
+const Wallets::WalletId& A135FileInfo::walletId() const
 {
    return a135Ptr_->getID();
 }
@@ -221,7 +221,7 @@ int32_t Armory135Header::errorCode() const
    return errorCode_;
 }
 
-const std::string& Armory135Header::getID() const
+const Wallets::WalletId& Armory135Header::getID() const
 {
    return walletID_;
 }
@@ -283,7 +283,8 @@ void Armory135Header::parseFile()
 
       //wallet ID
       auto walletIDbin = brr.get_BinaryData(6);
-      walletID_ = BtcUtils::base58_encode(walletIDbin);
+      auto idStr = BtcUtils::base58_encode(walletIDbin);
+      walletID_ = Wallets::WalletId{std::string_view{idStr}};
 
       //creation timestamp
       timestamp_ = brr.get_uint64_t();
@@ -306,7 +307,7 @@ void Armory135Header::parseFile()
          /* kdf params */
          auto kdfPayload      = brr.get_BinaryDataRef(256);
          BinaryRefReader brrPayload(kdfPayload);
-         auto allKdfData = brrPayload.get_BinaryDataRef(44);
+         auto allKdfData      = brrPayload.get_BinaryDataRef(44);
          auto allKdfChecksum  = brrPayload.get_BinaryDataRef(4);
 
          //skip check if wallet is unencrypted

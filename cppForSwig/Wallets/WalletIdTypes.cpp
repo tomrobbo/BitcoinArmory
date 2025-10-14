@@ -13,6 +13,31 @@
 
 using namespace Armory::Wallets;
 
+IdException::IdException(const std::string& err) :
+   std::runtime_error(err)
+{}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// WalletId
+//
+////////////////////////////////////////////////////////////////////////////////
+WalletId::WalletId() :
+   std::string()
+{}
+
+WalletId::WalletId(const char* cstr, size_t size)
+   : std::string(cstr, size)
+{}
+
+WalletId::WalletId(const std::string_view& strv)
+   : std::string(strv)
+{}
+
+WalletId::WalletId(const BinaryDataRef& bdr) :
+   std::string(bdr.toCharPtr(), bdr.getSize())
+{}
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 // AddressAccountId
@@ -743,7 +768,7 @@ std::string KdfId::toHexStr() const
 }
 
 ///////////////////////// - wallet & master id - ///////////////////////////////
-std::string Armory::Wallets::generateWalletId(
+WalletId Armory::Wallets::generateWalletId(
    std::shared_ptr<Armory::Assets::DerivationScheme> derScheme,
    std::shared_ptr<Armory::Assets::AssetEntry> rootEntry,
    Armory::Seeds::SeedType sType)
@@ -759,11 +784,13 @@ std::string Armory::Wallets::generateWalletId(
    if (entry == nullptr) {
       throw WalletException("unexpected asset entry type");
    }
-   return BtcUtils::computeID(entry->getPubKey()->getUncompressedKey());
+
+   auto id = BtcUtils::computeID(entry->getPubKey()->getUncompressedKey());
+   return {std::string_view{id}};
 }
 
 ////
-std::string Armory::Wallets::generateWalletId(
+WalletId Armory::Wallets::generateWalletId(
    SecureBinaryData pubkey,
    SecureBinaryData chaincode,
    Armory::Seeds::SeedType sType)
@@ -781,11 +808,8 @@ std::string Armory::Wallets::generateWalletId(
       Armory::Assets::DerivationScheme_ArmoryLegacy>(chaincode);
 
    //create root pubkey asset
-   auto asset_single = std::make_shared<
-      Armory::Assets::AssetEntry_Single>(
-         Armory::Wallets::AssetId::getRootAssetId(),
-         pubkey,
-         nullptr
+   auto asset_single = std::make_shared<Armory::Assets::AssetEntry_Single>(
+      AssetId::getRootAssetId(), pubkey, nullptr
    );
 
    //derive '(int)sType' amount of addresses, use last one as id
@@ -793,7 +817,7 @@ std::string Armory::Wallets::generateWalletId(
 }
 
 ////////
-std::string Armory::Wallets::generateMasterId(const SecureBinaryData& pubkey,
+WalletId Armory::Wallets::generateMasterId(const SecureBinaryData& pubkey,
    const SecureBinaryData& chaincode)
 {
    BinaryWriter bw;
@@ -802,5 +826,7 @@ std::string Armory::Wallets::generateMasterId(const SecureBinaryData& pubkey,
    auto hmacMasterMsg = SecureBinaryData::fromString("MetaEntry");
    auto masterID_long = BtcUtils::getHMAC256(
       bw.getData(), hmacMasterMsg);
-   return BtcUtils::computeID(masterID_long);
+
+   auto id = BtcUtils::computeID(masterID_long);
+   return {std::string_view{id}};
 }

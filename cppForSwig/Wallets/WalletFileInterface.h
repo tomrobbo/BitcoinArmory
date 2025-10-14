@@ -138,7 +138,7 @@ namespace Armory
             mutable std::mutex setupMutex_;
 
             std::unique_ptr<LMDBEnv> dbEnv_ = nullptr;
-            std::map<std::string, std::unique_ptr<DBInterface>> dbMap_;
+            std::map<std::string, std::unique_ptr<DBInterface>, std::less<>> dbMap_;
 
             //encryption objects
             std::unique_ptr<LMDB> controlDb_;
@@ -212,9 +212,9 @@ namespace Armory
 
             //transactions
             std::unique_ptr<DBIfaceTransaction> beginWriteTransaction(
-               const std::string&);
+               const std::string_view&);
             std::unique_ptr<DBIfaceTransaction> beginReadTransaction(
-               const std::string&);
+               const std::string_view&);
 
             //utils
             void lockControlContainer(const Passphrase::UnlockFunc&);

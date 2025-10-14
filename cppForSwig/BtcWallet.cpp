@@ -274,7 +274,7 @@ vector<UTXO> BtcWallet::getSpendableTxOutListForValue(uint64_t val)
    LMDBBlockDatabase *db = bdvPtr_->getDB();
 
    //start a RO txn to grab the txouts from DB
-   auto&& tx = db->beginTransaction(STXO, LMDB::ReadOnly);
+   auto&& tx = db->beginTransaction(STXO, LMDB::Mode::ReadOnly);
 
    vector<UTXO> utxoList;
    uint32_t blk = bdvPtr_->getTopBlockHeight();
@@ -493,7 +493,7 @@ bool BtcWallet::scanWallet(ScanWalletStruct& scanInfo, int32_t updateID)
    if (scanInfo.action_ != BDV_ZC)
    {
       //new top block         
-      auto&& tx = bdvPtr_->getDB()->beginTransaction(SSH, LMDB::ReadOnly);
+      auto&& tx = bdvPtr_->getDB()->beginTransaction(SSH, LMDB::Mode::ReadOnly);
       balance_ = getFullBalanceFromDB(updateID);
    }
   
@@ -559,8 +559,8 @@ map<uint32_t, uint32_t> BtcWallet::computeScrAddrMapHistSummary()
 
    auto addrMap = scrAddrMap_.get();
 
-   auto&& sshtx = bdvPtr_->getDB()->beginTransaction(SSH, LMDB::ReadOnly);
-   auto&& subtx = bdvPtr_->getDB()->beginTransaction(SUBSSH, LMDB::ReadOnly);
+   auto&& sshtx = bdvPtr_->getDB()->beginTransaction(SSH, LMDB::Mode::ReadOnly);
+   auto&& subtx = bdvPtr_->getDB()->beginTransaction(SUBSSH, LMDB::Mode::ReadOnly);
 
    
    for (auto& scrAddrPair : *addrMap)
@@ -620,7 +620,7 @@ map<uint32_t, uint32_t> BtcWallet::computeScrAddrMapHistSummary()
 map<uint32_t, uint32_t> BtcWallet::computeScrAddrMapHistSummary_Super()
 {
    auto addrMap = scrAddrMap_.get();
-   auto&& sshtx = bdvPtr_->getDB()->beginTransaction(SSH, LMDB::ReadOnly);
+   auto&& sshtx = bdvPtr_->getDB()->beginTransaction(SSH, LMDB::Mode::ReadOnly);
 
    map<uint32_t, uint32_t> result;
 

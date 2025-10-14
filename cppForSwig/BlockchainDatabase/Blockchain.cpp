@@ -514,7 +514,7 @@ void Blockchain::putNewBareHeaders(LMDBBlockDatabase *db)
    std::vector<std::shared_ptr<BlockHeader>> unputHeaders;
 
    //create transaction here to batch the write
-   auto tx = db->beginTransaction(HEADERS, LMDB::ReadWrite);
+   auto tx = db->beginTransaction(HEADERS, LMDB::Mode::ReadWrite);
    for (auto& block : newlyParsedBlocks_) {
       if (block->blockHeight_ != UINT32_MAX) {
          StoredHeader sbh;
@@ -562,7 +562,7 @@ void Blockchain::putNewBareHeaders(LMDBBlockDatabase *db)
 /////////////////////////////////////////////////////////////////////////////
 uint32_t Blockchain::getTopIdFromDb(LMDBBlockDatabase *db) const
 {
-   auto&& tx = db->beginTransaction(HEADERS, LMDB::ReadOnly);
+   auto&& tx = db->beginTransaction(HEADERS, LMDB::Mode::ReadOnly);
 
    auto value = db->getValueNoCopy(HEADERS, topIdKey_);
    if (value.getSize() != 4)
@@ -582,7 +582,7 @@ void Blockchain::initTopBlockId(LMDBBlockDatabase* db)
       if (db->armoryDbType() != ARMORY_DB_SUPER)
          return 0;
 
-      auto&& tx = db->beginTransaction(STXO, LMDB::ReadOnly);
+      auto&& tx = db->beginTransaction(STXO, LMDB::Mode::ReadOnly);
       auto stxoIter = db->getIterator(STXO);
 
       if (!stxoIter->seekToLast())
@@ -628,7 +628,7 @@ void Blockchain::updateTopIdInDb(LMDBBlockDatabase *db)
 
    BinaryDataRef valRef((const uint8_t*)&currentTopId, 4);
 
-   auto&& tx = db->beginTransaction(HEADERS, LMDB::ReadWrite);
+   auto&& tx = db->beginTransaction(HEADERS, LMDB::Mode::ReadWrite);
    db->putValue(HEADERS, topIdKey_.getRef(), valRef);
 }
 

@@ -1648,7 +1648,7 @@ TEST_F(ZeroConfTests_FullNode, Load3Blocks_ZC_Plus3_TestLedgers)
 
    //pull ZC from DB, verify it's carrying the proper data
    auto&& dbtx = 
-      iface_->beginTransaction(ZERO_CONF, LMDB::ReadOnly);
+      iface_->beginTransaction(ZERO_CONF, LMDB::Mode::ReadOnly);
    StoredTx zcStx;
    BinaryData zcKey = WRITE_UINT16_BE(0xFFFF);
    zcKey.append(WRITE_UINT32_LE(0));
@@ -1718,7 +1718,7 @@ TEST_F(ZeroConfTests_FullNode, Load3Blocks_ZC_Plus3_TestLedgers)
    EXPECT_EQ(unconfirmedBalance, 90 * COIN);
 
    dbtx = move(
-      iface_->beginTransaction(ZERO_CONF, LMDB::ReadOnly));
+      iface_->beginTransaction(ZERO_CONF, LMDB::Mode::ReadOnly));
    StoredTx zcStx3;
 
    EXPECT_EQ(iface_->getStoredZcTx(zcStx3, zcKey), true);
@@ -1770,7 +1770,7 @@ TEST_F(ZeroConfTests_FullNode, Load3Blocks_ZC_Plus3_TestLedgers)
 
    //Tx is now in a block, ZC should be gone from DB
    dbtx = move(
-      iface_->beginTransaction(ZERO_CONF, LMDB::ReadWrite));
+      iface_->beginTransaction(ZERO_CONF, LMDB::Mode::ReadWrite));
    StoredTx zcStx4;
 
    EXPECT_EQ(iface_->getStoredZcTx(zcStx4, zcKey), false);

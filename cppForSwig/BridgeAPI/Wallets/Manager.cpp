@@ -174,7 +174,7 @@ void WalletManager::registerWallets()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void WalletManager::registerWallet(const std::string& wltId,
+void WalletManager::registerWallet(const Wallets::WalletId& wltId,
    const Wallets::AddressAccountId& accId, bool isNew)
 {
    auto wltIter = wallets_.find(wltId);
@@ -483,18 +483,21 @@ void WalletManager::unlockControlHeader(const std::string& path,
 }
 
 /////////
-const std::string& WalletManager::migrateWallet(const std::string& path,
+const std::string& WalletManager::migrateWallet(
+   const std::filesystem::path& path,
    const Passphrase::UnlockFunc& lbd,
    const Wallets::IO::CreateWalletParams& params)
 {
    //sanity checks
    if (path.empty() || lbd == nullptr) {
-      throw std::runtime_error("tried to unlock control header with empty id/lambda");
+      throw std::runtime_error(
+         "tried to unlock control header with empty id/lambda");
    }
 
-   auto iter = walletFiles_.find(path);
+   auto iter = walletFiles_.find(path.filename().string());
    if (iter == walletFiles_.end()) {
-      throw std::runtime_error("this file is not a known wallet: " + path);
+      throw std::runtime_error(
+         "this file is not a known wallet: " + path.string());
    }
 
    auto infoObj = std::dynamic_pointer_cast<A135FileInfo>(iter->second);
@@ -510,7 +513,7 @@ const std::string& WalletManager::migrateWallet(const std::string& path,
 }
 
 /////////
-bool WalletManager::stageWallet(const std::string& walletId, bool stage)
+bool WalletManager::stageWallet(const Wallets::WalletId& walletId, bool stage)
 {
    for (auto& knownFile : walletFiles_) {
       try {

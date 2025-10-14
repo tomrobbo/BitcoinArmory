@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2019, goatpig                                               //
+//  Copyright (C) 2019-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -32,7 +32,7 @@
 
 #define WALLETHEADER_PREFIX   0xB0
 
-#define WALLETHEADER_DBNAME "WalletHeader"
+#define WALLETHEADER_DBNAME "WalletHeader"sv
 
 #define VERSION_MAJOR      3
 #define VERSION_MINOR      0
@@ -75,7 +75,7 @@ namespace Armory
          {
             const WalletHeaderType type_;
             const BinaryData magicBytes_;
-            std::string walletID_;
+            WalletId walletID_;
 
             SecureBinaryData defaultEncryptionKey_;
             EncryptionKeyId defaultEncryptionKeyId_;
@@ -86,16 +86,13 @@ namespace Armory
             SecureBinaryData controlSalt_;
 
             //tors
-            WalletHeader(WalletHeaderType type, const BinaryData& mb) :
-               type_(type), magicBytes_(mb)
-            {}
-
+            WalletHeader(WalletHeaderType, const BinaryData&);
             virtual ~WalletHeader(void) = 0;
 
             //local
             BinaryData getDbKey(void);
-            const std::string& getWalletID(void) const { return walletID_; }
-            std::string getDbName(void) const { return walletID_; }
+            const WalletId& getWalletID(void) const;
+            std::string getDbName(void) const;
 
             //serialization
             BinaryData serializeEncryptionKey(void) const;
@@ -105,15 +102,8 @@ namespace Armory
             void unserializeControlSalt(BinaryRefReader&);
 
             //encryption keys
-            const SecureBinaryData& getDefaultEncryptionKey(void) const
-            {
-               return defaultEncryptionKey_;
-            }
-            const EncryptionKeyId&
-               getDefaultEncryptionKeyId(void) const
-            {
-               return defaultEncryptionKeyId_;
-            }
+            const SecureBinaryData& getDefaultEncryptionKey(void) const;
+            const EncryptionKeyId& getDefaultEncryptionKeyId(void) const;
 
             //virtual
             virtual BinaryData serialize(void) const = 0;
@@ -121,52 +111,47 @@ namespace Armory
 
             //static
             static std::shared_ptr<WalletHeader> deserialize(
-               BinaryDataRef key, BinaryDataRef val);
+               BinaryDataRef, BinaryDataRef);
          };
 
          ////
          struct WalletHeader_Single : public WalletHeader
          {
             //tors
-            WalletHeader_Single(const BinaryData& mb) :
-               WalletHeader(WalletHeaderType_Single, mb)
-            {}
+            WalletHeader_Single(const BinaryData&);
 
             //virtual
-            BinaryData serialize(void) const;
-            bool shouldLoad(void) const;
+            BinaryData serialize(void) const override;
+            bool shouldLoad(void) const override;
          };
 
          ////
          struct WalletHeader_Multisig : public WalletHeader
          {
             //tors
-            WalletHeader_Multisig(const BinaryData& mb) :
-               WalletHeader(WalletHeaderType_Multisig, mb)
-            {}
+            WalletHeader_Multisig(const BinaryData&);
 
             //virtual
-            BinaryData serialize(void) const;
-            bool shouldLoad(void) const;
+            BinaryData serialize(void) const override;
+            bool shouldLoad(void) const override;
          };
 
          ////
          struct WalletHeader_Subwallet : public WalletHeader
          {
             //tors
-            WalletHeader_Subwallet() :
-               WalletHeader(WalletHeaderType_Subwallet, {})
-            {}
+            WalletHeader_Subwallet(void);
 
             //virtual
-            BinaryData serialize(void) const;
-            bool shouldLoad(void) const;
+            BinaryData serialize(void) const override;
+            bool shouldLoad(void) const override;
          };
 
          ////
          struct WalletHeader_Control : public WalletHeader
          {
             friend struct WalletHeader;
+
          public:
             uint8_t versionMajor_ = 0;
             uint16_t versionMinor_ = 0;
@@ -179,31 +164,22 @@ namespace Armory
 
          public:
             //tors
-            WalletHeader_Control() :
-               WalletHeader(WalletHeaderType_Control, {})
-            {
-               versionMajor_ = VERSION_MAJOR;
-               versionMinor_ = VERSION_MINOR;
-               revision_ = VERSION_REVISION;
-               encryptionVersion_ = ENCRYPTION_TOPLAYER_VERSION;
-            }
+            WalletHeader_Control(void);
 
             //virtual
-            BinaryData serialize(void) const;
-            bool shouldLoad(void) const;
+            BinaryData serialize(void) const override;
+            bool shouldLoad(void) const override;
          };
 
          ////
          struct WalletHeader_Custom : public WalletHeader
          {
             //tors
-            WalletHeader_Custom() :
-               WalletHeader(WalletHeaderType_Custom, {})
-            {}
+            WalletHeader_Custom(void);
 
             //virtual
-            BinaryData serialize(void) const;
-            bool shouldLoad(void) const;
+            BinaryData serialize(void) const override;
+            bool shouldLoad(void) const override;
          };
 
          ///////////////////////////////////////////////////////////////////////

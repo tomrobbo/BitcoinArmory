@@ -250,7 +250,7 @@ void ShardedSshParser::putSSH()
 
       if (batch->serializedSsh_.size() > 0)
       {
-         auto tx = db_->beginTransaction(SSH, LMDB::ReadWrite);
+         auto tx = db_->beginTransaction(SSH, LMDB::Mode::ReadWrite);
          for (auto& ssh_pair : batch->serializedSsh_)
          {
             if (ssh_pair.second.getSize() > 0)
@@ -408,7 +408,7 @@ SshMapping ShardedSshParser::mapSubSshDB()
 ////////////////////////////////////////////////////////////////////////////////
 void ShardedSshParser::mapSubSshDBThread(unsigned index)
 {
-   auto tx = db_->beginTransaction(SUBSSH, LMDB::ReadOnly);
+   auto tx = db_->beginTransaction(SUBSSH, LMDB::Mode::ReadOnly);
 
    auto& sshMapping = mappingResults_[index];
 
@@ -556,7 +556,7 @@ void ShardedSshParser::parseSshThread()
    };
 
    //fetch base height
-   auto metaTx = db_->beginTransaction(SUBSSH_META, LMDB::ReadOnly);
+   auto metaTx = db_->beginTransaction(SUBSSH_META, LMDB::Mode::ReadOnly);
    auto getHeightForId = [dbPtr](unsigned id)->unsigned
    {
       BinaryWriter bw(8);
@@ -574,7 +574,7 @@ void ShardedSshParser::parseSshThread()
       return brr.get_uint32_t();
    };
 
-   auto tx = db_->beginTransaction(SUBSSH, LMDB::ReadOnly);
+   auto tx = db_->beginTransaction(SUBSSH, LMDB::Mode::ReadOnly);
    while (true)
    {
       //grab range to work on
@@ -728,7 +728,7 @@ void ShardedSshParser::parseSshThread()
       if (sshMap.size() > 0 && (firstShard_ != 0 || undo_))
       {
          //does the key exist in db already?
-         auto sshtx = db_->beginTransaction(SSH, LMDB::ReadOnly);
+         auto sshtx = db_->beginTransaction(SSH, LMDB::Mode::ReadOnly);
          auto sshIter = db_->getIterator(SSH);
 
          map<BinaryDataRef, StoredScriptHistory> substractedMap;

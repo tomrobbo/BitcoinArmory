@@ -395,7 +395,7 @@ namespace {
    WalletData extendAddressPool(
       std::shared_ptr<Armory::Bridge::CppBridge> bridge,
       const std::string& walletId, const std::string& accountId,
-      unsigned count)
+      unsigned count, bool isNew)
    {
       auto callbackId = BtcUtils::fortuna_.generateRandom(10).toHexStr();
       auto refId = rand();
@@ -412,6 +412,7 @@ namespace {
          auto extendReq = request.initExtendAddressPool();
          extendReq.setCallbackId(callbackId);
          extendReq.setCount(count);
+         extendReq.setIsNew(isNew);
 
          auto rawReq = serializeCapnp(message);
          pushRequest(bridge, rawReq);
@@ -893,7 +894,7 @@ protected:
       };
 
       //create empty WO wallet
-      auto wltWO = AssetWallet_Single::createBlank("walletWO1", params);
+      auto wltWO = AssetWallet_Single::createBlank("walletWO1"sv, params);
       wltWO->setupImportAccount();
 
       auto pubKeyB = CryptoECDSA().ComputePublicKey(TestChain::privKeyAddrB);
@@ -2804,7 +2805,10 @@ TEST_F(BridgeTests, ExtendAddressChain)
 
    {
       const auto& wltEntry = wltList.begin()->second;
-      ASSERT_EQ(wltEntry.loadState, (int)Armory::Bridge::WalletLoadState::Ready);
+      ASSERT_EQ(
+         wltEntry.loadState,
+         (int)Armory::Bridge::WalletLoadState::Ready
+      );
       ASSERT_TRUE(wltEntry.staged);
       EXPECT_EQ(wltEntry.walletId, walletId);
    }
@@ -2821,7 +2825,8 @@ TEST_F(BridgeTests, ExtendAddressChain)
 
    /* 3. extend its address chain */
    try {
-      auto wltData = extendAddressPool(bridge_, walletId, accountId, 10000);
+      auto wltData = extendAddressPool(bridge_,
+         walletId, accountId, 10000, false);
       ASSERT_EQ(wltData.walletId, walletId);
       ASSERT_EQ(wltData.accountId, accountId);
       EXPECT_EQ(wltData.useCount, -1);
@@ -2860,7 +2865,7 @@ protected:
       };
 
       //create empty WO wallet
-      auto wltWO = AssetWallet_Single::createBlank("walletWO1", params);
+      auto wltWO = AssetWallet_Single::createBlank("walletWO1"sv, params);
       wltWO->setupImportAccount();
 
       auto pubKeyB = CryptoECDSA().ComputePublicKey(TestChain::privKeyAddrB);
@@ -3184,7 +3189,7 @@ protected:
       };
 
       //create empty WO wallet
-      auto wltWO = AssetWallet_Single::createBlank("walletWO1", params);
+      auto wltWO = AssetWallet_Single::createBlank("walletWO1"sv, params);
       wltWO->setupImportAccount();
 
       auto pubKeyB = CryptoECDSA().ComputePublicKey(TestChain::privKeyAddrB);

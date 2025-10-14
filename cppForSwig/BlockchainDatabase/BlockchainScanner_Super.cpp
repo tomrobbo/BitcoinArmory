@@ -63,7 +63,7 @@ void BlockchainScanner_Super::scan()
 
    {
       //setup batch counter
-      auto meta_tx = db_->beginTransaction(SUBSSH_META, LMDB::ReadOnly);
+      auto meta_tx = db_->beginTransaction(SUBSSH_META, LMDB::Mode::ReadOnly);
 
       //look for last entry in subssh_meta db
       BinaryWriter lastKey(8);
@@ -547,8 +547,8 @@ void BlockchainScanner_Super::processInputsThread(
    ThreadSubSshResult tsr;
    auto& sshMap = tsr.subSshMap_;
 
-   auto&& stxo_tx = db_->beginTransaction(STXO, LMDB::ReadOnly);
-   auto&& hints_tx = db_->beginTransaction(TXHINTS, LMDB::ReadOnly);
+   auto&& stxo_tx = db_->beginTransaction(STXO, LMDB::Mode::ReadOnly);
+   auto&& hints_tx = db_->beginTransaction(TXHINTS, LMDB::Mode::ReadOnly);
 
    unsigned spent_offset = UINT32_MAX;
    while (1)
@@ -687,8 +687,8 @@ void BlockchainScanner_Super::writeSubSsh(ParserBatch_Ssh* batch)
 {
    batch->writeSshStart_ = chrono::system_clock::now();
    auto ctr = batch->batch_id_;
-   auto&& tx = db_->beginTransaction(SUBSSH, LMDB::ReadWrite);
-   auto&& meta_tx = db_->beginTransaction(SUBSSH_META, LMDB::ReadWrite);
+   auto&& tx = db_->beginTransaction(SUBSSH, LMDB::Mode::ReadWrite);
+   auto&& meta_tx = db_->beginTransaction(SUBSSH_META, LMDB::Mode::ReadWrite);
 
    {
       //put height offset
@@ -847,7 +847,7 @@ void BlockchainScanner_Super::scanSpentness()
    StoredDBInfo sdbi;
    {
       //get sdbi
-      auto sdbitx = db_->beginTransaction(SPENTNESS, LMDB::ReadOnly);
+      auto sdbitx = db_->beginTransaction(SPENTNESS, LMDB::Mode::ReadOnly);
       try
       {
          sdbi = move(db_->getStoredDBInfo(SPENTNESS, UINT32_MAX));
@@ -926,7 +926,7 @@ void BlockchainScanner_Super::scanSpentness()
 
    //update top batch id
    {
-      auto sdbitx = db_->beginTransaction(SPENTNESS, LMDB::ReadWrite);
+      auto sdbitx = db_->beginTransaction(SPENTNESS, LMDB::Mode::ReadWrite);
       sdbi.metaInt_ = blockchain_->top()->getBlockHeight();;
       db_->putStoredDBInfo(SPENTNESS, sdbi, UINT32_MAX);
    }
@@ -969,8 +969,8 @@ void BlockchainScanner_Super::parseSpentnessThread(ParserBatch_Spentness* batch)
    map<BinaryData, BinaryData> keysToCommit;
    map<BinaryData, BinaryData> keysToCommitLater;
 
-   auto hint_tx = db_->beginTransaction(TXHINTS, LMDB::ReadOnly);
-   auto stxo_tx = db_->beginTransaction(STXO, LMDB::ReadOnly);
+   auto hint_tx = db_->beginTransaction(TXHINTS, LMDB::Mode::ReadOnly);
+   auto stxo_tx = db_->beginTransaction(STXO, LMDB::Mode::ReadOnly);
 
    while (true)
    {
@@ -1112,7 +1112,7 @@ void BlockchainScanner_Super::writeSpentness()
       auto&& bw_cutoff = DBUtils::getBlkDataKeyNoPrefix(
          UINT32_MAX - batch->bdb_->end_, 0, 0, 0);
 
-      auto dbtx = db_->beginTransaction(SPENTNESS, LMDB::ReadWrite);
+      auto dbtx = db_->beginTransaction(SPENTNESS, LMDB::Mode::ReadWrite);
       commit(batch->keysToCommit_.begin(), batch->keysToCommit_.end());
 
       //tally leftover size, commit if it breaches threshold
@@ -1145,7 +1145,7 @@ void BlockchainScanner_Super::writeSpentness()
    //commit leftovers
    if (spentnessLeftOver.size())
    {
-      auto dbtx = db_->beginTransaction(SPENTNESS, LMDB::ReadWrite);
+      auto dbtx = db_->beginTransaction(SPENTNESS, LMDB::Mode::ReadWrite);
       commit(spentnessLeftOver.begin(), spentnessLeftOver.end());
    }
 }
@@ -1198,7 +1198,7 @@ void BlockchainScanner_Super::updateSSH(bool force)
       sshSdbi.topScannedBlkHash_ = topBlock->getThisHash();
       sshSdbi.topBlkHgt_ = topheight;
 
-      auto ssh_tx = db_->beginTransaction(SSH, LMDB::ReadWrite);
+      auto ssh_tx = db_->beginTransaction(SSH, LMDB::Mode::ReadWrite);
       db_->putStoredDBInfo(SSH, sshSdbi, 0);
    }
 
@@ -1233,7 +1233,7 @@ void BlockchainScanner_Super::undo(Blockchain::ReorganizationState& reorgState)
 
    while (blockPtr != reorgState.reorgBranchPoint_) {
       int currentHeight = blockPtr->getBlockHeight();
-      auto hintsTx = db_->beginTransaction(TXHINTS, LMDB::ReadOnly);
+      auto hintsTx = db_->beginTransaction(TXHINTS, LMDB::Mode::ReadOnly);
 
       //grab blocks from previous top until branch point
       if (blockPtr == nullptr) {
@@ -1294,7 +1294,7 @@ void BlockchainScanner_Super::undo(Blockchain::ReorganizationState& reorgState)
    int branchPointHeight = reorgState.reorgBranchPoint_->getBlockHeight();
    {
       //spentness
-      auto spentness_tx = db_->beginTransaction(SPENTNESS, LMDB::ReadWrite);
+      auto spentness_tx = db_->beginTransaction(SPENTNESS, LMDB::Mode::ReadWrite);
       for (const auto& spentness_key : undoSpentness) {
          db_->deleteValue(SPENTNESS, spentness_key);
       }
@@ -1306,7 +1306,7 @@ void BlockchainScanner_Super::undo(Blockchain::ReorganizationState& reorgState)
 
    {
       //update SSH sdbi
-      auto tx = db_->beginTransaction(SSH, LMDB::ReadWrite);
+      auto tx = db_->beginTransaction(SSH, LMDB::Mode::ReadWrite);
       auto sdbi = db_->getStoredDBInfo(SSH, 0);
       sdbi.topScannedBlkHash_ = reorgState.reorgBranchPoint_->getThisHash();
       sdbi.topBlkHgt_ = branchPointHeight;

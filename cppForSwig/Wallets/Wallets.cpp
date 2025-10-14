@@ -20,6 +20,7 @@ using namespace Armory::Wallets;
 using namespace Armory::Seeds;
 
 using namespace std::chrono_literals;
+using namespace std::string_view_literals;
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -29,7 +30,7 @@ using namespace std::chrono_literals;
 AssetWallet::AssetWallet(
    std::shared_ptr<IO::WalletDBInterface> iface,
    std::shared_ptr<IO::WalletHeader> headerPtr,
-   const std::string& masterID) :
+   const WalletId& masterID) :
    iface_(iface),
    dbName_(headerPtr->getDbName()),
    walletID_(headerPtr->walletID_)
@@ -168,20 +169,18 @@ std::string AssetWallet::getMainWalletID(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::string AssetWallet::getMasterID(std::shared_ptr<IO::WalletDBInterface> iface)
+WalletId AssetWallet::getMasterID(std::shared_ptr<IO::WalletDBInterface> iface)
 {
    BinaryWriter bwKey;
    bwKey.put_uint32_t(MASTERID_KEY);
 
    auto tx = iface->beginReadTransaction(WALLETHEADER_DBNAME);
    auto dataRef = getDataRefForKey(tx.get(), bwKey.getData());
-
-   std::string masterID{dataRef.toCharPtr(), dataRef.getSize()};
-   return masterID;
+   return {dataRef.toCharPtr(), dataRef.getSize()};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void AssetWallet::checkMasterID(const std::string& masterID)
+void AssetWallet::checkMasterID(const WalletId& masterID)
 {
    try {
       /*
@@ -204,29 +203,29 @@ void AssetWallet::checkMasterID(const std::string& masterID)
       //set masterID_ from disk value
       masterID_ = fromDisk;
       return;
-   } catch(const IO::NoEntryInWalletException&) {}
+   } catch (const IO::NoEntryInWalletException&) {
+      /*
+      This wallet has no masterID entry if we got this far, let's set it.
+      */
 
-   /*
-   This wallet has no masterID entry if we got this far, let's set it.
-   */
+      //sanity check
+      if (masterID.empty()) {
+         LOGERR << "cannot set empty master ID";
+         throw WalletException("cannot set empty master ID");
+      }
 
-   //sanity check
-   if (masterID.empty()) {
-      LOGERR << "cannot set empty master ID";
-      throw WalletException("cannot set empty master ID");
+      BinaryWriter bwKey;
+      bwKey.put_uint32_t(MASTERID_KEY);
+
+      BinaryWriter bwVal;
+      bwVal.put_var_int(masterID.size());
+      bwVal.put_String(masterID);
+
+      auto tx = iface_->beginWriteTransaction(WALLETHEADER_DBNAME);
+      tx->insert(bwKey.getData(), bwVal.getData());
+
+      masterID_ = masterID;
    }
-
-   BinaryWriter bwKey;
-   bwKey.put_uint32_t(MASTERID_KEY);
-
-   BinaryWriter bwVal;
-   bwVal.put_var_int(masterID.size());
-   bwVal.put_String(masterID);
-
-   auto tx = iface_->beginWriteTransaction(WALLETHEADER_DBNAME);
-   tx->insert(bwKey.getData(), bwVal.getData());
-
-   masterID_ = masterID;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -638,13 +637,13 @@ std::shared_ptr<AssetEntry> AssetWallet::getAssetForID(const AssetId& id) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-const std::string& AssetWallet::getID() const
+const WalletId& AssetWallet::getID() const
 {
    return walletID_;
 }
 
 ////
-const std::string& AssetWallet::getMasterID() const
+const WalletId& AssetWallet::getMasterID() const
 {
    return masterID_;
 }
@@ -744,7 +743,7 @@ void AssetWallet::addSubDB(const std::string& dbName,
       iface_->setDbCount(iface_->getDbCount() + 1);
    }
    auto headerPtr = std::make_shared<IO::WalletHeader_Custom>();
-   headerPtr->walletID_ = dbName;
+   headerPtr->walletID_ = WalletId{std::string_view{dbName}};
 
    try {
       iface_->lockControlContainer(passFunc);
@@ -789,7 +788,7 @@ std::shared_ptr<AssetWallet> AssetWallet::loadMainWalletFromFile(
       case IO::WalletHeaderType_Single:
       {
          auto wltSingle = std::make_shared<AssetWallet_Single>(
-            iface, headerPtr, std::string{});
+            iface, headerPtr, WalletId{});
          wltSingle->readFromFile();
 
          wltPtr = wltSingle;
@@ -799,7 +798,7 @@ std::shared_ptr<AssetWallet> AssetWallet::loadMainWalletFromFile(
       case IO::WalletHeaderType_Multisig:
       {
          auto wltMS = std::make_shared<AssetWallet_Multisig>(
-            iface, headerPtr, std::string{});
+            iface, headerPtr, WalletId{});
          wltMS->readFromFile();
 
          wltPtr = wltMS;
@@ -1090,7 +1089,7 @@ void AssetWallet::eraseFromDisk(AssetWallet* wltPtr)
 AssetWallet_Single::AssetWallet_Single(
    std::shared_ptr<IO::WalletDBInterface> iface,
    std::shared_ptr<IO::WalletHeader> metaPtr,
-   const std::string& masterID) :
+   const WalletId& masterID) :
    AssetWallet(iface, metaPtr, masterID)
 {
    if (metaPtr == nullptr ||
@@ -1422,7 +1421,7 @@ AssetWallet_Single::createFromPublicRoot_Armory135(
 
 ////////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<AssetWallet_Single> AssetWallet_Single::createBlank(
-   const std::string& walletID, const IO::CreateWalletParams& params)
+   const WalletId& walletID, const IO::CreateWalletParams& params)
 {
    //create wallet file and dbenv
    auto masterID = walletID;
@@ -1445,7 +1444,7 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::createBlank(
 ////////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<AssetWallet_Single> AssetWallet_Single::initWalletDb(
    std::shared_ptr<IO::WalletDBInterface> iface,
-   const std::string& masterID, const std::string& walletID,
+   const WalletId& masterID, const WalletId& walletID,
    const SecureBinaryData& privateRoot,
    const SecureBinaryData& chaincode,
    const IO::CreateWalletParams& params,
@@ -1568,7 +1567,7 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::initWalletDb(
 ////////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<AssetWallet_Single> AssetWallet_Single::initWalletDbWithPubRoot(
    std::shared_ptr<IO::WalletDBInterface> iface,
-   const std::string& masterID, const std::string& walletID,
+   const WalletId& masterID, const WalletId& walletID,
    std::shared_ptr<AssetEntry_Single> pubRoot,
    const IO::CreateWalletParams& params)
 {
@@ -2259,7 +2258,7 @@ AssetId AssetWallet_Single::importPublicKey(SecureBinaryData& pubkey,
 ////////////////////////////////////////////////////////////////////////////////
 AssetWallet_Multisig::AssetWallet_Multisig(
    std::shared_ptr<IO::WalletDBInterface> iface,
-   std::shared_ptr<IO::WalletHeader> metaPtr, const std::string& masterID) :
+   std::shared_ptr<IO::WalletHeader> metaPtr, const WalletId& masterID) :
    AssetWallet(iface, metaPtr, masterID)
 {
    if (metaPtr == nullptr ||
@@ -2284,7 +2283,7 @@ void AssetWallet_Multisig::readFromFile()
       BinaryWriter keyId;
       keyId.put_uint32_t(WALLETID_KEY);
       auto walletIdRef = getDataRefForKey(tx.get(), keyId.getData());
-      walletID_ = std::string{walletIdRef.toCharPtr(), walletIdRef.getSize()};
+      walletID_ = WalletId{walletIdRef.toCharPtr(), walletIdRef.getSize()};
 
       //lookup
       BinaryWriter keyLookup;
@@ -2298,11 +2297,10 @@ void AssetWallet_Multisig::readFromFile()
    unsigned n = 0;
    std::map<std::string, std::shared_ptr<AssetWallet_Single>> walletPtrs;
    for (unsigned i = 0; i < n; i++) {
-      std::stringstream ss;
-      ss << "Subwallet-" << i;
+      std::string strId{"Subwallet-" + std::to_string(i)};
 
       auto subWltMeta = std::make_shared<IO::WalletHeader_Subwallet>();
-      subWltMeta->walletID_ = ss.str();
+      subWltMeta->walletID_ = WalletId{std::string_view{strId}};
 
       auto subwalletPtr = std::make_shared<AssetWallet_Single>(
          iface_, subWltMeta, masterID_);
@@ -2326,7 +2324,7 @@ const SecureBinaryData& AssetWallet_Multisig::getDecryptedValue(
 //
 ////////////////////////////////////////////////////////////////////////////////
 WalletPublicData::WalletPublicData(const std::string& dbName,
-   const std::string& masterID, const std::string& walletID,
+   const WalletId& masterID, const WalletId& walletID,
    const AddressAccountId& mainAccID) :
    dbName_(dbName), masterID_(masterID), walletID_(walletID),
    mainAccountID_(mainAccID)

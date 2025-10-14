@@ -317,6 +317,7 @@ struct WalletRequest {
    struct ExtendAddressPool {
       count          @0 : UInt32;
       callbackId     @1 : Types.CallbackId;
+      isNew          @2 : Bool;
    }
 
    struct BackupStringStruct {
@@ -413,15 +414,20 @@ struct WalletReply {
       getAddress                    @1 : WalletData.AddressData;
       getHighestUsedIndex           @2 : Int32;
       extendAddressPool             @3 : WalletData;
+
       createBackupString            @4 : WalletBackup;
       getData                       @5 : WalletData;
+
       getAddrCombinedList           @6 : AddressAndBalanceData;
       setAddressTypeFor             @7 : WalletData.AddressData;
+
       getLedgerDelegateId           @8 : Types.DelegateId;
       getLedgerDelegateIdForScrAddr @9 : Types.DelegateId;
       getBalanceAndCount            @10: Types.BalanceAndCount;
+
       setupNewCoinSelectionInstance @11: Text;
       getUtxos                      @12: List(UTXO);
+
       createAddressBook             @13: Types.AddressBook;
       getUnlockTime                 @14: UInt32; #unlock time in ms
    }
