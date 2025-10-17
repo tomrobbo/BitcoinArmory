@@ -444,7 +444,7 @@ std::shared_ptr<AddressEntry> AssetWallet::getNewAddress(
    ReentrantLock lock(this);
 
    auto account = getAccountForID(accountID.getAddressAccountId());
-   return account->getNewAddress(iface_, accountID, aeType);
+   return account->getNewAddress(iface_, accountID, aeType, {});
 }
 
 ////////////////////////////////////////////////////////////////////////////////

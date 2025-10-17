@@ -182,25 +182,27 @@ namespace Armory
 
          std::shared_ptr<AddressEntry> getNewAddress(
             std::shared_ptr<Wallets::IO::WalletDBInterface>,
-            AddressEntryType aeType = AddressEntryType_Default);
+            AddressEntryType aeType=AddressEntryType_Default,
+            const ProgressFunc& progFunc=nullptr);
          std::shared_ptr<AddressEntry> getNewAddress(
             std::shared_ptr<Wallets::IO::WalletDBInterface>,
-            const Wallets::AssetAccountId&, AddressEntryType);
+            const Wallets::AssetAccountId&, AddressEntryType,
+            const ProgressFunc&);
          std::shared_ptr<AddressEntry> getNewChangeAddress(
             std::shared_ptr<Wallets::IO::WalletDBInterface>,
-            AddressEntryType aeType = AddressEntryType_Default);
+            AddressEntryType aeType=AddressEntryType_Default,
+            const ProgressFunc& progFunc=nullptr);
          std::shared_ptr<AddressEntry> peekNextChangeAddress(
             std::shared_ptr<Wallets::IO::WalletDBInterface>,
-            AddressEntryType aeType = AddressEntryType_Default);
+            AddressEntryType aeType=AddressEntryType_Default,
+            const ProgressFunc& progFunc=nullptr);
          bool isAssetChange(const Wallets::AssetId&) const;
          bool isAssetInUse(const Wallets::AssetId&) const;
 
          std::shared_ptr<Assets::AssetEntry> getOuterAssetRoot(void) const;
 
-         AddressEntryType getDefaultAddressType(void) const
-            { return defaultAddressEntryType_; }
-         const std::set<AddressEntryType>& getAddressTypeSet(void) const
-            { return addressTypes_; }
+         AddressEntryType getDefaultAddressType(void) const;
+         const std::set<AddressEntryType>& getAddressTypeSet(void) const;
          bool hasAddressType(AddressEntryType);
 
          std::shared_ptr<Assets::AssetEntry> getAssetForID(

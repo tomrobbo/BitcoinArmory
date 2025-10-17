@@ -125,6 +125,10 @@ namespace Armory
             unsigned, bool,
             std::function<void(int)>
          );
+         std::shared_ptr<AddressEntry> getNewAddress(
+            const Wallets::WalletId&,
+            const Wallets::AddressAccountId&,
+            uint32_t, uint32_t);
       };
    } //namespace Bridge
 } //namespace Armory

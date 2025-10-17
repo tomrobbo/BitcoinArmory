@@ -1819,57 +1819,40 @@ BinaryData CppBridge::getWalletPacket(const Wallets::WalletId& wltId,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-BinaryData CppBridge::getAddress(const Wallets::WalletId& wltId,
+void CppBridge::getAddress(const Wallets::WalletId& wltId,
    const Wallets::AddressAccountId& accId,
    uint32_t addrType, uint32_t addrKind,
    MessageId msgId)
 {
+   bool wasExtended = false;
+   auto progFunc = [&wasExtended](int)
+   {
+      wasExtended = true;
+   };
+
    capnp::MallocMessageBuilder message;
    auto fromBridge = message.initRoot<FromBridge>();
    auto reply = fromBridge.initReply();
    reply.setReferenceId(msgId);
-   reply.setSuccess(true);
 
-   auto wltContainer = wltManager_->getWalletContainer(wltId, accId);
-   auto wltPtr = wltContainer->getWalletPtr();
-   auto accPtr = wltContainer->getAddressAccount();
-   std::shared_ptr<AddressEntry> addrPtr;
+   auto addrPtr = wltManager_->getNewAddress(wltId, accId, addrType, addrKind);
+   if (addrPtr) {
+      auto wltContainer = wltManager_->getWalletContainer(wltId, accId);
+      auto wltPtr = wltContainer->getWalletPtr();
+      auto accPtr = wltContainer->getAddressAccount();
 
-   switch (addrKind)
-   {
-      case WalletRequest::AddressRequest::NEW:
-      {
-         addrPtr = accPtr->getNewAddress(
-            wltPtr->getIface(), (AddressEntryType)addrType);
-         break;
-      }
-
-      case WalletRequest::AddressRequest::CHANGE:
-      {
-         addrPtr = accPtr->getNewChangeAddress(
-            wltPtr->getIface(), (AddressEntryType)addrType);
-         break;
-      }
-
-      case WalletRequest::AddressRequest::PEEK_CHANGE:
-      {
-         addrPtr = accPtr->peekNextChangeAddress(
-            wltPtr->getIface(), (AddressEntryType)addrType);
-         break;
-      }
-
-      default:
-         reply.setSuccess(false);
-         reply.setError("invalid address kind");
-   }
-
-   if (addrPtr != nullptr) {
       auto walletReply = reply.initWallet();
       auto capnAddr = walletReply.initGetAddress();
       addressToCapnp(capnAddr, addrPtr, accPtr,
          wltContainer->getDefaultEncryptionKeyId());
+      reply.setSuccess(true);
+   } else {
+      reply.setSuccess(false);
+      reply.setError("requested invalid address type");
    }
-   return serializeCapnp(message);
+
+   auto serialized = serializeCapnp(message);
+   this->writeToClient(serialized);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

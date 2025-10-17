@@ -513,7 +513,7 @@ namespace
          case WalletRequest::GET_ADDRESS:
          {
             auto args = request.getGetAddress();
-            response = bridge->getAddress(walletId, accountId,
+            bridge->getAddress(walletId, accountId,
                args.getType(), args.which(), referenceId);
             break;
          }

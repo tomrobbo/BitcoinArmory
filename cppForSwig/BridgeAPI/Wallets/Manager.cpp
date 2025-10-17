@@ -23,6 +23,8 @@ using namespace Armory::Bridge;
 using namespace std::string_view_literals;
 using namespace std::chrono_literals;
 
+#include "capnp/Bridge.capnp.h"
+
 ////////////////////////////////////////////////////////////////////////////////
 ////
 //// WalletManager
@@ -587,6 +589,7 @@ void WalletManager::updateStateFromDB(const std::function<void(void)>& callback)
    }
 }
 
+////////////////////////////////////////////////////////////////////////////////
 /***
 Address creation should be called from WalletManager. It ensures data
 consistency in the following ways:
@@ -609,4 +612,61 @@ void WalletManager::extendAddressChain(const Wallets::WalletId& wltId,
       //if we are not connected to a db, we are done, notify the caller
       callbackPtr_->notifyRefresh({container->getDbId()});
    }
+}
+
+////
+std::shared_ptr<AddressEntry> WalletManager::getNewAddress(
+   const Wallets::WalletId& wltId,
+   const Wallets::AddressAccountId& accId,
+   uint32_t addrType, uint32_t addrKind)
+{
+   using namespace Armory::Codec::Bridge;
+
+   bool wasExtended = false;
+   auto progFunc = [&wasExtended](int)
+   {
+      wasExtended = true;
+   };
+
+   auto wltContainer = getWalletContainer(wltId, accId);
+   auto wltPtr = wltContainer->getWalletPtr();
+   auto accPtr = wltContainer->getAddressAccount();
+
+   std::shared_ptr<AddressEntry> addrPtr;
+   switch (addrKind)
+   {
+      case WalletRequest::AddressRequest::NEW:
+      {
+         addrPtr = accPtr->getNewAddress(
+            wltPtr->getIface(), (AddressEntryType)addrType, progFunc);
+         break;
+      }
+
+      case WalletRequest::AddressRequest::CHANGE:
+      {
+         addrPtr = accPtr->getNewChangeAddress(
+            wltPtr->getIface(), (AddressEntryType)addrType, progFunc);
+         break;
+      }
+
+      case WalletRequest::AddressRequest::PEEK_CHANGE:
+      {
+         addrPtr = accPtr->peekNextChangeAddress(
+            wltPtr->getIface(), (AddressEntryType)addrType, progFunc);
+         break;
+      }
+
+      default:
+         return nullptr;
+   }
+
+   if (wasExtended) {
+      try {
+         registerWallet(wltId, accId, true);
+      } catch (const OfflineException&) {
+         //if we are not connected to a db, we are done, notify the caller
+         callbackPtr_->notifyRefresh({wltContainer->getDbId()});
+      }
+   }
+   return addrPtr;
 }

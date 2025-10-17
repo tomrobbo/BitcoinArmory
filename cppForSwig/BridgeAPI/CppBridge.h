@@ -155,7 +155,7 @@ namespace Armory
          void extendAddressPool(const Wallets::WalletId&,
             const Wallets::AddressAccountId&, unsigned, bool,
             const std::string&, MessageId);
-         BinaryData getAddress(const Wallets::WalletId&,
+         void getAddress(const Wallets::WalletId&,
             const Wallets::AddressAccountId&, uint32_t,
             uint32_t, MessageId);
          void createWallet(

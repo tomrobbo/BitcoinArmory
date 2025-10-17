@@ -601,18 +601,20 @@ void AddressAccount::extendPrivateChainToIndex(
 
 ////////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<AddressEntry> AddressAccount::getNewAddress(
-   std::shared_ptr<IO::WalletDBInterface> iface, AddressEntryType aeType)
+   std::shared_ptr<IO::WalletDBInterface> iface, AddressEntryType aeType,
+   const ProgressFunc& progFunc)
 {
    if (!outerAccountId_.isValid()) {
       throw AccountException("no currently active asset account");
    }
-   return getNewAddress(iface, outerAccountId_, aeType);
+   return getNewAddress(iface, outerAccountId_, aeType, progFunc);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<AddressEntry> AddressAccount::getNewAddress(
    std::shared_ptr<IO::WalletDBInterface> iface,
-   const AssetAccountId& accountId, AddressEntryType aeType)
+   const AssetAccountId& accountId, AddressEntryType aeType,
+   const ProgressFunc& progFunc)
 {
    if (aeType == AddressEntryType_Default) {
       aeType = defaultAddressEntryType_;
@@ -625,7 +627,7 @@ std::shared_ptr<AddressEntry> AddressAccount::getNewAddress(
    }
 
    auto accountPtr = getAccountForID(accountId);
-   auto assetPtr = accountPtr->getNewAsset(iface);
+   auto assetPtr = accountPtr->getNewAsset(iface, progFunc);
    auto addrPtr = AddressEntry::instantiate(assetPtr, aeType);
 
    //keep track of the address type for this asset if it doesnt use the 
@@ -639,18 +641,20 @@ std::shared_ptr<AddressEntry> AddressAccount::getNewAddress(
 
 ////////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<AddressEntry> AddressAccount::getNewChangeAddress(
-   std::shared_ptr<IO::WalletDBInterface> iface, AddressEntryType aeType)
+   std::shared_ptr<IO::WalletDBInterface> iface, AddressEntryType aeType,
+   const ProgressFunc& progFunc)
 {
    if (!innerAccountId_.isValid()) {
       throw AccountException(
          "[getNewChangeAddress] no currently active asset account");
    }
-   return getNewAddress(iface, innerAccountId_, aeType);
+   return getNewAddress(iface, innerAccountId_, aeType, progFunc);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<AddressEntry> AddressAccount::peekNextChangeAddress(
-   std::shared_ptr<IO::WalletDBInterface> iface, AddressEntryType aeType)
+   std::shared_ptr<IO::WalletDBInterface> iface, AddressEntryType aeType,
+   const ProgressFunc& progFunc)
 {
    if (aeType == AddressEntryType_Default) {
       aeType = defaultAddressEntryType_;
@@ -663,7 +667,7 @@ std::shared_ptr<AddressEntry> AddressAccount::peekNextChangeAddress(
    }
 
    auto accountPtr = getAccountForID(innerAccountId_);
-   auto assetPtr = accountPtr->getNewAsset(iface);
+   auto assetPtr = accountPtr->peekNextAsset(iface, progFunc);
    auto addrPtr = AddressEntry::instantiate(assetPtr, aeType);
    return addrPtr;
 }
@@ -697,6 +701,16 @@ bool AddressAccount::isAssetInUse(const AssetId& id) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+AddressEntryType AddressAccount::getDefaultAddressType() const
+{
+   return defaultAddressEntryType_;
+}
+
+const std::set<AddressEntryType>& AddressAccount::getAddressTypeSet() const
+{
+   return addressTypes_;
+}
+
 bool AddressAccount::hasAddressType(AddressEntryType aeType)
 {
    if (aeType == AddressEntryType_Default) {
@@ -718,7 +732,7 @@ std::shared_ptr<AssetEntry> AddressAccount::getAssetForID(const AssetId& id) con
 
 ////////////////////////////////////////////////////////////////////////////////
 const std::pair<AssetId, AddressEntryType>&
-   AddressAccount::getAssetIDPairForAddr(const BinaryData& scrAddr)
+AddressAccount::getAssetIDPairForAddr(const BinaryData& scrAddr)
 {
    updateAddressHashMap();
 

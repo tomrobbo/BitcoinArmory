@@ -609,13 +609,14 @@ unsigned AssetAccount::getAndBumpHighestUsedIndex(
 
 ////////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<AssetEntry> AssetAccount::getOrSetAssetAtIndex(
-   std::shared_ptr<IO::WalletDBInterface> iface, unsigned index)
+   std::shared_ptr<IO::WalletDBInterface> iface, unsigned index,
+   const ProgressFunc& progFunc)
 {
    ReentrantLock lock(this);
 
    auto entryIter = data_->assets_.find(index);
    if (entryIter == data_->assets_.end()) {
-      extendPublicChain(iface, getLookup());
+      extendPublicChain(iface, getLookup(), progFunc);
       entryIter = data_->assets_.find(index);
       if (entryIter == data_->assets_.end()) {
          throw AccountException("requested index overflows max lookup");
@@ -626,18 +627,20 @@ std::shared_ptr<AssetEntry> AssetAccount::getOrSetAssetAtIndex(
 
 ////////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<AssetEntry> AssetAccount::getNewAsset(
-   std::shared_ptr<IO::WalletDBInterface> iface)
+   std::shared_ptr<IO::WalletDBInterface> iface,
+   const ProgressFunc& progFunc)
 {
    auto index = getAndBumpHighestUsedIndex(iface);
-   return getOrSetAssetAtIndex(iface, index);
+   return getOrSetAssetAtIndex(iface, index, progFunc);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<AssetEntry> AssetAccount::peekNextAsset(
-   std::shared_ptr<IO::WalletDBInterface> iface)
+   std::shared_ptr<IO::WalletDBInterface> iface,
+   const ProgressFunc& progFunc)
 {
    auto index = data_->lastUsedIndex_ + 1;
-   return getOrSetAssetAtIndex(iface, index);
+   return getOrSetAssetAtIndex(iface, index, progFunc);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
