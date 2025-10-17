@@ -699,6 +699,14 @@ void AssetWallet::extendPublicChain(int32_t count)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+void AssetWallet::extendPublicChain(const AddressAccountId& accountId,
+   int32_t count, const std::function<void(int)>& progressCallback)
+{
+   auto account = getAccountForID(accountId);
+   account->extendPublicChain(iface_, count, progressCallback);
+}
+
+////////////////////////////////////////////////////////////////////////////////
 void AssetWallet::extendPrivateChain(int32_t count)
 {
    for (auto& account : accounts_) {
@@ -707,9 +715,8 @@ void AssetWallet::extendPrivateChain(int32_t count)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void AssetWallet::extendPublicChainToIndex(
-   const AddressAccountId& accountId, int32_t count,
-   const std::function<void(int)>& progressCallback)
+void AssetWallet::extendPublicChainToIndex(const AddressAccountId& accountId,
+   int32_t count, const std::function<void(int)>& progressCallback)
 {
    auto account = getAccountForID(accountId);
    account->extendPublicChainToIndex(iface_,

@@ -41,6 +41,9 @@ namespace Armory
 
    namespace Bridge
    {
+      struct OfflineException
+      {};
+
       class WalletContainer
       {
          friend class WalletManager;
@@ -87,16 +90,14 @@ namespace Armory
             getAddressAccount(void) const;
          const Wallets::AddressAccountId& getAccountId(void) const;
 
-         void updateBalancesAndCount(uint32_t topBlockHeight);
+         void updateBalancesAndCount(uint32_t);
          void updateWalletBalanceState(const AsyncClient::CombinedBalances&);
          void updateAddressCountState(const AsyncClient::CombinedBalances&);
 
-         void extendAddressChain(unsigned);
-         void extendAddressChainToIndex(
-            const Wallets::AddressAccountId& id,
-            unsigned count);
-         bool hasAddress(const BinaryData& addr);
-         bool hasAddress(const std::string& addr);
+         void extendAddressChain(unsigned, const std::function<void(int)>&);
+         void extendAddressChainToIndex(unsigned);
+         bool hasAddress(const BinaryData&);
+         bool hasAddress(const std::string&);
 
          void createAddressBook(
             const std::function<void(ReturnMessage<std::vector<AddressBookEntry>>)>&);

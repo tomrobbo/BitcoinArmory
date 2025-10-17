@@ -42,7 +42,6 @@ namespace Armory
 
       BdvPtr setupClientConnection(
          std::shared_ptr<Wallets::AuthorizedPeers>,
-         const std::function<void(BinaryData&)>&,
          std::shared_ptr<WalletManager>
       );
    }

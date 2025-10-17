@@ -175,7 +175,7 @@ namespace {
             addresses.reserve(capnAddresses.size());
             for (auto capnAddr : capnAddresses) {
                auto addrBody = capnAddr.getBody();
-               addresses.emplace_back(BinaryData(addrBody.begin(), addrBody.end()));
+               addresses.emplace_back(BinaryData{addrBody.begin(), addrBody.end()});
             }
 
             auto walletType = WalletRegType(walletRequest.getWalletType());

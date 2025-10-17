@@ -413,23 +413,22 @@ struct WalletReply {
 
       getAddress                    @1 : WalletData.AddressData;
       getHighestUsedIndex           @2 : Int32;
-      extendAddressPool             @3 : WalletData;
 
-      createBackupString            @4 : WalletBackup;
-      getData                       @5 : WalletData;
+      createBackupString            @3 : WalletBackup;
+      getData                       @4 : WalletData;
 
-      getAddrCombinedList           @6 : AddressAndBalanceData;
-      setAddressTypeFor             @7 : WalletData.AddressData;
+      getAddrCombinedList           @5 : AddressAndBalanceData;
+      setAddressTypeFor             @6 : WalletData.AddressData;
 
-      getLedgerDelegateId           @8 : Types.DelegateId;
-      getLedgerDelegateIdForScrAddr @9 : Types.DelegateId;
-      getBalanceAndCount            @10: Types.BalanceAndCount;
+      getLedgerDelegateId           @7 : Types.DelegateId;
+      getLedgerDelegateIdForScrAddr @8 : Types.DelegateId;
+      getBalanceAndCount            @9 : Types.BalanceAndCount;
 
-      setupNewCoinSelectionInstance @11: Text;
-      getUtxos                      @12: List(UTXO);
+      setupNewCoinSelectionInstance @10: Text;
+      getUtxos                      @11: List(UTXO);
 
-      createAddressBook             @13: Types.AddressBook;
-      getUnlockTime                 @14: UInt32; #unlock time in ms
+      createAddressBook             @12: Types.AddressBook;
+      getUnlockTime                 @13: UInt32; #unlock time in ms
    }
 }
 

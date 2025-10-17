@@ -92,8 +92,9 @@ namespace Armory
          void registerWallets(void);
          void registerWallet(const Wallets::WalletId&,
             const Wallets::AddressAccountId&, bool);
-         std::shared_ptr<Callback> setupBdvCallback(
+         void setupBdvCallback(
             const std::function<void(BinaryData&)>&);
+         std::shared_ptr<Callback> getBdvCallback(void) const;
          void setBdvPtr(std::shared_ptr<AsyncClient::BlockDataViewer>);
 
          /* utils */
@@ -117,6 +118,13 @@ namespace Armory
 
          std::filesystem::path unloadWallet(const std::string&);
          void deleteWallet(const std::string&);
+
+         /* address creation */
+         void extendAddressChain(const Wallets::WalletId&,
+            const Wallets::AddressAccountId&,
+            unsigned, bool,
+            std::function<void(int)>
+         );
       };
    } //namespace Bridge
 } //namespace Armory

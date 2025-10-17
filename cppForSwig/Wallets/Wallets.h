@@ -171,6 +171,8 @@ namespace Armory
          void resetPassphrasePromptLambda(void);
 
          void extendPublicChain(int32_t);
+         void extendPublicChain(const AddressAccountId&, int32_t,
+            const std::function<void(int)>& = nullptr);
          void extendPublicChainToIndex(const AddressAccountId&, int32_t,
             const std::function<void(int)>& = nullptr);
          void extendPrivateChain(int32_t);

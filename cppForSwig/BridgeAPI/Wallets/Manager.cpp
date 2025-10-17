@@ -94,7 +94,7 @@ std::shared_ptr<WalletContainer> WalletManager::getWalletContainer(
    auto accIter = wltIter->second.find(accId);
    if (accIter == wltIter->second.end()) {
       std::string errStr{"there is no account "sv};
-      errStr += accId.toHexStr() + std::string{"for wallet "sv} + wltId;
+      errStr += accId.toHexStr() + std::string{" for wallet "sv} + wltId;
       throw std::runtime_error(errStr);
    }
 
@@ -102,7 +102,7 @@ std::shared_ptr<WalletContainer> WalletManager::getWalletContainer(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::shared_ptr<Callback> WalletManager::setupBdvCallback(
+void WalletManager::setupBdvCallback(
    const std::function<void(BinaryData&)>& writeFunc)
 {
    if (callbackPtr_ != nullptr) {
@@ -145,8 +145,12 @@ std::shared_ptr<Callback> WalletManager::setupBdvCallback(
             throw std::runtime_error("invalid pushNotif type");
       }
    };
-
    callbackPtr_ = std::make_shared<Callback>(pushNotif);
+}
+
+////
+std::shared_ptr<Callback> WalletManager::getBdvCallback() const
+{
    return callbackPtr_;
 }
 
@@ -177,25 +181,22 @@ void WalletManager::registerWallets()
 void WalletManager::registerWallet(const Wallets::WalletId& wltId,
    const Wallets::AddressAccountId& accId, bool isNew)
 {
-   auto wltIter = wallets_.find(wltId);
-   if (wltIter == wallets_.end()) {
-      throw std::runtime_error("[WalletManager::registerWallet]");
-   }
+   auto container = getWalletContainer(wltId, accId);
+   auto dbId = container->getDbId();
 
-   auto accIter = wltIter->second.find(accId);
-   if (accIter == wltIter->second.end()) {
-      throw std::runtime_error("[WalletManager::registerWallet]");
+   try {
+      callbackPtr_->registerRefreshCallback(dbId,
+         [this, dbId]() {
+            updateStateFromDB(
+               [this, dbId]() {
+                  callbackPtr_->notifyRefresh({dbId});
+               });
+         });
+      container->registerWithBDV(isNew);
+   } catch (const OfflineException& e) {
+      callbackPtr_->unregisterCallback(dbId);
+      throw e;
    }
-
-   accIter->second->registerWithBDV(isNew);
-   auto dbId = accIter->second->getDbId();
-   auto lbd = [this, dbId]()
-   {
-      updateStateFromDB([this, dbId](){
-         callbackPtr_->notifyRefresh({dbId});
-      });
-   };
-   callbackPtr_->registerRefreshCallback(dbId, lbd);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -280,7 +281,7 @@ std::filesystem::path WalletManager::unloadWallet(const std::string& wltId)
             path = acc.second->getWalletPtr()->getDbFilename();
          }
          acc.second->unregisterFromBDV();
-      } catch (const std::exception&) {
+      } catch (const OfflineException&) {
          //we do not care if the unregister operation fails
       }
    }
@@ -583,5 +584,29 @@ void WalletManager::updateStateFromDB(const std::function<void(void)>& callback)
    std::thread thr(lbd);
    if (thr.joinable()) {
       thr.detach();
+   }
+}
+
+/***
+Address creation should be called from WalletManager. It ensures data
+consistency in the following ways:
+   . Register the addresses with the db, if available
+   . Update the balance and count cache
+   . Check address types and top used count again chain data. This is
+      critical for restored wallets, where the address chain wasn't
+      extended far enough initially.
+   . notify the caller to refresh its address data on completion
+***/
+void WalletManager::extendAddressChain(const Wallets::WalletId& wltId,
+   const Wallets::AddressAccountId& accId, unsigned count, bool isNew,
+   std::function<void(int)> progressFunc)
+{
+   auto container = getWalletContainer(wltId, accId);
+   container->extendAddressChain(count, progressFunc);
+   try {
+      registerWallet(wltId, accId, isNew);
+   } catch (const OfflineException&) {
+      //if we are not connected to a db, we are done, notify the caller
+      callbackPtr_->notifyRefresh({container->getDbId()});
    }
 }

@@ -70,7 +70,8 @@ std::shared_ptr<Wallets::AssetWallet> WalletContainer::getWalletPtr() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::shared_ptr<Accounts::AddressAccount> WalletContainer::getAddressAccount() const
+std::shared_ptr<Accounts::AddressAccount>
+WalletContainer::getAddressAccount() const
 {
    auto accPtr = wallet_->getAccountForID(accountId_);
    return accPtr;
@@ -92,7 +93,7 @@ void WalletContainer::resetCache()
 void WalletContainer::registerWithBDV(bool isNew)
 {
    if (bdvPtr_ == nullptr) {
-      throw std::runtime_error("bdvPtr is not set");
+      throw OfflineException();
    }
    resetCache();
 
@@ -117,10 +118,10 @@ void WalletContainer::registerWithBDV(bool isNew)
 void WalletContainer::unregisterFromBDV()
 {
    if (bdvPtr_ == nullptr) {
-      throw std::runtime_error("bdvPtr is not set");
+      throw OfflineException();
    }
    if (asyncWlt_ == nullptr) {
-      throw std::runtime_error("asyncWlt is not set");
+      throw OfflineException();
    }
    asyncWlt_->unregister();
 }
@@ -315,7 +316,8 @@ void WalletContainer::updateAddressCountState(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::map<BinaryData, std::vector<uint64_t>> WalletContainer::getAddrBalanceMap() const
+std::map<BinaryData, std::vector<uint64_t>>
+WalletContainer::getAddrBalanceMap() const
 {
    std::map<BinaryData, std::vector<uint64_t>> result;
    for (const auto& dataPair : countMap_) {
@@ -330,7 +332,6 @@ std::map<BinaryData, std::vector<uint64_t>> WalletContainer::getAddrBalanceMap()
       balVec.emplace_back(dataPair.second);
       result.emplace(dataPair.first, balVec);
    }
-
    return result;
 }
 
@@ -350,7 +351,6 @@ WalletContainer::getUpdatedAddressMap()
 {
    auto mapMove = std::move(updatedAddressMap_);
    updatedAddressMap_.clear();
-
    return mapMove;
 }
 
@@ -428,16 +428,16 @@ void WalletContainer::updateBalancesAndCount(uint32_t topBlockHeight)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void WalletContainer::extendAddressChain(unsigned count)
+void WalletContainer::extendAddressChain(unsigned count,
+   const std::function<void(int)>& progFunc)
 {
-   wallet_->extendPublicChain(count);
+   wallet_->extendPublicChain(accountId_, count, progFunc);
 }
 
 ////
-void WalletContainer::extendAddressChainToIndex(
-   const Armory::Wallets::AddressAccountId& id, unsigned count)
+void WalletContainer::extendAddressChainToIndex(unsigned count)
 {
-   wallet_->extendPublicChainToIndex(id, count);
+   wallet_->extendPublicChainToIndex(accountId_, count);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

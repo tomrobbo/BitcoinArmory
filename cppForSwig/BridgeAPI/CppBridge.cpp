@@ -492,6 +492,9 @@ CppBridge::CppBridge() :
    dbOffline_(Config::NetworkSettings::isOffline())
 {
    wltManager_ = std::make_shared<WalletManager>(path_);
+   wltManager_->setupBdvCallback([this](BinaryData& data)
+      { writeToClient(data); }
+   );
 }
 
 void CppBridge::setWriteLambda(
@@ -820,10 +823,7 @@ void CppBridge::setupDB(MessageId refId)
          throw std::runtime_error("failed to setup client peers db");
       }
 
-      bdvPtr_ = setupClientConnection(
-         peers, [this](BinaryData& data){ writeToClient(data); },
-         wltManager_
-      );
+      bdvPtr_ = setupClientConnection(peers, wltManager_);
       if (bdvPtr_ == nullptr) {
          throw std::runtime_error("failed to instantiate bdv object");
       }
@@ -1658,19 +1658,13 @@ void CppBridge::extendAddressPool(const Wallets::WalletId& wltId,
    const Wallets::AddressAccountId& accId, unsigned count, bool isNew,
    const std::string& callbackId, MessageId msgId)
 {
-   auto wltContainer = wltManager_->getWalletContainer(wltId, accId);
-   auto wltPtr = wltContainer->getWalletPtr();
-   std::string dbId = wltContainer->getDbId();
-
-   //run chain extention in another thread
-   auto extendChain = [this, wltPtr, msgId, callbackId](
-      const Wallets::AddressAccountId accId, const std::string dbId,
+   auto extendChain = [this, msgId, callbackId](
+      const Wallets::WalletId& wltId,
+      const Wallets::AddressAccountId accId,
       unsigned count, bool isNew)
    {
-      auto accPtr = wltPtr->getAccountForID(accId);
-
       //setup progress reporting
-      size_t tickTotal = count * accPtr->getNumAssetAccounts();
+      size_t tickTotal = count;
       int reportedTicks = -1;
       auto now = std::chrono::system_clock::now();
 
@@ -1706,8 +1700,12 @@ void CppBridge::extendAddressPool(const Wallets::WalletId& wltId,
          notifyCount(0);
       };
 
-      //extend chain
-      accPtr->extendPublicChain(wltPtr->getIface(), count, updateProgress);
+      //this will extend the address chain and register the new addresses
+      //the registration will trigger a notification to the UI to update
+      //address data accordingly
+      wltManager_->extendAddressChain(
+         wltId, accId,
+         count, isNew, updateProgress);
 
       //send last count update
       notifyCount(tickTotal);
@@ -1718,11 +1716,6 @@ void CppBridge::extendAddressPool(const Wallets::WalletId& wltId,
       auto reply = replyBridge.initReply();
       reply.setSuccess(true);
       reply.setReferenceId(msgId);
-
-      auto walletReply = reply.initWallet();
-      auto capnWallet = walletReply.initExtendAddressPool();
-      walletToCapnp(wltPtr, accId, dbId, capnWallet);
-
       auto replySerialized = serializeCapnp(replyMessage);
       this->writeToClient(replySerialized);
 
@@ -1730,7 +1723,8 @@ void CppBridge::extendAddressPool(const Wallets::WalletId& wltId,
       sendCallbackCleanup(this, callbackId);
    };
 
-   std::thread thr(extendChain, accId, dbId, count, isNew);
+   //run chain extention in another thread
+   std::thread thr(extendChain, wltId, accId, count, isNew);
    if (thr.joinable()) {
       thr.detach();
    }
