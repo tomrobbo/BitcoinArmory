@@ -144,17 +144,17 @@ namespace Armory
 
          //local
          std::shared_ptr<AddressEntry> getNewAddress(
-            AddressEntryType aeType = AddressEntryType_Default);
+            AddressEntryType aeType=AddressEntryType_Default);
          std::shared_ptr<AddressEntry> getNewAddress(
             const AddressAccountId&,
-            AddressEntryType aeType = AddressEntryType_Default);
+            AddressEntryType aeType=AddressEntryType_Default);
          std::shared_ptr<AddressEntry> getNewAddress(
             const AssetAccountId&,
-            AddressEntryType aeType = AddressEntryType_Default);
+            AddressEntryType aeType=AddressEntryType_Default);
          std::shared_ptr<AddressEntry> getNewChangeAddress(
-            AddressEntryType aeType = AddressEntryType_Default);
+            AddressEntryType aeType=AddressEntryType_Default);
          std::shared_ptr<AddressEntry> peekNextChangeAddress(
-            AddressEntryType aeType = AddressEntryType_Default);
+            AddressEntryType aeType=AddressEntryType_Default);
          void updateAddressEntryType(const AssetId&,
             AddressEntryType);
 
@@ -172,9 +172,9 @@ namespace Armory
 
          void extendPublicChain(int32_t);
          void extendPublicChain(const AddressAccountId&, int32_t,
-            const std::function<void(int)>& = nullptr);
+            const Accounts::ProgressFunc& progFunc=nullptr);
          void extendPublicChainToIndex(const AddressAccountId&, int32_t,
-            const std::function<void(int)>& = nullptr);
+            const Accounts::ProgressFunc& progFunc=nullptr);
          void extendPrivateChain(int32_t);
          void extendPrivateChainToIndex(int32_t);
          void extendPrivateChainToIndex(const AddressAccountId&, int32_t);

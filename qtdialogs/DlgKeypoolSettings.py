@@ -4,32 +4,34 @@
 # Distributed under the GNU Affero General Public License (AGPL v3)          #
 # See LICENSE or http://www.gnu.org/licenses/agpl.html                       #
 #                                                                            #
-# Copyright (C) 2016-2024, goatpig                                           #
+# Copyright (C) 2016-2025, goatpig                                           #
 #  Distributed under the MIT license                                         #
 #  See LICENSE-MIT or https://opensource.org/licenses/MIT                    #
 #                                                                            #
 ##############################################################################
 
-from armorycolors import htmlColor
+from armoryengine.CppBridge import ServerPush
+from armoryengine.BDM import TheBDM
 
 from qtpy import QtWidgets
 from qtdialogs.qtdefines import relaxedSizeStr, STRETCH, \
    STYLE_SUNKEN, QRichLabel, makeHorizFrame, makeVertFrame
+from armorycolors import htmlColor
+
 from qtdialogs.ArmoryDialog import ArmoryDialog
-from qtdialogs.DlgProgress import DlgProgress
 from ui.QtExecuteSignal import TheSignalExecution
 
 ################################################################################
-class DlgKeypoolSettings(ArmoryDialog):
+class DlgKeypoolSettings(ArmoryDialog, ServerPush):
    """
    Let the user manually adjust the keypool for this wallet
    """
    def __init__(self, wlt, parent=None, main=None):
-      super(DlgKeypoolSettings, self).__init__(parent, main)
+      ServerPush.__init__(self)
+      ArmoryDialog.__init__(self, parent, main)
 
       self.wlt = wlt
       self.addressesWereGenerated = False
-
       self.lblDescr = QRichLabel(self.tr(
          'Armory pre-computes a pool of addresses beyond the last address '
          'you have used, and keeps them in your wallet to "look-ahead."  One '
@@ -58,7 +60,6 @@ class DlgKeypoolSettings(ArmoryDialog):
          'to compute 200-1000 addresses (system-dependent).  Only generate '
          'as many as you think you need.'))
 
-
       buttonBox = QtWidgets.QDialogButtonBox()
       self.btnAccept = QtWidgets.QPushButton(self.tr("Compute"))
       self.btnReject = QtWidgets.QPushButton(self.tr("Done"))
@@ -67,15 +68,21 @@ class DlgKeypoolSettings(ArmoryDialog):
       buttonBox.addButton(self.btnAccept, QtWidgets.QDialogButtonBox.AcceptRole)
       buttonBox.addButton(self.btnReject, QtWidgets.QDialogButtonBox.RejectRole)
 
-
       frmLbl = makeVertFrame([self.lblAddrUsed, self.lblAddrComp])
       frmVal = makeVertFrame([self.lblAddrUsedVal, self.lblAddrCompVal])
-      subFrm1 = makeHorizFrame([STRETCH, frmLbl, frmVal, STRETCH], STYLE_SUNKEN)
 
-      subFrm2 = makeHorizFrame([STRETCH, \
-                                self.lblNumAddr, \
-                                self.edtNumAddr, \
-                                STRETCH], STYLE_SUNKEN)
+      subFrm1 = makeHorizFrame([
+            STRETCH,
+            frmLbl,
+            frmVal,
+            STRETCH
+         ], STYLE_SUNKEN)
+      subFrm2 = makeHorizFrame([
+            STRETCH,
+            self.lblNumAddr,
+            self.edtNumAddr,
+            STRETCH
+         ], STYLE_SUNKEN)
 
       layout = QtWidgets.QVBoxLayout()
       layout.addWidget(self.lblDescr)
@@ -88,15 +95,26 @@ class DlgKeypoolSettings(ArmoryDialog):
       self.setWindowTitle(self.tr('Extend Address Pool'))
 
    #############################################################################
+   def parseProtoPacket(self, payload):
+      if payload.which() == 'cleanup':
+         TheBDM.unregisterPrompt(self.callbackId)
+         return
+
+      elif payload.which() == 'walletProgress':
+         wltProg = payload.walletProgress
+         if wltProg.which() == 'extendChain':
+            extChain = wltProg.extendChain
+            TheSignalExecution.executeMethod(self.updateProgress,
+               extChain.current, extChain.total)
+
+   ####
+   def updateProgress(self, current, total):
+      cred = htmlColor('TextRed')
+      self.lblAddrCompVal.setText(self.tr(
+         f'<font color=\"{cred}\">Calculating: {current}/{total}</font>'))
+
+   ####
    def clickCompute(self):
-      # if TheBDM.getState()==BDM_SCANNING:
-         # QtWidgets.QMessageBox.warning(self, 'Armory is Busy', \
-            # 'Armory is in the middle of a scan, and cannot add addresses to '
-            # 'any of its wallets until the scan is finished.  Please wait until '
-            # 'the dashboard says that Armory is "online."', QtWidgets.QMessageBox.Ok)
-         # return
-
-
       err = False
       try:
          naddr = int(self.edtNumAddr.text())
@@ -110,34 +128,36 @@ class DlgKeypoolSettings(ArmoryDialog):
          return
 
       if naddr >= 1000:
-         confirm = QtWidgets.QMessageBox.warning(self, self.tr('Are you sure?'), self.tr(
-            'You have entered that you want to compute %s more addresses'
-            'for this wallet.  This operation will take a very long time, '
-            'and Armory will become unresponsive until the computation is '
-            'finished.  Armory estimates it will take about %d minutes.'
-            '<br><br>Do you want to continue?' % (naddr, int(naddr / 750.))), \
-            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
-
-         if not confirm == QtWidgets.QMessageBox.Yes:
+         confirm = QtWidgets.QMessageBox.warning(self,
+            self.tr('Are you sure?'), self.tr(
+               'You have entered that you want to compute %s more addresses'
+               'for this wallet.  This operation will take a very long time, '
+               'and Armory will become unresponsive until the computation is '
+               'finished.  Armory estimates it will take about %d minutes.'
+               '<br><br>Do you want to continue?' % (naddr, int(naddr / 750.))
+            ), QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+         if confirm != QtWidgets.QMessageBox.Yes:
             return
 
       cred = htmlColor('TextRed')
-      self.lblAddrCompVal.setText(self.tr('<font color="%s">Calculating...</font>' % cred))
+      self.lblAddrCompVal.setText(self.tr(
+         '<font color="%s">Calculating...</font>' % cred))
 
-      fillAddressPoolProgress = DlgProgress(self, self.main,
-         HBar=1, Title=self.tr('Computing New Addresses'))
-
-      def completeCallback():
-         if self.main is None:
-            return
+      def completedCallback():
          TheSignalExecution.executeMethod(self.completeCompute)
+      self.wlt.fillAddressPool(naddr, self.callbackId,
+         lambda a: TheSignalExecution.executeMethod(self.completeCompute, a))
 
-      fillAddressPoolProgress.exec_(self.wlt.fillAddressPool,
-         naddr, fillAddressPoolProgress.callbackId, completeCallback)
-
-   #############################################################################
-   def completeCompute(self):
-      cred = htmlColor('TextRed')
-      self.lblAddrCompVal.setText('<font color="%s">%d</font>' % \
-         (cred, self.wlt.lastComputedChainIndex))
-      self.addressesWereGenerated = True
+   ####
+   def completeCompute(self, packet):
+      if packet.success == False:
+         QtWidgets.QMessageBox.error(self, self.tr('Error'),
+         self.tr('Failed to extend addresses!'),
+         QtWidgets.QMessageBox.Ok)
+      else:
+         naddr = int(self.edtNumAddr.text())
+         QtWidgets.QMessageBox.information(self, self.tr('Success'),
+         self.tr(f'{naddr} addresses have been added to the wallet'),
+         QtWidgets.QMessageBox.Ok)
+         self.addressesWereGenerated = True
+         self.accept()

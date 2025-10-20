@@ -79,12 +79,12 @@ class DlgWalletDetails(ArmoryDialog):
       lbtnChangeLabels.linkActivated.connect(self.changeLabels)
 
       if not self.wlt.watchingOnly:
-         s = ''
+         label = ''
          if self.wlt.useEncryption:
-            s = self.tr('Change or Remove Passphrase')
+            label = self.tr('Change or Remove Passphrase')
          else:
-            s = self.tr('Encrypt Wallet')
-         lbtnChangeCrypto = QLabelButton(s)
+            label = self.tr('Encrypt Wallet')
+         lbtnChangeCrypto = QLabelButton(label)
          lbtnChangeCrypto.linkActivated.connect(self.changeEncryption)
 
       exportStr = 'Data' if self.wlt.watchingOnly else 'Copy'
@@ -200,13 +200,13 @@ class DlgWalletDetails(ArmoryDialog):
       self.lblBTC2 = QRichLabel('', doWrap=False)
       self.lblBTC3 = QRichLabel('', doWrap=False)
 
-      ttipTot = createToolTipWidget(\
-            self.tr('Total funds if all current transactions are confirmed. '
+      ttipTot = createToolTipWidget(
+         self.tr('Total funds if all current transactions are confirmed. '
             'Value appears gray when it is the same as your spendable funds.'))
-      ttipSpd = createToolTipWidget(\
-            self.tr('Funds that can be spent <i>right now</i>'))
-      ttipUcn = createToolTipWidget(\
-            self.tr('Funds that have less than 6 confirmations'))
+      ttipSpd = createToolTipWidget(
+         self.tr('Funds that can be spent <i>right now</i>'))
+      ttipUcn = createToolTipWidget(
+         self.tr('Funds that have less than 6 confirmations'))
 
       self.setSummaryBalances()
 
@@ -750,8 +750,8 @@ class DlgWalletDetails(ArmoryDialog):
       topUsed = max(self.wlt.highestUsedChainIndex, 0)
       self.labelValues[WLTFIELDS.NumAddr] = QLabelButton('%d' % topUsed)
       self.labelValues[WLTFIELDS.NumAddr].setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
-      opendlgkeypool = lambda: DlgKeypoolSettings(self.wlt, self, self.main).exec_()
-      self.labelValues[WLTFIELDS.NumAddr].linkActivated.connect(opendlgkeypool)
+      self.labelValues[WLTFIELDS.NumAddr].linkActivated.connect(
+         lambda: DlgKeypoolSettings(self.wlt, self, self.main).exec_())
 
       # Set the owner appropriately
       if self.wlt.watchingOnly:

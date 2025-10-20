@@ -191,9 +191,8 @@ class PyBtcWallet(object):
 
    #############################################################################
    def __init__(self, *, wltId=None, accId=None, proto=None):
-      self.fileTypeStr    = '\xbaWALLET\x00'
-      self.version        = PYBTCWALLET_VERSION  # (Major, Minor, Minor++, even-more-minor)
-      self.eofByte        = 0
+      # (Major, Minor, Minor++, even-more-minor)
+      self.version        = PYBTCWALLET_VERSION
       self.watchingOnly   = True
       self.wltCreateDate  = 0
       self.addressTypes   = []
@@ -204,7 +203,6 @@ class PyBtcWallet(object):
       self.addrMap     = {}  # maps 20-byte addresses to PyBtcAddress objects
       self.commentsMap = {}  # maps 20-byte addresses to user-created comments
       self.commentLocs = {}  # map comment keys to wallet file locations
-      self.opevalMap   = {}  # maps 20-byte addresses to OP_EVAL data (future)
       self.labelName   = ''
       self.labelDescr  = ''
       self.linearAddr160List = []
@@ -214,8 +212,6 @@ class PyBtcWallet(object):
          self.addrPoolSize = 10  # this makes debugging so much easier!
       else:
          self.addrPoolSize = CLI_OPTIONS.keypool
-
-      self.importList = []
 
       # For file sync features
       self.walletPath = ''
@@ -230,7 +226,6 @@ class PyBtcWallet(object):
       # Deterministic wallet, need a root key.  Though we can still import keys.
       # The unique ID contains the network byte (id[-1]) but is not intended to
       # resemble the address of the root key
-      #self.uniqueIDBin = ''
       self._walletId    = None   # Base58 version of reversed-uniqueIDBin
       self._accountId   = None
       self._dbId        = None
@@ -243,7 +238,7 @@ class PyBtcWallet(object):
       #To enable/disable wallet row in wallet table model
       self.isEnabled = True
 
-      #list of callables and their args to perform after a wallet 
+      #list of callables and their args to perform after a wallet
       #has been scanned. Entries are order as follows:
       #[[method1, [arg1, ar2, arg3]], [method2, [arg1, arg2]]]
       #list is cleared after each scan.
@@ -296,16 +291,10 @@ class PyBtcWallet(object):
       if len(comment)>0:
          return comment
 
-      # SWIG BUG!
-      # http://sourceforge.net/tracker/?func=detail&atid=101645&aid=3403085&group_id=1645
-      # Apparently, using the -threads option when compiling the swig module
-      # causes the "for i in vector<...>:" mechanic to sometimes throw seg faults!
-      # For this reason, this method was replaced with the one below:
       for regTx in abe.getTxList():
          comment = self.getComment(regTx.getTxHash())
          if len(comment)>0:
             return comment
-
       return ''
 
    #############################################################################
@@ -318,7 +307,6 @@ class PyBtcWallet(object):
          comment = self.getComment(txHash)
          if len(comment)>0:
             return comment
-
       return ''
 
    #############################################################################
@@ -509,6 +497,32 @@ class PyBtcWallet(object):
       wallet.loadFromProto(walletProto)
       return wallet
 
+   def syncData(self):
+      dataProto = self.bridgeWalletObj.getData()
+      self.lastComputedChainIndex = dataProto.lookupCount
+      self.highestUsedChainIndex = dataProto.useCount
+
+      for addr in dataProto.addressData:
+         addrObj = PyBtcAddress(self)
+         addrObj.loadFromProto(addr)
+         self.addAddress(addrObj, updateOnly=True)
+
+   #############################################################################
+   def addAddress(self, addrObj, updateOnly: bool=False):
+      prefixedHash = addrObj.getPrefixedAddr()
+      if prefixedHash in self.addrMap and updateOnly:
+         return
+
+      if addrObj.parentWallet == None:
+         addrObj.parentWallet = self
+      self.addrMap[prefixedHash] = addrObj
+      self.linearAddr160List.append(prefixedHash)
+
+      self.highestUsedChainIndex = max(
+         addrObj.chainIndex,
+         self.highestUsedChainIndex)
+      self.addrByString[addrObj.getAddressString()] = prefixedHash
+
    #############################################################################
    def peekChangeAddr(self, addrType=AddressEntryType_Default):
       newAddrProto = self.bridgeWalletObj.getNewAddress(addrType)
@@ -517,24 +531,10 @@ class PyBtcWallet(object):
       return newAddrObj
 
    #############################################################################
-   def addAddress(self, addrObj):
-      if addrObj.parentWallet == None:
-         addrObj.parentWallet = self
-      prefixedHash = addrObj.getPrefixedAddr()
-      self.addrMap[prefixedHash] = addrObj
-      self.linearAddr160List.append(prefixedHash)
-
-      self.highestUsedChainIndex = \
-         max(addrObj.chainIndex, self.highestUsedChainIndex)
-
-      self.addrByString[addrObj.getAddressString()] = prefixedHash
-
-   #############################################################################
    def getNewChangeAddr(self, addrType=AddressEntryType_Default):
       newAddrProto = self.bridgeWalletObj.getNewAddress(addrType)
       newAddrObj = PyBtcAddress()
       newAddrObj.loadFromProto(newAddrProto)
-
       self.addAddress(newAddrObj)
       return newAddrObj
 
@@ -543,13 +543,12 @@ class PyBtcWallet(object):
       newAddrProto = self.bridgeWalletObj.getNewAddress(addrType)
       newAddrObj = PyBtcAddress()
       newAddrObj.loadFromProto(newAddrProto)
-
       self.addAddress(newAddrObj)
       return newAddrObj
 
    #############################################################################
    def getHighestUsedIndex(self):
-      """ 
+      """
       This only retrieves the stored value, but it may not be correct if,
       for instance, the wallet was just imported but has been used before.
       """
@@ -562,68 +561,6 @@ class PyBtcWallet(object):
       for instance, the wallet was just imported but has been used before.
       """
       return self.lastComputedChainIndex
-
-   #############################################################################
-   @CheckWalletRegistration
-   def detectHighestUsedIndex(self):
-      """
-      This method is used to find the highestUsedChainIndex value of the 
-      wallet WITHIN its address pool.  It will NOT extend its address pool
-      in this search, because it is assumed that the wallet couldn't have
-      used any addresses it had not calculated yet.
-
-      If you have a wallet IMPORT, though, or a wallet that has been used
-      before but does not have this information stored with it, then you
-      should be using the next method:
-
-            self.freshImportFindHighestIndex()
-
-      which will actually extend the address pool as necessary to find the
-      highest address used.
-      """
-
-      highestIndex = self.bridgeWalletObj.getHighestUsedIndex()
-      if highestIndex > self.highestUsedChainIndex:
-         self.highestUsedChainIndex = highestIndex
-
-      return highestIndex
-
-   #############################################################################
-   @TimeThisFunction
-   def freshImportFindHighestIndex(self, stepSize=None):
-      """
-      This is much like detectHighestUsedIndex, except this will extend the
-      address pool as necessary.  It assumes that you have a fresh wallet
-      that has been used before, but was deleted and restored from its root
-      key and chaincode, and thus we don't know if only 10 or 10,000 addresses
-      were used.
-
-      If this was an exceptionally active wallet, it's possible that we
-      may need to manually increase the step size to be sure we find
-      everything.  In fact, there is no way to tell FOR SURE what is the
-      last addressed used: one must make an assumption that the wallet
-      never calculated more than X addresses without receiving a payment...
-      """
-      if not stepSize:
-         stepSize = self.addrPoolSize
-
-      topCompute = 0
-      topUsed    = 0
-      oldPoolSize = self.addrPoolSize
-      self.addrPoolSize = stepSize
-      # When we hit the highest address, the topCompute value will extend
-      # out [stepsize] addresses beyond topUsed, and the topUsed will not
-      # change, thus escaping the while loop
-      nWhile = 0
-      while topCompute - topUsed < 0.9*stepSize:
-         topCompute = self.fillAddressPool(stepSize, isActuallyNew=False)
-         topUsed = self.detectHighestUsedIndex()
-         nWhile += 1
-         if nWhile>10000:
-            raise WalletAddressError('Escaping inf loop in freshImport...')
-
-      self.addrPoolSize = oldPoolSize
-      return topUsed
 
    #############################################################################
    def getRootPKCC(self, pkIsCompressed=False):
@@ -895,7 +832,6 @@ class PyBtcWallet(object):
    def setLabels(self, lshort, llong=''):
       self.labelName = lshort
       self.labelDescr = llong
-
       self.bridgeWalletObj.setLabels(self.labelName, self.labelDescr)
 
    #############################################################################
@@ -968,7 +904,7 @@ class PyBtcWallet(object):
 
    #############################################################################
    def getLinearAddrList(self, withImported=True, withAddrPool=False):
-      """ 
+      """
       Retrieves a list of addresses, by hash, in the order they 
       appear in the wallet file.  Can ignore the imported addresses
       to get only chained addresses, if necessary.
@@ -983,41 +919,7 @@ class PyBtcWallet(object):
             # Either we want imported addresses, or this isn't one
             if (withAddrPool or addr.chainIndex<=self.highestUsedChainIndex):
                addrList.append(addr)
-
       return addrList
-
-   #############################################################################
-   def getAddress160ByChainIndex(self, desiredIdx):
-      """
-      It should be safe to assume that if the index is less than the highest 
-      computed, it will be in the chainIndexMap, but I don't like making such
-      assumptions.  Perhaps something went wrong with the wallet, or it was
-      manually reconstructed and has holes in the chain.  We will regenerate
-      addresses up to that point, if necessary (but nothing past the value
-      self.lastComputedChainIndex.
-      """
-      if desiredIdx>self.lastComputedChainIndex or desiredIdx<0:
-         # I removed the option for fillPoolIfNecessary, because of the risk
-         # that a bug may lead to generation of billions of addresses, which
-         # would saturate the system's resources and fill the HDD.
-         raise WalletAddressError('Chain index is out of range')
-
-      if desiredIdx in self.chainIndexMap:
-         return self.chainIndexMap[desiredIdx]
-      else:
-         # Somehow the address isn't here, even though it is less than the
-         # last computed index
-         closestIdx = 0
-         for idx,addr160 in self.chainIndexMap.items():
-            if closestIdx<idx<=desiredIdx:
-               closestIdx = idx
-               
-         gap = desiredIdx - closestIdx
-         extend160 = self.chainIndexMap[closestIdx]
-         for i in range(gap+1):
-            extend160 = self.computeNextAddress(extend160)
-            if desiredIdx==self.addrMap[extend160].chainIndex:
-               return self.chainIndexMap[desiredIdx]
 
    #############################################################################
    def pprint(self, indent='', allAddrInfo=True):
@@ -1049,7 +951,6 @@ class PyBtcWallet(object):
       isEqualTo = isEqualTo and (self.labelName  == wlt2.labelName )
       isEqualTo = isEqualTo and (self.labelDescr == wlt2.labelDescr)
       try:
-
          rootstr1 = binary_to_hex(self.addrMap['ROOT'].serialize())
          rootstr2 = binary_to_hex(wlt2.addrMap['ROOT'].serialize())
          isEqualTo = isEqualTo and (rootstr1 == rootstr2)
@@ -1210,7 +1111,8 @@ class PyBtcWallet(object):
    ###############################################################################
    @CheckWalletRegistration
    def sweepAddressList(self, addrList, main):
-      self.actionsToTakeAfterScan.append([self.sweepAfterRescan, [addrList, main]])    
+      self.actionsToTakeAfterScan.append(
+         [self.sweepAfterRescan, [addrList, main]])
 
       addrVec = []
       for addr in addrList:
@@ -1244,7 +1146,6 @@ class PyBtcWallet(object):
             addr160 = self.linearAddr160List[importIndex]
          else:
             raise Exception("invalid address index")
-
       return self.addrMap[addr160]
 
    ###############################################################################
@@ -1257,7 +1158,6 @@ class PyBtcWallet(object):
          addrObj = self.addrMap[addr]
          if addrObj.filter(filterType, keepInUse, keepChange) == True:
             addrList.append(addrObj)
-
       return addrList
 
    ###############################################################################
@@ -1270,7 +1170,6 @@ class PyBtcWallet(object):
          addrObj = self.addrMap[addr]
          if addrObj.filter(filterType, keepInUse, keepChange) == True:
             count += 1
-
       return count
 
    ###############################################################################
@@ -1287,18 +1186,11 @@ class PyBtcWallet(object):
    def getImportCppAddrList(self):
       addrList = []
       for addrIndex in self.importList:
-
          addrObj = self.cppWallet.getImportAddrObjByIndex(addrIndex)
          addrComment = self.getCommentForAddress(addrObj.getAddrHash()[1:])
          addrObj.setComment(addrComment)
-
          addrList.append(addrObj)
-
       return addrList
-
-   ###############################################################################
-   def hasImports(self):
-      return len(self.importList) != 0
 
    ###############################################################################
    def loadFromProto(self, payload):
@@ -1325,11 +1217,6 @@ class PyBtcWallet(object):
          addrObj.loadFromProto(addr)
          self.addAddress(addrObj)
 
-      #importList
-      for addr160, addrObj in self.addrMap.items():
-         if addrObj.chainIndex <= -2:
-            self.importList.append(len(self.linearAddr160List) - 1)
-
       #comments
       for commentIt in payload.comments:
          self.commentsMap[commentIt.key] = commentIt.val
@@ -1337,20 +1224,11 @@ class PyBtcWallet(object):
    #############################################################################
    def fillAddressPool(self, numPool, progressId, callback=None):
       """
-      Usually, when we fill the address pool, we are generating addresses
-      for the first time, and thus there is no chance it's ever seen the
-      blockchain.  However, this method is also used for recovery/import
-      of wallets, where the address pool has addresses that probably have
-      transactions already in the blockchain.
+      This is only ever called by explicit user request. We therefor assume
+      the addresses are being restored (flagged as not new)
       """
-
-      def completeProcess(*args):
-         self.loadFromProto(*args)
-         if callback:
-            callback()
-
       self.bridgeWalletObj.extendAddressPool(
-         progressId, numPool, completeProcess)
+         numPool, False, progressId, callback)
 
    #############################################################################
    def register(self, isNew):

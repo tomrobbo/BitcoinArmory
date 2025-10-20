@@ -414,7 +414,7 @@ void AssetAccount::extendPublicChain(
       if (iter != data_->assets_.end()) {
          continue;
       }
-      data_->assets_.insert(make_pair(id, asset));
+      data_->assets_.emplace(id, asset);
    }
 
    if (iface != nullptr) {

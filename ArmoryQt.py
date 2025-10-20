@@ -50,7 +50,7 @@ from armoryengine.UserAddressUtils import getScriptForUserStringImpl, \
    getDisplayStringForScriptImpl
 from armoryengine.BDM import TheBDM, \
    BDM_BLOCKCHAIN_READY, BDM_SCANNING, BDM_UNINITIALIZED, BDM_OFFLINE, \
-   FINISH_LOAD_BLOCKCHAIN_ACTION, NEW_ZC_ACTION, NEW_BLOCK_ACTION, \
+   SETUP_STEP1, NEW_ZC_ACTION, NEW_BLOCK_ACTION, \
    REFRESH_ACTION, WARNING_ACTION, WARNING_ACTION, SCAN_ACTION, \
    NODESTATUS_UPDATE, BDM_SCAN_PROGRESS, BDV_ERROR, BDV_DISCONNECTED, \
    SETUP_STEP2, SETUP_STEP3, BDMPhase_DBHeaders, BDMPhase_OrganizingChain, \
@@ -2602,8 +2602,7 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
       notifyIn = TheSettings.getSettingOrSetDefault('NotifyBtcIn', not OS_MACOSX)
       notifyOut = TheSettings.getSettingOrSetDefault('NotifyBtcOut', not OS_MACOSX)
 
-      txLedgers = ledgTuple[0]
-      for le in txLedgers.ledgers:
+      for le in ledgTuple.ledgers:
          if (le.balance <= 0 and notifyOut) or (le.balance > 0 and notifyIn):
             self.notifyQueue.append([le.walletId, le, False])
       self.doTheSystemTrayThing()
@@ -4386,14 +4385,13 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
          self.lblArmoryStatus.setToolTipLambda(getToolTipTextOffline)
 
    #############################################################################
-   def handleCppNotification(self, action, *args):
-      if action == FINISH_LOAD_BLOCKCHAIN_ACTION:
+   def handleCppNotification(self, action, args):
+      if action == SETUP_STEP1:
          #Blockchain just finished loading, finish initializing UI and render
          #the ledgers
 
          self.nodeStatus = TheBridge.service.getNodeStatus()
          self.wallets.updateBalanceAndCount()
-         self.wallets.detectHighestUsedIndex()
 
          self.blkReceived = RightNow()
          self.finishLoadBlockchainGUI()
@@ -4410,7 +4408,6 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
             LOGERROR("Failed update wallet data with error: %s" % e)
             return
 
-         zcList = args[0]
          self.notifyNewZeroConf(args)
          self.createCombinedLedger()
 
@@ -4424,28 +4421,24 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
             LOGERROR("Failed update wallet data with error: %s" % e)
             return
 
-         newBlocks = args[0]
-         if newBlocks>0:
-            print('New Block: ', TheBDM.getTopBlockHeight())
-
+         if args > 0:
             self.ledgerModel.reset()
-
             LOGINFO('New Block! : %d', TheBDM.getTopBlockHeight())
 
             self.createCombinedLedger()
-            self.blkReceived  = RightNow()
+            self.blkReceived = RightNow()
             TheSettings.set('LastBlkRecvTime', self.blkReceived)
-            TheSettings.set('LastBlkRecv',     TheBDM.getTopBlockHeight())
-
-            if self.netMode==NETWORKMODE.Full:
-               LOGINFO('Current block number: %d', TheBDM.getTopBlockHeight())
+            TheSettings.set('LastBlkRecv', TheBDM.getTopBlockHeight())
 
             # Update the wallet view to immediately reflect new balances
             self.walletModel.reset()
             self.updateStatusBarText()
 
       elif action == REFRESH_ACTION:
-         #ignore refresh notification until the bdm_ready notification
+         for dbId in args:
+            self.wallets.syncWalletData(dbId)
+
+         #skip the balance update step until the bdm_ready notification
          if TheBDM.getState() != BDM_BLOCKCHAIN_READY:
             return
 
@@ -4459,38 +4452,37 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
             return
 
          reset = False
-         idList = args[0]
-         if len(idList) == 0:
+         if len(args) == 0:
             self.createCombinedLedger()
             return
 
-         for wltID in idList:
-            if not wltID:
+         for dbId in args:
+            if not dbId:
                continue
 
-            if wltID == "wallet_filter_changed":
+            if dbId == "wallet_filter_changed":
                reset = True
                continue
 
             try:
-               wlt = self.wallets.get(wltID)
+               wlt = self.wallets.get(dbId)
                wlt.isEnabled = True
                self.walletModel.reset()
                wlt.doAfterScan()
                self.changeWltFilter()
             except:
                #not a known dbId, try something else
-               LOGWARN(f"got refresh for unknown wallet: {wltID}")
+               LOGWARN(f"got refresh for unknown wallet: {dbId}")
                pass
 
-            if wltID in self.oneTimeScanAction:
-               postScanAction = self.oneTimeScanAction[wltID]
-               del self.oneTimeScanAction[wltID]
+            if dbId in self.oneTimeScanAction:
+               postScanAction = self.oneTimeScanAction[dbId]
+               del self.oneTimeScanAction[dbId]
                if callable(postScanAction):
                   postScanAction()
 
-            elif wltID in self.lockboxIDMap:
-               lbID = self.lockboxIDMap[wltID]
+            elif dbId in self.lockboxIDMap:
+               lbID = self.lockboxIDMap[dbId]
                self.allLockboxes[lbID].isEnabled = True
 
                if self.lbDialogModel != None:
@@ -4499,36 +4491,36 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
                if self.lbDialog != None:
                   self.lbDialog.changeLBFilter()
 
-            if wltID in self.walletSideScanProgress:
-               del self.walletSideScanProgress[wltID]
+            if dbId in self.walletSideScanProgress:
+               del self.walletSideScanProgress[dbId]
 
          self.createCombinedLedger(reset)
 
       elif action == WARNING_ACTION:
          #something went wrong on the C++ side, create a message box to report
          #it to the user
-         if 'rescan' in args[0].lower() or 'rebuild' in args[0].lower():
-            result = MsgBoxWithDNAA(self, self, MSGBOX.Critical, self.tr('BDM error!'), args[0],
-                                    self.tr("Rebuild and rescan on next start"), dnaaStartChk=False)
+         if 'rescan' in args.lower() or 'rebuild' in args.lower():
+            result = MsgBoxWithDNAA(self, self, MSGBOX.Critical, self.tr('BDM error!'), args,
+               self.tr("Rebuild and rescan on next start"), dnaaStartChk=False)
             if result[1] == True:
                touchFile( os.path.join(ARMORY_HOME_DIR, 'rebuild.flag') )
 
-         elif 'factory reset' in args[0].lower():
-            result = MsgBoxWithDNAA(self, self, MSGBOX.Critical, self.tr('BDM error!'), args[0],
-                                    self.tr("Factory reset on next start"), dnaaStartChk=False)
+         elif 'factory reset' in args.lower():
+            result = MsgBoxWithDNAA(self, self, MSGBOX.Critical, self.tr('BDM error!'), args,
+               self.tr("Factory reset on next start"), dnaaStartChk=False)
             if result[1] == True:
                DlgFactoryReset(self, self).exec_()
 
          else:
-            QtWidgets.QMessageBox.critical(self, self.tr('BlockDataManager Warning'), \
-                              args[0], \
-                              QtWidgets.QMessageBox.Ok)
+            QtWidgets.QMessageBox.critical(self, self.tr('BlockDataManager Warning'),
+               args, QtWidgets.QMessageBox.Ok)
+
          #this is a critical error reporting channel, should kill the app right
          #after
          os._exit(0)
 
       elif action == SCAN_ACTION:
-         idList, prog, phase = args[0]
+         idList, prog, phase = args
          hasWallet = False
          hasLockbox = False
 
@@ -4568,25 +4560,25 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
                self.lbDialog.changeLBFilter()
 
       elif action == NODESTATUS_UPDATE:
-
          prevStatus = None
          if self.nodeStatus != None and self.nodeStatus.is_valid:
             prevStatus = self.nodeStatus.node_state
-         self.nodeStatus = args[0]
+         self.nodeStatus = args
 
          if prevStatus != self.nodeStatus.node_state:
             if self.nodeStatus.node_state == NodeStatus_Offline:
-               self.showTrayMsg(self.tr('Disconnected'), self.tr('Connection to Bitcoin Core '
-                                'client lost!  Armory cannot send nor '
-                                'receive bitcoins until connection is '
-                                're-established.'), QtWidgets.QSystemTrayIcon.Critical,
-                                10000)
+               self.showTrayMsg(self.tr('Disconnected'),
+                  self.tr('Connection to Bitcoin Core '
+                     'client lost!  Armory cannot send nor '
+                     'receive bitcoins until connection is '
+                     're-established.'),
+                  QtWidgets.QSystemTrayIcon.Critical, 10000)
             elif self.nodeStatus.node_state == NodeStatus_Online:
-               self.showTrayMsg(self.tr('Connected'), self.tr('Connection to Bitcoin Core '
-                                      're-established'), \
-                                      QtWidgets.QSystemTrayIcon.Information, 10000)
+               self.showTrayMsg(self.tr('Connected'),
+                  self.tr('Connection to Bitcoin Core '
+                     're-established'),
+                  QtWidgets.QSystemTrayIcon.Information, 10000)
             self.updateStatusBarText()
-
          self.updateSyncProgress()
 
       elif action == BDM_SCAN_PROGRESS:
@@ -4594,12 +4586,10 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
          self.updateSyncProgress()
 
       elif action == BDV_ERROR:
-         errorStruct = args[0]
-
+         errorStruct = args
          if errorStruct.errType_ == Cpp.Error_ZC:
             errorMsg = errorStruct.errorStr_
             txHash = errorStruct.extraMsg_
-
             self.zcBroadcastError(txHash, errorMsg)
 
       elif action == BDV_DISCONNECTED:
@@ -4611,114 +4601,6 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
          self.setupBlockchainService_step2()
       elif action == SETUP_STEP3:
          self.setupBlockchainService_step3()
-
-   #############################################################################
-   def Heartbeat(self, nextBeatSec=1):
-      """
-      This method is invoked when the app is initialized, and will
-      run every second, or whatever is specified in the nextBeatSec
-      argument.
-      """
-
-      # Special heartbeat functions are for special windows that may need
-      # to update every, say, every 0.1s
-      # is all that matters at that moment, like a download progress window.
-      # This is "special" because you are putting all other processing on
-      # hold while this special window is active
-      # IMPORTANT: Make sure that the special heartbeat function returns
-      #            a value below zero when it's done OR if it errors out!
-      #            Otherwise, it should return the next heartbeat delay,
-      #            which would probably be something like 0.1 for a rapidly
-      #            updating progress counter
-      for fn in self.extraHeartbeatSpecial:
-         try:
-            nextBeat = fn()
-            if nextBeat>0:
-               reactor.callLater(nextBeat, self.Heartbeat)
-            else:
-               self.extraHeartbeatSpecial = []
-               reactor.callLater(1, self.Heartbeat)
-         except:
-            LOGEXCEPT('Error in special heartbeat function')
-            self.extraHeartbeatSpecial = []
-            reactor.callLater(1, self.Heartbeat)
-         return
-
-      if TheBDM.exception != "":
-         QtWidgets.QMessageBox.warning(self, self.tr('Database Error'), self.tr(
-                           'The DB has returned the following error: <br><br> '
-                           '<b> %s </b> <br><br> Armory will now shutdown.' % TheBDM.exception), QtWidgets.QMessageBox.Ok)
-         self.closeForReal()
-
-      # SatoshiDaemonManager
-      # BlockDataManager
-
-      sdmState = TheSDM.getSDMState()
-      bdmState = TheBDM.getState()
-
-      self.heartbeatCount += 1
-
-      try:
-         for func in self.extraHeartbeatAlways:
-            if isinstance(func, list):
-               fnc = func[0]
-               kargs = func[1]
-               keep_running = func[2]
-               if keep_running == False:
-                  self.extraHeartbeatAlways.remove(func)
-               fnc(*kargs)
-            else:
-               func()
-
-         if self.doAutoBitcoind:
-
-            if (sdmState in ['BitcoindInitializing','BitcoindSynchronizing']) or \
-               (sdmState == 'BitcoindReady' and bdmState==BDM_SCANNING):
-               self.updateSyncProgress()
-
-         else:
-            if bdmState in (BDM_OFFLINE,BDM_UNINITIALIZED):
-               # This call seems out of place, but it's because if you are in offline
-               # mode, it needs to check periodically for the existence of Bitcoin Core
-               # so that it can enable the "Go Online" button
-               self.setDashboardDetails()
-               return
-            elif bdmState==BDM_SCANNING:  # TODO - Move to handle cpp notification
-               self.updateSyncProgress()
-
-
-         if self.netMode==NETWORKMODE.Disconnected:
-            if self.isOnlineModePossible():
-               self.switchNetworkMode(NETWORKMODE.Full)
-
-
-         if bdmState==BDM_BLOCKCHAIN_READY:
-            # Trigger any notifications, if we have them... TODO - Remove add to new block, and block chain ready
-            self.doTheSystemTrayThing()
-
-            # Any extra functions that may have been injected to be run TODO - Call on New block
-            # when new blocks are received.
-            if len(self.extraNewBlockFunctions) > 0:
-               cppHead = TheBDM.getMainBlockFromDB(self.currBlockNum)
-               pyBlock = PyBlock().unserialize(cppHead.getSerializedBlock())
-               for blockFunc in self.extraNewBlockFunctions:
-                  blockFunc(pyBlock)
-
-            # TODO - remove
-            for func in self.extraHeartbeatOnline:
-               func()
-
-      except:
-         # When getting the error info, don't collect the traceback in order to
-         # avoid circular references. https://docs.python.org/2/library/sys.html
-         # has more info.
-         LOGEXCEPT('Error in heartbeat function')
-         (errType, errVal) = sys.exc_info()[:2]
-         errStr = 'Error Type: %s\nError Value: %s' % (errType, errVal)
-         LOGERROR(errStr)
-      finally:
-         reactor.callLater(nextBeatSec, self.Heartbeat)
-
 
    #############################################################################
    def printAlert(self, moneyID, ledgerAmt, txAmt):
@@ -4764,9 +4646,7 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
                        QtWidgets.QSystemTrayIcon.Information, 10000)
       LOGINFO(title)
 
-
    #############################################################################
-
    def doTheSystemTrayThing(self):
       """
       I named this method as it is because this is not just "show a message."
@@ -4929,49 +4809,6 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
 
       LOGINFO('Attempting to close the main window!')
       TheSignalExecution.executeMethod(QAPP.quit)
-
-   '''
-   #############################################################################
-   def checkForNegImports(self):
-      negativeImports = []
-      for wlt in self.walletMap:
-         if self.walletMap[wlt].hasNegativeImports:
-            negativeImports.append(self.walletMap[wlt].uniqueIDB58)
-
-      # If we detect any negative import
-      if len(negativeImports) > 0:
-         logDirs = []
-         for wltID in negativeImports:
-            if not wltID in self.walletMap:
-               continue
-
-            homedir = os.path.dirname(self.walletMap[wltID].walletPath)
-            wltlogdir  = os.path.join(homedir, wltID)
-            if not os.path.exists(wltlogdir):
-               continue
-
-            for subdirname in os.listdir(wltlogdir):
-               subdirpath = os.path.join(wltlogdir, subdirname)
-               logDirs.append([wltID, subdirpath])
-
-         DlgInconsistentWltReport(self, self, logDirs).exec_()
-
-   #############################################################################
-   def getAllRecoveryLogDirs(self, wltIDList):
-      self.logDirs = []
-      for wltID in wltIDList:
-         if not wltID in self.walletMap:
-            continue
-
-         homedir = os.path.dirname(self.walletMap[wltID].walletPath)
-         logdir  = os.path.join(homedir, wltID)
-         if not os.path.exists(logdir):
-            continue
-
-         self.logDirs.append([wltID, logdir])
-
-      return self.logDirs
-   '''
 
    #############################################################################
    def loadNewPage(self):
@@ -5207,8 +5044,7 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
    def unregisterProgressCallback(self, id):
       del self.progressCallbacks[id]
 
-############################################
-
+################################################################################
 if 1:
    #setup splash screen
    pixLogo = QtGui.QPixmap('./img/splashlogo.png')

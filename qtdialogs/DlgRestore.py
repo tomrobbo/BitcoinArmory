@@ -1496,7 +1496,6 @@ class DlgRestoreWOData(ArmoryDialog):
 
 ################################################################################
 class DlgEnterSecurePrintCode(ArmoryDialog):
-
    def __init__(self, parent, main):
       super(DlgEnterSecurePrintCode, self).__init__(parent, main)
 

@@ -658,7 +658,7 @@ class BridgeWalletWrapper(ProtoWrapper):
       self.accountId = accountId
 
    ####
-   def getPacket(self):
+   def _getPacket(self):
       packet = Bridge.ToBridge.new_message()
       wltCapn = packet.init("wallet")
       wltCapn.walletId  = self.walletId
@@ -669,7 +669,7 @@ class BridgeWalletWrapper(ProtoWrapper):
    #############################################################################
    ## commands ##
    def getBalanceAndCount(self):
-      packet = self.getPacket()
+      packet = self._getPacket()
       packet.wallet.getBalanceAndCount = None
 
       fut = self.send(packet)
@@ -680,7 +680,7 @@ class BridgeWalletWrapper(ProtoWrapper):
 
    ####
    def getAddrCombinedList(self):
-      packet = self.getPacket()
+      packet = self._getPacket()
       packet.wallet.getAddrCombinedList = None
 
       fut = self.send(packet)
@@ -689,7 +689,7 @@ class BridgeWalletWrapper(ProtoWrapper):
 
    ####
    def getHighestUsedIndex(self):
-      packet = self.getPacket()
+      packet = self._getPacket()
       packet.wallet.getHighestUsedIndex = None
 
       fut = self.send(packet)
@@ -697,23 +697,19 @@ class BridgeWalletWrapper(ProtoWrapper):
       return reply.wallet.getHighestUsedIndex
 
    ####
-   def extendAddressPool(self, progressId, count, callback):
-      def finishExtension(reply, args):
-         callbackThread = threading.Thread(
-            group=None, target=args[0],
-            name=None, args=[reply], kwargs={})
-         callbackThread.start()
-
-      packet = self.getPacket()
+   def extendAddressPool(self, count: int,
+      isNew: bool, progressId: str, callback: callable):
+      packet = self._getPacket()
       method = packet.wallet.init("extendAddressPool")
       method.count = count
+      method.isNew = isNew
       method.callbackId = progressId
-      self.send(packet, False, finishExtension, [callback])
+      self.send(packet, callback=callback)
 
    ####
    def createBackupStringForWallet(self,
       callbackFunc, passphrase, serverPushObj):
-      packet = self.getPacket()
+      packet = self._getPacket()
       req = packet.wallet.init("createBackupString")
       if passphrase:
          req.passphrase = passphrase
@@ -725,7 +721,7 @@ class BridgeWalletWrapper(ProtoWrapper):
 
    ####
    def setAddressTypeFor(self, assetId, addrType):
-      packet = self.getPacket()
+      packet = self._getPacket()
       method = packet.wallet.init("setAddressTypeFor")
       method.assetId = assetId
       method.addressType = addrType
@@ -736,7 +732,7 @@ class BridgeWalletWrapper(ProtoWrapper):
 
    ####
    def setComment(self, key, val):
-      packet = self.getPacket()
+      packet = self._getPacket()
       method = packet.wallet.init("setComment")
       method.key = key
       method.comment = val
@@ -744,7 +740,7 @@ class BridgeWalletWrapper(ProtoWrapper):
 
    ####
    def setLabels(self, title, desc):
-      packet = self.getPacket()
+      packet = self._getPacket()
       method = packet.wallet.init("setLabels")
       method.title = title
       method.description = desc
@@ -752,16 +748,17 @@ class BridgeWalletWrapper(ProtoWrapper):
 
    ####
    def initCoinSelectionInstance(self, height):
-      packet = self.getPacket()
+      packet = self._getPacket()
       packet.wallet.setupNewCoinSelectionInstance = height
 
       fut = self.send(packet)
       reply = fut.getVal()
-      return BridgeCoinSelectionWrapper(reply.wallet.setupNewCoinSelectionInstance)
+      return BridgeCoinSelectionWrapper(
+         reply.wallet.setupNewCoinSelectionInstance)
 
    ####
    def createAddressBook(self):
-      packet = self.getPacket()
+      packet = self._getPacket()
       packet.wallet.createAddressBook = None
 
       fut = self.send(packet)
@@ -770,7 +767,7 @@ class BridgeWalletWrapper(ProtoWrapper):
 
    ####
    def getUtxos(self, value=0, zc=False, rbf=False):
-      packet = self.getPacket()
+      packet = self._getPacket()
       request = packet.wallet.init("getUtxos")
       if value > 0:
          request.value = value
@@ -785,7 +782,7 @@ class BridgeWalletWrapper(ProtoWrapper):
 
    ####
    def getNewAddress(self, addrType):
-      packet = self.getPacket()
+      packet = self._getPacket()
       request = packet.wallet.init("getAddress")
       request.type = addrType
       request.new = None
@@ -796,7 +793,7 @@ class BridgeWalletWrapper(ProtoWrapper):
 
    ####
    def getChangeAddr(self, addrType):
-      packet = self.getPacket()
+      packet = self._getPacket()
       request = packet.wallet.init("getAddress")
       request.type = addrType
       request.change = None
@@ -807,7 +804,7 @@ class BridgeWalletWrapper(ProtoWrapper):
 
    ####
    def peekChangeAddress(self, addrType):
-      packet = self.getPacket()
+      packet = self._getPacket()
       request = packet.wallet.init("getAddress")
       request.type = addrType
       request.peekChange = None
@@ -818,7 +815,7 @@ class BridgeWalletWrapper(ProtoWrapper):
 
    ####
    def getData(self):
-      packet = self.getPacket()
+      packet = self._getPacket()
 
       walletData = Bridge.WalletData.new_message()
       method = packet.wallet.getData = None
@@ -829,7 +826,7 @@ class BridgeWalletWrapper(ProtoWrapper):
 
    ####
    def delete(self):
-      packet = self.getPacket()
+      packet = self._getPacket()
       packet.wallet.deleteWallet = None
 
       fut = self.send(packet)
@@ -838,7 +835,7 @@ class BridgeWalletWrapper(ProtoWrapper):
 
    ####
    def getLedgerDelegateIdForScrAddr(self, scrAddr: bytes):
-      packet = self.getPacket()
+      packet = self._getPacket()
       packet.wallet.getLedgerDelegateIdForScrAddr = scrAddr
 
       fut = self.send(packet)
@@ -847,14 +844,14 @@ class BridgeWalletWrapper(ProtoWrapper):
 
    ####
    def getUnlockTime(self, callback: callable):
-      packet = self.getPacket()
+      packet = self._getPacket()
       packet.wallet.getUnlockTime = None
       self.send(packet, callback=callback)
 
    ####
    def changePassphrase(self, isPriv: bool,
       callbackId: str, callback: callable):
-      packet = self.getPacket()
+      packet = self._getPacket()
       changeRequest = packet.wallet.init('changePassphrase')
       changeRequest.callbackId = callbackId
       if isPriv:
@@ -872,7 +869,7 @@ class BridgeCoinSelectionWrapper(ProtoWrapper):
       self.coinSelectionId = csId
 
    ####
-   def getPacket(self):
+   def _getPacket(self):
       packet = Bridge.ToBridge.new_message()
       packet.init("coinSelection").id = self.coinSelectionId
       return packet
@@ -880,13 +877,13 @@ class BridgeCoinSelectionWrapper(ProtoWrapper):
    #############################################################################
    ## commands ##
    def destroyCoinSelectionInstance(self):
-      packet = self.getPacket()
+      packet = self._getPacket()
       packet.coinSelection.cleanup = None
       self.send(packet, False)
 
    #############################################################################
    def setCoinSelectionRecipient(self, addrStr: str, value: int, recId: int):
-      packet = self.getPacket()
+      packet = self._getPacket()
       method = packet.coinSelection.init("setRecipient")
       method.address = addrStr
       method.value = value
@@ -900,13 +897,13 @@ class BridgeCoinSelectionWrapper(ProtoWrapper):
 
    #############################################################################
    def reset(self):
-      packet = self.getPacket()
+      packet = self._getPacket()
       packet.coinSelection.reset = None
       self.send(packet, False)
 
    #############################################################################
    def selectUTXOs(self, fee: int, feePerByte: float, processFlags: int):
-      packet = self.getPacket()
+      packet = self._getPacket()
       method = packet.coinSelection.init("selectUtxos")
       method.flags = processFlags
 
@@ -922,7 +919,7 @@ class BridgeCoinSelectionWrapper(ProtoWrapper):
 
    #############################################################################
    def getUtxoSelection(self):
-      packet = self.getPacket()
+      packet = self._getPacket()
       packet.coinSelection.getUtxoSelection = None
 
       fut = self.send(packet)
@@ -931,7 +928,7 @@ class BridgeCoinSelectionWrapper(ProtoWrapper):
 
    #############################################################################
    def getFlatFee(self):
-      packet = self.getPacket()
+      packet = self._getPacket()
       packet.coinSelection.getFlatFee = None
 
       fut = self.send(packet)
@@ -940,7 +937,7 @@ class BridgeCoinSelectionWrapper(ProtoWrapper):
 
    #############################################################################
    def getFeeByte(self):
-      packet = self.getPacket()
+      packet = self._getPacket()
       packet.coinSelection.getFeeByte = None
 
       fut = self.send(packet)
@@ -949,7 +946,7 @@ class BridgeCoinSelectionWrapper(ProtoWrapper):
 
    #############################################################################
    def getSizeEstimate(self):
-      packet = self.getPacket()
+      packet = self._getPacket()
       packet.coinSelection.getSizeEstimate = None
 
       fut = self.send(packet)
@@ -958,7 +955,7 @@ class BridgeCoinSelectionWrapper(ProtoWrapper):
 
    #############################################################################
    def processCustomUtxoList(self, utxoList: list, fee: int, feePerByte: float, processFlags: int):
-      packet = self.getPacket()
+      packet = self._getPacket()
       request = packet.coinSelection.init("processCustomUtxoList")
       request.flags = processFlags
 
@@ -978,7 +975,7 @@ class BridgeCoinSelectionWrapper(ProtoWrapper):
 
    #############################################################################
    def getFeeForMaxVal(self, feePerByte: float):
-      packet = self.getPacket()
+      packet = self._getPacket()
       method = packet.coinSelection.init("getFeeForMaxVal")
       method.feeByte = feePerByte
 
@@ -988,7 +985,7 @@ class BridgeCoinSelectionWrapper(ProtoWrapper):
 
    #############################################################################
    def getFeeForMaxValUtxoVector(self, utxoList: list, feePerByte: float):
-      packet = self.getPacket()
+      packet = self._getPacket()
       request = packet.coinSelection.init("getFeeForMaxVal")
       request.feeByte = feePerByte
 
@@ -1008,7 +1005,7 @@ class ScriptUtils(ProtoWrapper):
       super().__init__(bridgeSocket)
 
    ####
-   def getPacket(self, script: bytes):
+   def _getPacket(self, script: bytes):
       packet = Bridge.ToBridge.new_message()
       packet.init("scriptUtils").script = script
       return packet
@@ -1016,7 +1013,7 @@ class ScriptUtils(ProtoWrapper):
    #############################################################################
    ## commands ##
    def getTxOutScriptType(self, script: bytes):
-      packet = self.getPacket(script)
+      packet = self._getPacket(script)
       packet.scriptUtils.getTxOutScriptType = None
 
       fut = self.send(packet)
@@ -1025,7 +1022,7 @@ class ScriptUtils(ProtoWrapper):
 
    ####
    def getTxInScriptType(self, script: bytes, hashVal: bytes):
-      packet = self.getPacket(script)
+      packet = self._getPacket(script)
       packet.scriptUtils.getTxInScriptType = hashVal
 
       fut = self.send(packet)
@@ -1034,7 +1031,7 @@ class ScriptUtils(ProtoWrapper):
 
    ####
    def getLastPushDataInScript(self, script: bytes):
-      packet = self.getPacket(script)
+      packet = self._getPacket(script)
       packet.scriptUtils.getLastPushDataInScript = None
 
       fut = self.send(packet)
@@ -1045,7 +1042,7 @@ class ScriptUtils(ProtoWrapper):
 
    ####
    def getTxOutScriptForScrAddr(self, script: bytes):
-      packet = self.getPacket(script)
+      packet = self._getPacket(script)
       packet.scriptUtils.getTxOutScriptForScrAddr = None
 
       fut = self.send(packet)
@@ -1054,7 +1051,7 @@ class ScriptUtils(ProtoWrapper):
 
    ####
    def getScrAddrForScript(self, script: bytes):
-      packet = self.getPacket(script)
+      packet = self._getPacket(script)
       packet.scriptUtils.getScrAddrForScript = None
 
       fut = self.send(packet)
@@ -1063,7 +1060,7 @@ class ScriptUtils(ProtoWrapper):
 
    ####
    def getAddrStrForScrAddr(self, scrAddr):
-      packet = self.getPacket(scrAddr)
+      packet = self._getPacket(scrAddr)
       packet.scriptUtils.getAddrStrForScrAddr = None
 
       fut = self.send(packet)
@@ -1100,7 +1097,7 @@ class BridgeSigner(ProtoWrapper):
       self.cleanup()
 
    ####
-   def getPacket(self):
+   def _getPacket(self):
       if self.signerId == None or not self.signerId:
          raise BridgeSignerError("[BridgeSigner] missing signerId")
 
@@ -1127,7 +1124,7 @@ class BridgeSigner(ProtoWrapper):
    def cleanup(self):
       if not self.signerId:
          return
-      packet = self.getPacket()
+      packet = self._getPacket()
       packet.signer.cleanup = None
 
       self.send(packet, False)
@@ -1135,7 +1132,7 @@ class BridgeSigner(ProtoWrapper):
 
    #############################################################################
    def setVersion(self, version: int):
-      packet = self.getPacket()
+      packet = self._getPacket()
       packet.signer.setVersion = version
 
       fut = self.send(packet)
@@ -1146,7 +1143,7 @@ class BridgeSigner(ProtoWrapper):
 
    #############################################################################
    def setLockTime(self, locktime: int):
-      packet = self.getPacket()
+      packet = self._getPacket()
       packet.signer.setLockTime = locktime
 
       fut = self.send(packet)
@@ -1157,7 +1154,7 @@ class BridgeSigner(ProtoWrapper):
 
    #############################################################################
    def addSpenderByOutpoint(self, hashVal: bytes, txOutId: int, seq: int):
-      packet = self.getPacket()
+      packet = self._getPacket()
       method = packet.signer.init("addSpenderByOutpoint")
       method.hash = hashVal
       method.txOutId = txOutId
@@ -1171,7 +1168,7 @@ class BridgeSigner(ProtoWrapper):
 
    #############################################################################
    def populateUtxo(self, hashVal: bytes, txOutId: int, value: int, script: bytes):
-      packet = self.getPacket()
+      packet = self._getPacket()
       method = packet.signer.init("populateUtxo")
       method.hash = hashVal
       method.txOutId = txOutId
@@ -1186,7 +1183,7 @@ class BridgeSigner(ProtoWrapper):
 
    #############################################################################
    def addSupportingTx(self, rawTxData: bytes):
-      packet = self.getPacket()
+      packet = self._getPacket()
       packet.signer.addSupportingTx = rawTxData
 
       fut = self.send(packet)
@@ -1197,7 +1194,7 @@ class BridgeSigner(ProtoWrapper):
 
    #############################################################################
    def addRecipient(self, value: int, script: bytes):
-      packet = self.getPacket()
+      packet = self._getPacket()
       method = packet.signer.init("addRecipient")
       method.value = value
       method.script = script
@@ -1210,7 +1207,7 @@ class BridgeSigner(ProtoWrapper):
 
    #############################################################################
    def toTxSigCollect(self, ustxType: int):
-      packet = self.getPacket()
+      packet = self._getPacket()
       packet.signer.toTxSigCollect = ustxType
 
       fut = self.send(packet)
@@ -1219,7 +1216,7 @@ class BridgeSigner(ProtoWrapper):
 
    #############################################################################
    def fromTxSigCollect(self, txSigCollect: str):
-      packet = self.getPacket()
+      packet = self._getPacket()
       packet.signer.fromTxSigCollect = txSigCollect
 
       fut = self.send(packet)
@@ -1230,7 +1227,7 @@ class BridgeSigner(ProtoWrapper):
 
    #############################################################################
    def resolve(self, wltId: str):
-      packet = self.getPacket()
+      packet = self._getPacket()
       packet.signer.resolve = wltId
 
       fut = self.send(packet)
@@ -1240,7 +1237,7 @@ class BridgeSigner(ProtoWrapper):
 
    #############################################################################
    def signTx(self, wltId: str, serverPushObj, callbackFunc, callbackArgs=[]):
-      packet = self.getPacket()
+      packet = self._getPacket()
       method = packet.signer.init("signTx")
       method.walletId = wltId
       method.callbackId = serverPushObj.callbackId
@@ -1248,7 +1245,7 @@ class BridgeSigner(ProtoWrapper):
 
    #############################################################################
    def getSignedTx(self):
-      packet = self.getPacket()
+      packet = self._getPacket()
       packet.signer.getSignedTx = None
 
       fut = self.send(packet)
@@ -1259,7 +1256,7 @@ class BridgeSigner(ProtoWrapper):
 
    #############################################################################
    def getUnsignedTx(self):
-      packet = self.getPacket()
+      packet = self._getPacket()
       packet.signer.getUnsignedTx = None
 
       fut = self.send(packet)
@@ -1270,7 +1267,7 @@ class BridgeSigner(ProtoWrapper):
 
    #############################################################################
    def getSignedStateForInput(self, inputId: int):
-      packet = self.getPacket()
+      packet = self._getPacket()
       packet.signer.getSignedStateForInput = inputId
 
       fut = self.send(packet)
@@ -1279,7 +1276,7 @@ class BridgeSigner(ProtoWrapper):
 
    #############################################################################
    def fromType(self):
-      packet = self.getPacket()
+      packet = self._getPacket()
       packet.signer.fromType = None
 
       fut = self.send(packet)
@@ -1288,7 +1285,7 @@ class BridgeSigner(ProtoWrapper):
 
    #############################################################################
    def canLegacySerialize(self):
-      packet = self.getPacket()
+      packet = self._getPacket()
       packet.signer.canLegacySerialize = None
 
       fut = self.send(packet)
