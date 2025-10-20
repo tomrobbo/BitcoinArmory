@@ -747,7 +747,7 @@ class DlgWalletDetails(ArmoryDialog):
       self.labelValues[WLTFIELDS.Version] = QtWidgets.QLabel(getVersionString(self.wlt.version))
 
 
-      topUsed = max(self.wlt.highestUsedChainIndex, 0)
+      topUsed = max(self.wlt.getHighestUsedIndex(), 0)
       self.labelValues[WLTFIELDS.NumAddr] = QLabelButton('%d' % topUsed)
       self.labelValues[WLTFIELDS.NumAddr].setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
       self.labelValues[WLTFIELDS.NumAddr].linkActivated.connect(

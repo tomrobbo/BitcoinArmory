@@ -137,7 +137,8 @@ class SelectWalletFrame(ArmoryFrame):
          self.accept()
          return
 
-      self.wltIDList = wltIDList if wltIDList else self.getWalletIdList(onlyOfflineWallets)
+      self.wltIDList = wltIDList if wltIDList else \
+         self.main.wallets.getWalletIdList(watchingOnly=onlyOfflineWallets)
 
       selectedWltIndex = 0
       self.selectedID = None
@@ -246,14 +247,6 @@ class SelectWalletFrame(ArmoryFrame):
       # Make sure this is called once so that the default selection is displayed
       self.updateOnWalletChange()
 
-   def getWalletIdList(self, onlyOfflineWallets):
-      result = []
-      if onlyOfflineWallets:
-         result = self.main.getWalletIdList(watchingOnly=True)
-      else:
-         result = self.main.getWalletIdList()
-      return result
-
    def getSelectedWltID(self):
       idx = -1
       if self.doVerticalLayout:
@@ -339,7 +332,7 @@ class SelectWalletFrame(ArmoryFrame):
       if len(wltID) > 0:
          wlt = self.main.wallets.get(wltID)
 
-         self.dispID.setText(wltID)
+         self.dispID.setText(wlt.walletId)
          self.dispName.setText(wlt.labelName)
          self.dispDescr.setText(wlt.labelDescr)
          self.selectedID = wltID
@@ -352,7 +345,7 @@ class SelectWalletFrame(ArmoryFrame):
             if bal <= self.balAtLeast:
                self.dispBal.setText('<font color="red"><b>%s</b></font>' % balStr)
             else:
-               self.dispBal.setText('<b>' + balStr + '</b>')     
+               self.dispBal.setText('<b>' + balStr + '</b>')
 
          if self.selectWltCallback:
             self.selectWltCallback(wlt)

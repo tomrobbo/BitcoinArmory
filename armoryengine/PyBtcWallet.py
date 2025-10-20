@@ -144,7 +144,7 @@ class PyBtcWallet(object):
 
       self.lastComputedChainAddr160 = None
       self.lastComputedChainIndex   = 0
-      self.highestUsedChainIndex    = 0
+      self._highestUsedChainIndex    = -1
 
       #To enable/disable wallet row in wallet table model
       self.isEnabled = True
@@ -389,7 +389,7 @@ class PyBtcWallet(object):
    def syncData(self):
       dataProto = self.bridgeWalletObj.getData()
       self.lastComputedChainIndex = dataProto.lookupCount
-      self.highestUsedChainIndex = dataProto.useCount
+      self._highestUsedChainIndex = dataProto.useCount
 
       for addr in dataProto.addressData:
          addrObj = PyBtcAddress(self)
@@ -407,9 +407,9 @@ class PyBtcWallet(object):
       self.addrMap[prefixedHash] = addrObj
       self.linearAddr160List.append(prefixedHash)
 
-      self.highestUsedChainIndex = max(
+      self._highestUsedChainIndex = max(
          addrObj.chainIndex,
-         self.highestUsedChainIndex)
+         self._highestUsedChainIndex)
       self.addrByString[addrObj.getAddressString()] = prefixedHash
 
    #############################################################################
@@ -441,7 +441,7 @@ class PyBtcWallet(object):
       This only retrieves the stored value, but it may not be correct if,
       for instance, the wallet was just imported but has been used before.
       """
-      return self.highestUsedChainIndex
+      return self._highestUsedChainIndex + 1
 
    #############################################################################
    def getHighestComputedIndex(self):
@@ -586,7 +586,7 @@ class PyBtcWallet(object):
       onlineWallet.opevalMap = self.opevalMap
 
       onlineWallet.uniqueIDBin = self.uniqueIDBin
-      onlineWallet.highestUsedChainIndex     = self.highestUsedChainIndex
+      onlineWallet._highestUsedChainIndex     = self._highestUsedChainIndex
       onlineWallet.lastComputedChainAddr160  = self.lastComputedChainAddr160
       onlineWallet.lastComputedChainIndex    = self.lastComputedChainIndex
 
@@ -768,7 +768,7 @@ class PyBtcWallet(object):
          addr = self.addrMap[a160]
          if not str(a160)==str('ROOT') and (withImported or addr.chainIndex>=0):
             # Either we want imported addresses, or this isn't one
-            if (withAddrPool or addr.chainIndex<=self.highestUsedChainIndex):
+            if (withAddrPool or addr.chainIndex<=self._highestUsedChainIndex):
                addrList.append(addr)
       return addrList
 
@@ -840,7 +840,7 @@ class PyBtcWallet(object):
       outjson['balance']          = AmountToJSON(self.getBalance('Spend'))
       outjson['keypoolsize']      = self.addrPoolSize
       outjson['numaddrgen']       = len(self.addrMap)
-      outjson['highestusedindex'] = self.highestUsedChainIndex
+      outjson['highestusedindex'] = self._highestUsedChainIndex
       outjson['watchingonly']     = self.watchingOnly
       outjson['createdate']       = self.wltCreateDate
       outjson['walletid']         = self.uniqueIDB58
@@ -854,7 +854,7 @@ class PyBtcWallet(object):
       self.labelName   = jsonMap['name']
       self.labelDescr  = jsonMap['description']
       self.addrPoolSize  = jsonMap['keypoolsize']
-      self.highestUsedChainIndex  = jsonMap['highestusedindex']
+      self._highestUsedChainIndex  = jsonMap['highestusedindex']
       self.watchingOnly  = jsonMap['watchingonly']
       self.wltCreateDate  = jsonMap['createdate']
       self.uniqueIDB58  = jsonMap['walletid']
@@ -1026,7 +1026,7 @@ class PyBtcWallet(object):
 
       self.useEncryption = payload.usesEncryption
       self.lastComputedChainIndex = payload.lookupCount
-      self.highestUsedChainIndex = payload.useCount
+      self._highestUsedChainIndex = payload.useCount
       self.watchingOnly = payload.watchingOnly
       self.addressTypes = payload.addressTypes
       self.defaultAddressType = payload.defaultAddressType

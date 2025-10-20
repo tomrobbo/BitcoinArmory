@@ -47,7 +47,7 @@ class DlgKeypoolSettings(ArmoryDialog, ServerPush):
 
       self.lblAddrUsed = QRichLabel(self.tr('Addresses used: '), doWrap=False)
       self.lblAddrComp = QRichLabel(self.tr('Addresses computed: '), doWrap=False)
-      self.lblAddrUsedVal = QRichLabel('%d' % max(0, self.wlt.highestUsedChainIndex))
+      self.lblAddrUsedVal = QRichLabel('%d' % max(0, self.wlt.getHighestUsedIndex()))
       self.lblAddrCompVal = QRichLabel('%d' % self.wlt.lastComputedChainIndex)
 
       self.lblNumAddr = QRichLabel(self.tr('Compute this many more addresses: '))
