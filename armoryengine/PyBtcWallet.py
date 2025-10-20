@@ -23,7 +23,7 @@ from armoryengine.Timer import Timer, TimeThisFunction
 from armoryengine.Decorators import singleEntrantMethod
 from armoryengine.CppBridge import TheBridge, BridgeWalletWrapper
 from armoryengine.PyBtcAddress import PyBtcAddress
-from armoryengine.AddressUtils import addrStr_to_hash160, \
+from armoryengine.AddressUtils import Balances, addrStr_to_hash160, \
    scrAddr_to_addrStr, AddressEntryType_Default, binary_to_base58
 from armoryengine.Settings import TheSettings
 
@@ -75,21 +75,20 @@ def computeSettingsId(wltId, accId):
 ################################################################################
 class PyBtcWallet(object):
    """
-   This class encapsulates all the concepts and variables in a "wallet",
-   and maintains the passphrase protection, key stretching, encryption,
-   etc, required to maintain the wallet.  This class also includes the
-   file I/O methods for storing and loading wallets.
+   ***NOTE: This an abridged version of the previous description. Not much of
+      what's mentionned here has any relevance to the wallet design anymore,
+      it is preserved for historical purposes only.
 
-   ***NOTE:  I have ONLY implemented deterministic wallets, using ECDSA
-             Diffie-Hellman shared-secret crypto operations.  This allows
-             one to actually determine the next PUBLIC KEY in the address
-             chain without actually having access to the private keys.
-             This makes it possible to synchronize online-offline computers
-             once and never again.
+   I have ONLY implemented deterministic wallets, using ECDSA
+   Diffie-Hellman shared-secret crypto operations.  This allows
+   one to actually determine the next PUBLIC KEY in the address
+   chain without actually having access to the private keys.
+   This makes it possible to synchronize online-offline computers
+   once and never again.
 
-             You can import random keys into your wallet, but if it is
-             encrypted, you will have to supply a passphrase to make sure
-             it can be encrypted as well.
+   You can import random keys into your wallet, but if it is
+   encrypted, you will have to supply a passphrase to make sure
+   it can be encrypted as well.
 
    Presumably, wallets will be used for one of three purposes:
 
@@ -99,94 +98,6 @@ class PyBtcWallet(object):
        we might want to watch other peoples' addresses, but most them are not
        relevant to a "basic" BTC user.  Nonetheless it should be supported to
        watch money without considering it part of our own assets
-
-   This class is included in the combined-python-cpp module, because we really
-   need to maintain a persistent Cpp.BtcWallet if this class is to be useful
-   (we don't want to have to rescan the entire blockchain every time we do any
-   wallet operations).
-
-   The file format was designed from the outset with lots of unused space to
-   allow for expansion without having to redefine the file format and break
-   previous wallets.  Luckily, wallet information is cheap, so we don't have
-   to stress too much about saving space (100,000 addresses should take 15 MB)
-
-   This file is NOT for storing Tx-related information.  I want this file to
-   be the minimal amount of information you need to secure and backup your
-   entire wallet.  Tx information can always be recovered from examining the
-   blockchain... your private keys cannot be.
-
-   We track version numbers, just in case.  We start with 1.0
-
-   Version 1.0:
-   ---
-   fileID      -- (8)  '\xbaWALLET\x00' for wallet files
-   version     -- (4)   getVersionInt(PYBTCWALLET_VERSION)
-   magic bytes -- (4)   defines the blockchain for this wallet (BTC, NMC)
-   wlt flags   -- (8)   64 bits/flags representing info about wallet
-   binUniqueID -- (6)   first 5 bytes of first address in wallet
-                        (rootAddr25Bytes[:5][::-1]), reversed
-                        This is not intended to look like the root addr str
-                        and is reversed to avoid having all wallet IDs start 
-                        with the same characters (since the network byte is front)
-   create date -- (8)   unix timestamp of when this wallet was created
-                        (actually, the earliest creation date of any addr
-                        in this wallet -- in the case of importing addr
-                        data).  This is used to improve blockchain searching
-   Short Name  -- (32)  Null-terminated user-supplied short name for wlt
-   Long Name   -- (256) Null-terminated user-supplied description for wlt
-   Highest Used-- (8)   The chain index of the highest used address
-   ---
-   Crypto/KDF  -- (512) information identifying the types and parameters
-                        of encryption used to secure wallet, and key
-                        stretching used to secure your passphrase.
-                        Includes salt. (the breakdown of this field will
-                        be described separately)
-   KeyGenerator-- (237) The base address for a determinstic wallet.
-                        Just a serialized PyBtcAddress object.
-   ---
-   UNUSED     -- (1024) unused space for future expansion of wallet file
-   ---
-   Remainder of file is for key storage and various other things.  Each
-   "entry" will start with a 4-byte code identifying the entry type, then
-   20 bytes identifying what address the data is for, and finally then
-   the subsequent data .  So far, I have three types of entries that can
-   be included:
-
-      \x01 -- Address/Key data (as of PyBtcAddress version 1.0, 237 bytes)
-      \x02 -- Address comments (variable-width field)
-      \x03 -- Address comments (variable-width field)
-      \x04 -- OP_EVAL subscript (when this is enabled, in the future)
-
-   Please see PyBtcAddress for information on how key data is serialized.
-   Comments (\x02) are var-width, and if a comment is changed to
-   something longer than the existing one, we'll just blank out the old
-   one and append a new one to the end of the file.  It looks like
-
-   02000000 01 <Addr> 4f This comment is enabled (01) with 4f characters
-
-
-   For file syncing, we protect against corrupted wallets by doing atomic
-   operations before even telling the user that new data has been added.
-   We do this by copying the wallet file, and creating a walletUpdateFailed
-   file.  We then modify the original, verify its integrity, and then delete
-   the walletUpdateFailed file.  Then we create a backupUpdateFailed flag,
-   do the identical update on the backup file, and delete the failed flag. 
-   This guaranatees that no matter which nanosecond the power goes out,
-   there will be an uncorrupted wallet and we know which one it is.
-
-   We never let the user see any data until the atomic write-to-file operation
-   has completed
-
-
-   Additionally, we implement key locking and unlocking, with timeout.  These
-   key locking features are only DEFINED here, not actually enforced (because
-   this is a library, not an application).  You can set the default/temporary
-   time that the KDF key is maintained in memory after the passphrase is
-   entered, and this class will keep track of when the wallet should be next
-   locked.  It is up to the application to check whether the current time
-   exceeds the lock time.  This will probably be done in a kind of heartbeat
-   method, which checks every few seconds for all sorts of things -- including
-   wallet locking.
    """
 
    #############################################################################
@@ -243,11 +154,7 @@ class PyBtcWallet(object):
       #[[method1, [arg1, ar2, arg3]], [method2, [arg1, arg2]]]
       #list is cleared after each scan.
       self.actionsToTakeAfterScan = []
-
-      self.balance_spendable = 0
-      self.balance_unconfirmed = 0
-      self.balance_full = 0
-      self.txnCount = 0
+      self.balance = Balances()
 
       self.bridgeWalletObj = None
       if wltId != None:
@@ -326,42 +233,24 @@ class PyBtcWallet(object):
    # change was always deprioritized, but using --nospendzeroconfchange makes
    # it totally unspendable
    def getBalance(self, balType="Spendable"):
-      if balType.lower() in ('spendable','spend'):
-         return self.balance_spendable
-      elif balType.lower() in ('unconfirmed','unconf'):
-         return self.balance_unconfirmed
-      elif balType.lower() in ('total','ultimate','unspent','full'):
-         return self.balance_full
-      else:
-         raise TypeError('Unknown balance type! "' + balType + '"')
+      return self.balance.getBalance(balType)
 
    #############################################################################
    def getTxnCount(self):
-      return self.txnCount
+      return self.balance.txCount
 
    #############################################################################  
    def updateBalancesAndCount(self):
       result = self.bridgeWalletObj.getBalanceAndCount()
-      self.balance_full = result.full
-      self.balance_spendable = result.spendable
-      self.balance_unconfirmed = result.unconfirmed
-      self.txnCount = result.txnCount
+      self.balance = Balances.fromProto(result)
 
    #############################################################################
-   def getAddrBalance(self, addrHash, balType="Spendable", topBlockHeight=UINT32_MAX):
+   def getAddrBalance(self, addrHash, balType="Spendable"):
       if not self.hasAddrHash(addrHash):
          return -1
       else:
          addrObj = self.addrMap[addrHash]
-
-         if balType.lower() in ('spendable','spend'):
-            return addrObj.getSpendableBalance()
-         elif balType.lower() in ('unconfirmed','unconf'):
-            return addrObj.getUnconfirmedBalance()
-         elif balType.lower() in ('ultimate','unspent','full'):
-            return addrObj.getFullBalance()
-         else:
-            raise TypeError('Unknown balance type!')
+         return addrObj.getBalance(balType)
 
    #############################################################################
    @CheckWalletRegistration
@@ -834,44 +723,6 @@ class PyBtcWallet(object):
       self.labelDescr = llong
       self.bridgeWalletObj.setLabels(self.labelName, self.labelDescr)
 
-   #############################################################################
-   def deleteImportedAddress(self, addr160):
-      """
-      We want to overwrite a particular key in the wallet.  Before overwriting
-      the data looks like this:
-         [  \x00  |  <20-byte addr160>  |  <237-byte keydata> ]
-      And we want it to look like:
-         [  \x04  |  <2-byte length>  | \x00\x00\x00... ]
-      So we need to construct a wallet-update vector to modify the data
-      starting at the first byte, replace it with 0x04, specifies how many
-      bytes are in the deleted entry, and then actually overwrite those 
-      bytes with 0s
-      """
-
-      if not self.addrMap[addr160].chainIndex==-2:
-         raise WalletAddressError('You can only delete imported addresses!')
-
-      overwriteLoc = self.addrMap[addr160].walletByteLoc - 21
-      overwriteLen = 20 + self.pybtcaddrSize - 2
-
-      overwriteBin = ''
-      overwriteBin += int_to_binary(WLT_DATATYPE_DELETED, widthBytes=1)
-      overwriteBin += int_to_binary(overwriteLen,         widthBytes=2)
-      overwriteBin += '\x00'*overwriteLen
-
-      self.walletFileSafeUpdate([[WLT_UPDATE_MODIFY, overwriteLoc, overwriteBin]])
-
-      # IMPORTANT:  we need to update the wallet structures to reflect the
-      #             new state of the wallet.  This will actually be easiest
-      #             if we just "forget" the current wallet state and re-read
-      #             the wallet from file
-      wltPath = self.walletPath
-      passCppWallet = self.cppWallet
-      self.cppWallet.removeAddressBulk([Hash160ToScrAddr(addr160)])
-      self.readWalletFile(wltPath)
-      self.cppWallet = passCppWallet
-      self.register(False)
-
    #############################################################################  
    def importExternalAddressBatch(self, privKeyList):
       addr160List = []
@@ -996,7 +847,6 @@ class PyBtcWallet(object):
       outjson['isencrypted']      = self.useEncryption
       outjson['islocked']         = self.isLocked if self.useEncryption else False
       outjson['keylifetime']      = self.defaultKeyLifetime
-
       return outjson
 
    #############################################################################
@@ -1039,11 +889,7 @@ class PyBtcWallet(object):
          addr = addrCombinedData.scrAddr
          if addr in self.addrMap:
             addrObj = self.addrMap[addr]
-
-            addrObj.fullBalance        = addrCombinedData.balances.full
-            addrObj.spendableBalance   = addrCombinedData.balances.spendable
-            addrObj.unconfirmedBalance = addrCombinedData.balances.unconfirmed
-            addrObj.txioCount          = addrCombinedData.balances.txnCount
+            addrObj.balance = Balances.fromProto(addrCombinedData.balances)
          else:
             print ("[getAddrDataFromDB] missing address " + addr.hex())
 
@@ -1128,11 +974,6 @@ class PyBtcWallet(object):
       self.isEnabled = False
 
    ###############################################################################
-   @CheckWalletRegistration
-   def getLedgerEntryForTxHash(self, txHash):
-      return self.cppWallet.getLedgerEntryForTxHash(txHash)
-
-   ###############################################################################
    def getAddrObjectForHash(self, hashVal):
       assetIndex = self.cppWallet.getAssetIndexForAddr(hashVal)
       if assetIndex == 2**32:
@@ -1171,26 +1012,6 @@ class PyBtcWallet(object):
          if addrObj.filter(filterType, keepInUse, keepChange) == True:
             count += 1
       return count
-
-   ###############################################################################
-   def getAddrByIndex(self, index):
-      if index > -2:
-         addr160 = self.chainIndexMap[index]
-         return self.addrMap[addr160]
-      else:
-         importIndex = self.cppWallet.convertFromImportIndex(index)
-         addr160 = self.linearAddr160List[importIndex]
-         return self.addrMap[addr160]
-
-   ###############################################################################
-   def getImportCppAddrList(self):
-      addrList = []
-      for addrIndex in self.importList:
-         addrObj = self.cppWallet.getImportAddrObjByIndex(addrIndex)
-         addrComment = self.getCommentForAddress(addrObj.getAddrHash()[1:])
-         addrObj.setComment(addrComment)
-         addrList.append(addrObj)
-      return addrList
 
    ###############################################################################
    def loadFromProto(self, payload):

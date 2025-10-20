@@ -4436,6 +4436,8 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
 
       elif action == REFRESH_ACTION:
          for dbId in args:
+            if dbId == "wallet_filter_changed":
+               continue
             self.wallets.syncWalletData(dbId)
 
          #skip the balance update step until the bdm_ready notification

@@ -50,7 +50,7 @@ class AddressObjectItem(object):
       return self.addrObj.getTxioCount()
 
    def getBalance(self):
-      return self.addrObj.getFullBalance()
+      return self.addrObj.getBalance('full')
 
    def getComment(self):
       return self.addrObj.getComment()
