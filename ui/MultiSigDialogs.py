@@ -2894,7 +2894,7 @@ class DlgMultiSpendReview(ArmoryDialog):
 
             # If a lockbox, all USTXIs require the same signing key
             for ustxi in ib.ustxiList:
-               addrObj = wlt.getAddrObjectForHash(a160)
+               addrObj = wlt.getAddrByHash(a160)
 
             #HighPrioTODO: Replace with the bridge.
             #ustxi.createAndInsertSignature(\
@@ -2909,7 +2909,7 @@ class DlgMultiSpendReview(ArmoryDialog):
 
             for ustxi in ib.ustxiList:
                a160 = CheckHash160(ustxi.scrAddrs[0])
-               addrObj = wlt.getAddrObjectForHash(a160)
+               addrObj = wlt.getAddrByHash(a160)
 
                #HighPrioTODO: Replace with the bridge.
                #ustxi.createAndInsertSignature(\
@@ -3455,7 +3455,7 @@ class DlgCreatePromNote(ArmoryDialog):
 
          rawTx = cppTx.serialize()
          utxoScrAddr = utxo.getRecipientScrAddr()
-         aobj = wlt.getAddrObjectForHash(utxoScrAddr)
+         aobj = wlt.getAddrByHash(utxoScrAddr)
          pubKeys = {utxoScrAddr: aobj.binPublicKey65.toBinStr()}
 
          p2shMap = {}

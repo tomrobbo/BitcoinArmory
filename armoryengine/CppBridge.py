@@ -648,6 +648,16 @@ class WalletManagerWrapper(ProtoWrapper):
       request.callbackId = callbackId
       self.send(packet, callback=callbackFunc)
 
+   ####
+   def deleteWallet(self, walletId):
+      packet = Bridge.ToBridge.new_message()
+      request = packet.init("walletManager")
+      request.deleteWallet = walletId
+
+      fut = self.send(packet)
+      reply = fut.getVal(nothrow=True)
+      return reply.success
+
 ################################################################################
 class BridgeWalletWrapper(ProtoWrapper):
    #############################################################################
@@ -823,15 +833,6 @@ class BridgeWalletWrapper(ProtoWrapper):
       fut = self.send(packet)
       reply = fut.getVal()
       return reply.wallet.getData
-
-   ####
-   def delete(self):
-      packet = self._getPacket()
-      packet.wallet.deleteWallet = None
-
-      fut = self.send(packet)
-      reply = fut.getVal()
-      return reply.success
 
    ####
    def getLedgerDelegateIdForScrAddr(self, scrAddr: bytes):
@@ -1294,8 +1295,6 @@ class BridgeSigner(ProtoWrapper):
 
 ################################################################################
 class ArmoryBridge(object):
-
-   #############################################################################
    def __init__(self):
       self.blockTimeByHeightCache = {}
       self.bridgeSocket = BridgeSocket()
@@ -1305,7 +1304,6 @@ class ArmoryBridge(object):
       self.scriptUtils  = ScriptUtils(self.bridgeSocket)
       self.wltManager   = WalletManagerWrapper(self.bridgeSocket)
 
-   #############################################################################
    def start(self, stringArgs, notifyReadyLbd):
       self.bridgeSocket.start(stringArgs, notifyReadyLbd)
 
@@ -1322,7 +1320,6 @@ class ArmoryBridge(object):
          name=None, args=[callbackData], kwargs={})
       notifThread.start()
 
-   #############################################################################
    def pushProgressNotification(self, data):
       payload = Bridge.Notification.new_message()
       payload.from_bytes_packed()

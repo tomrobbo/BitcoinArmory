@@ -271,11 +271,12 @@ namespace {
 
       std::map<std::string, WltListEntry> wltMap;
       for (auto capnEntry : replyListWlts) {
-         wltMap.emplace(std::string(capnEntry.getPath()), WltListEntry{
-            capnEntry.getWalletId(),
-            (int)capnEntry.getState(),
-            capnEntry.getStaged()
-         });
+         wltMap.emplace(std::string(capnEntry.getPath()),
+            WltListEntry{
+               capnEntry.getWalletId(),
+               (int)capnEntry.getState(),
+               capnEntry.getStaged()}
+            );
       }
       return wltMap;
    }
@@ -2372,6 +2373,105 @@ TEST_F(BridgeTests, CreateWallet)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+TEST_F(BridgeTests, DeleteWallet)
+{
+   std::string masterId;
+   std::filesystem::path path;
+   std::string wltId;
+
+   {
+      //create the wallet
+      auto refId = rand();
+      auto callbackId = BtcUtils::fortuna_.generateRandom(10).toHexStr();
+
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto request = toBridge.initUtils();
+      auto createWltReq = request.initCreateWallet();
+
+      createWltReq.setCallbackId(callbackId);
+      createWltReq.setLookup(100);
+      createWltReq.setLabel("labl");
+      createWltReq.setDescription("desc");
+
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge_, rawReq);
+
+      //handle progress notifs
+      try {
+         auto walletData = progressWalletCreation(callbackId,
+            "pass1", 500ms, 0, 100);
+         masterId = walletData.masterId;
+         path = walletData.path;
+      } catch (const std::exception& e) {
+         ASSERT_TRUE(false) << e.what();
+      }
+
+      //validate reply
+      auto result = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+         result->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+      auto fromBridge = reader.getRoot<Bridge::FromBridge>();
+      auto reply = fromBridge.getReply();
+      ASSERT_TRUE(reply.getSuccess());
+      ASSERT_EQ(reply.getReferenceId(), refId);
+
+      ASSERT_EQ(reply.which(), Bridge::RpcReply::UTILS);
+      auto utilsReply = reply.getUtils();
+      ASSERT_EQ(utilsReply.which(), Bridge::UtilsReply::CREATE_WALLET);
+      wltId = utilsReply.getCreateWallet();
+   }
+
+   //get the wallet data & validate it
+   ASSERT_FALSE(wltId.empty());
+   auto wltData = getWalletData(bridge_, wltId);
+   EXPECT_EQ(wltData.walletId, wltId);
+   EXPECT_FALSE(wltData.accountId.empty());
+   ASSERT_FALSE(path.empty());
+   EXPECT_EQ(wltData.path.filename().string(), path);
+   EXPECT_EQ(wltData.masterId, masterId);
+
+   EXPECT_EQ(wltData.label, "labl");
+   EXPECT_EQ(wltData.desc, "desc");
+
+   EXPECT_TRUE(wltData.encrypted);
+   EXPECT_FALSE(wltData.watchingOnly);
+   EXPECT_EQ(wltData.addresses.size(), 1);
+   EXPECT_EQ(wltData.kdfMemReq, 8);
+
+   //check wallet path
+   auto fullWltPath = homedir / path;
+   ASSERT_TRUE(FileUtils::fileExists(fullWltPath, 0));
+
+   //delete said wallet
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto request = toBridge.initWalletManager();
+      request.setDeleteWallet(wltId);
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge_, rawReq);
+
+      //validate reply
+      auto result = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+         result->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+      auto fromBridge = reader.getRoot<Bridge::FromBridge>();
+      auto reply = fromBridge.getReply();
+      ASSERT_TRUE(reply.getSuccess());
+      ASSERT_EQ(reply.getReferenceId(), refId);
+      ASSERT_FALSE(FileUtils::fileExists(fullWltPath, 0));
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 TEST_F(BridgeTests, CreateWallet_Reject)
 {
    //create the wallet
@@ -3293,6 +3393,93 @@ TEST_F(BridgeWebsocketsTests, Connect)
    } catch (const std::exception&) {
       ASSERT_TRUE(false);
    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(BridgeWebsocketsTests, DeleteWallet)
+{
+   //create a fresh wallet
+   auto wltId = createWallet(homedir_);
+
+   auto wltList = listWallets(bridge_);
+   ASSERT_EQ(wltList.size(), 2);
+   auto wallets = loadWallets(bridge_);
+   ASSERT_EQ(wallets.size(), 2);
+
+   std::string accountId, importAccId, dbId;
+   for (const auto& wltData : wallets) {
+      if (wltData.first != wltId) {
+         ASSERT_EQ(wltData.first, walletId_);
+         importAccId = wltData.second.accountId;
+         ASSERT_FALSE(importAccId.empty());
+      } else {
+         ASSERT_EQ(wltData.first, wltId);
+         accountId = wltData.second.accountId;
+         dbId = wltData.second.dbId;
+         ASSERT_FALSE(accountId.empty());
+      }
+   }
+
+   WebSocketServer::initAuthPeers({
+      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+   WebSocketServer::start(theBDMt_->bdm(), true);
+
+   ASSERT_TRUE(connectToDb(bridge_));
+   ASSERT_TRUE(registerWallets(bridge_));
+
+   //start db, go online and wait on ready notif
+   theBDMt_->start(DBSettings::initMode());
+   ASSERT_EQ(goOnline(bridge_), 5);
+
+   //check balances
+   auto balances = getBalances(bridge_, walletId_, importAccId);
+   ASSERT_EQ(balances.size(), 4);
+   try {
+      for (const auto& balPair : balances) {
+         const auto& addrBal = testAddrBalances.at(balPair.first);
+         EXPECT_EQ(addrBal[0], balPair.second[0]);
+         EXPECT_EQ(addrBal[1], balPair.second[1]);
+         EXPECT_EQ(addrBal[2], balPair.second[2]);
+      }
+   } catch (const std::exception&) {
+      ASSERT_TRUE(false);
+   }
+
+   balances = getBalances(bridge_, wltId, accountId);
+   ASSERT_EQ(balances.size(), 0);
+
+   //get the wallet path, check it
+   std::filesystem::path wltPath;
+   for (const auto& entry : wltList) {
+      if (entry.second.walletId == wltId) {
+         wltPath = homedir_ / entry.first;
+         break;
+      }
+   }
+   ASSERT_FALSE(wltPath.empty());
+   ASSERT_TRUE(FileUtils::fileExists(wltPath, 0));
+
+   //delete said wallet
+   auto refId = rand();
+   capnp::MallocMessageBuilder message;
+   auto toBridge = message.initRoot<Bridge::ToBridge>();
+   toBridge.setReferenceId(refId);
+   auto request = toBridge.initWalletManager();
+   request.setDeleteWallet(wltId);
+   auto rawReq = serializeCapnp(message);
+   pushRequest(bridge_, rawReq);
+
+   //validate reply
+   auto result = waitOnReply();
+   kj::ArrayPtr<const capnp::word> words(
+      reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+      result->data.getSize() / sizeof(capnp::word));
+   capnp::FlatArrayMessageReader reader(words);
+   auto fromBridge = reader.getRoot<Bridge::FromBridge>();
+   auto reply = fromBridge.getReply();
+   ASSERT_TRUE(reply.getSuccess());
+   ASSERT_EQ(reply.getReferenceId(), refId);
+   ASSERT_FALSE(FileUtils::fileExists(wltPath, 0));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

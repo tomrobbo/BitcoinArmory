@@ -305,7 +305,7 @@ void WalletManager::deleteWallet(const std::string& wltId)
    try {
       //unregister from db
       wltCont->unregisterFromBDV();
-   } catch (const std::exception&) {
+   } catch (const OfflineException&) {
       //we do not care if the unregister operation fails
    }
    wltCont.reset();

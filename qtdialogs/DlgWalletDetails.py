@@ -38,16 +38,15 @@ from qtdialogs.DlgNewAddress import \
    DlgNewAddressDisp, ShowRecvCoinsWarningIfNecessary
 from qtdialogs.DlgKeypoolSettings import DlgKeypoolSettings
 from qtdialogs.DlgSendBitcoins import DlgSendBitcoins
-from qtdialogs.DlgBackupCenter import DlgBackupCenter, DlgSimpleBackup
+from qtdialogs.DlgBackupCenter import DlgBackupCenter, DlgSimpleBackup, \
+   OpenPaperBackupDialog
 from qtdialogs.DlgAddressInfo import DlgAddressInfo
-from qtdialogs.DlgRestore import OpenPaperBackupDialog
 from qtdialogs.DlgChangePassphrase import DlgChangePassphrase
+from qtdialogs.DlgRemoveWallet import DlgRemoveWallet
+from qtdialogs.DlgExportWO import DlgExpWOWltData
 
 ################################################################################
 class DlgWalletDetails(ArmoryDialog):
-   """ For displaying the details of a specific wallet, with options """
-
-   #############################################################################
    def __init__(self, wlt, usermode=USERMODE.Standard, parent=None, main=None):
       super().__init__(parent, main)
       self.setAttribute(QtCore.Qt.WA_DeleteOnClose)
@@ -74,7 +73,6 @@ class DlgWalletDetails(ArmoryDialog):
       self.wltAddrView.doubleClicked.connect(self.dblClickAddressView)
 
       # Now add all the options buttons, dependent on the type of wallet.
-
       lbtnChangeLabels = QLabelButton(self.tr('Change Wallet Labels'))
       lbtnChangeLabels.linkActivated.connect(self.changeLabels)
 
@@ -176,7 +174,7 @@ class DlgWalletDetails(ArmoryDialog):
       totalFunds = self.wlt.getBalance('Total')
       spendFunds = self.wlt.getBalance('Spendable')
       unconfFunds = self.wlt.getBalance('Unconfirmed')
-      uncolor = htmlColor('MoneyNeg')  if unconfFunds > 0          else htmlColor('Foreground')
+      uncolor = htmlColor('MoneyNeg') if unconfFunds > 0 else htmlColor('Foreground')
       btccolor = htmlColor('DisableFG') if spendFunds == totalFunds else htmlColor('MoneyPos')
       lblcolor = htmlColor('DisableFG') if spendFunds == totalFunds else htmlColor('Foreground')
       goodColor = htmlColor('TextGreen')
@@ -265,24 +263,25 @@ class DlgWalletDetails(ArmoryDialog):
          restoreTableView(self.wltAddrView, tblgeom)
 
       def remindBackup():
-         result = MsgBoxWithDNAA(self, self.main, MSGBOX.Warning, self.tr('Wallet Backup'), self.tr(
+         result = MsgBoxWithDNAA(self, self.main, MSGBOX.Warning,
+            self.tr('Wallet Backup'), self.tr(
             '<b><font color="red" size=4>Please backup your wallet!</font></b> '
             '<br><br>'
             'Making a paper backup will guarantee you can recover your '
             'coins at <a>any time in the future</a>, even if your '
             'hard drive dies or you forget your passphrase.  Without it, '
-            'you could permanently lose your coins!  '
+            'you could permanently lose your coins! '
             'The backup buttons are to the right of the address list.'
             '<br><br>'
             'A paper backup is recommended, '
             'and it can be copied by hand if you do not have a working printer. '
             'A digital backup only works if you remember the passphrase '
-            'used at the time it was created.  If you have ever forgotten a '
+            'used at the time it was created. If you have ever forgotten a '
             'password before, only rely on a digital backup if you store '
             'the password with it!'
             '<br><br>'
             '<a href="https://bitcointalk.org/index.php?topic=152151.0">'
-            'Read more about Armory backups</a>'), None, yesStr='Ok', \
+            'Read more about Armory backups</a>'), None, yesStr='Ok',
             dnaaStartChk=True)
          wlt.setSetting('DNAA_RemindBackup', result[1])
 
@@ -531,19 +530,6 @@ class DlgWalletDetails(ArmoryDialog):
       else:
          DlgSimpleBackup(self, self.main, self.wlt).exec_()
 
-   def execPrintDlg(self):
-      if self.wlt.isLocked:
-         unlockdlg = DlgUnlockWallet(self.wlt, self, self.main, self.tr('Create Paper Backup'))
-         if not unlockdlg.exec_():
-            return
-
-      if not self.wlt.addrMap['ROOT'].hasPrivKey():
-         QtWidgets.QMessageBox.warning(self, self.tr('Move along...'), \
-           self.tr('This wallet does not contain any private keys.  Nothing to backup!'), QtWidgets.QMessageBox.Ok)
-         return
-
-      OpenPaperBackupDialog('Single', self, self.main, self.wlt)
-
    def execRemoveDlg(self):
       dlg = DlgRemoveWallet(self.wlt, self, self.main)
       if dlg.exec_():
@@ -621,22 +607,8 @@ class DlgWalletDetails(ArmoryDialog):
 
    #############################################################################
    def execExpWOCopy(self):
-      """
-      Function executed when a user executes the \"Export Public Key & Chain
-      Code\" option.
-      """
-      # This should never happen....
-      if not self.wlt.addrMap['ROOT'].hasChainCode():
-         QtWidgets.QMessageBox.warning(self, self.tr(
-            'Move along... This wallet does not have '
-            'a chain code. Backups are pointless!'),
-            QtWidgets.QMessageBox.Ok)
-         return
-
-      # Proceed to the actual export center.
       dlg = DlgExpWOWltData(self.wlt, self, self.main)
-      if dlg.exec_():
-         pass  # Once executed, we're done.
+      dlg.exec_()
 
    #############################################################################
    def setWltDetailsFrame(self):

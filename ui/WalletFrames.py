@@ -23,10 +23,9 @@ from armorycolors import htmlColor
 from ui.QtExecuteSignal import TheSignalExecution
 from ui.CoinControlUI import CoinControlDlg, RBFDlg
 
-from qtdialogs.DlgUnlockWallet   import DlgUnlockWallet
-from qtdialogs.DlgShowKeyList    import DlgShowKeyList
-from qtdialogs.DlgRestore        import OpenPaperBackupDialog
-from qtdialogs.qtdefines         import AdvancedOptionsFrame, ArmoryFrame, \
+from qtdialogs.DlgUnlockWallet import DlgUnlockWallet
+from qtdialogs.DlgShowKeyList import DlgShowKeyList
+from qtdialogs.qtdefines import AdvancedOptionsFrame, ArmoryFrame, \
    VERTICAL, HORIZONTAL, STRETCH, MIN_PASSWD_WIDTH, \
    tightSizeNChar, makeHorizFrame, makeVertFrame, \
    QRichLabel, QPixMapButton, GETFONT, STYLE_SUNKEN, HLINE, \
@@ -1102,6 +1101,7 @@ class WalletBackupFrame(ArmoryFrame):
       self.passphrase = None
       isBackupCreated = False
       if self.optPaperBackupOne.isChecked():
+         from qtdialogs.DlgBackupCenter import OpenPaperBackupDialog
          isBackupCreated = OpenPaperBackupDialog('Single',
             self.parent(), self.main, self.wlt, passphrase=passphrase)
       elif self.optPaperBackupFrag.isChecked():
