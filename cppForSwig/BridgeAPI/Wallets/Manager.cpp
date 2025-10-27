@@ -417,7 +417,6 @@ WalletManager::listWallets()
    for (const auto& entry : walletFiles_) {
       switch (entry.second->state())
       {
-         case WalletLoadState::Migrated:
          case WalletLoadState::Loaded:
             break;
 

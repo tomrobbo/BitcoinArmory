@@ -119,6 +119,15 @@ std::shared_ptr<Wallets::AssetWallet>&& LMDBWalletInfo::moveWltPtr()
    return std::move(wltPtr_);
 }
 
+bool LMDBWalletInfo::isWatchingOnly() const
+{
+   auto wltSingle = std::dynamic_pointer_cast<Wallets::AssetWallet_Single>(wltPtr_);
+   if (wltSingle == nullptr) {
+      return false;
+   }
+   return wltSingle->isWatchingOnly();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 //// A135FileInfo

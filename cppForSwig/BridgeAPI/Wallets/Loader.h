@@ -37,7 +37,6 @@ namespace Armory
       {
          Unknown = 0,
          Legacy,
-         Migrated,
          Encrypted,
          Ready,
          Loaded
@@ -64,6 +63,7 @@ namespace Armory
 
          virtual const Wallets::WalletId& walletId(void) const = 0;
          virtual const std::string& name(void) const = 0;
+         virtual bool isWatchingOnly(void) const = 0;
       };
 
       ////////////////////////////////////////////////////////////////////////////////
@@ -81,6 +81,8 @@ namespace Armory
          void unlockControlHeader(const Passphrase::UnlockFunc&);
          const Wallets::WalletId& walletId(void) const override;
          const std::string& name(void) const override;
+         bool isWatchingOnly(void) const override;
+
          std::shared_ptr<Wallets::AssetWallet>&& moveWltPtr(void);
       };
 
@@ -204,9 +206,9 @@ namespace Armory
 
          const Wallets::WalletId& walletId(void) const override;
          const std::string& name(void) const override;
+         bool isWatchingOnly(void) const override;
 
          bool isEncrypted(void) const;
-         bool isWatchingOnly(void) const;
          uint32_t kdfMem(void) const;
          int64_t highestUsedIndex(void) const;
          size_t addressCount(void) const;

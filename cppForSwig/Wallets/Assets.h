@@ -37,9 +37,6 @@ namespace Armory
 {
    namespace Wallets
    {
-      class AssetWallet;
-      class AssetWallet_Single;
-
       namespace Encryption
       {
          struct CipherData;

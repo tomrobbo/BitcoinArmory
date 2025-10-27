@@ -34,6 +34,10 @@ using MsgPtr = std::unique_ptr<Armory::Bridge::WritePayload_Bridge>;
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace {
+   int CapnWalletState_Legacy = 1;
+   int CapnWalletState_Encrypted = 2;
+   int CapnWalletState_Ready = 3;
+
    BinaryData serializeCapnp(capnp::MallocMessageBuilder& msg)
    {
       auto flat = capnp::messageToFlatArray(msg);
@@ -46,6 +50,7 @@ namespace {
       std::string walletId;
       int loadState;
       bool staged;
+      bool isWO;
    };
 
    struct AddressData
@@ -275,7 +280,8 @@ namespace {
             WltListEntry{
                capnEntry.getWalletId(),
                (int)capnEntry.getState(),
-               capnEntry.getStaged()}
+               capnEntry.getStaged(),
+               capnEntry.getWatchingOnly()}
             );
       }
       return wltMap;
@@ -1048,6 +1054,112 @@ TEST_F(WalletManagerTests, ListStageLoad)
    ASSERT_NE(theList.find(walletFiles[1].filename().string()), theList.end());
    ASSERT_EQ(theList.find(walletFiles[2].filename().string()), theList.end());
    ASSERT_NE(theList.find(walletFiles[3].filename().string()), theList.end());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(WalletManagerTests, ListWO)
+{
+   std::vector<std::filesystem::path> wltPaths;
+
+   //wallet 1
+   {
+      IO::CreateWalletParams params{
+         homedir_,
+         {1ms, 0, SecureBinaryData::fromString("privpass1")},
+         {1ms, 0, SecureBinaryData::fromString("ctrlPass")},
+         nullptr, 4
+      };
+
+      std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
+         new Armory::Seeds::ClearTextSeed_Armory135());
+      auto assetWlt = AssetWallet_Single::createFromSeed(
+         std::move(seed), params);
+      wltPaths.emplace_back(assetWlt->getDbFilename());
+   }
+
+   {
+      auto woWltPath = Armory::Wallets::AssetWallet::forkWatchingOnly({wltPaths[0],
+         [](const std::set<Armory::Wallets::EncryptionKeyId>&)->Armory::Passphrase::Result
+         {
+            return { SecureBinaryData::fromString("ctrlPass"), true };
+         }},
+         {1ms, 0, SecureBinaryData::fromString("woPass")}
+      );
+      ASSERT_FALSE(woWltPath.empty());
+      ASSERT_TRUE(FileUtils::fileExists(woWltPath, 0));
+      ASSERT_NE(woWltPath, wltPaths[0]);
+      wltPaths.emplace_back(woWltPath);
+   }
+
+   //list wallets
+   Armory::Bridge::WalletManager mgr{homedir_};
+   auto theList = mgr.listWallets();
+   ASSERT_EQ(theList.size(), 2);
+   for (const auto& path : wltPaths) {
+      ASSERT_NE(theList.find(path.filename().string()), theList.end());
+   }
+
+   auto checkState = [&wltPaths](
+      const std::map<std::string, std::shared_ptr<Armory::Bridge::WalletFileInfo>>& theList,
+      unsigned intId, Armory::Bridge::WalletLoadState expLoadState,
+      bool expectedStaged, bool isWO=false)->bool
+   {
+      auto listEntry = theList.at(wltPaths[intId].filename().string());
+      if (listEntry->state() != expLoadState) {
+         return false;
+      }
+      if (listEntry->state() == Armory::Bridge::WalletLoadState::Ready &&
+         listEntry->walletId().empty()) {
+         return false;
+      }
+      if (isWO != listEntry->isWatchingOnly()) {
+         return false;
+      }
+      return listEntry->staged() == expectedStaged;
+   };
+
+   EXPECT_TRUE(checkState(theList, 0,
+      Armory::Bridge::WalletLoadState::Encrypted, false));
+   EXPECT_TRUE(checkState(theList, 1,
+      Armory::Bridge::WalletLoadState::Encrypted, false));
+
+   //unlock the wallets
+   {
+      try {
+         mgr.unlockControlHeader(wltPaths[0].filename().string(), [](
+            const std::set<EncryptionKeyId>&)->Armory::Passphrase::Result {
+               return { SecureBinaryData::fromString("ctrlPass"), true };
+            }
+         );
+
+         mgr.unlockControlHeader(wltPaths[1].filename().string(), [](
+            const std::set<EncryptionKeyId>&)->Armory::Passphrase::Result {
+               return { SecureBinaryData::fromString("woPass"), true };
+            }
+         );
+      } catch (const std::exception& e) {
+         ASSERT_TRUE(false) << e.what();
+      }
+   }
+
+   //recheck the list
+   theList = mgr.listWallets();
+   ASSERT_EQ(theList.size(), 2);
+   for (const auto& path : wltPaths) {
+      ASSERT_NE(theList.find(path.filename().string()), theList.end());
+   }
+
+   std::vector<std::string> wltIds;
+   for (const auto& entry : theList) {
+      wltIds.emplace_back(entry.second->walletId());
+   }
+   ASSERT_EQ(wltIds.size(), 2);
+   ASSERT_EQ(wltIds[0], wltIds[1]);
+
+   EXPECT_TRUE(checkState(theList, 0,
+      Armory::Bridge::WalletLoadState::Ready, true, false));
+   EXPECT_TRUE(checkState(theList, 1,
+      Armory::Bridge::WalletLoadState::Ready, true, true));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2174,17 +2286,17 @@ TEST_F(BridgeTests, ListStageLoad)
             return false;
          }
 
-         if (expectedState == 4) {
+         if (expectedState == CapnWalletState_Ready) {
             if (capnEntry.walletId != entry.second) {
                return false;
             }
          }
          return capnEntry.staged == expectedStaged;
       };
-      EXPECT_TRUE(checkWltList(0, 4, true));
-      EXPECT_TRUE(checkWltList(1, 3, false));
-      EXPECT_TRUE(checkWltList(2, 3, false));
-      EXPECT_TRUE(checkWltList(3, 3, false));
+      EXPECT_TRUE(checkWltList(0, CapnWalletState_Ready, true));
+      EXPECT_TRUE(checkWltList(1, CapnWalletState_Encrypted, false));
+      EXPECT_TRUE(checkWltList(2, CapnWalletState_Encrypted, false));
+      EXPECT_TRUE(checkWltList(3, CapnWalletState_Encrypted, false));
    } catch (const std::exception& e) {
       ASSERT_TRUE(false) << e.what();
    }
@@ -2208,17 +2320,17 @@ TEST_F(BridgeTests, ListStageLoad)
             return false;
          }
 
-         if (expectedState == 4) {
+         if (expectedState == CapnWalletState_Ready) {
             if (capnEntry.walletId != entry.second) {
                return false;
             }
          }
          return capnEntry.staged == expectedStaged;
       };
-      EXPECT_TRUE(checkWltList(0, 4, true));
-      EXPECT_TRUE(checkWltList(1, 3, false));
-      EXPECT_TRUE(checkWltList(2, 4, true));
-      EXPECT_TRUE(checkWltList(3, 4, true));
+      EXPECT_TRUE(checkWltList(0, CapnWalletState_Ready, true));
+      EXPECT_TRUE(checkWltList(1, CapnWalletState_Encrypted, false));
+      EXPECT_TRUE(checkWltList(2, CapnWalletState_Ready, true));
+      EXPECT_TRUE(checkWltList(3, CapnWalletState_Ready, true));
    } catch (const std::exception& e) {
       ASSERT_TRUE(false) << e.what();
    }
@@ -2244,17 +2356,17 @@ TEST_F(BridgeTests, ListStageLoad)
             return false;
          }
 
-         if (expectedState == 4) {
+         if (expectedState == CapnWalletState_Ready) {
             if (capnEntry.walletId != entry.second) {
                return false;
             }
          }
          return capnEntry.staged == expectedStaged;
       };
-      EXPECT_TRUE(checkWltList(0, 4, true));
-      EXPECT_TRUE(checkWltList(1, 3, false));
-      EXPECT_TRUE(checkWltList(2, 4, true));
-      EXPECT_TRUE(checkWltList(3, 4, false));
+      EXPECT_TRUE(checkWltList(0, CapnWalletState_Ready, true));
+      EXPECT_TRUE(checkWltList(1, CapnWalletState_Encrypted, false));
+      EXPECT_TRUE(checkWltList(2, CapnWalletState_Ready, true));
+      EXPECT_TRUE(checkWltList(3, CapnWalletState_Ready, false));
    } catch (const std::exception& e) {
       ASSERT_TRUE(false) << e.what();
    }
@@ -2281,15 +2393,131 @@ TEST_F(BridgeTests, ListStageLoad)
             return false;
          }
 
-         if (expectedState == 4) {
+         if (expectedState == CapnWalletState_Ready) {
             if (capnEntry.walletId != entry.second) {
                return false;
             }
          }
          return capnEntry.staged == expectedStaged;
       };
-      EXPECT_TRUE(checkWltList(1, 3, false));
-      EXPECT_TRUE(checkWltList(3, 4, false));
+      EXPECT_TRUE(checkWltList(1, CapnWalletState_Encrypted, false));
+      EXPECT_TRUE(checkWltList(3, CapnWalletState_Ready, false));
+   } catch (const std::exception& e) {
+      ASSERT_TRUE(false) << e.what();
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(BridgeTests, ListWO)
+{
+   std::vector<std::pair<std::filesystem::path, std::string>> wltPaths;
+   std::string walletId;
+
+   //wallet 1
+   {
+      IO::CreateWalletParams params{
+         homedir,
+         {1ms, 0, SecureBinaryData::fromString("privpass1")},
+         {1ms, 0, SecureBinaryData::fromString("ctrlPass")},
+         nullptr, 4
+      };
+
+      std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
+         new Armory::Seeds::ClearTextSeed_Armory135());
+      auto assetWlt = AssetWallet_Single::createFromSeed(
+         std::move(seed), params);
+      walletId = assetWlt->getID();
+      wltPaths.emplace_back(std::make_pair(
+         assetWlt->getDbFilename(), walletId));
+   }
+
+   {
+      const auto& fullWltPath = wltPaths.begin()->first;
+      auto woWltPath = Armory::Wallets::AssetWallet::forkWatchingOnly({fullWltPath,
+         [](const std::set<Armory::Wallets::EncryptionKeyId>&)->Armory::Passphrase::Result
+         {
+            return { SecureBinaryData::fromString("ctrlPass"), true };
+         }},
+         {1ms, 0, SecureBinaryData::fromString("woPass")}
+      );
+      ASSERT_FALSE(woWltPath.empty());
+      ASSERT_TRUE(FileUtils::fileExists(woWltPath, 0));
+      ASSERT_NE(woWltPath, fullWltPath);
+      wltPaths.emplace_back(std::make_pair(
+         woWltPath, walletId));
+   }
+
+   //list wallets
+   try {
+      auto wltList = listWallets(bridge_);
+      ASSERT_EQ(wltList.size(), 2);
+      auto checkWltList = [&wltList, &wltPaths](
+         unsigned intId, int expectedState, bool expectedStaged)->bool
+      {
+         auto entry = wltPaths[intId];
+         auto path = entry.first.filename().string();
+         auto capnEntry = wltList.at(path);
+
+         if (capnEntry.loadState != expectedState) {
+            return false;
+         }
+
+         if (expectedState == CapnWalletState_Ready) {
+            if (capnEntry.walletId != entry.second) {
+               return false;
+            }
+         }
+
+         //encrypted wallets show up as not WO (can't be determined yet)
+         if (capnEntry.isWO) {
+            return false;
+         }
+         return capnEntry.staged == expectedStaged;
+      };
+      EXPECT_TRUE(checkWltList(0, CapnWalletState_Encrypted, false));
+      EXPECT_TRUE(checkWltList(1, CapnWalletState_Encrypted, false));
+   } catch (const std::exception& e) {
+      ASSERT_TRUE(false) << e.what();
+   }
+
+   //unlock them
+   ASSERT_TRUE(unlockWallet(wltPaths[0].first.filename().string(), "ctrlPass"));
+   ASSERT_TRUE(unlockWallet(wltPaths[1].first.filename().string(), "woPass"));
+
+   //list again
+   try {
+      std::vector<std::string> wltIds;
+      auto wltList = listWallets(bridge_);
+      ASSERT_EQ(wltList.size(), 2);
+      auto checkWltList = [&wltList, &wltPaths, &wltIds](
+         unsigned intId, int expectedState,
+         bool expectedStaged, bool isWO)->bool
+      {
+         auto entry = wltPaths[intId];
+         auto path = entry.first.filename().string();
+         auto capnEntry = wltList.at(path);
+
+         if (capnEntry.loadState != expectedState) {
+            return false;
+         }
+
+         if (expectedState == CapnWalletState_Ready) {
+            if (capnEntry.walletId != entry.second) {
+               return false;
+            }
+            wltIds.emplace_back(capnEntry.walletId);
+         }
+
+         if (isWO != capnEntry.isWO) {
+            return false;
+         }
+         return capnEntry.staged == expectedStaged;
+      };
+      EXPECT_TRUE(checkWltList(0, CapnWalletState_Ready, true, false));
+      EXPECT_TRUE(checkWltList(1, CapnWalletState_Ready, true, true));
+
+      ASSERT_EQ(wltIds.size(), 2);
+      ASSERT_EQ(wltIds[0], wltIds[1]);
    } catch (const std::exception& e) {
       ASSERT_TRUE(false) << e.what();
    }
@@ -2878,10 +3106,10 @@ TEST_F(BridgeTests, Migrate_Legacy)
          ASSERT_EQ(wltInfo.second.walletId, wltId);
          if (wltInfo.first == fileName) {
             ASSERT_FALSE(wltInfo.second.staged);
-            ASSERT_EQ(wltInfo.second.loadState, 1);
+            ASSERT_EQ(wltInfo.second.loadState, CapnWalletState_Legacy);
          } else {
             ASSERT_TRUE(wltInfo.second.staged);
-            ASSERT_EQ(wltInfo.second.loadState, 4);
+            ASSERT_EQ(wltInfo.second.loadState, CapnWalletState_Ready);
          }
       }
    } catch (const std::exception& e) {
@@ -3043,10 +3271,10 @@ TEST_F(BridgeTests, ImportWallet_Legacy)
          ASSERT_EQ(wltInfo.second.walletId, walletId);
          if (wltInfo.first == legacyWalletFile.filename()) {
             ASSERT_FALSE(wltInfo.second.staged);
-            ASSERT_EQ(wltInfo.second.loadState, 1);
+            ASSERT_EQ(wltInfo.second.loadState, CapnWalletState_Legacy);
          } else {
             ASSERT_TRUE(wltInfo.second.staged);
-            ASSERT_EQ(wltInfo.second.loadState, 4);
+            ASSERT_EQ(wltInfo.second.loadState, CapnWalletState_Ready);
          }
       }
    } catch (const std::exception& e) {

@@ -568,6 +568,7 @@ BinaryData CppBridge::listWallets(MessageId msgId)
          (int)wltObj.second->state()));
       capnWltObj.setPath(wltObj.first);
       capnWltObj.setStaged(wltObj.second->staged());
+      capnWltObj.setWatchingOnly(wltObj.second->isWatchingOnly());
 
       try {
          const auto& walletId = wltObj.second->walletId();

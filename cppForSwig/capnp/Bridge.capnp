@@ -280,17 +280,20 @@ struct WalletManagerReply {
    enum WalletLoadState {
       unknown     @0;
       legacy      @1;
-      migrated    @2;
-      encrypted   @3;
-      ready       @4;
-      loaded      @5;
+      encrypted   @2;
+      ready       @3;
+
+      #Internal state, marks wallets that have been loaded via
+      #loadWallets. A loaded wallet will never appear in listWallets
+      loaded      @4;
    }
 
    struct WalletFileData {
-      state    @0 : WalletLoadState;
-      path     @1 : Text;
-      walletId @2 : Text;
-      staged   @3 : Bool;
+      state          @0 : WalletLoadState;
+      path           @1 : Text;
+      walletId       @2 : Text;
+      staged         @3 : Bool;
+      watchingOnly   @4 : Bool;
    }
 
    union {

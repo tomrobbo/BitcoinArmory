@@ -121,7 +121,11 @@ namespace
          case BlockchainServiceRequest::REGISTER_WALLET:
          {
             auto regWallet = request.getRegisterWallet();
-            Wallets::WalletId wltId = regWallet.getWalletId();
+            auto capnId = regWallet.getWalletId();
+            Wallets::WalletId wltId{BinaryDataRef{
+               (const uint8_t*)capnId.begin(),
+               (const uint8_t*)capnId.end()}
+            };
             auto accIdCapn = regWallet.getAccountId();
             auto accId = Wallets::AddressAccountId::fromHex(accIdCapn);
             bridge->registerWallet(wltId, accId, regWallet.getIsNew());
