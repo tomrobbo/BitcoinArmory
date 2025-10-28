@@ -57,7 +57,7 @@ namespace Armory
          const std::filesystem::path path_;
          std::map<std::string, std::shared_ptr<WalletFileInfo>> walletFiles_;
 
-         std::map<std::string, std::map<
+         std::map<Wallets::WalletId, std::map<
             Wallets::AddressAccountId,
             std::shared_ptr<WalletContainer>>> wallets_;
          std::map<std::string, std::shared_ptr<WalletContainer>> walletsByDbId_;
@@ -80,7 +80,7 @@ namespace Armory
          /* pre wallets loading calls */
          std::map<std::string, std::shared_ptr<WalletFileInfo>> listWallets(void);
          void unlockControlHeader(const std::string&, const Passphrase::UnlockFunc&);
-         const std::string& migrateWallet(const std::filesystem::path&,
+         const Wallets::WalletId& migrateWallet(const std::filesystem::path&,
             const Passphrase::UnlockFunc&,
             const Wallets::IO::CreateWalletParams&
          );
@@ -102,12 +102,12 @@ namespace Armory
          void updateStateFromDB(const std::function<void(void)>&);
 
          /* loaded wallet getters */
-         bool hasWallet(const std::string&);
+         bool hasWallet(const Wallets::WalletId&);
          std::shared_ptr<WalletContainer> getWalletContainer(
-            const std::string&) const;
+            const Wallets::WalletId&) const;
          std::shared_ptr<WalletContainer> getWalletContainer(
-            const std::string&, const Wallets::AddressAccountId&) const;
-         std::map<std::string, std::set<Wallets::AddressAccountId>>
+            const Wallets::WalletId&, const Wallets::AddressAccountId&) const;
+         std::map<Wallets::WalletId, std::set<Wallets::AddressAccountId>>
             getAccountIdMap(void) const;
 
          /* wallet add/create/delete */
@@ -116,8 +116,8 @@ namespace Armory
             const SecureBinaryData&, //extra entropy
             const Wallets::IO::CreateWalletParams&);
 
-         std::filesystem::path unloadWallet(const std::string&);
-         void deleteWallet(const std::string&);
+         std::filesystem::path unloadWallet(const Wallets::WalletId&);
+         void deleteWallet(const Wallets::WalletId&);
 
          /* address creation */
          void extendAddressChain(const Wallets::WalletId&,

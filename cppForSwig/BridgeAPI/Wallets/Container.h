@@ -123,6 +123,7 @@ namespace Armory
          void setLabels(const std::string&, const std::string&);
 
          const Wallets::EncryptionKeyId& getDefaultEncryptionKeyId() const;
+         std::filesystem::path forkWatchingOnly(const Passphrase::SetNew&);
       };
    } //namespace Bridge
 } //namespace Armory

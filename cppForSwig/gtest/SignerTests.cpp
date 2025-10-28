@@ -9649,7 +9649,7 @@ TEST_F(ExtrasTest_Mainnet, Bip32PathDiscovery)
          std::move(seed), params);
 
       wltPath = wallet->getDbFilename();
-      auto woWalletPath = wallet->forkWatchingOnly(
+      auto woWalletPath = AssetWallet::forkWatchingOnly(
          IO::ReadOnlyFileParams{wltPath, {}},
          Armory::Passphrase::SetNew{}
       );

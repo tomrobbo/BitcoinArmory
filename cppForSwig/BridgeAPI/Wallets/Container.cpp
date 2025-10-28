@@ -464,3 +464,15 @@ const Wallets::EncryptionKeyId& WalletContainer::getDefaultEncryptionKeyId() con
 {
    return wallet_->getDefaultEncryptionKeyId();
 }
+
+////////////////////////////////////////////////////////////////////////////////
+std::filesystem::path WalletContainer::forkWatchingOnly(
+   const Passphrase::SetNew& ctrlPass)
+{
+   auto wltSingle = std::dynamic_pointer_cast<Wallets::AssetWallet_Single>(wallet_);
+   if (wltSingle == nullptr) {
+      throw std::runtime_error("unexpected wallet type");
+   }
+   auto wpd = Wallets::AssetWallet_Single::exportPublicData(wltSingle);
+   return Wallets::AssetWallet_Single::forkWatchingOnly(wpd, ctrlPass);
+}

@@ -639,15 +639,14 @@ bool CppBridge::stageWallet(const Wallets::WalletId& walletId, bool stage)
 void CppBridge::migrateWallet(const std::filesystem::path& wltPath,
    const std::string& callbackId, MessageId refId)
 {
-   auto migrateLbd = [this] (const std::filesystem::path& wltPath,
-      const std::string& callbackId, MessageId refId)
+   auto migrateLbd = [this] (const std::filesystem::path wltPath,
+      const std::string callbackId, MessageId refId)
    {
       //prepare reply
       capnp::MallocMessageBuilder message;
       auto fromBridge = message.initRoot<FromBridge>();
       auto reply = fromBridge.initReply();
       reply.setReferenceId(refId);
-      auto mgrReply = reply.initWalletManager();
 
       //set passphrase functions
       auto setCtrlPassFunc = getSetPassFunc(this, callbackId, false);
@@ -671,22 +670,58 @@ void CppBridge::migrateWallet(const std::filesystem::path& wltPath,
       try {
          auto resultId = wltManager_->migrateWallet(
             wltPath, unlockLbd, params);
-         sendCallbackCleanup(this, callbackId);
 
          auto mgrReply = reply.initWalletManager();
          mgrReply.setMigrateWallet(resultId);
          reply.setSuccess(true);
       } catch (const std::exception& e) {
-         sendCallbackCleanup(this, callbackId);
          reply.setSuccess(false);
          reply.setError(e.what());
       }
 
+      sendCallbackCleanup(this, callbackId);
       auto response = serializeCapnp(message);
       this->writeToClient(response);
    };
 
    std::thread thr(migrateLbd, wltPath, callbackId, refId);
+   if (thr.joinable()) {
+      thr.detach();
+   }
+}
+
+void CppBridge::forkWatchingOnly(const Wallets::WalletId& wltId,
+   const std::string& callbackId, MessageId refId)
+{
+   auto forkLbd = [this](const Wallets::WalletId wltId,
+      const std::string callbackId, MessageId refId)
+   {
+      //prepare reply
+      capnp::MallocMessageBuilder message;
+      auto fromBridge = message.initRoot<FromBridge>();
+      auto reply = fromBridge.initReply();
+      reply.setReferenceId(refId);
+
+      auto wltCont = wltManager_->getWalletContainer(wltId);
+      try {
+         auto ctrlPassFunc = getSetPassFunc(this, callbackId, false);
+         auto woPath = wltCont->forkWatchingOnly(
+            Passphrase::SetNew{ctrlPassFunc});
+
+         auto wltReply = reply.initWallet();
+         wltReply.setForkWatchingOnly(woPath.string());
+         reply.setSuccess(true);
+      } catch (const std::exception& e) {
+         reply.setSuccess(false);
+         reply.setError(e.what());
+      }
+
+      sendCallbackCleanup(this, callbackId);
+      auto response = serializeCapnp(message);
+      this->writeToClient(response);
+   };
+
+   std::thread thr(forkLbd, wltId, callbackId, refId);
    if (thr.joinable()) {
       thr.detach();
    }
@@ -745,6 +780,18 @@ BinaryData CppBridge::createWalletsPacket(MessageId msgId)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+bool CppBridge::unloadWallet(const Wallets::WalletId& wltId)
+{
+   try {
+      wltManager_->deleteWallet(wltId);
+   } catch (const std::exception& e) {
+      LOGWARN << "failed to unload wallet with error: " << e.what();
+      return false;
+   }
+   return true;
+}
+
+////
 bool CppBridge::deleteWallet(const Wallets::WalletId& wltId)
 {
    try {

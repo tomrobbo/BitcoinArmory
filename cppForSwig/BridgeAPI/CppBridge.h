@@ -128,6 +128,7 @@ namespace Armory
          //wallet setup
          const std::filesystem::path& getDataDir(void) const;
          BinaryData createWalletsPacket(MessageId);
+         bool unloadWallet(const Wallets::WalletId&);
          bool deleteWallet(const Wallets::WalletId&);
          BinaryData getWalletPacket(const Wallets::WalletId&,
             Wallets::AddressAccountId, MessageId) const;
@@ -172,6 +173,8 @@ namespace Armory
             const std::string_view&,
             const std::string_view&, MessageId);
          void importWallet(const std::filesystem::path&, MessageId);
+         void forkWatchingOnly(const Wallets::WalletId&,
+            const std::string&, MessageId);
 
          //ledgers
          const std::string& getLedgerDelegateId(void);

@@ -122,10 +122,7 @@ namespace
          {
             auto regWallet = request.getRegisterWallet();
             auto capnId = regWallet.getWalletId();
-            Wallets::WalletId wltId{BinaryDataRef{
-               (const uint8_t*)capnId.begin(),
-               (const uint8_t*)capnId.end()}
-            };
+            Wallets::WalletId wltId{capnId.begin(), capnId.size()};
             auto accIdCapn = regWallet.getAccountId();
             auto accId = Wallets::AddressAccountId::fromHex(accIdCapn);
             bridge->registerWallet(wltId, accId, regWallet.getIsNew());
@@ -244,8 +241,9 @@ namespace
          case WalletManagerRequest::STAGE_WALLET:
          {
             auto stageRequest = request.getStageWallet();
-            auto success = bridge->stageWallet(
-               stageRequest.getWalletId(), stageRequest.getStage());
+            auto capnId = stageRequest.getWalletId();
+            const Wallets::WalletId wltId{capnId.begin(), capnId.size()};
+            auto success = bridge->stageWallet(wltId, stageRequest.getStage());
 
             capnp::MallocMessageBuilder message;
             auto fromBridge = message.initRoot<FromBridge>();
@@ -272,13 +270,32 @@ namespace
             break;
          }
 
-         case WalletManagerRequest::DELETE_WALLET:
+         case WalletManagerRequest::UNLOAD_WALLET:
          {
-            auto result = bridge->deleteWallet(request.getDeleteWallet());
+            auto capnId = request.getUnloadWallet();
+            const Wallets::WalletId wltId{capnId.begin(), capnId.size()};
+            auto success = bridge->unloadWallet(wltId);
+
             capnp::MallocMessageBuilder message;
             auto fromBridge = message.initRoot<FromBridge>();
             auto reply = fromBridge.initReply();
-            reply.setSuccess(true);
+            reply.setSuccess(success);
+            reply.setReferenceId(referenceId);
+
+            response = serializeCapnp(message);
+            break;
+         }
+
+         case WalletManagerRequest::DELETE_WALLET:
+         {
+            auto capnId = request.getDeleteWallet();
+            const Wallets::WalletId wltId{capnId.begin(), capnId.size()};
+            auto success = bridge->deleteWallet(wltId);
+
+            capnp::MallocMessageBuilder message;
+            auto fromBridge = message.initRoot<FromBridge>();
+            auto reply = fromBridge.initReply();
+            reply.setSuccess(success);
             reply.setReferenceId(referenceId);
 
             response = serializeCapnp(message);
@@ -306,7 +323,8 @@ namespace
       std::shared_ptr<CppBridge> bridge, MessageId referenceId,
       WalletRequest::Reader& request)
    {
-      const Wallets::WalletId walletId = request.getWalletId();
+      auto capnId = request.getWalletId();
+      const Wallets::WalletId walletId{capnId.begin(), capnId.size()};
       Wallets::AddressAccountId accountId;
       try {
          accountId = Wallets::AddressAccountId::fromHex(
@@ -527,6 +545,23 @@ namespace
             bridge->getUnlockTime(walletId, referenceId);
             break;
          }
+
+         case WalletRequest::FORK_WATCHING_ONLY:
+         {
+            std::string callbackId{request.getForkWatchingOnly()};
+            bridge->forkWatchingOnly(walletId, callbackId, referenceId);
+            break;
+         }
+
+         default:
+            capnp::MallocMessageBuilder message;
+            auto fromBridge = message.initRoot<FromBridge>();
+            auto reply = fromBridge.initReply();
+            reply.setSuccess(false);
+            reply.setReferenceId(referenceId);
+            reply.setError("unknown wallet method");
+            response = serializeCapnp(message);
+
       }
 
       if (!response.empty()) {
@@ -926,7 +961,9 @@ namespace
          case SignerRequest::SIGN_TX:
          {
             auto args = request.getSignTx();
-            signer->signTx(args.getWalletId(), args.getCallbackId(),
+            auto capnId = args.getWalletId();
+            const Wallets::WalletId wltId{capnId.begin(), capnId.size()};
+            signer->signTx(wltId, args.getCallbackId(),
                referenceId);
             break;
          }
@@ -981,7 +1018,9 @@ namespace
 
          case SignerRequest::RESOLVE:
          {
-            auto result = signer->resolve(request.getResolve());
+            auto capnId = request.getResolve();
+            const Wallets::WalletId wltId{capnId.begin(), capnId.size()};
+            auto result = signer->resolve(wltId);
             replySuccess(result);
             break;
          }

@@ -272,7 +272,8 @@ struct WalletManagerRequest {
       #load staged wallets
       loadWallets             @5 : Void;
 
-      deleteWallet            @6 : Types.WalletId;
+      unloadWallet            @6 : Types.WalletId;
+      deleteWallet            @7 : Types.WalletId;
    }
 }
 
@@ -389,6 +390,7 @@ struct WalletRequest {
       setLabels                     @18: SetLabels;
 
       getUnlockTime                 @19: Void;
+      forkWatchingOnly              @20: Types.CallbackId;
    }
 }
 
@@ -432,6 +434,7 @@ struct WalletReply {
 
       createAddressBook             @12: Types.AddressBook;
       getUnlockTime                 @13: UInt32; #unlock time in ms
+      forkWatchingOnly              @14: Text; #path to new WO wallet
    }
 }
 

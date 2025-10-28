@@ -4183,7 +4183,7 @@ TEST_F(WalletsTest, RejectCreationAtPassphrase)
 TEST_F(WalletsTest, CreateWOCopy_Test)
 {
    //create 1 wallet from priv key
-   IO::CreateWalletParams params {
+   IO::CreateWalletParams params{
       homedir_,
       Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("passphrase")},
       Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("control")},
@@ -4195,6 +4195,18 @@ TEST_F(WalletsTest, CreateWOCopy_Test)
    auto assetWlt = AssetWallet_Single::createFromSeed(
       move(seed), params);
    auto filename = assetWlt->getDbFilename();
+
+   //check wlt has private root
+   {
+      auto seed = assetWlt->getEncryptedSeed();
+      ASSERT_NE(seed, nullptr);
+
+      auto root = std::dynamic_pointer_cast<AssetEntry_ArmoryLegacyRoot>(
+         assetWlt->getRoot());
+      ASSERT_NE(root, nullptr);
+      ASSERT_NE(root->getPrivKey(), nullptr);
+   }
+
 
    //get AddrVec
    auto hashSet = assetWlt->getAddrHashSet();
@@ -4233,9 +4245,11 @@ TEST_F(WalletsTest, CreateWOCopy_Test)
    woWallet.reset();
 
    //reload the WO wallet
-   auto passLbd = [](const std::set<EncryptionKeyId>&)
+   unsigned count = 0;
+   auto passLbd = [&count](const std::set<EncryptionKeyId>&)
    ->Armory::Passphrase::Result
    {
+      ++count;
       return { SecureBinaryData::fromString("control"), true };
    };
 
@@ -4248,16 +4262,18 @@ TEST_F(WalletsTest, CreateWOCopy_Test)
       auto accPtr = reloadWoWallet->getAccountForID(mainAccId);
       EXPECT_TRUE(accPtr->isLegacy());
    }
+   EXPECT_EQ(count, 1);
 
    //delete the underlying file so we can fork anew
    reloadWoWallet.reset();
    std::filesystem::remove(woFilename.c_str());
 
    //fork WO from full wallet
-   auto forkFilename = AssetWallet_Single::forkWatchingOnly(
+   auto forkFilename = AssetWallet::forkWatchingOnly(
       IO::ReadOnlyFileParams{filename, passLbd},
       Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("control")}
    );
+   EXPECT_EQ(count, 2);
 
    auto woFork = AssetWallet::loadMainWalletFromFile(
       IO::ReadOnlyFileParams{forkFilename, passLbd});
@@ -4267,6 +4283,20 @@ TEST_F(WalletsTest, CreateWOCopy_Test)
    {
       auto accPtr = woFork->getAccountForID(mainAccId);
       EXPECT_TRUE(accPtr->isLegacy());
+   }
+   EXPECT_EQ(count, 3);
+
+   //check WO wlt has no private root
+   {
+      auto woSingle = std::dynamic_pointer_cast<AssetWallet_Single>(woFork);
+      ASSERT_NE(woSingle, nullptr);
+      auto seed = woSingle->getEncryptedSeed();
+      ASSERT_EQ(seed, nullptr);
+
+      auto rootWO = std::dynamic_pointer_cast<AssetEntry_ArmoryLegacyRoot>(
+         woFork->getRoot());
+      ASSERT_NE(rootWO, nullptr);
+      ASSERT_EQ(rootWO->getPrivKey(), nullptr);
    }
 }
 
@@ -5297,7 +5327,7 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
 
    {
       //create WO copy (lambda that returns empty pass)
-      auto woFilename = AssetWallet_Single::forkWatchingOnly(
+      auto woFilename = AssetWallet::forkWatchingOnly(
          IO::ReadOnlyFileParams{filename2, nullptr},
          Armory::Passphrase::SetNew{1ms, 0, {}}
       );
@@ -5327,7 +5357,7 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
 
    {
       //create WO with different pass
-      auto woFilename = AssetWallet_Single::forkWatchingOnly(
+      auto woFilename = AssetWallet::forkWatchingOnly(
          IO::ReadOnlyFileParams{filename2, nullptr},
          Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("newpass")}
       );
@@ -7964,7 +7994,7 @@ TEST_F(WalletsTest, BIP32_SaltedAccount)
       ASSERT_EQ(addrHashSet.size(), 80ULL);
 
       //create WO copy
-      filename = AssetWallet_Single::forkWatchingOnly(
+      filename = AssetWallet::forkWatchingOnly(
          IO::ReadOnlyFileParams{filename, controlLbd_},
          Armory::Passphrase::SetNew{1ms, 0, controlPass_}
       );
@@ -8378,7 +8408,7 @@ TEST_F(WalletsTest, AssetPathResolution)
 
       //create a WO copy
       auto filename = wlt->getDbFilename();
-      auto woFilename = AssetWallet_Single::forkWatchingOnly(
+      auto woFilename = AssetWallet::forkWatchingOnly(
          IO::ReadOnlyFileParams{filename, nullptr},
          Armory::Passphrase::SetNew{1ms, 0, {}}
       );

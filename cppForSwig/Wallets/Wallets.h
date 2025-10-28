@@ -66,22 +66,24 @@ namespace Armory
       struct WalletPublicData
       {
       public:
-         const std::string dbName_;
-         const WalletId masterID_;
-         const WalletId walletID_;
-         const AddressAccountId mainAccountID_;
+         const std::filesystem::path path;
+         const std::string dbName;
+         const WalletId masterID;
+         const WalletId walletID;
+         const AddressAccountId mainAccountID;
 
-         std::shared_ptr<Assets::AssetEntry_Single> pubRoot_{};
+         std::shared_ptr<Assets::AssetEntry_Single> pubRoot;
          std::map<AddressAccountId,
-            Accounts::AddressAccountPublicData> accounts_{};
+            Accounts::AddressAccountPublicData> accounts;
          std::map<Accounts::MetaAccountType,
-            std::shared_ptr<Accounts::MetaDataAccount>> metaAccounts_{};
+            std::shared_ptr<Accounts::MetaDataAccount>> metaAccounts;
 
          std::string label;
          std::string description;
 
       public:
-         WalletPublicData(const std::string&, const WalletId&,
+         WalletPublicData(const std::filesystem::path&,
+            const std::string&, const WalletId&,
             const WalletId&, const AddressAccountId&);
       };
 
@@ -370,6 +372,8 @@ namespace Armory
             std::shared_ptr<AssetWallet_Single>);
          static void mergePublicData(const IO::ReadOnlyFileParams&,
             const WalletPublicData&, Progress::Func);
+         static std::filesystem::path forkWatchingOnly(
+            const WalletPublicData&, const Passphrase::SetNew&);
       };
 
       //////////////////////////////////////////////////////////////////////////

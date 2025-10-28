@@ -895,28 +895,10 @@ std::filesystem::path AssetWallet::forkWatchingOnly(
    const IO::ReadOnlyFileParams& params,
    const Passphrase::SetNew& woCtrlPassObj)
 {
-   //strip '_wallet' extention
-   auto filename = params.filePath.stem().string();
-   auto underscoreIndex = filename.find_last_of("_");
-   auto newname = filename.substr(0, underscoreIndex);
-
-   //set WO suffix
-   newname.append("_WatchingOnly.lmdb");
-   auto newPath = params.filePath.parent_path() / newname;
-
-   //check file does not exist
-   if (FileUtils::fileExists(newPath, 0)) {
-      throw WalletException("WO wallet filename already exists");
-   }
-
    //open original wallet db & new
    auto originIface = std::make_shared<IO::WalletDBInterface>();
    originIface->setupEnv(params);
    auto masterID = getMasterID(originIface);
-
-   auto woIface = createIface(IO::CreateFileParams{newPath, woCtrlPassObj});
-   woIface->setDbCount(originIface->getDbCount());
-   woIface->lockControlContainer(woCtrlPassObj.getUnlockFunc());
 
    //cycle through wallet metas, copy wallet structure and assets
    for (auto& metaPtr : originIface->getHeaderMap()) {
@@ -924,8 +906,6 @@ std::filesystem::path AssetWallet::forkWatchingOnly(
       {
          case IO::WalletHeaderType_Single:
          {
-            woIface->addHeader(metaPtr.second);
-
             //load wallet
             auto wltSingle = std::make_shared<AssetWallet_Single>(
                originIface, metaPtr.second, masterID);
@@ -933,29 +913,17 @@ std::filesystem::path AssetWallet::forkWatchingOnly(
 
             //copy content
             auto wpd = AssetWallet_Single::exportPublicData(wltSingle);
-            AssetWallet_Single::importPublicData(wpd, woIface);
-
-            //close the wallet
             wltSingle.reset();
-            break;
+            return AssetWallet_Single::forkWatchingOnly(wpd, woCtrlPassObj);
          }
 
          default:
-            LOGWARN << "wallet contains header types that " <<
-               "aren't covered by WO forking";
+            break;
       }
    }
 
-   //set main wallet id
-   setMainWallet(woIface, getMainWalletID(originIface));
-
-   //close dbs
-   originIface.reset();
-   woIface->unlockControlContainer();
-   woIface.reset();
-
-   //return the file name of the wo wallet
-   return newPath;
+   throw std::runtime_error(
+      "wallet contains header types that aren't covered by WO forking");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1779,34 +1747,34 @@ void AssetWallet_Single::importPublicData(const WalletPublicData& wpd,
    //open the wallet
    auto headerPtr = std::make_shared<IO::WalletHeader_Single>(
       Armory::Config::BitcoinSettings::getMagicBytes());
-   headerPtr->walletID_ = wpd.walletID_;
+   headerPtr->walletID_ = wpd.walletID;
    auto wltRecipient = std::make_unique<AssetWallet_Single>(
-      iface, headerPtr, wpd.masterID_);
+      iface, headerPtr, wpd.masterID);
    wltRecipient->readFromFile();
 
    //open the relevant db name
-   auto tx = iface->beginWriteTransaction(wpd.dbName_);
+   auto tx = iface->beginWriteTransaction(wpd.dbName);
 
-   if (wpd.mainAccountID_.isValid() &&
+   if (wpd.mainAccountID.isValid() &&
       !wltRecipient->mainAccountId_.isValid()) {
       //main account
       BinaryWriter bwKey;
       bwKey.put_uint32_t(MAIN_ACCOUNT_KEY);
 
       BinaryWriter bwData;
-      wpd.mainAccountID_.serializeValue(bwData);
+      wpd.mainAccountID.serializeValue(bwData);
       tx->insert(bwKey.getData(), bwData.getData());
    }
 
    //does the wallet have a root entry?
-   if (wpd.pubRoot_ != nullptr && wltRecipient->getRoot() == nullptr) {
+   if (wpd.pubRoot != nullptr && wltRecipient->getRoot() == nullptr) {
       //wallet is missing a root, add it
       BinaryWriter bwKey;
       bwKey.put_uint32_t(ROOTASSET_KEY);
 
-      auto data = wpd.pubRoot_->serialize();
+      auto data = wpd.pubRoot->serialize();
       tx->insert(bwKey.getData(), data);
-      wltRecipient->root_ = wpd.pubRoot_;
+      wltRecipient->root_ = wpd.pubRoot;
    }
 
    //label & description
@@ -1816,7 +1784,7 @@ void AssetWallet_Single::importPublicData(const WalletPublicData& wpd,
    //report how many addresses we will be generating
    if (prog) {
       int32_t lookupAggregate = 0;
-      for (const auto& addrAccPair : wpd.accounts_) {
+      for (const auto& addrAccPair : wpd.accounts) {
          try {
             auto addrAccPtr = wltRecipient->getAccountForID(addrAccPair.first);
             for (const auto& accPair : addrAccPair.second.accountDataMap_) {
@@ -1838,7 +1806,7 @@ void AssetWallet_Single::importPublicData(const WalletPublicData& wpd,
    }
 
    //address accounts
-   for (const auto& accPair : wpd.accounts_) {
+   for (const auto& accPair : wpd.accounts) {
       std::shared_ptr<AddressAccount> accPtr;
       const auto& accData = accPair.second;
 
@@ -1878,7 +1846,7 @@ void AssetWallet_Single::importPublicData(const WalletPublicData& wpd,
             {
                //create derTree
                auto rootBip32 = std::dynamic_pointer_cast<AssetEntry_BIP32Root>(
-                  wpd.pubRoot_);
+                  wpd.pubRoot);
                if (rootBip32 == nullptr) {
                   throw WalletException("[importPublicData] invalid root");
                }
@@ -1986,7 +1954,7 @@ void AssetWallet_Single::importPublicData(const WalletPublicData& wpd,
          }
 
          //flag main account
-         if (accData.ID_ == wpd.mainAccountID_) {
+         if (accData.ID_ == wpd.mainAccountID) {
             accTypePtr->setMain(true);
          }
 
@@ -2027,9 +1995,9 @@ void AssetWallet_Single::importPublicData(const WalletPublicData& wpd,
    }
 
    //meta accounts
-   for (const auto& metaAccPtr : wpd.metaAccounts_) {
-      auto accCopy = metaAccPtr.second->copy(wpd.dbName_);
-      auto metaTx = iface->beginWriteTransaction(wpd.dbName_);
+   for (const auto& metaAccPtr : wpd.metaAccounts) {
+      auto accCopy = metaAccPtr.second->copy(wpd.dbName);
+      auto metaTx = iface->beginWriteTransaction(wpd.dbName);
       accCopy->commit(std::move(metaTx));
    }
 }
@@ -2048,6 +2016,7 @@ WalletPublicData AssetWallet_Single::exportPublicData(
    std::shared_ptr<AssetWallet_Single> wlt)
 {
    WalletPublicData wpd{
+      wlt->getDbFilename(),
       wlt->dbName_,
       wlt->masterID_,
       wlt->walletID_,
@@ -2056,19 +2025,19 @@ WalletPublicData AssetWallet_Single::exportPublicData(
 
    //root
    if (wlt->root_ != nullptr) {
-      wpd.pubRoot_ = wlt->root_->getPublicCopy();
+      wpd.pubRoot = wlt->root_->getPublicCopy();
    }
 
    //address accounts
    for (auto& addrAccPtr : wlt->accounts_) {
       auto accData = addrAccPtr.second->exportPublicData();
-      wpd.accounts_.emplace(accData.ID_, accData);
+      wpd.accounts.emplace(accData.ID_, accData);
    }
 
    //meta accounts
    for (auto& metaAccPtr : wlt->metaDataAccounts_) {
       auto accCopy = metaAccPtr.second->copy(wlt->dbName_);
-      wpd.metaAccounts_.emplace(accCopy->getType(), accCopy);
+      wpd.metaAccounts.emplace(accCopy->getType(), accCopy);
    }
 
    //label and description
@@ -2259,6 +2228,51 @@ AssetId AssetWallet_Single::importPublicKey(SecureBinaryData& pubkey,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+std::filesystem::path AssetWallet_Single::forkWatchingOnly(
+   const WalletPublicData& wpd,
+   const Passphrase::SetNew& woCtrlPassObj)
+{
+   //strip '_wallet' extention
+   auto filename = wpd.path.stem().string();
+   auto underscoreIndex = filename.find_last_of("_");
+   auto newname = filename.substr(0, underscoreIndex);
+
+   //set WO suffix
+   newname.append("_WatchingOnly.lmdb");
+   auto newPath = wpd.path.parent_path() / newname;
+
+   //check file does not exist
+   if (FileUtils::fileExists(newPath, 0)) {
+      throw WalletException("WO wallet filename already exists");
+   }
+
+   //init wallet db interface
+   auto woIface = createIface(IO::CreateFileParams{newPath, woCtrlPassObj});
+   woIface->lockControlContainer(woCtrlPassObj.getUnlockFunc());
+
+   {
+      //setup walletId header
+      auto headerPtr = std::make_shared<IO::WalletHeader_Single>(
+         Armory::Config::BitcoinSettings::getMagicBytes());
+      headerPtr->walletID_ = wpd.walletID;
+      Armory::Passphrase::Params params{};
+      IO::WalletDBInterface::initWalletHeaderObject(headerPtr, params);
+      woIface->addHeader(headerPtr);
+   }
+
+   //import public data into the WO wallet
+   AssetWallet_Single::importPublicData(wpd, woIface);
+   setMainWallet(woIface, wpd.walletID);
+
+   //close dbs
+   woIface->unlockControlContainer();
+   woIface.reset();
+
+   //return the file name of the wo wallet
+   return newPath;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 //// AssetWallet_Multisig
 ////////////////////////////////////////////////////////////////////////////////
@@ -2330,9 +2344,10 @@ const SecureBinaryData& AssetWallet_Multisig::getDecryptedValue(
 //// WalletPublicData
 //
 ////////////////////////////////////////////////////////////////////////////////
-WalletPublicData::WalletPublicData(const std::string& dbName,
+WalletPublicData::WalletPublicData(const std::filesystem::path& path,
+   const std::string& dbName,
    const WalletId& masterID, const WalletId& walletID,
    const AddressAccountId& mainAccID) :
-   dbName_(dbName), masterID_(masterID), walletID_(walletID),
-   mainAccountID_(mainAccID)
+   path(path), dbName(dbName), masterID(masterID), walletID(walletID),
+   mainAccountID(mainAccID)
 {}
