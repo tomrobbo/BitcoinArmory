@@ -11,6 +11,7 @@
 #include "Assets.h"
 #include "WalletHeader.h"
 #include "Seeds/Seeds.h"
+#include "../BtcUtils.h"
 #include "../BitcoinSettings.h"
 
 using namespace Armory::Wallets;

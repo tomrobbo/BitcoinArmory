@@ -113,7 +113,7 @@ void ScrAddrFilter::updateAddressMerkleInDB()
       sshSdbi = std::move(lmdb_->getStoredDBInfo(SSH, sdbiKey_));
    } catch (const std::runtime_error&) {
       sshSdbi.magic_ = Armory::Config::BitcoinSettings::getMagicBytes();
-      sshSdbi.metaHash_ = BtcUtils::EmptyHash_;
+      sshSdbi.metaHash_ = BtcUtils::EmptyHash;
       sshSdbi.topBlkHgt_ = 0;
       sshSdbi.armoryType_ = ARMORY_DB_BARE;
    }

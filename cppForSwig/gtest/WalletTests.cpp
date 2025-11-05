@@ -1994,7 +1994,7 @@ protected:
       //generate decryption key
       auto ecdhPubKey =
          CryptoECDSA::PubKeyScalarMultiply(packet.pubKey_, privKey);
-      auto decrKey = BtcUtils::hash256(ecdhPubKey);
+      auto decrKey = BtcUtils::getHash256(ecdhPubKey);
 
       //decrypt packet
       auto payload = CryptoAES::DecryptCBC(
@@ -6927,7 +6927,7 @@ TEST_F(WalletsTest, ChangeControlPassphrase)
       (const std::set<EncryptionKeyId>&)->Armory::Passphrase::Result
    {
       while (counter++ < 10) {
-         return { BtcUtils::fortuna_.generateRandom(20), true };
+         return { prng_fortuna.generateRandom(20), true };
       }
       return { {}, false };
    };

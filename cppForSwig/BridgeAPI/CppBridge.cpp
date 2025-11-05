@@ -289,7 +289,7 @@ namespace
 
          //scrAddr
          const auto& script = utxo.getScript();
-         auto scrAddr = BtcUtils::getScrAddrForScript(script);
+         auto scrAddr = BtcUtils::getTxOutScrAddr(script);
          capnUtxo.setScrAddr(capnp::Data::Builder(
             (uint8_t*)scrAddr.getPtr(), scrAddr.getSize()
          ));
@@ -1959,13 +1959,13 @@ void CppBridge::getTxsByHash(const std::set<BinaryData>& hashes, MessageId msgId
 BinaryData CppBridge::getTxInScriptType(
    const BinaryData& script, const BinaryData& hash, MessageId msgId) const
 {
-   auto typeInt = BtcUtils::getTxInScriptTypeInt(script, hash);
+   auto type = BtcUtils::getTxInScriptType(script, hash);
 
    capnp::MallocMessageBuilder message;
    auto fromBridge = message.initRoot<FromBridge>();
    auto reply = fromBridge.initReply();
    auto utilsReply = reply.initScriptUtils();
-   utilsReply.setGetTxInScriptType(typeInt);
+   utilsReply.setGetTxInScriptType((uint32_t)type);
 
    reply.setSuccess(true);
    reply.setReferenceId(msgId);
@@ -1976,13 +1976,13 @@ BinaryData CppBridge::getTxInScriptType(
 BinaryData CppBridge::getTxOutScriptType(
    const BinaryData& script, MessageId msgId) const
 {
-   auto typeInt = BtcUtils::getTxOutScriptTypeInt(script);
+   auto type = BtcUtils::getTxOutScriptType(script);
 
    capnp::MallocMessageBuilder message;
    auto fromBridge = message.initRoot<FromBridge>();
    auto reply = fromBridge.initReply();
    auto utilsReply = reply.initScriptUtils();
-   utilsReply.setGetTxOutScriptType(typeInt);
+   utilsReply.setGetTxOutScriptType((uint32_t)type);
 
    reply.setSuccess(true);
    reply.setReferenceId(msgId);
@@ -1993,7 +1993,7 @@ BinaryData CppBridge::getTxOutScriptType(
 BinaryData CppBridge::getScrAddrForScript(
    const BinaryData& script, MessageId msgId) const
 {
-   auto scrAddr = BtcUtils::getScrAddrForScript(script);
+   auto scrAddr = BtcUtils::getTxOutScrAddr(script);
 
    capnp::MallocMessageBuilder message;
    auto fromBridge = message.initRoot<FromBridge>();

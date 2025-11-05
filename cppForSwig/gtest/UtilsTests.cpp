@@ -2019,19 +2019,19 @@ TEST_F(BinaryDataTest, DISABLED_CompareBench)
    set<BinaryData> dataSet;
    unordered_set<BinaryData> udSet;
    set<BinaryData> compareSet;
-   for (unsigned i=0; i<setSize; i++)
-   {
-      auto hash = BtcUtils::fortuna_.generateRandom(32);
+   for (unsigned i=0; i<setSize; i++) {
+      auto hash = prng_fortuna.generateRandom(32);
 
-      if ((hash.getPtr()[0] % 8) == 0 && compareSet.size() < compareSize)
+      if ((hash.getPtr()[0] % 8) == 0 && compareSet.size() < compareSize) {
          compareSet.emplace(hash);
-
+      }
       udSet.emplace(hash);
       dataSet.emplace(move(hash));
    }
 
-   for (unsigned i=0; i<compareSize; i++)
-      compareSet.emplace(move(BtcUtils::fortuna_.generateRandom(32)));
+   for (unsigned i=0; i<compareSize; i++) {
+      compareSet.emplace(prng_fortuna.generateRandom(32));
+   }
 
    ASSERT_EQ(dataSet.size(), setSize);
    ASSERT_EQ(compareSet.size(), compareSize*2);
@@ -2043,11 +2043,11 @@ TEST_F(BinaryDataTest, DISABLED_CompareBench)
    //set
    start = chrono::system_clock::now();
    unsigned hits = 0;
-   for (const auto& hash : compareSet)
-   {
+   for (const auto& hash : compareSet) {
       auto iter = dataSet.find(hash);
-      if (iter != dataSet.end())
+      if (iter != dataSet.end()) {
          hits++;
+      }
    }
 
    EXPECT_EQ(hits, compareSize);
@@ -2058,8 +2058,7 @@ TEST_F(BinaryDataTest, DISABLED_CompareBench)
    //unordered set
    start = chrono::system_clock::now();
    hits = 0;
-   for (const auto& hash : compareSet)
-   {
+   for (const auto& hash : compareSet) {
       auto iter = udSet.find(hash);
       if (iter != udSet.end())
          hits++;
@@ -2069,14 +2068,13 @@ TEST_F(BinaryDataTest, DISABLED_CompareBench)
    stop = chrono::system_clock::now();
    duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
    std::cout << "compared unordered set in " << duration.count() << " ms" << std::endl;
-
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 class BinaryDataRefTest : public ::testing::Test
 {
 protected:
-   virtual void SetUp(void) 
+   virtual void SetUp(void)
    {
       str0_ = "";
       str4_ = "1234abcd";
@@ -3106,7 +3104,7 @@ TEST_F(BtcUtilsTest, TxOutScriptID_NonStd)
    // This was from block 150951 which was erroneously produced by MagicalTux
    // This is not only non-standard, it's non-spendable
    BinaryData script = READHEX("76a90088ac");
-   BinaryData a160   = BtcUtils::BadAddress();
+   BinaryData a160   = BtcUtils::BadAddress;
    BinaryData unique = READHEX("ff") + BtcUtils::getHash160(READHEX("76a90088ac"));
    TXOUT_SCRIPT_TYPE scrType = BtcUtils::getTxOutScriptType(script);
    EXPECT_EQ(scrType, TXOUT_SCRIPT_NONSTANDARD );
@@ -3147,7 +3145,7 @@ TEST_F(BtcUtilsTest, TxOutScriptID_Multisig)
       "03fe96237629128a0ae8c3825af8a4be8fe3109b16f62af19cec0b1eb93b8717e2");
    BinaryData addr1  = READHEX("b3348abf9dd2d1491359f937e2af64b1bb6d525a");
    BinaryData addr2  = READHEX("785652a6b8e721e80ffa353e5dfd84f0658284a9");
-   BinaryData a160   = BtcUtils::BadAddress();
+   BinaryData a160   = BtcUtils::BadAddress;
    BinaryData unique = READHEX(
       "fe0202785652a6b8e721e80ffa353e5dfd84f0658284a9b3348abf9dd2d14913"
       "59f937e2af64b1bb6d525a");
@@ -3169,7 +3167,7 @@ TEST_F(BtcUtilsTest, TxOutScriptID_MultiList)
       "b93b8717e252ae");
    BinaryData addr0  = READHEX("785652a6b8e721e80ffa353e5dfd84f0658284a9");
    BinaryData addr1  = READHEX("b3348abf9dd2d1491359f937e2af64b1bb6d525a");
-   BinaryData a160   = BtcUtils::BadAddress();
+   BinaryData a160   = BtcUtils::BadAddress;
    BinaryData unique = READHEX(
       "fe0202785652a6b8e721e80ffa353e5dfd84f0658284a9b3348abf9dd2d14913"
       "59f937e2af64b1bb6d525a");
@@ -3240,7 +3238,7 @@ TEST_F(BtcUtilsTest, TxInScriptID_Coinbase)
 {
    BinaryData script = READHEX(
       "0310920304000071c3124d696e656420627920425443204775696c640800b75f950e000000");
-   BinaryData a160 =  BtcUtils::BadAddress();
+   BinaryData a160 =  BtcUtils::BadAddress;
    BinaryData prevHash = prevHashCB_;
 
    TXIN_SCRIPT_TYPE scrType = BtcUtils::getTxInScriptType(script, prevHash);
@@ -3257,7 +3255,7 @@ TEST_F(BtcUtilsTest, TxInScriptID_SpendPubKey)
       "47304402201ffc44394e5a3dd9c8b55bdc12147e18574ac945d15dac026793bf"
       "3b8ff732af022035fd832549b5176126f735d87089c8c1c1319447a458a09818"
       "e173eaf0c2eef101");
-   BinaryData a160 =  BtcUtils::BadAddress();
+   BinaryData a160 =  BtcUtils::BadAddress;
    BinaryData prevHash = prevHashReg_;
 
    TXIN_SCRIPT_TYPE scrType = BtcUtils::getTxInScriptType(script, prevHash);
@@ -3278,7 +3276,7 @@ TEST_F(BtcUtilsTest, TxInScriptID_SpendMultisig)
       "520db45494ec095ce80148304502206ee62f539d5cd94f990b7abfda77750f58"
       "ff91043c3f002501e5448ef6dba2520221009d29229cdfedda1dd02a1a90bb71"
       "b30b77e9c3fc28d1353f054c86371f6c2a8101");
-   BinaryData a160 =  BtcUtils::BadAddress();
+   BinaryData a160 =  BtcUtils::BadAddress;
    BinaryData prevHash = prevHashReg_;
    TXIN_SCRIPT_TYPE scrType = BtcUtils::getTxInScriptType(script, prevHash);
    EXPECT_EQ(scrType, TXIN_SCRIPT_SPENDMULTI);
@@ -5612,7 +5610,7 @@ protected:
 
       BinaryData DBINFO = StoredDBInfo().getDBKey();
       BinaryData flags = READHEX("95021000");
-      BinaryData val0 = magic_ + flags + zeros_ + zeros_ + BtcUtils::EmptyHash_;
+      BinaryData val0 = magic_ + flags + zeros_ + zeros_ + BtcUtils::EmptyHash;
       addOutPairH(DBINFO, val0);
       addOutPairB(DBINFO, val0);
 
@@ -5662,20 +5660,17 @@ TEST_F(LMDBTest, OpenClose)
    BinaryData flags = READHEX("97011000");
    BinaryData ff = READHEX("ffffffffffffffff");
 
-   for(uint32_t i=0; i<HList.size(); i++)
-   {
+   for(uint32_t i=0; i<HList.size(); i++) {
       EXPECT_EQ(HList[i].first,  READHEX("000000"));
-      EXPECT_EQ(BList[i].second, magic_ + flags + zeros_ + zeros_ + 
-         BtcUtils::EmptyHash_ + BtcUtils::EmptyHash_ + ff);
+      EXPECT_EQ(BList[i].second, magic_ + flags + zeros_ + zeros_ +
+         BtcUtils::EmptyHash + BtcUtils::EmptyHash + ff);
    }
 
-   for(uint32_t i=0; i<BList.size(); i++)
-   {
+   for(uint32_t i=0; i<BList.size(); i++) {
       EXPECT_EQ(HList[i].first,  READHEX("000000"));
-      EXPECT_EQ(BList[i].second, magic_ + flags + zeros_ + zeros_ + 
-         BtcUtils::EmptyHash_ + BtcUtils::EmptyHash_ + ff);
+      EXPECT_EQ(BList[i].second, magic_ + flags + zeros_ + zeros_ +
+         BtcUtils::EmptyHash + BtcUtils::EmptyHash + ff);
    }
-
    iface_->closeDatabases();
 }
 
@@ -5700,14 +5695,14 @@ TEST_F(LMDBTest, OpenCloseOpenNominal)
    {
       EXPECT_EQ(HList[i].first,  READHEX("000000"));
       EXPECT_EQ(BList[i].second, magic_ + flags + zeros_ + zeros_ +
-         BtcUtils::EmptyHash_ + BtcUtils::EmptyHash_ + ff);
+         BtcUtils::EmptyHash + BtcUtils::EmptyHash + ff);
    }
 
    for(uint32_t i=0; i<BList.size(); i++)
    {
       EXPECT_EQ(HList[i].first,  READHEX("000000"));
-      EXPECT_EQ(BList[i].second, magic_ + flags + zeros_ + zeros_ + 
-         BtcUtils::EmptyHash_ + BtcUtils::EmptyHash_ + ff);
+      EXPECT_EQ(BList[i].second, magic_ + flags + zeros_ + zeros_ +
+         BtcUtils::EmptyHash + BtcUtils::EmptyHash + ff);
    }
 
    iface_->closeDatabases();
@@ -5729,7 +5724,7 @@ TEST_F(LMDBTest, PutGetDelete)
    BinaryData DBINFO = StoredDBInfo().getDBKey();
    BinaryData PREFIX = WRITE_UINT8_BE((uint8_t)TXDATA);
    BinaryData val0 = magic_ + flags + zeros_ + zeros_ +
-      BtcUtils::EmptyHash_ + BtcUtils::EmptyHash_ + ff;
+      BtcUtils::EmptyHash + BtcUtils::EmptyHash + ff;
 
    BinaryData commonValue = READHEX("abcd1234");
    BinaryData keyAB = READHEX("0100");
@@ -6148,21 +6143,18 @@ TEST_F(TestTxHashFilters, SerializeWriter)
       //build the pool
       TxFilterPoolWriter pool;
       map<uint32_t, BlockHashVector> bucketMap;
-      for (unsigned i=0; i<bucketCount; i++)
-      {
+      for (unsigned i=0; i<bucketCount; i++) {
          BlockHashVector bucket(i);
          auto insertIt = hashMap.emplace(i, list<BinaryData>{});
          auto& hashList = insertIt.first->second;
-         for (unsigned y=0; y<hashCount; y++)
-         {
-            auto hash = BtcUtils::fortuna_.generateRandom(32);
+         for (unsigned y=0; y<hashCount; y++) {
+            auto hash = prng_fortuna.generateRandom(32);
             bucket.update(hash);
             hashList.emplace_back(hash);
          }
 
          bucketMap.emplace(i, move(bucket));
       }
-
       pool.update(bucketMap);
 
       //write the pool
@@ -6175,14 +6167,12 @@ TEST_F(TestTxHashFilters, SerializeWriter)
 
       //append the pool
       map<uint32_t, BlockHashVector> bucketMap;
-      for (unsigned i=bucketCount; i<bucketCount*2; i++)
-      {
+      for (unsigned i=bucketCount; i<bucketCount*2; i++) {
          BlockHashVector bucket(i);
          auto insertIt = hashMap.emplace(i, list<BinaryData>{});
          auto& hashList = insertIt.first->second;
-         for (unsigned y=0; y<hashCount; y++)
-         {
-            auto hash = BtcUtils::fortuna_.generateRandom(32);
+         for (unsigned y=0; y<hashCount; y++) {
+            auto hash = prng_fortuna.generateRandom(32);
             bucket.update(hash);
             hashList.emplace_back(hash);
          }
@@ -6200,15 +6190,13 @@ TEST_F(TestTxHashFilters, SerializeWriter)
    BinaryWriter bw;
    bw.put_uint32_t(bucketCount*2);
 
-   for (const auto& it : hashMap)
-   {
+   for (const auto& it : hashMap) {
       auto size = 12 + it.second.size() * 4;
       bw.put_uint32_t(size);
       bw.put_uint32_t(it.first);
       bw.put_uint32_t(it.second.size());
 
-      for (const auto& hash : it.second)
-      {
+      for (const auto& hash : it.second) {
          uint32_t shortHand;
          memcpy(&shortHand, hash.getPtr(), 4);
          bw.put_uint32_t(shortHand);
@@ -6252,24 +6240,21 @@ TEST_F(TestTxHashFilters, FilterALot)
       map<uint32_t, TxFilterPoolWriter> pools;
       map<BinaryData, pair<uint32_t, uint32_t>> hashes;
 
-      while (true)
-      {
+      while (true) {
          auto poolId = counter->fetch_add(1, memory_order_relaxed);
-         if (poolId >= poolCount)
+         if (poolId >= poolCount) {
             break;
+         }
 
          map<unsigned, BlockHashVector> filters;
-
-         for (unsigned i=0; i<poolSize; i++)
-         {
+         for (unsigned i=0; i<poolSize; i++) {
             map<BinaryData, pair<uint32_t, uint32_t>> localHashes;
             uint32_t bucketId = poolId * poolSize + i;
 
             BlockHashVector bucket(bucketId);
             bucket.reserve(hashPerBlock);
-            for (unsigned y=0; y<hashPerBlock; y++)
-            {
-               auto hash = BtcUtils::fortuna_.generateRandom(32);
+            for (unsigned y=0; y<hashPerBlock; y++) {
+               auto hash = prng_fortuna.generateRandom(32);
                bucket.update(hash);
 
                if (hash.getPtr()[y%32] < 10 &&
@@ -6292,9 +6277,9 @@ TEST_F(TestTxHashFilters, FilterALot)
 
       //write pools to disk
       auto tx = iface_->beginTransaction(TXFILTERS, LMDB::Mode::ReadWrite);
-      for (const auto& pool : pools)
+      for (const auto& pool : pools) {
          iface_->putFilterPoolForFileNum(pool.first, pool.second);
-
+      }
       return hashes;
    };
 
@@ -6310,27 +6295,31 @@ TEST_F(TestTxHashFilters, FilterALot)
 
       //start the worker threads
       vector<thread> threads;
-      for (unsigned i=1; i<thread::hardware_concurrency()/2; i++)
+      for (unsigned i=1; i<thread::hardware_concurrency()/2; i++) {
          threads.emplace_back(thread(worker));
+      }
       worker();
 
       //join on them
-      for (auto& thr : threads)
+      for (auto& thr : threads) {
          thr.join();
+      }
    }
 
    //setup the hash maps
    for (const auto& hash : hashes)
    {
-      if (hashes100.size() < 100)
+      if (hashes100.size() < 100) {
          hashes100.insert(hash);
+      }
 
-      if (hashes1k.size() < 1000)
+      if (hashes1k.size() < 1000) {
          hashes1k.insert(hash);
+      }
 
-      if (hashes5k.size() == 5000)
+      if (hashes5k.size() == 5000) {
          break;
-
+      }
       hashes5k.insert(hash);
    }
 
@@ -6350,15 +6339,12 @@ TEST_F(TestTxHashFilters, FilterALot)
       ->set<BinaryDataRef>
    {
       set<BinaryDataRef> hits;
-      for (const auto& hashIt : hashes)
-      {
+      for (const auto& hashIt : hashes) {
          auto result = pool.compare(hashIt.first);
          auto resultIt = result.find(hashIt.second.first);
-         if (resultIt != result.end())
-         {
+         if (resultIt != result.end()) {
             auto txidIt = resultIt->second.find(hashIt.second.second);
-            if (txidIt != resultIt->second.end())
-            {
+            if (txidIt != resultIt->second.end()) {
                hits.emplace(hashIt.first.getRef());
                continue;
             }
@@ -6374,15 +6360,12 @@ TEST_F(TestTxHashFilters, FilterALot)
       ->set<BinaryDataRef>
    {
       set<BinaryDataRef> hits;
-      for (const auto& hashIt : hashes)
-      {
+      for (const auto& hashIt : hashes) {
          auto result = pool.compare(hashIt.first);
          auto resultIt = result.find(hashIt.second.first);
-         if (resultIt != result.end())
-         {
+         if (resultIt != result.end()) {
             auto txidIt = resultIt->second.find(hashIt.second.second);
-            if (txidIt != resultIt->second.end())
-            {
+            if (txidIt != resultIt->second.end()) {
                hits.emplace(hashIt.first.getRef());
                continue;
             }
@@ -6397,8 +6380,7 @@ TEST_F(TestTxHashFilters, FilterALot)
       std::cout << std::endl;
       start = chrono::system_clock::now();
       map<unsigned, TxFilterPoolReader> vectorPools;
-      for (unsigned i=0; i<poolCount; i++)
-      {
+      for (unsigned i=0; i<poolCount; i++) {
          TxFilterPoolReader pool(iface_->getFilterPoolDataRef(i),
             TxFilterPoolMode::Bucket_Vector);
 
@@ -6414,10 +6396,8 @@ TEST_F(TestTxHashFilters, FilterALot)
          const map<BinaryData, pair<uint32_t, uint32_t>>& hashes)
       {
          auto start = chrono::system_clock::now();
-
          set<BinaryDataRef> foundHashes;
-         for (const auto& pool : vectorPools)
-         {
+         for (const auto& pool : vectorPools) {
             auto hits = searchPoolVec(pool.second, hashes);
             foundHashes.insert(hits.begin(), hits.end());
          }
@@ -6440,8 +6420,7 @@ TEST_F(TestTxHashFilters, FilterALot)
       std::cout << std::endl;
       start = chrono::system_clock::now();
       map<unsigned, TxFilterPoolReader> mapPools;
-      for (unsigned i=0; i<poolCount; i++)
-      {
+      for (unsigned i=0; i<poolCount; i++) {
          TxFilterPoolReader pool(iface_->getFilterPoolDataRef(i),
             TxFilterPoolMode::Bucket_Map);
 
@@ -6459,8 +6438,7 @@ TEST_F(TestTxHashFilters, FilterALot)
          auto start = chrono::system_clock::now();
 
          set<BinaryDataRef> foundHashes;
-         for (const auto& pool : mapPools)
-         {
+         for (const auto& pool : mapPools) {
             auto hits = searchPoolMap(pool.second, hashes);
             foundHashes.insert(hits.begin(), hits.end());
          }
@@ -6483,8 +6461,7 @@ TEST_F(TestTxHashFilters, FilterALot)
       std::cout << std::endl;
       start = chrono::system_clock::now();
       map<unsigned, TxFilterPoolReader> mapPools;
-      for (unsigned i=0; i<poolCount; i++)
-      {
+      for (unsigned i=0; i<poolCount; i++) {
          TxFilterPoolReader pool(iface_->getFilterPoolDataRef(i),
             TxFilterPoolMode::Pool_Map);
 
@@ -6502,8 +6479,7 @@ TEST_F(TestTxHashFilters, FilterALot)
          auto start = chrono::system_clock::now();
 
          set<BinaryDataRef> foundHashes;
-         for (const auto& pool : mapPools)
-         {
+         for (const auto& pool : mapPools) {
             auto hits = searchPoolMap(pool.second, hashes);
             foundHashes.insert(hits.begin(), hits.end());
          }
@@ -6530,8 +6506,9 @@ TEST_F(TestTxHashFilters, FilterALot)
          auto start = chrono::system_clock::now();
 
          set<BinaryData> hashSet;
-         for (const auto& hash : hashes)
+         for (const auto& hash : hashes) {
             hashSet.emplace(hash.first);
+         }
 
          auto fetchFunc = [this](uint32_t fileID)->BinaryDataRef
          {
@@ -6542,33 +6519,30 @@ TEST_F(TestTxHashFilters, FilterALot)
 
          auto hashesCopy = hashes;
          auto hashIt = hashesCopy.begin();
-         while (hashIt != hashesCopy.end())
-         {
+         while (hashIt != hashesCopy.end()) {
             bool found = false;
-            for (const auto& resultIt : filterResult)
-            {
+            for (const auto& resultIt : filterResult) {
                auto filterIter = resultIt.second.find(hashIt->first);
-               if (filterIter == resultIt.second.end())
+               if (filterIter == resultIt.second.end()) {
                   continue;
+               }
 
                auto blockIter = filterIter->filterHits_.find(hashIt->second.first);
-               if (blockIter == filterIter->filterHits_.end())
+               if (blockIter == filterIter->filterHits_.end()) {
                   continue;
+               }
 
                auto txIter = blockIter->second.find(hashIt->second.second);
-               if (txIter != blockIter->second.end())
-               {
+               if (txIter != blockIter->second.end()) {
                   found = true;
                   break;
                }
             }
 
-            if (found)
-            {
+            if (found) {
                hashesCopy.erase(hashIt++);
                continue;
             }
-
             ++hashIt;
          }
 

@@ -574,7 +574,7 @@ void BlockchainScanner_Super::processInputsThread(
             BinaryDataRef outHash(
                txn.data_ + txin.first, 32);
             
-            if (outHash == BtcUtils::EmptyHash_)
+            if (outHash == BtcUtils::EmptyHash)
                continue;
 
             unsigned txOutId = READ_UINT32_LE(
@@ -1010,7 +1010,7 @@ void BlockchainScanner_Super::parseSpentnessThread(ParserBatch_Spentness* batch)
             BinaryDataRef outHash(
                txn->data_ + txin.first, 32);
 
-            if (outHash == BtcUtils::EmptyHash_)
+            if (outHash == BtcUtils::EmptyHash)
                continue;
 
             unsigned txOutId = READ_UINT32_LE(
@@ -1268,7 +1268,7 @@ void BlockchainScanner_Super::undo(Blockchain::ReorganizationState& reorgState)
             const auto& txin = txn->txins_[y];
 
             BinaryDataRef outHash(txn->data_ + txin.first, 32);
-            if (outHash == BtcUtils::EmptyHash_) {
+            if (outHash == BtcUtils::EmptyHash) {
                continue;
             }
 

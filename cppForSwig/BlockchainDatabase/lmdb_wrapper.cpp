@@ -17,6 +17,7 @@
 #include <list>
 #include <vector>
 #include <set>
+#include <cmath>
 #include "BinaryData.h"
 #include "BtcUtils.h"
 #include "BlockObj.h"
@@ -2789,7 +2790,7 @@ void LMDBBlockDatabase::resetSSHdb()
 
       auto&& sdbi = getStoredDBInfo(SSH, 0);
       sdbi.topBlkHgt_ = 0;
-      sdbi.topScannedBlkHash_ = BtcUtils::EmptyHash_;
+      sdbi.topScannedBlkHash_ = BtcUtils::EmptyHash;
       putStoredDBInfo(SSH, sdbi, 0);
    }
 }
@@ -3194,7 +3195,7 @@ StoredDBInfo DatabaseContainer_Single::open()
       auto tx = db_.beginTransaction(LMDB::Mode::ReadWrite);
 
       sdbi.magic_ = magicBytes_;
-      sdbi.metaHash_ = BtcUtils::EmptyHash_;
+      sdbi.metaHash_ = BtcUtils::EmptyHash;
       sdbi.topBlkHgt_ = 0;
       sdbi.armoryType_ = DBSettings::getDbType();
       putStoredDBInfo(sdbi, 0);

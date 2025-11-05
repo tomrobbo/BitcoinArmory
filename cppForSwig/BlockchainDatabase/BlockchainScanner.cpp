@@ -1080,7 +1080,7 @@ void BlockchainScanner::updateSSH(bool force, int32_t startHeight)
             BinaryDataRef bdr(dataPtr + offset, 32);
 
             //skip coinbase txns
-            if (bdr == BtcUtils::EmptyHash_)
+            if (bdr == BtcUtils::EmptyHash)
                continue;
 
             allMissingTxHashes.insert(bdr);

@@ -19,9 +19,9 @@
 #include "BlockchainDbClient.h"
 #include "Wallets/Manager.h"
 #include "Wallets/Notifications.h"
-
-#include "../Wallets/IOHeader.h"
-#include "../AsyncClient.h"
+#include "Wallets/IOHeader.h"
+#include "EncryptionUtils.h"
+#include "AsyncClient.h"
 
 #include <random>
 
@@ -323,7 +323,7 @@ std::shared_ptr<Armory::Wallets::AuthorizedPeers> Armory::Bridge::spawnDb()
 
    //2. randomize a file name
    std::filesystem::path keyFilePath{ Armory::Config::getDataDir() /
-      std::string{ "keyFile_" + BtcUtils::fortuna_.generateRandom(7).toHexStr() }};
+      std::string{ "keyFile_" + prng_fortuna.generateRandom(7).toHexStr() }};
 
    //open file and lock it
    auto fd = open(keyFilePath.c_str(), O_CREAT | O_EXCL | O_RSYNC | O_RDWR);

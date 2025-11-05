@@ -255,7 +255,7 @@ BIP32_Node BIP32_Node::getPublicCopy() const
 {
    BIP32_Node copy;
    copy.initFromPublicKey(
-      getDepth(), getLeafID(), getParentFingerprint(), 
+      getDepth(), getLeafID(), getParentFingerprint(),
       getPublicKey(), getChaincode());
    return copy;
 }
@@ -263,7 +263,7 @@ BIP32_Node BIP32_Node::getPublicCopy() const
 ////////////////////////////////////////////////////////////////////////////////
 bool BIP32_Node::isPublic() const
 {
-   if (privkey_.empty() || privkey_ == BtcUtils::EmptyHash()) {
+   if (privkey_.empty() || privkey_ == BtcUtils::EmptyHash) {
       return true;
    }
    return false;

@@ -11,6 +11,8 @@
 #include <string.h>
 #include "BitcoinP2P.h"
 #include "SocketWritePayload.h"
+#include "EncryptionUtils.h"
+#include "BitcoinSettings.h"
 
 using namespace Armory::Threading;
 using namespace Armory::Node;
@@ -620,7 +622,7 @@ void Payload_Version::deserialize(const uint8_t* data, size_t len)
 size_t Payload_Version::serializeInner(uint8_t* dataptr) const
 {
    if (dataptr == nullptr) {
-      return BtcUtils::get_varint_len(userAgent_.size()) +
+      return BtcUtils::calcVarIntSize(userAgent_.size()) +
          userAgent_.size() +
          VERSION_MINLENGTH;
    }
@@ -667,7 +669,7 @@ void Payload_Version::setVersionHeaderIPv4(uint32_t version,
    vheader_.addr_recv_.setIPv4(services, recvaddr);
    vheader_.addr_from_.setIPv4(services, fromaddr);
 
-   auto randombytes = BtcUtils::fortuna_.generateRandom(8);
+   auto randombytes = prng_fortuna.generateRandom(8);
    memcpy(&vheader_.nonce_, randombytes.getPtr(), 8);
 }
 
@@ -852,7 +854,7 @@ size_t Payload_Inv::serializeInner(uint8_t* dataptr) const
 {
    if (dataptr == nullptr) {
       auto invcount = invVector_.size();
-      auto varintlen = BtcUtils::get_varint_len(invcount);
+      auto varintlen = BtcUtils::calcVarIntSize(invcount);
       return invcount * INV_ENTRY_LEN + varintlen;
    }
 
@@ -1011,7 +1013,7 @@ size_t Payload_GetData::serializeInner(uint8_t* dataptr) const
 {
    if (dataptr == nullptr) {
       auto invcount = invVector_.size();
-      auto varintlen = BtcUtils::get_varint_len(invcount);
+      auto varintlen = BtcUtils::calcVarIntSize(invcount);
       return invcount * INV_ENTRY_LEN + varintlen;
    }
 

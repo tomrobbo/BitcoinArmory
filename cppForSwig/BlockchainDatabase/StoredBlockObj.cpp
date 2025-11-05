@@ -61,7 +61,7 @@ void StoredDBInfo::unserializeDBValue(BinaryRefReader & brr)
 }
 
 /////////////////////////////////////////////////////////////////////////////
-void StoredDBInfo::serializeDBValue(BinaryWriter & bw ) const
+void StoredDBInfo::serializeDBValue(BinaryWriter& bw) const
 {
    BitPacker<uint32_t> bitpack;
    bitpack.putBits((uint32_t)armoryVer_,   16);
@@ -71,16 +71,17 @@ void StoredDBInfo::serializeDBValue(BinaryWriter & bw ) const
    bw.put_BitPacker(bitpack);
    bw.put_uint32_t(topBlkHgt_); // top blk height
    bw.put_uint32_t(appliedToHgt_); // top blk height
-   
-   if (metaHash_.getSize() == 0)
-      bw.put_BinaryData(BtcUtils::EmptyHash());
-   else
+
+   if (metaHash_.empty()) {
+      bw.put_BinaryData(BtcUtils::EmptyHash);
+   } else {
       bw.put_BinaryData(metaHash_);
+   }
 
    BinaryDataRef hashRef(topScannedBlkHash_);
-   if (topScannedBlkHash_.getSize() == 0)
-      hashRef.setRef(BtcUtils::EmptyHash());
-
+   if (topScannedBlkHash_.empty()) {
+      hashRef.setRef(BtcUtils::EmptyHash);
+   }
    bw.put_BinaryDataRef(hashRef);
    bw.put_uint64_t(metaInt_);
 }
@@ -1470,14 +1471,13 @@ void StoredScriptHistory::serializeDBValue(BinaryWriter & bw,
    ARMORY_DB_TYPE dbType) 
    const
 {
-   size_t len = 13 + BtcUtils::get_varint_len(totalTxioCount_);
-   if (dbType != ARMORY_DB_SUPER)
+   size_t len = 13 + BtcUtils::calcVarIntSize(totalTxioCount_);
+   if (dbType != ARMORY_DB_SUPER) {
       len += 8;
-
-   for (auto& sum : subsshSummary_)
-   {
-      len += BtcUtils::get_varint_len(sum.first) +
-         BtcUtils::get_varint_len(sum.second);
+   }
+   for (auto& sum : subsshSummary_) {
+      len += BtcUtils::calcVarIntSize(sum.first) +
+         BtcUtils::calcVarIntSize(sum.second);
    }
 
    bw.reserve(len);
@@ -1489,19 +1489,17 @@ void StoredScriptHistory::serializeDBValue(BinaryWriter & bw,
    bw.put_BitPacker(bitpack);
 
    //
-   if (dbType != ARMORY_DB_SUPER)
-   {
+   if (dbType != ARMORY_DB_SUPER) {
       bw.put_int32_t(scanHeight_);
       bw.put_int32_t(tallyHeight_);
    }
-      
+
    bw.put_var_int(totalTxioCount_);
    bw.put_uint64_t(totalUnspent_);
 
    //
    bw.put_uint32_t(subsshSummary_.size());
-   for (auto& sum : subsshSummary_)
-   {
+   for (auto& sum : subsshSummary_) {
       bw.put_var_int(sum.first);
       bw.put_var_int(sum.second);
    }
@@ -1964,32 +1962,28 @@ void StoredSubHistory::getSummary(BinaryRefReader & brr)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void StoredSubHistory::serializeDBValue(BinaryWriter & bw) const
+void StoredSubHistory::serializeDBValue(BinaryWriter& bw) const
 {
-   size_t len = BtcUtils::get_varint_len(txioMap_.size());
-   for (const auto& txioPair : txioMap_)
-   {
+   size_t len = BtcUtils::calcVarIntSize(txioMap_.size());
+   for (const auto& txioPair : txioMap_) {
       TxIOPair const & txio = txioPair.second;
       bool isSpent = txio.hasTxIn();
 
       len += 13; //bitpack + value + at least 4 bytes of txio key
-      if (isSpent)
+      if (isSpent) {
          len += 8;
+      }
    }
 
    bw.reserve(len);
-
    bw.put_var_int(txioMap_.size());
-   for(const auto& txioPair : txioMap_)
-   {
+   for (const auto& txioPair : txioMap_) {
       TxIOPair const & txio = txioPair.second;
       bool isSpent = txio.hasTxIn();
 
       // If spent and only maintaining a pruned DB, skip it
-      if(isSpent)
-      {
-         if(!txio.getTxRefOfInput().isInitialized())
-         {
+      if (isSpent) {
+         if (!txio.getTxRefOfInput().isInitialized()) {
             LOGERR << "TxIO is spent, but input is not initialized";
             continue;
          }
@@ -2005,14 +1999,11 @@ void StoredSubHistory::serializeDBValue(BinaryWriter & bw) const
       bitpack.putBit(txio.isUTXO());
       bw.put_BitPacker(bitpack);
 
-      if (!isSpent)
-      {
+      if (!isSpent) {
          // Always write the value and last 4 bytes of dbkey (first 4 is in dbkey)
          bw.put_uint64_t(txio.getValue());
          bw.put_BinaryDataRef(key8B.getSliceRef(4, 4));
-      }
-      else
-      {
+      } else {
          //spent subssh entry that marks the spent TxOut at the TxIn hgtX
          
          //write the full TxOut dbkey, since this is saved at TxIn hgtX
@@ -2164,41 +2155,35 @@ void StoredSubHistory::markTxOutUnspent(const BinaryData& txOutKey8B,
 
 ////////////////////////////////////////////////////////////////////////////////
 void StoredSubHistory::compressMany(
-   const map<BinaryDataRef, StoredSubHistory*>& ssh, 
-   unsigned start_offset, unsigned spent_offset, 
+   const map<BinaryDataRef, StoredSubHistory*>& ssh,
+   unsigned start_offset, unsigned spent_offset,
    BinaryWriter& bw)
 {
    //compute serialized size to prealloc bw
-   size_t len = BtcUtils::get_varint_len(ssh.size());
-   for (auto& subssh : ssh)
-   {
+   size_t len = BtcUtils::calcVarIntSize(ssh.size());
+   for (auto& subssh : ssh) {
       //height and dup
-      len += BtcUtils::get_varint_len(subssh.second->height_ - start_offset) + 1;
-      
-      //txio count
-      len += BtcUtils::get_varint_len(subssh.second->txioMap_.size());
+      len += BtcUtils::calcVarIntSize(subssh.second->height_ - start_offset) + 1;
 
-      for (auto& txio_pair : subssh.second->txioMap_)
-      {
+      //txio count
+      len += BtcUtils::calcVarIntSize(subssh.second->txioMap_.size());
+
+      for (auto& txio_pair : subssh.second->txioMap_) {
          const auto& txio = txio_pair.second;
 
          //value
-         len += BtcUtils::get_varint_len(txio.getValue());
-
-         if (!txio.hasTxIn())
-         {
-            //unspent
+         len += BtcUtils::calcVarIntSize(txio.getValue());
+         if (!txio.hasTxIn()) {
+            /* unspent */
 
             //flag
             ++len;
 
             //tx and output id
-            len += BtcUtils::get_varint_len(txio.getTxRefOfOutput().getBlockTxIndex());
-            len += BtcUtils::get_varint_len(txio.getIndexOfOutput());
-         }
-         else
-         {
-            //spent
+            len += BtcUtils::calcVarIntSize(txio.getTxRefOfOutput().getBlockTxIndex());
+            len += BtcUtils::calcVarIntSize(txio.getIndexOfOutput());
+         } else {
+            /* spent */
 
             //TxIOPair is slow, convert hgtx manually
             auto& outputRef = txio.getTxRefOfOutput();
@@ -2211,35 +2196,32 @@ void StoredSubHistory::compressMany(
             heightPtr[1] = keyptr[1];
             heightPtr[2] = keyptr[0];
 
-            if (output_height != subssh.second->height_)
-            {
+            if (output_height != subssh.second->height_) {
                //flag
                ++len;
 
                //output
                auto height = output_height - spent_offset;
-               len += BtcUtils::get_varint_len(height) + 1;
-               len += BtcUtils::get_varint_len(txio.getTxRefOfOutput().getBlockTxIndex());
-               len += BtcUtils::get_varint_len(txio.getIndexOfOutput());
+               len += BtcUtils::calcVarIntSize(height) + 1;
+               len += BtcUtils::calcVarIntSize(txio.getTxRefOfOutput().getBlockTxIndex());
+               len += BtcUtils::calcVarIntSize(txio.getIndexOfOutput());
 
                //input
-               len += BtcUtils::get_varint_len(txio.getTxRefOfInput().getBlockTxIndex());
-               len += BtcUtils::get_varint_len(txio.getIndexOfInput());
-            }
-            else
-            {
-               //fund and spend happen in same block, only record ids
+               len += BtcUtils::calcVarIntSize(txio.getTxRefOfInput().getBlockTxIndex());
+               len += BtcUtils::calcVarIntSize(txio.getIndexOfInput());
+            } else {
+               /* fund and spend happen in same block, only record ids */
 
                //flag
                ++len;
 
                //output
-               len += BtcUtils::get_varint_len(txio.getTxRefOfOutput().getBlockTxIndex());
-               len += BtcUtils::get_varint_len(txio.getIndexOfOutput());
+               len += BtcUtils::calcVarIntSize(txio.getTxRefOfOutput().getBlockTxIndex());
+               len += BtcUtils::calcVarIntSize(txio.getIndexOfOutput());
 
                //input
-               len += BtcUtils::get_varint_len(txio.getTxRefOfInput().getBlockTxIndex());
-               len += BtcUtils::get_varint_len(txio.getIndexOfInput());
+               len += BtcUtils::calcVarIntSize(txio.getTxRefOfInput().getBlockTxIndex());
+               len += BtcUtils::calcVarIntSize(txio.getIndexOfInput());
             }
          }
       }
@@ -2250,8 +2232,7 @@ void StoredSubHistory::compressMany(
    //serialize
    bw.put_var_int(ssh.size());
 
-   for (auto& subssh : ssh)
-   {
+   for (auto& subssh : ssh) {
       //put height offset
       bw.put_var_int(subssh.second->height_ - start_offset);
 
@@ -2263,13 +2244,11 @@ void StoredSubHistory::compressMany(
       bw.put_var_int(subssh.second->txioMap_.size());
 
       //put txios
-      for (auto& txio_pair : subssh.second->txioMap_)
-      {
+      for (auto& txio_pair : subssh.second->txioMap_) {
          const auto& txio = txio_pair.second;
          bw.put_var_int(txio.getValue());
 
-         if (!txio.hasTxIn())
-         {
+         if (!txio.hasTxIn()) {
             //unspent
             
             //flag
@@ -2278,9 +2257,7 @@ void StoredSubHistory::compressMany(
             //tx and output id
             bw.put_var_int(txio.getTxRefOfOutput().getBlockTxIndex());
             bw.put_var_int(txio.getIndexOfOutput());
-         }
-         else
-         {
+         } else {
             //spent
 
             //TxIOPair is slow, convert hgtx manually
@@ -2295,8 +2272,7 @@ void StoredSubHistory::compressMany(
             heightPtr[2] = keyptr[0];
             auto output_dupid = keyptr[3];
 
-            if (output_height != subssh.second->height_)
-            {
+            if (output_height != subssh.second->height_) {
 
                //flag
                bw.put_uint8_t(0xFF);
@@ -2311,9 +2287,7 @@ void StoredSubHistory::compressMany(
                //input
                bw.put_var_int(txio.getTxRefOfInput().getBlockTxIndex());
                bw.put_var_int(txio.getIndexOfInput());
-            }
-            else
-            {
+            } else {
                //fund and spend happen in same block, only record ids
 
                //flag

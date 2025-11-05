@@ -319,21 +319,21 @@ BinaryData DBInterface::createDataPacket(const BinaryData& dbKey,
 
    /* encryption key generation */
       //generate local encryption private key
-      auto&& localPrivKey = CryptoECDSA().createNewPrivateKey();
-      
+      auto localPrivKey = CryptoECDSA().createNewPrivateKey();
+
       //generate compressed pubkey
-      auto&& localPubKey = CryptoECDSA().ComputePublicKey(localPrivKey, true);
+      auto localPubKey = CryptoECDSA().ComputePublicKey(localPrivKey, true);
 
       //ECDH local private key with encryption public key
-      auto&& ecdhPubKey = 
-         CryptoECDSA::PubKeyScalarMultiply(encrPubKey, localPrivKey);
+      auto ecdhPubKey = CryptoECDSA::PubKeyScalarMultiply(
+         encrPubKey, localPrivKey);
 
       //hash256 the key as stand in for KDF
-      auto&& encrKey = BtcUtils::hash256(ecdhPubKey);
+      auto encrKey = BtcUtils::getHash256(ecdhPubKey);
 
    /* encryption leg */
       //generate IV
-      auto&& iv = BtcUtils::fortuna_.generateRandom(
+      auto iv = prng_fortuna.generateRandom(
          Encryption::Cipher::getBlockSize(CipherType_AES));
 
       //AES_CBC (hmac | payload)

@@ -4,6 +4,11 @@
 //  Distributed under the GNU Affero General Public License (AGPL v3)         //
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
+//                                                                            //
+//  Copyright (C) 2016-2025, goatpig                                          //
+//  Distributed under the MIT license                                         //
+//  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
+//                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -41,7 +46,7 @@
 //
 // The computeKdfParams method well test the speed of the system it is running
 // on, and try to pick the largest memory-size the system can compute in less
-// than 0.25s (or specified target).  
+// than 0.25s (or specified target).
 //
 //
 // NOTE:  If you are getting an error about invalid argument types, from python,
@@ -134,6 +139,8 @@ public:
    SecureBinaryData generateRandom(uint32_t numBytes,
       const SecureBinaryData& extraEntropy = SecureBinaryData()) const;
 };
+
+static const PRNG_Fortuna prng_fortuna;
 
 ////////////////////////////////////////////////////////////////////////////////
 class CryptoAES

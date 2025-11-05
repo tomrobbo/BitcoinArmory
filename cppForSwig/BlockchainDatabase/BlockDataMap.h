@@ -174,7 +174,7 @@ public:
       } else if (txPtr->txins_.size() == 1) {
          auto txinref = txPtr->getTxInRef(0);
          auto bdr = txinref.getSliceRef(0, 32);
-         if (bdr == BtcUtils::EmptyHash_) {
+         if (bdr == BtcUtils::EmptyHash) {
             txPtr->isCoinbase_ = true;
          }
       }

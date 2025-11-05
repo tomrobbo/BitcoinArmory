@@ -53,7 +53,7 @@ vector<UTXO> CoinSelection::checkForRecipientReuse(
          auto scriptLen = brr.get_var_int();
          auto script = brr.get_BinaryDataRef(scriptLen);
 
-         auto&& scrAddr = BtcUtils::getScrAddrForScript(script);
+         auto scrAddr = BtcUtils::getTxOutScrAddr(script);
 
          auto addrBookIter = addrBook_.find(scrAddr);
          if (addrBookIter == addrBook_.end())

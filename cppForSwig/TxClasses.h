@@ -13,6 +13,7 @@
 #ifndef _H_TX_CLASSES
 #define _H_TX_CLASSES
 
+#include <assert.h>
 #include "BinaryData.h"
 #include "BtcUtils.h"
 #include "DBUtils.h"
@@ -63,7 +64,7 @@ public:
    BinaryData const &   getTxHash(void)     const { return txHash_; }
    BinaryDataRef        getTxHashRef(void)  const { return BinaryDataRef(txHash_); }
    uint32_t             getTxOutIndex(void) const { return txOutIndex_; }
-   bool                 isCoinbase(void) const { return txHash_ == BtcUtils::EmptyHash_; }
+   bool                 isCoinbase(void) const { return txHash_ == BtcUtils::EmptyHash; }
 
    void setTxHash(BinaryData const & hash) { txHash_.copyFrom(hash); }
    void setTxOutIndex(uint32_t idx) { txOutIndex_ = idx; }
@@ -502,7 +503,7 @@ private:
 
 public:
    /////
-   AddressBookEntry(void) : scrAddr_(BtcUtils::EmptyHash()) {}
+   AddressBookEntry(void) : scrAddr_{BtcUtils::BadAddress} {}
    AddressBookEntry(BinaryData scraddr) : scrAddr_(scraddr) {}
    void addTxHash(const BinaryData& hash) { txHashList_.push_back(hash); }
    const BinaryData& getScrAddr() const { return scrAddr_; }

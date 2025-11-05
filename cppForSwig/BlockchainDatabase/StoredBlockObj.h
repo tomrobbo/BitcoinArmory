@@ -104,14 +104,14 @@ class StoredDBInfo
 {
 public:
    StoredDBInfo(void) :
-      metaHash_(BtcUtils::EmptyHash_)
+      metaHash_{BtcUtils::EmptyHash}
    {}
 
-   bool isInitialized(void) const { return magic_.getSize() > 0; }
+   bool isInitialized(void) const { return !magic_.empty(); }
    bool isNull(void) { return !isInitialized(); }
 
    static BinaryData getDBKey(uint16_t id = 0);
-   
+
    void       unserializeDBValue(BinaryRefReader & brr);
    void         serializeDBValue(BinaryWriter &    bw ) const;
    void       unserializeDBValue(BinaryData const & bd);

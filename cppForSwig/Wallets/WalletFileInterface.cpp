@@ -12,6 +12,7 @@
 #include "BtcUtils.h"
 #include "DBUtils.h"
 #include "WalletHeader.h"
+#include "EncryptionUtils.h"
 #include "DecryptedDataContainer.h"
 #include "Seeds/Seeds.h"
 #include "KDF.h"

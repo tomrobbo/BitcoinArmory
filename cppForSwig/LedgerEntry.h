@@ -73,7 +73,7 @@ public:
    LedgerEntry(void) :
       value_(0),
       blockNum_(UINT32_MAX),
-      txHash_(BtcUtils::EmptyHash_),
+      txHash_(BtcUtils::EmptyHash),
       index_(UINT32_MAX),
       txTime_(0),
       isCoinbase_(false),

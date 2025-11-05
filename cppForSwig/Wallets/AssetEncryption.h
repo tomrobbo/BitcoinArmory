@@ -9,11 +9,9 @@
 #ifndef _H_ASSET_ENCRYPTION
 #define _H_ASSET_ENCRYPTION
 
-#include <memory>
-#include <string_view>
 #include "BinaryData.h"
+#include "SecureBinaryData.h"
 #include "WalletIdTypes.h"
-#include "../BtcUtils.h"
 
 #define CIPHER_BYTE              0xB2
 
@@ -32,6 +30,7 @@ enum CipherType
    CipherType_Serpent
 };
 
+class PRNG_Fortuna;
 
 namespace Armory
 {

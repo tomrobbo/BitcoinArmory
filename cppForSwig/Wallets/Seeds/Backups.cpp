@@ -46,16 +46,10 @@ const std::set<BackupType> Easy16Codec::eligibleIndexes{
    BackupType::Armory200d
 };
 
-constexpr char Easy16Codec::characters[16]{
-   'a', 's', 'd', 'f',
-   'g', 'h', 'j', 'k',
-   'w', 'e', 'r', 't',
-   'u', 'i', 'o', 'n'
-};
+constexpr char Easy16Codec::characters[]{"asdfghjkwertuion"};
 
 namespace
 {
-
    /////////////////////////////////////////////////////////////////////////////
    /* - comment from etotheipi: -
    Nothing up my sleeve!  Need some hardcoded random numbers to use for

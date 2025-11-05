@@ -8,9 +8,10 @@
 
 #include "BtcUtils.h"
 #include "Container.h"
-#include "../Wallets/Wallets.h"
-#include "../Wallets/Seeds/Backups.h"
-#include "../AsyncClient.h"
+#include "Wallets/Wallets.h"
+#include "Wallets/Seeds/Backups.h"
+#include "EncryptionUtils.h"
+#include "AsyncClient.h"
 
 using namespace Armory;
 using namespace Armory::Bridge;
@@ -24,7 +25,7 @@ WalletContainer::WalletContainer(const std::string& wltId,
    const Armory::Wallets::AddressAccountId& accId) :
    wltId_(wltId), accountId_(accId)
 {
-   dbId_ = BtcUtils::fortuna_.generateRandom(6).toHexStr();
+   dbId_ = prng_fortuna.generateRandom(6).toHexStr();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

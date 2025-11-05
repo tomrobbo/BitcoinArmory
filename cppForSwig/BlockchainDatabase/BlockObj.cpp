@@ -236,11 +236,11 @@ BinaryData DBTxRef::getBlockHash(void) const
       return sbh.thisHash_;
    }
    else
-      return BtcUtils::EmptyHash();
+      return BtcUtils::EmptyHash;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TxIn  DBTxRef::getTxInCopy(uint32_t i)  
+TxIn  DBTxRef::getTxInCopy(uint32_t i)
 {
    return db_->getTxInCopy( dbKey6B_, i);
 }
@@ -261,7 +261,7 @@ TxOut DBTxRef::getTxOutCopy(uint32_t i)
 
 ////////////////////////////////////////////////////////////////////////////////
 UnspentTxOut::UnspentTxOut(void) :
-   txHash_(BtcUtils::EmptyHash()),
+   txHash_(BtcUtils::EmptyHash),
    txOutIndex_(0),
    txHeight_(0),
    value_(0),

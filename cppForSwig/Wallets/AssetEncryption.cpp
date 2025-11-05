@@ -7,6 +7,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "AssetEncryption.h"
+#include "EncryptionUtils.h"
+#include "BtcUtils.h"
 #include "KDF.h"
 #include "DBUtils.h"
 #include "GetPassphrase.h"
@@ -468,7 +470,7 @@ EncryptionKeyId ClearTextEncryptionKey::computeId(
    const SecureBinaryData& key) const
 {
    //treat value as scalar, get pubkey for it
-   auto hashedKey = BtcUtils::hash256(key);
+   auto hashedKey = BtcUtils::getHash256(key);
    auto pubkey = CryptoECDSA().ComputePublicKey(hashedKey);
 
    //HMAC the pubkey, get last 16 bytes as ID

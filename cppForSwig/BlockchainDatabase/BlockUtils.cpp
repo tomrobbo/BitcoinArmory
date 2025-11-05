@@ -98,7 +98,7 @@ protected:
       } catch (const std::runtime_error&) {
          StoredDBInfo sdbi;
          sdbi.magic_ = BitcoinSettings::getMagicBytes();
-         sdbi.metaHash_ = BtcUtils::EmptyHash_;
+         sdbi.metaHash_ = BtcUtils::EmptyHash;
          sdbi.topBlkHgt_ = 0;
          sdbi.armoryType_ = DBSettings::getDbType();
 
@@ -111,7 +111,7 @@ protected:
       } catch (const std::runtime_error&) {
          StoredDBInfo sdbi;
          sdbi.magic_ = BitcoinSettings::getMagicBytes();
-         sdbi.metaHash_ = BtcUtils::EmptyHash_;
+         sdbi.metaHash_ = BtcUtils::EmptyHash;
          sdbi.topBlkHgt_ = 0;
          sdbi.armoryType_ = DBSettings::getDbType();
 

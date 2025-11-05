@@ -5,9 +5,9 @@
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
 //                                                                            //
-//  Copyright (C) 2016, goatpig                                               //            
+//  Copyright (C) 2016, goatpig                                               //
 //  Distributed under the MIT license                                         //
-//  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //                                   
+//  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 #include "txio.h"
@@ -83,73 +83,64 @@ isUTXO_(false)
 //////////////////////////////////////////////////////////////////////////////
 HashString TxIOPair::getTxHashOfOutput(const LMDBBlockDatabase *db) const
 {
-   if (!hasTxOut())
-      return BtcUtils::EmptyHash();
-   else if (txHashOfOutput_.getSize() == 32)
+   if (!hasTxOut()) {
+      return BtcUtils::EmptyHash;
+   } else if (txHashOfOutput_.getSize() == 32) {
       return txHashOfOutput_;
-   else if (txRefOfOutput_.isInitialized() && db != nullptr)
-   {
+   } else if (txRefOfOutput_.isInitialized() && db != nullptr) {
       DBTxRef dbTxRef(txRefOfOutput_, db);
       txHashOfOutput_ = dbTxRef.getThisHash();
       return txHashOfOutput_;
    }
-
-   return BinaryData(0);
+   return {};
 }
 
 //////////////////////////////////////////////////////////////////////////////
 HashString TxIOPair::getTxHashOfInput(const LMDBBlockDatabase *db) const
 {
-   if (!hasTxIn())
-      return BtcUtils::EmptyHash();
-   else if (txHashOfInput_.getSize() == 32)
+   if (!hasTxIn()) {
+      return BtcUtils::EmptyHash;
+   } else if (txHashOfInput_.getSize() == 32) {
       return txHashOfInput_;
-   else if (txRefOfInput_.isInitialized() && db != nullptr)
-   {
+   } else if (txRefOfInput_.isInitialized() && db != nullptr) {
       DBTxRef dbTxRef(txRefOfInput_, db);
       txHashOfInput_ = dbTxRef.getThisHash();
       return txHashOfInput_;
    }
-
-   return BinaryData(0);
+   return {};
 }
 //////////////////////////////////////////////////////////////////////////////
 TxOut TxIOPair::getTxOutCopy(LMDBBlockDatabase *db) const
 {
-   // I actually want this to segfault when there is no TxOut... 
-   // we should't ever be trying to access it without checking it 
+   // I actually want this to segfault when there is no TxOut...
+   // we should't ever be trying to access it without checking it
    // first in the calling code (hasTxOut/hasTxOutZC)
-   if (hasTxOut())
-   {
+   if (hasTxOut()) {
       DBTxRef dbTxRef(txRefOfOutput_, db);
       return dbTxRef.getTxOutCopy(indexOfOutput_);
    }
-
-   throw runtime_error("Has not TxOutCopy");
+   throw std::runtime_error("Has not TxOutCopy");
 }
 
 //////////////////////////////////////////////////////////////////////////////
 TxIn TxIOPair::getTxInCopy(LMDBBlockDatabase *db) const
 {
-   // I actually want this to segfault when there is no TxIn... 
-   // we should't ever be trying to access it without checking it 
+   // I actually want this to segfault when there is no TxIn...
+   // we should't ever be trying to access it without checking it
    // first in the calling code (hasTxIn/hasTxInZC)
    if (hasTxIn())
    {
       DBTxRef dbTxRef(txRefOfInput_, db);
       return dbTxRef.getTxInCopy(indexOfInput_);
    }
-
-   throw runtime_error("Has not TxInCopy");
+   throw std::runtime_error("Has not TxInCopy");
 }
-
 
 //////////////////////////////////////////////////////////////////////////////
 bool TxIOPair::setTxIn(TxRef  txref, uint32_t index)
 {
    txRefOfInput_ = txref;
    indexOfInput_ = index;
-
    return true;
 }
 

@@ -4822,9 +4822,9 @@ TEST_F(WebSocketTests, WebSocketStack_GetTxByHash)
          };
 
          set<BinaryData> hashesEmpty;
-         hashesEmpty.insert(BtcUtils::EmptyHash());
+         hashesEmpty.insert(BtcUtils::EmptyHash);
 
-         auto txResult = getTxByHash(BtcUtils::EmptyHash());
+         auto txResult = getTxByHash(BtcUtils::EmptyHash);
          ASSERT_TRUE(txResult.empty());
 
          auto txBatch = getTxBatch(hashesEmpty);
@@ -5104,7 +5104,7 @@ TEST_F(WebSocketTests, WebSocketStack_GetSpentness)
       }
 
       //add an invalid hash
-      spentnessToGet.emplace(BtcUtils::EmptyHash(), std::set<unsigned>{0});
+      spentnessToGet.emplace(BtcUtils::EmptyHash, std::set<unsigned>{0});
 
       //grab the spentnees
       auto outputs = getSpentness(spentnessToGet, false);
@@ -5136,7 +5136,7 @@ TEST_F(WebSocketTests, WebSocketStack_GetSpentness)
 
       //check the invalid hash
       {
-         auto iter = outputs.find(BtcUtils::EmptyHash());
+         auto iter = outputs.find(BtcUtils::EmptyHash);
          ASSERT_EQ(iter, outputs.end());
       }
 
@@ -5258,7 +5258,7 @@ TEST_F(WebSocketTests, WebSocketStack_GetSpentness)
       }
 
       //add invalid hash to the new zc spentness to track
-      zcSpentnessToGet.emplace(BtcUtils::EmptyHash(), set<unsigned>({0}));
+      zcSpentnessToGet.emplace(BtcUtils::EmptyHash, set<unsigned>({0}));
       auto newZcSpentness = getSpentness(zcSpentnessToGet, true);
 
       //check spentness data vs addr outpoint data
@@ -5291,7 +5291,7 @@ TEST_F(WebSocketTests, WebSocketStack_GetSpentness)
 
       //check the invalid hash
       {
-         auto iter = newZcSpentness.find(BtcUtils::EmptyHash());
+         auto iter = newZcSpentness.find(BtcUtils::EmptyHash);
          ASSERT_EQ(iter, newZcSpentness.end());
       }
    }

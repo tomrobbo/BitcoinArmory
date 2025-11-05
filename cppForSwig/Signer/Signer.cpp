@@ -3786,7 +3786,7 @@ void Signing::Signer::deserializeState_Legacy(const BinaryDataRef& ref)
 
          //grab hash from nested script
          auto scriptHash = BtcUtils::getTxOutRecipientAddr(baseScript);
-         if (scriptHash == BtcUtils::BadAddress()) {
+         if (scriptHash == BtcUtils::BadAddress) {
             throw SignerDeserializationError("invalid nested script");
          }
 

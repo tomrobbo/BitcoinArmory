@@ -24,6 +24,7 @@
 #define STACKITEM_MULTISIG_PREFIX         0x14
 
 #include <algorithm>
+#include <deque>
 #include "BinaryData.h"
 #include "EncryptionUtils.h"
 #include "BtcUtils.h"
@@ -472,48 +473,47 @@ namespace Armory
 
          void op_ripemd160(void)
          {
-            auto&& data = pop_back();
-            auto&& hash = BtcUtils().ripemd160(data);
-            stack_.push_back(std::move(hash));
+            auto data = pop_back();
+            auto hash = BtcUtils::ripemd160(data);
+            stack_.emplace_back(std::move(hash));
          }
 
          void op_sha256(void)
          {
-            auto&& data = pop_back();
-            auto&& sha256 = BtcUtils::getSha256(data);
-            stack_.push_back(std::move(sha256));
+            auto data = pop_back();
+            auto sha256 = BtcUtils::getSha256(data);
+            stack_.emplace_back(std::move(sha256));
          }
 
          void op_hash160()
          {
-            auto&& data = pop_back();
-            auto&& hash160 = BtcUtils::getHash160(data);
-            stack_.push_back(std::move(hash160));
+            auto data = pop_back();
+            auto hash160 = BtcUtils::getHash160(data);
+            stack_.emplace_back(std::move(hash160));
          }
 
          void op_hash256()
          {
-            auto&& data = pop_back();
-            auto&& hash256 = BtcUtils::getHash256(data);
-            stack_.push_back(std::move(hash256));
+            auto data = pop_back();
+            auto hash256 = BtcUtils::getHash256(data);
+            stack_.emplace_back(std::move(hash256));
          }
 
          void op_size(void)
          {
-            auto& data = stack_back();
-            stack_.push_back(std::move(intToRawBinary(data.getSize())));
+            const auto& data = stack_back();
+            stack_.emplace_back(std::move(intToRawBinary(data.getSize())));
          }
 
          void op_equal(void)
          {
-            auto&& data1 = pop_back();
-            auto&& data2 = pop_back();
-
+            auto data1 = pop_back();
+            auto data2 = pop_back();
             bool state = (data1 == data2);
 
             BinaryData bd;
             bd.append(state);
-            stack_.push_back(std::move(bd));
+            stack_.emplace_back(std::move(bd));
          }
 
          void op_1add(void)
@@ -526,27 +526,27 @@ namespace Armory
 
          void op_1sub(void)
          {
-            auto&& a = pop_back();
+            auto a = pop_back();
             auto aI = rawBinaryToInt(a);
 
-            stack_.push_back(std::move(intToRawBinary(aI - 1)));
+            stack_.emplace_back(std::move(intToRawBinary(aI - 1)));
          }
 
          void op_negate(void)
          {
-            auto&& a = pop_back();
+            auto a = pop_back();
             auto aI = rawBinaryToInt(a);
 
-            stack_.push_back(std::move(intToRawBinary(-aI)));
+            stack_.emplace_back(std::move(intToRawBinary(-aI)));
          }
 
          void op_abs(void)
          {
-            auto&& a = pop_back();
+            auto a = pop_back();
             auto aI = rawBinaryToInt(a);
 
-            auto&& negA = intToRawBinary(abs(aI));
-            stack_.push_back(negA);
+            auto negA = intToRawBinary(abs(aI));
+            stack_.emplace_back(negA);
          }
 
          void op_not(void)

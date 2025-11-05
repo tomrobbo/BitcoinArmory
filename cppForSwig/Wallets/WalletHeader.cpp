@@ -10,6 +10,7 @@
 #include "Assets.h"
 #include "AssetEncryption.h"
 #include "DecryptedDataContainer.h"
+#include "../BitcoinSettings.h"
 
 #define HEADER_VERSION                    0x00000001
 

@@ -108,17 +108,19 @@ OutPoint TxIn::getOutPoint(void) const
 /////////////////////////////////////////////////////////////////////////////
 BinaryData TxIn::getScript(void) const
 {
-   uint32_t scrLen = 
-      (uint32_t)BtcUtils::readVarInt(getPtr() + 36, getSize() - 36);
-   return BinaryData(getPtr() + getScriptOffset(), scrLen);
+   uint8_t varIntLen;
+   size_t scrLen = BtcUtils::readVarInt(
+      getPtr() + 36, getSize() - 36, varIntLen);
+   return BinaryData{getPtr() + getScriptOffset(), scrLen};
 }
 
 /////////////////////////////////////////////////////////////////////////////
 BinaryDataRef TxIn::getScriptRef(void) const
 {
-   uint32_t scrLen = 
-      (uint32_t)BtcUtils::readVarInt(getPtr() + 36, getSize() - 36);
-   return BinaryDataRef(getPtr() + getScriptOffset(), scrLen);
+   uint8_t varIntLen;
+   size_t scrLen = BtcUtils::readVarInt(
+      getPtr() + 36, getSize() - 36, varIntLen);
+   return BinaryDataRef{getPtr() + getScriptOffset(), scrLen};
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -166,21 +168,17 @@ void TxIn::unserialize(BinaryDataRef str, uint32_t nbytes, uint32_t idx)
 // Not all TxIns have this information.  Have to go to the Outpoint and get
 // the corresponding TxOut to find the sender.  In the case the sender is
 // not available, return false and don't write the output
-bool TxIn::getSenderScrAddrIfAvail(BinaryData & addrTarget) const
+bool TxIn::getSenderScrAddrIfAvail(BinaryData& addrTarget) const
 {
    if (scriptType_ == TXIN_SCRIPT_NONSTANDARD ||
-      scriptType_ == TXIN_SCRIPT_COINBASE)
-   {
-      addrTarget = BtcUtils::BadAddress();
+      scriptType_ == TXIN_SCRIPT_COINBASE) {
+      addrTarget = BtcUtils::BadAddress;
       return false;
    }
 
-   try
-   {
+   try {
       addrTarget = BtcUtils::getTxInAddrFromType(getScript(), scriptType_);
-   }
-   catch (BlockDeserializingException&)
-   {
+   } catch (const BlockDeserializingException&) {
       return false;
    }
    return true;
@@ -318,13 +316,13 @@ void TxOut::pprint(ostream & os, int nIndent, bool pBigendian)
 ////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////
-bool Tx::isCoinbase(void) const
+bool Tx::isCoinbase() const
 {
-   if (!isInitialized())
-      throw runtime_error("unprocessed tx");
-
-   BinaryDataRef bdr(dataCopy_.getPtr() + offsetsTxIn_[0], 32);
-   return bdr == BtcUtils::EmptyHash_;
+   if (!isInitialized()) {
+      throw std::runtime_error("unprocessed tx");
+   }
+   BinaryDataRef bdr{dataCopy_.getPtr() + offsetsTxIn_[0], 32};
+   return bdr == BtcUtils::EmptyHash;
 }
 
 /////////////////////////////////////////////////////////////////////////////

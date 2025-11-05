@@ -1196,9 +1196,9 @@ BinaryDataRef BinaryReader::get_BinaryDataRef(size_t nBytes)
 
 uint64_t BinaryReader::get_var_int(uint8_t* nRead)
 {
-   uint32_t nBytes;
+   uint8_t nBytes;
    uint64_t varInt = BtcUtils::readVarInt(
-      bdStr_.getPtr() + pos_, bdStr_.getSize() - pos_, &nBytes);
+      bdStr_.getPtr() + pos_, bdStr_.getSize() - pos_, nBytes);
    if (nRead != NULL) {
       *nRead = nBytes;
    }
@@ -1337,9 +1337,9 @@ void BinaryRefReader::setNewData(const uint8_t* ptr, size_t nBytes)
 /////////////////////////////////////////////////////////////////////////////
 uint64_t BinaryRefReader::get_var_int(uint8_t* nRead)
 {
-   uint32_t nBytes;
+   uint8_t nBytes;
    uint64_t varInt = BtcUtils::readVarInt(
-      bdRef_.getPtr() + pos_, bdRef_.getSize() - pos_, &nBytes);
+      bdRef_.getPtr() + pos_, bdRef_.getSize() - pos_, nBytes);
    if (nRead != NULL) {
       *nRead = nBytes;
    }

@@ -42,7 +42,7 @@ namespace
 
          //scrAddr
          const auto& script = utxo.getScript();
-         auto scrAddr = BtcUtils::getScrAddrForScript(script);
+         auto scrAddr = BtcUtils::getTxOutScrAddr(script);
          capnUtxo.setScrAddr(capnp::Data::Builder(
             (uint8_t*)scrAddr.getPtr(), scrAddr.getSize()
          ));
