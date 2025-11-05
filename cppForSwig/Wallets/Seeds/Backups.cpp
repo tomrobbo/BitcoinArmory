@@ -29,16 +29,16 @@ using namespace Armory::Assets;
 using namespace Armory::Wallets;
 using namespace std::string_view_literals;
 
-////////////////////////////////////////////////////////////////////////////////
-const std::vector<char> Easy16Codec::e16chars_ = {
-   'a', 's', 'd', 'f',
-   'g', 'h', 'j', 'k',
-   'w', 'e', 'r', 't',
-   'u', 'i', 'o', 'n'
-};
+/***
+   Checksum indexes are appended as a byte to the 16 bytes line that is
+   passed through the hash256 function to generate the checksum. That byte
+   value designates the type of wallet this backup was generated from.
 
-////////////////////////////////////////////////////////////////////////////////
-const std::set<BackupType> Easy16Codec::eligibleIndexes_ = {
+   For index 0 (Armory 1.35 wallets), the byte is not appended.
+   The indexes for each line in a multiple line easy16 code need to match
+   one another.
+***/
+const std::set<BackupType> Easy16Codec::eligibleIndexes{
    BackupType::Armory135a,
    BackupType::Armory200a,
    BackupType::Armory200b,
@@ -46,31 +46,121 @@ const std::set<BackupType> Easy16Codec::eligibleIndexes_ = {
    BackupType::Armory200d
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-/* - comment from etotheipi: -
-Nothing up my sleeve!  Need some hardcoded random numbers to use for
-encryption IV and salt.  Using the first 256 digits of Pi for the
-the IV, and first 256 digits of e for the salt (hashed)
-*/
-
-const std::string SecurePrint::digits_pi_ = {
-   "ARMORY_ENCRYPTION_INITIALIZATION_VECTOR_"
-   "1415926535897932384626433832795028841971693993751058209749445923"
-   "0781640628620899862803482534211706798214808651328230664709384460"
-   "9550582231725359408128481117450284102701938521105559644622948954"
-   "9303819644288109756659334461284756482337867831652712019091456485"
+constexpr char Easy16Codec::characters[16]{
+   'a', 's', 'd', 'f',
+   'g', 'h', 'j', 'k',
+   'w', 'e', 'r', 't',
+   'u', 'i', 'o', 'n'
 };
 
-const std::string SecurePrint::digits_e_ = {
-   "ARMORY_KEY_DERIVATION_FUNCTION_SALT_"
-   "7182818284590452353602874713526624977572470936999595749669676277"
-   "2407663035354759457138217852516642742746639193200305992181741359"
-   "6629043572900334295260595630738132328627943490763233829880753195"
-   "2510190115738341879307021540891499348841675092447614606680822648"
-};
+namespace
+{
 
-const uint32_t SecurePrint::kdfBytes_ = 16 * 1024 * 1024;
+   /////////////////////////////////////////////////////////////////////////////
+   /* - comment from etotheipi: -
+   Nothing up my sleeve!  Need some hardcoded random numbers to use for
+   encryption IV and salt.  Using the first 256 digits of Pi for the
+   the IV, and first 256 digits of e for the salt (hashed)
+   */
+   constexpr std::string_view digitsPI{
+      "ARMORY_ENCRYPTION_INITIALIZATION_VECTOR_"
+      "1415926535897932384626433832795028841971693993751058209749445923"
+      "0781640628620899862803482534211706798214808651328230664709384460"
+      "9550582231725359408128481117450284102701938521105559644622948954"
+      "9303819644288109756659334461284756482337867831652712019091456485"sv
+   };
+
+   constexpr std::string_view digitsE{
+      "ARMORY_KEY_DERIVATION_FUNCTION_SALT_"
+      "7182818284590452353602874713526624977572470936999595749669676277"
+      "2407663035354759457138217852516642742746639193200305992181741359"
+      "6629043572900334295260595630738132328627943490763233829880753195"
+      "2510190115738341879307021540891499348841675092447614606680822648"sv
+   };
+
+   constexpr uint32_t spKDFBytes = 16 * 1024 * 1024;
+
+   /////////////////////////////////////////////////////////////////////////////
+   // checksum calls
+   BinaryData getHash(const BinaryDataRef& data, uint8_t hint)
+   {
+      if (hint == 0) {
+         return BtcUtils::getHash256(data);
+      } else {
+         SecureBinaryData dataCopy(data.getSize() + 1);
+         memcpy(dataCopy.getPtr(), data.getPtr(), data.getSize());
+         dataCopy.getPtr()[data.getSize()] = hint;
+         return BtcUtils::getHash256(dataCopy);
+      }
+   }
+
+   uint8_t verifyChecksum(
+      const BinaryDataRef& data, const BinaryDataRef& checksum)
+   {
+      for (const auto& indexCandidate : Easy16Codec::eligibleIndexes) {
+         auto hash = getHash(data, (uint8_t)indexCandidate);
+         if (hash.getSliceRef(0, EASY16_CHECKSUM_LEN) == checksum) {
+            return (uint8_t)indexCandidate;
+         }
+      }
+      return EASY16_INVALID_CHECKSUM_INDEX;
+   }
+
+   /////////////////////////////////////////////////////////////////////////////
+   // easy16 encode
+   void encodeEasy16Byte(uint8_t c, char* ptr)
+   {
+      uint8_t val1 = c >> 4;
+      uint8_t val2 = c & 0x0F;
+      ptr[0] = Easy16Codec::characters[val1];
+      ptr[1] = Easy16Codec::characters[val2];
+   };
+
+   SecureBinaryData encodeEasy16Line(BinaryDataRef chunk, uint8_t index)
+   {
+      //compute checksum
+      auto checksum = getHash(chunk, index);
+
+      //2 characters per byte + 2 bytes for the checksum
+      size_t charCount = chunk.getSize() * 2 + 4;
+
+      //a space after each 4 characters
+      size_t spaceCount = charCount / 4;
+
+      //a double space every 16 characters
+      size_t doubleSpaceCount = charCount / 16;
+
+      size_t lineLength = charCount + spaceCount + doubleSpaceCount;
+      SecureBinaryData result(lineLength);
+
+      //encode to easy16
+      auto resultPtr = result.getCharPtr();
+      unsigned i=0;
+      while (i < chunk.getSize()) {
+         encodeEasy16Byte(chunk.getPtr()[i], resultPtr);
+         resultPtr += 2;
+         ++i;
+
+         //spaces
+         if (i % 2 == 0) {
+            resultPtr[0] = ' ';
+            ++resultPtr;
+         }
+
+         if (i % 8 == 0) {
+            resultPtr[0] = ' ';
+            ++resultPtr;
+         }
+      }
+
+      //add the checksum
+      for (i=0; i<EASY16_CHECKSUM_LEN; i++) {
+         encodeEasy16Byte(checksum.getPtr()[i], resultPtr);
+         resultPtr += 2;
+      }
+      return result;
+   }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -90,97 +180,17 @@ Easy16RepairError::Easy16RepairError(const std::string& errMsg) :
 //// Easy16Codec
 //
 ////////////////////////////////////////////////////////////////////////////////
-BinaryData Easy16Codec::getHash(const BinaryDataRef& data, uint8_t hint)
-{
-   if (hint == 0) {
-      return BtcUtils::getHash256(data);
-   } else {
-      SecureBinaryData dataCopy(data.getSize() + 1);
-      memcpy(dataCopy.getPtr(), data.getPtr(), data.getSize());
-      dataCopy.getPtr()[data.getSize()] = hint;
-
-      return BtcUtils::getHash256(dataCopy);
-   }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-uint8_t Easy16Codec::verifyChecksum(
-   const BinaryDataRef& data, const BinaryDataRef& checksum)
-{
-   for (const auto& indexCandidate : eligibleIndexes_) {
-      auto hash = getHash(data, (uint8_t)indexCandidate);
-      if (hash.getSliceRef(0, EASY16_CHECKSUM_LEN) == checksum) {
-         return (uint8_t)indexCandidate;
-      }
-   }
-
-   return EASY16_INVALID_CHECKSUM_INDEX;
-}
-
-////////////////////////////////////////////////////////////////////////////////
 std::vector<SecureBinaryData> Easy16Codec::encode(
    const BinaryDataRef data, BackupType bType)
 {
-   //TODO: use index pairs for a given backup type instead (one index per line)
    uint8_t index = (uint8_t)bType;
    if (bType == BackupType::Armory135c) {
       //index for 135a/c should be 0
       index = 0;
    }
-
    if (index > EASY16_INDEX_MAX) {
-      LOGERR << "index is too large";
       throw std::runtime_error("index is too large");
    }
-
-   auto encodeByte = [](char* ptr, uint8_t c)->void
-   {
-      uint8_t val1 = c >> 4;
-      uint8_t val2 = c & 0x0F;
-      ptr[0] = e16chars_[val1];
-      ptr[1] = e16chars_[val2];
-   };
-
-   auto encodeValue = [&encodeByte, &index](
-      const BinaryDataRef& chunk16)->SecureBinaryData
-   {
-      //get hash
-      auto h256 = getHash(chunk16, index);
-      SecureBinaryData result(47);
-
-      //capnp strings require null terminated buffers
-      //easy16 lines are ultimately passed as strings to the client
-      result[46] = 0;
-
-      //encode the chunk
-      unsigned charCount = 0;
-      unsigned offset = 0;
-      auto ptr = chunk16.getPtr();
-      for (unsigned i=0; i<chunk16.getSize(); i++) {
-         encodeByte(result.toCharPtr() + offset, ptr[i]);
-         offset += 2;
-         ++charCount;
-
-         if (charCount % 2 == 0) {
-            result.toCharPtr()[offset] = ' ';
-            ++offset;
-         }
-
-         if (charCount % 8 == 0) {
-            result.toCharPtr()[offset] = ' ';
-            ++offset;
-         }
-      }
-
-      //append first 2 bytes of the hash as its checksum
-      auto hashPtr = h256.getPtr();
-      for (unsigned i = 0; i < EASY16_CHECKSUM_LEN; i++) {
-         encodeByte(result.toCharPtr() + offset, hashPtr[i]);
-         offset += 2;
-      }
-
-      return result;
-   };
 
    BinaryRefReader brr(data);
    uint32_t count = (data.getSize() + EASY16_LINE_LENGTH - 1) /
@@ -189,10 +199,12 @@ std::vector<SecureBinaryData> Easy16Codec::encode(
    result.reserve(count);
 
    for (unsigned i=0; i<count; i++) {
-      size_t len =
-         std::min(size_t(EASY16_LINE_LENGTH), brr.getSizeRemaining());
+      size_t len = std::min(
+         size_t(EASY16_LINE_LENGTH),
+         brr.getSizeRemaining()
+      );
       auto chunk = brr.get_BinaryDataRef(len);
-      result.emplace_back(encodeValue(chunk));
+      result.emplace_back(encodeEasy16Line(chunk, index));
    }
    return result;
 }
@@ -218,8 +230,8 @@ BackupEasy16DecodeResult Easy16Codec::decode(const std::vector<BinaryDataRef>& l
 
    //setup character to value lookup map
    std::map<char, uint8_t> easy16Vals;
-   for (unsigned i=0; i<e16chars_.size(); i++) {
-      easy16Vals.emplace(e16chars_[i], i);
+   for (unsigned i=0; i<16; i++) {
+      easy16Vals.emplace(Easy16Codec::characters[i], i);
    }
 
    auto isSpace = [](const char* str)->bool
@@ -326,7 +338,7 @@ BackupEasy16DecodeResult Easy16Codec::decode(const std::vector<BinaryDataRef>& l
          case -1: //could not match checksum
          case -2: //invalid checksum length
          {
-            checksumIndexes.push_back(result);
+            checksumIndexes.emplace_back(result);
             break;
          }
 
@@ -338,7 +350,7 @@ BackupEasy16DecodeResult Easy16Codec::decode(const std::vector<BinaryDataRef>& l
 
          default:
             //valid checksum
-            checksumIndexes.push_back(result);
+            checksumIndexes.emplace_back(result);
       }
 
       if (len > EASY16_LINE_LENGTH) {
@@ -374,8 +386,8 @@ bool Easy16Codec::repair(BackupEasy16DecodeResult& faultyBackup)
    bool hasError = false;
    std::set<int> validIndexes;
    for (auto index : faultyBackup.checksumIndexes_) {
-      auto indexIter = eligibleIndexes_.find((BackupType)index);
-      if (indexIter == eligibleIndexes_.end()) {
+      auto indexIter = Easy16Codec::eligibleIndexes.find((BackupType)index);
+      if (indexIter == Easy16Codec::eligibleIndexes.end()) {
          if (index == EASY16_INVALID_CHECKSUM_INDEX) {
             hasError = true;
             continue;
@@ -425,7 +437,7 @@ bool Easy16Codec::repair(BackupEasy16DecodeResult& faultyBackup)
                }
             } else {
                //check all eligible indexes
-               for (const auto& indexCandidate : eligibleIndexes_) {
+               for (const auto& indexCandidate : Easy16Codec::eligibleIndexes) {
                   auto hash = getHash(copied, (uint8_t)indexCandidate);
                   if (hash.getSliceRef(0, 2) == checksum) {
                      auto& chkVal = result[(uint8_t)indexCandidate];
@@ -614,8 +626,9 @@ bool BackupEasy16DecodeResult::isValid() const
       return false;
    }
 
-   auto iter = Easy16Codec::eligibleIndexes_.find((BackupType)getIndex());
-   return (iter != Easy16Codec::eligibleIndexes_.end());
+   return
+      Easy16Codec::eligibleIndexes.find((BackupType)getIndex()) !=
+      Easy16Codec::eligibleIndexes.end();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -627,11 +640,11 @@ SecurePrint::SecurePrint()
 {
    //setup aes IV and kdf
    auto iv32 = BtcUtils::getHash256(
-      (const uint8_t*)digits_pi_.c_str(), digits_pi_.size());
+      (const uint8_t*)digitsPI.data(), digitsPI.size());
    iv16_ = std::move(iv32.getSliceCopy(0, AES_BLOCK_SIZE));
 
    salt_ = std::move(BtcUtils::getHash256(
-      (const uint8_t*)digits_e_.c_str(), digits_e_.size()));
+      (const uint8_t*)digitsE.data(), digitsE.size()));
 }
 
 ////
@@ -694,7 +707,7 @@ std::pair<SecureBinaryData, SecureBinaryData> SecurePrint::encrypt(
    /*
    2. extend the passphrase
    */
-   Encryption::KdfRomix kdf{kdfBytes_, 1, salt_};
+   Encryption::KdfRomix kdf{spKDFBytes, 1, salt_};
    auto encryptionKey = kdf.DeriveKey(passphrase_);
 
    /*
@@ -778,7 +791,7 @@ SecureBinaryData SecurePrint::decrypt(
    }
 
    //kdf the passphrase
-   Encryption::KdfRomix kdf{kdfBytes_, 1, salt_};
+   Encryption::KdfRomix kdf{spKDFBytes, 1, salt_};
    auto encryptionKey = kdf.DeriveKey(passphrase);
 
    //
@@ -820,28 +833,41 @@ SecureBinaryData SecurePrint::decrypt(
 
 /////////////////////////////// -- backup strings -- ///////////////////////////
 std::unique_ptr<WalletBackup> Helpers::getWalletBackup(
-   std::shared_ptr<AssetWallet_Single> wltPtr, BackupType bType)
+   std::shared_ptr<AssetWallet_Single> wltPtr, bool isPriv, BackupType bType)
 {
    std::unique_ptr<ClearTextSeed> clearTextSeed;
 
    //grab encrypted seed from wallet
-   auto lock = wltPtr->lockDecryptedContainer();
-   auto wltSeed = wltPtr->getEncryptedSeed();
-   if (wltSeed != nullptr) {
-      const auto& rawClearTextSeed = wltPtr->getDecryptedValue(wltSeed);
-      clearTextSeed = ClearTextSeed::deserialize(rawClearTextSeed);
-   } else {
-      //wallet has no seed, maybe it's a legacy Armory wallet, where
-      //the seed and root are the same
-      auto root = wltPtr->getRoot();
-      auto root135 = std::dynamic_pointer_cast<AssetEntry_ArmoryLegacyRoot>(root);
-      if (root135 == nullptr) {
-         return {};
+   if (isPriv) {
+      auto lock = wltPtr->lockDecryptedContainer();
+      auto wltSeed = wltPtr->getEncryptedSeed();
+      if (wltSeed != nullptr) {
+         const auto& rawClearTextSeed = wltPtr->getDecryptedValue(wltSeed);
+         clearTextSeed = ClearTextSeed::deserialize(rawClearTextSeed);
+      } else {
+         //wallet has no seed, maybe it's a legacy Armory wallet, where
+         //the seed and root are the same
+         auto root = std::dynamic_pointer_cast<AssetEntry_ArmoryLegacyRoot>(
+            wltPtr->getRoot());
+         if (root == nullptr) {
+            return nullptr;
+         }
+         const auto& rootPrivKey =
+            wltPtr->getDecryptedPrivateKeyForAsset(root);
+         clearTextSeed = std::unique_ptr<ClearTextSeed>(
+            new ClearTextSeed_Armory(rootPrivKey, root->getChaincode(),
+               root->getSeedType()));
       }
-      const auto& rootPrivKey = wltPtr->getDecryptedPrivateKeyForAsset(
-         root135);
-      clearTextSeed = std::unique_ptr<ClearTextSeed>(new ClearTextSeed_Armory135(
-         rootPrivKey, root135->getChaincode()));
+   } else {
+      auto root = std::dynamic_pointer_cast<AssetEntry_ArmoryLegacyRoot>(
+         wltPtr->getRoot());
+      if (root == nullptr) {
+         LOGWARN << "public backups needs implemented for non legacy roots!";
+         return nullptr;
+      }
+      clearTextSeed = std::unique_ptr<ClearTextSeed>(
+         new ClearTextSeed_ArmoryPublic(root->getPubKey(), root->getChaincode(),
+            root->getSeedType()));
    }
 
    if (clearTextSeed == nullptr) {
@@ -898,13 +924,23 @@ std::unique_ptr<WalletBackup> Helpers::getEasy16BackupString(
 
    switch (seed->type())
    {
-      case SeedType::Armory135:
+      case SeedType::ArmoryLegacy:
       {
-         auto seed135   = dynamic_cast<ClearTextSeed_Armory135*>(seed.get());
-         primaryData    = seed135->getRoot().getRef();
-         secondaryData  = seed135->getChaincode().getRef();
-         mode = seed->getPreferedBackupType();
+         auto seedLegacy   = dynamic_cast<ClearTextSeed_Armory*>(seed.get());
+         primaryData       = seedLegacy->getRoot().getRef();
+         secondaryData     = seedLegacy->getChaincode().getRef();
+         mode              = seed->getPreferedBackupType();
          break;
+      }
+
+      case SeedType::ArmoryLegacyPublic:
+      {
+         auto seedPublic = dynamic_cast<ClearTextSeed_ArmoryPublic*>(seed.get());
+         return std::make_unique<Backup_Easy16Public>(
+            seedPublic->getPreferedBackupType(),
+            seedPublic->getPublicRoot(),
+            seedPublic->getChaincode()
+         );
       }
 
       case SeedType::BIP32_Structured:
@@ -913,14 +949,16 @@ std::unique_ptr<WalletBackup> Helpers::getEasy16BackupString(
       {
          auto seedBip32 = dynamic_cast<ClearTextSeed_BIP32*>(seed.get());
          primaryData    = seedBip32->getRawEntropy().getRef();
-         mode = seed->getPreferedBackupType();
+         mode           = seed->getPreferedBackupType();
 
          switch (seed->type())
          {
             case SeedType::BIP39:
+            {
                //force Armory200d for BIP39 seeds
                mode = BackupType::Armory200d;
                break;
+            }
 
             default:
                mode = seed->getPreferedBackupType();
@@ -1081,12 +1119,12 @@ std::unique_ptr<ClearTextSeed> Helpers::restoreFromEasy16(
    first2Lines.reserve(2);
 
    auto firstLine = backupE16->getRoot(
-      Backup_Easy16::LineIndex::One, isEncrypted);
+      LineIndex::One, isEncrypted);
    first2Lines.emplace_back(BinaryDataRef(
       (uint8_t*)firstLine.data(), firstLine.size()));
 
    auto secondLine = backupE16->getRoot(
-      Backup_Easy16::LineIndex::Two, isEncrypted);
+      LineIndex::Two, isEncrypted);
    first2Lines.emplace_back(BinaryDataRef(
       (uint8_t*)secondLine.data(), secondLine.size()));
 
@@ -1100,12 +1138,12 @@ std::unique_ptr<ClearTextSeed> Helpers::restoreFromEasy16(
    if (backupE16->hasChaincode()) {
       std::vector<BinaryDataRef> next2Lines;
       auto thirdLine = backupE16->getChaincode(
-         Backup_Easy16::LineIndex::One, isEncrypted);
+         LineIndex::One, isEncrypted);
       next2Lines.emplace_back(BinaryDataRef(
          (uint8_t*)thirdLine.data(), thirdLine.size()));
 
       auto fourthLine = backupE16->getChaincode(
-         Backup_Easy16::LineIndex::Two, isEncrypted);
+         LineIndex::Two, isEncrypted);
       next2Lines.emplace_back(BinaryDataRef(
          (uint8_t*)fourthLine.data(), fourthLine.size()));
 
@@ -1209,18 +1247,18 @@ std::unique_ptr<ClearTextSeed> Helpers::restoreFromEasy16(
       case BackupType::Armory135c:
       {
          /*legacy armory wallet, legacy backup string*/
-         seedPtr = std::move(std::make_unique<ClearTextSeed_Armory135>(
+         seedPtr = std::move(std::make_unique<ClearTextSeed_Armory>(
             primaryData.data_, secondaryData.data_,
-            ClearTextSeed_Armory135::LegacyType::Armory135));
+            LegacyType::Armory135));
          break;
       }
 
       case BackupType::Armory200a:
       {
          /*legacy armory wallet, indexed backup string*/
-         seedPtr = std::move(std::make_unique<ClearTextSeed_Armory135>(
+         seedPtr = std::move(std::make_unique<ClearTextSeed_Armory>(
             primaryData.data_, secondaryData.data_,
-            ClearTextSeed_Armory135::LegacyType::Armory200));
+            LegacyType::Armory200));
          break;
       }
 
@@ -1330,7 +1368,8 @@ const BackupType& WalletBackup::type() const
    return type_;
 }
 
-///////////////////////////////// Backup_Easy16 ////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+// Backup_Easy16
 Backup_Easy16::Backup_Easy16(BackupType bType) :
    WalletBackup(bType)
 {}
@@ -1430,7 +1469,48 @@ std::unique_ptr<Backup_Easy16> Backup_Easy16::fromLines(
    return result;
 }
 
-///////////////////////////////// Backup_Base58 ////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+// Backup_Easy16Public
+Backup_Easy16Public::Backup_Easy16Public(BackupType bType,
+   const SecureBinaryData& pubRoot, const SecureBinaryData& chaincode) :
+   WalletBackup(bType)
+{
+   //prepare the pubkey, we need both uncompressed and compressed versions
+   SecureBinaryData pubkeyComp, pubkeyUnc;
+   if (pubRoot.getSize() == 65) {
+      pubkeyComp = CryptoECDSA().CompressPoint(pubRoot);
+      pubkeyUnc = pubRoot;
+   } else {
+      pubkeyComp = pubRoot;
+      pubkeyUnc = CryptoECDSA().UncompressPoint(pubRoot);
+   }
+
+   //prepare backupId for computation
+   auto walletId = generateWalletIdRaw(pubkeyUnc, chaincode,
+      SeedType::ArmoryLegacyPublic);
+   uint8_t prefix = 1;
+   if (pubkeyComp.getPtr()[0] == 0x03) {
+      prefix ^= 0x80;
+   }
+   BinaryWriter bw;
+   bw.put_uint8_t(prefix);
+   bw.put_BinaryData(walletId);
+
+   //compute the easy16 line
+   uint typeInt = (bType == BackupType::Armory135c) ? 0 : (uint8_t)bType;
+   auto idSbd = encodeEasy16Line(bw.getDataRef(), typeInt);
+
+   //compressed pubkey is turned to easy16 without the leading sign byte
+   BinaryDataRef pubkey32{pubkeyComp.getPtr() + 1, 32};
+   publicRoot_ = Easy16Codec::encode(pubkey32, bType);
+   chaincode_ = Easy16Codec::encode(chaincode, bType);
+}
+
+Backup_Easy16Public::~Backup_Easy16Public()
+{}
+
+////////////////////////////////////////////////////////////////////////////////
+// Backup_Base58
 Backup_Base58::Backup_Base58(SecureBinaryData b58String) :
    WalletBackup(BackupType::Base58), b58String_(std::move(b58String))
 {}
@@ -1448,7 +1528,8 @@ std::unique_ptr<Backup_Base58> Backup_Base58::fromString(const std::string_view&
    return std::make_unique<Backup_Base58>(SecureBinaryData::fromStringView(strV));
 }
 
-///////////////////////////////// Backup_BIP39 /////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+// Backup_BIP39
 Backup_BIP39::Backup_BIP39() :
    WalletBackup(BackupType::BIP39), mnemonicString_()
 {}

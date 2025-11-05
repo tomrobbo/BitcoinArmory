@@ -354,16 +354,15 @@ namespace
          case WalletRequest::CREATE_BACKUP_STRING:
          {
             std::string callbackId;
-            SecureBinaryData passphrase;
+            bool isPriv = false;
             auto backupStruct = request.getCreateBackupString();
-            if (backupStruct.which() == WalletRequest::BackupStringStruct::PASSPHRASE) {
-               passphrase = SecureBinaryData::fromString(backupStruct.getPassphrase());
-            } else {
-               callbackId = backupStruct.getCallbackId();
+            if (backupStruct.which() == WalletRequest::BackupStringStruct::PRIVATE) {
+               callbackId = backupStruct.getPrivate();
+               isPriv = true;
             }
 
-            bridge->createBackupStringForWallet(
-               walletId, callbackId, std::move(passphrase), referenceId);
+            bridge->createBackupStringForWallet(walletId, isPriv,
+               callbackId, referenceId);
             break;
          }
 

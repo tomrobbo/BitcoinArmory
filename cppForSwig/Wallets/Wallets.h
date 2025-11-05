@@ -46,7 +46,7 @@ namespace Armory
    {
       class EncryptedSeed;
       class ClearTextSeed;
-      class ClearTextSeed_Armory135;
+      class ClearTextSeed_Armory;
       class ClearTextSeed_BIP32;
    }
 
@@ -275,31 +275,25 @@ namespace Armory
 
          //static
          static std::shared_ptr<AssetWallet_Single> initWalletDb(
-            std::shared_ptr<IO::WalletDBInterface> iface,
-            const WalletId& masterID, const WalletId& walletID,
-            const SecureBinaryData& privateRoot,
-            const SecureBinaryData& chaincode,
-            const IO::CreateWalletParams&,
-            uint32_t seedFingerprint);
+            std::shared_ptr<IO::WalletDBInterface>,
+            Armory::Seeds::ClearTextSeed*,
+            const IO::CreateWalletParams&);
 
          static std::shared_ptr<AssetWallet_Single> initWalletDbWithPubRoot(
             std::shared_ptr<IO::WalletDBInterface>,
-            const WalletId& masterID, const WalletId& walletID,
-            std::shared_ptr<Assets::AssetEntry_Single> pubRoot,
+            const WalletId&, const WalletId&,
+            std::shared_ptr<Assets::AssetEntry_Single>,
             const IO::CreateWalletParams&);
 
       private:
          static void importPublicData(const WalletPublicData&,
             std::shared_ptr<IO::WalletDBInterface>,
-            Progress::Func prog=nullptr
+            Progress::Func=nullptr
          );
-
-         void setSeed(std::unique_ptr<Armory::Seeds::ClearTextSeed>,
-            const Passphrase::UnlockFunc&);
 
          //wallet creation private statics
          static std::shared_ptr<AssetWallet_Single> createFromSeed(
-            Seeds::ClearTextSeed_Armory135*,
+            Seeds::ClearTextSeed_Armory*,
             const IO::CreateWalletParams&);
 
          static std::shared_ptr<AssetWallet_Single> createFromSeed(
@@ -322,7 +316,7 @@ namespace Armory
 
          const AddressAccountId& createBIP32Account(
             std::shared_ptr<Accounts::AccountType_BIP32>,
-            const Progress::Func& prog=nullptr);
+            const Progress::Func& = nullptr);
 
          const SecureBinaryData& getDecryptedPrivateKeyForAsset(
             std::shared_ptr<Assets::AssetEntry_Single>);

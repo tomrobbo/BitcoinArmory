@@ -959,57 +959,47 @@ void CppBridge::registerWallet(const Wallets::WalletId& wltId,
 
 ////////////////////////////////////////////////////////////////////////////////
 void CppBridge::createBackupStringForWallet(const Wallets::WalletId& wltId,
-   const std::string& callbackId, SecureBinaryData passphrase, MessageId msgId)
+   bool isPriv, const std::string& callbackId, MessageId msgId)
 {
-   auto func = [this, wltId, msgId, callbackId, passphrase=std::move(passphrase)]()
+   auto func = [this, wltId, isPriv, callbackId, msgId]()
    {
-      std::shared_ptr<BridgePassphrasePrompt> passPromptObj;
-      if (passphrase.empty()) {
-         passPromptObj = std::make_shared<BridgePassphrasePrompt>(
-            callbackId, [this](ServerPushWrapper wrapper){
-               this->callbackWriter(wrapper);
-            });
-      }
-
       std::unique_ptr<Seeds::WalletBackup> backupData;
       std::string error;
       try {
          //grab wallet
          auto wltContainer = wltManager_->getWalletContainer(wltId);
 
-         //grab root
-         if (passphrase.empty()) {
+         //grab the backup
+         if (isPriv) {
+            //setup passphrase prompt
+            auto passPromptObj = std::make_shared<BridgePassphrasePrompt>(
+               callbackId, [this](ServerPushWrapper wrapper){
+                  this->callbackWriter(wrapper);
+               });
             auto lbd = passPromptObj->getLambda();
-            backupData = std::move(wltContainer->getBackupStrings(lbd));
-         } else {
-            int count = 0;
+
+            //generate private root backup
             backupData = std::move(wltContainer->getBackupStrings(
-               [passphrase=std::move(passphrase), &count]
-               (const std::set<Wallets::EncryptionKeyId>&)->Passphrase::Result
-               {
-                  if (count++ == 0) {
-                     return { passphrase, true };
-                  } else {
-                     return { {}, false };
-                  }
-               }
-            ));
+               true, lbd));
+
+            //cleanup
+            passPromptObj->cleanup();
+         } else {
+            //nothing to setup when generating public root backups
+            backupData = std::move(wltContainer->getBackupStrings(
+               false, nullptr));
          }
       } catch (const std::exception& e) {
          error = e.what();
          backupData = nullptr;
       }
 
-      //wind down passphrase prompt
-      if (passPromptObj != nullptr) {
-         passPromptObj->cleanup();
-         passPromptObj.reset();
-      }
-
+      //prepare reply
       capnp::MallocMessageBuilder message;
       auto fromBridge = message.initRoot<FromBridge>();
       auto reply = fromBridge.initReply();
       reply.setReferenceId(msgId);
+
       if (backupData == nullptr) {
          //return on error
          reply.setSuccess(false);
@@ -1031,18 +1021,18 @@ void CppBridge::createBackupStringForWallet(const Wallets::WalletId& wltId,
       //cleartext root
       {
          auto line1 = backupE16->getRoot(
-            Armory::Seeds::Backup_Easy16::LineIndex::One, false);
+            Armory::Seeds::LineIndex::One, false);
          auto line2 = backupE16->getRoot(
-            Armory::Seeds::Backup_Easy16::LineIndex::Two, false);
+            Armory::Seeds::LineIndex::Two, false);
          auto clearLines = backupStringCapnp.initRootClear(2);
          clearLines.set(0, capnp::Text::Reader(line1.data(), line1.size()));
          clearLines.set(1, capnp::Text::Reader(line2.data(), line2.size()));
 
          //encrypted root
          auto line3 = backupE16->getRoot(
-            Armory::Seeds::Backup_Easy16::LineIndex::One, true);
+            Armory::Seeds::LineIndex::One, true);
          auto line4 = backupE16->getRoot(
-            Armory::Seeds::Backup_Easy16::LineIndex::Two, true);
+            Armory::Seeds::LineIndex::Two, true);
          auto encrLines = backupStringCapnp.initRootEncr(2);
          encrLines.set(0, capnp::Text::Reader(line3.data(), line3.size()));
          encrLines.set(1, capnp::Text::Reader(line4.data(), line4.size()));
@@ -1051,18 +1041,18 @@ void CppBridge::createBackupStringForWallet(const Wallets::WalletId& wltId,
       if (backupE16->hasChaincode()) {
          //cleartext chaincode
          auto line1 = backupE16->getChaincode(
-            Armory::Seeds::Backup_Easy16::LineIndex::One, false);
+            Armory::Seeds::LineIndex::One, false);
          auto line2 = backupE16->getChaincode(
-            Armory::Seeds::Backup_Easy16::LineIndex::Two, false);
+            Armory::Seeds::LineIndex::Two, false);
          auto clearLines = backupStringCapnp.initChainClear(2);
          clearLines.set(0, capnp::Text::Reader(line1.data(), line1.size()));
          clearLines.set(1, capnp::Text::Reader(line2.data(), line2.size()));
 
          //encrypted chaincode
          auto line3 = backupE16->getChaincode(
-            Armory::Seeds::Backup_Easy16::LineIndex::One, true);
+            Armory::Seeds::LineIndex::One, true);
          auto line4 = backupE16->getChaincode(
-            Armory::Seeds::Backup_Easy16::LineIndex::Two, true);
+            Armory::Seeds::LineIndex::Two, true);
          auto encrLines = backupStringCapnp.initChainEncr(2);
          encrLines.set(0, capnp::Text::Reader(line3.data(), line3.size()));
          encrLines.set(1, capnp::Text::Reader(line4.data(), line4.size()));

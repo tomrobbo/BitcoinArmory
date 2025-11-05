@@ -258,8 +258,8 @@ std::shared_ptr<WalletContainer> WalletManager::createNewWallet(
       root.XOR(hashTropy);
    }
 
-   auto seed = std::make_unique<Seeds::ClearTextSeed_Armory135>(
-      root, Seeds::ClearTextSeed_Armory135::LegacyType::Armory200);
+   auto seed = std::make_unique<Seeds::ClearTextSeed_Armory>(
+      root, SecureBinaryData{}, Seeds::LegacyType::Armory200);
    auto wallet = Wallets::AssetWallet_Single::createFromSeed(
       std::move(seed), params);
    return addAccount(wallet, wallet->getMainAccountID());

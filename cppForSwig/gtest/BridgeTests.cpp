@@ -198,7 +198,7 @@ namespace {
       };
 
       std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-         new Armory::Seeds::ClearTextSeed_Armory135());
+         new Armory::Seeds::ClearTextSeed_Armory());
       auto assetWlt = AssetWallet_Single::createFromSeed(
          std::move(seed), params);
       return assetWlt->getID();
@@ -913,7 +913,7 @@ TEST_F(WalletManagerTests, ListStageLoad)
       };
 
       std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-         new Armory::Seeds::ClearTextSeed_Armory135());
+         new Armory::Seeds::ClearTextSeed_Armory());
       auto assetWlt = AssetWallet_Single::createFromSeed(
          std::move(seed), params);
       walletFiles.emplace_back(assetWlt->getDbFilename());
@@ -929,7 +929,7 @@ TEST_F(WalletManagerTests, ListStageLoad)
       };
 
       std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-         new Armory::Seeds::ClearTextSeed_Armory135());
+         new Armory::Seeds::ClearTextSeed_Armory());
       auto assetWlt = AssetWallet_Single::createFromSeed(
          std::move(seed), params);
       walletFiles.emplace_back(assetWlt->getDbFilename());
@@ -1071,7 +1071,7 @@ TEST_F(WalletManagerTests, ListWO)
       };
 
       std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-         new Armory::Seeds::ClearTextSeed_Armory135());
+         new Armory::Seeds::ClearTextSeed_Armory());
       auto assetWlt = AssetWallet_Single::createFromSeed(
          std::move(seed), params);
       wltPaths.emplace_back(assetWlt->getDbFilename());
@@ -2044,16 +2044,71 @@ protected:
       const std::string& passphrase, Bridge::WalletBackup::Type backupType)
    {
       auto refId = rand();
+      auto callbackId = BtcUtils::fortuna_.generateRandom(10).toHexStr();
+
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
       auto request = toBridge.initWallet();
       request.setWalletId(walletId);
       auto reqBackup = request.initCreateBackupString();
-      reqBackup.setPassphrase(passphrase);
+      reqBackup.setPrivate(callbackId);
       auto rawReq = serializeCapnp(message);
       pushRequest(bridge_, rawReq);
 
+      //handle unlock and cleanup
+      int count = 0;
+      bool run = true;
+      while (run) {
+         auto result = waitOnReply();
+         kj::ArrayPtr<const capnp::word> words(
+            reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+            result->data.getSize() / sizeof(capnp::word));
+         capnp::FlatArrayMessageReader reader(words);
+
+         auto fromBridge = reader.getRoot<Bridge::FromBridge>();
+         if (fromBridge.which() != Bridge::FromBridge::NOTIFICATION) {
+            throw std::runtime_error("expected a notif");
+         }
+
+         auto notif = fromBridge.getNotification();
+         if (notif.getCallbackId() != callbackId) {
+            throw std::runtime_error("unexpected callback id");
+         }
+
+         switch (notif.which()) {
+            case Bridge::Notification::UNLOCK_REQUEST:
+            {
+               capnp::MallocMessageBuilder notifMsg;
+               auto notifBridge = notifMsg.initRoot<Bridge::ToBridge>();
+               auto notifReply = notifBridge.initNotification();
+               notifReply.setCounter(notif.getCounter());
+               if (count == 0) {
+                  notifReply.setSuccess(true);
+                  notifReply.setUnlockRequest(passphrase);
+               } else {
+                  notifReply.setSuccess(false);
+                  run = false;
+               }
+
+               auto rawNotif = serializeCapnp(notifMsg);
+               pushRequest(bridge_, rawNotif);
+               ++count;
+               break;
+            }
+
+            case Bridge::Notification::CLEANUP:
+            {
+               run = false;
+               break;
+            }
+
+            default:
+               throw std::runtime_error("unexpected notif type");
+         }
+      }
+
+      //grab the reply
       auto result = waitOnReply();
       kj::ArrayPtr<const capnp::word> words(
          reinterpret_cast<const capnp::word*>(result->data.getPtr()),
@@ -2247,7 +2302,7 @@ TEST_F(BridgeTests, ListStageLoad)
       };
 
       std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-         new Armory::Seeds::ClearTextSeed_Armory135());
+         new Armory::Seeds::ClearTextSeed_Armory());
       auto assetWlt = AssetWallet_Single::createFromSeed(
          std::move(seed), params);
       walletFiles.emplace_back(
@@ -2264,7 +2319,7 @@ TEST_F(BridgeTests, ListStageLoad)
       };
 
       std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-         new Armory::Seeds::ClearTextSeed_Armory135());
+         new Armory::Seeds::ClearTextSeed_Armory());
       auto assetWlt = AssetWallet_Single::createFromSeed(
          std::move(seed), params);
       walletFiles.emplace_back(
@@ -2423,7 +2478,7 @@ TEST_F(BridgeTests, ListWO)
       };
 
       std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-         new Armory::Seeds::ClearTextSeed_Armory135());
+         new Armory::Seeds::ClearTextSeed_Armory());
       auto assetWlt = AssetWallet_Single::createFromSeed(
          std::move(seed), params);
       walletId = assetWlt->getID();
@@ -2793,7 +2848,7 @@ TEST_F(BridgeTests, RestoreWallet_Legacy)
       auto request = toBridge.initWallet();
       request.setWalletId(walletId);
       auto reqBackup = request.initCreateBackupString();
-      reqBackup.setCallbackId(callbackId);
+      reqBackup.setPrivate(callbackId);
       auto rawReq = serializeCapnp(message);
       pushRequest(bridge_, rawReq);
 
@@ -3316,7 +3371,7 @@ TEST_F(BridgeTests, ChangeWalletPassphrase)
       };
 
       std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-         new Armory::Seeds::ClearTextSeed_Armory135());
+         new Armory::Seeds::ClearTextSeed_Armory());
       auto assetWlt = AssetWallet_Single::createFromSeed(
          std::move(seed), params);
       walletPath = assetWlt->getDbFilename();
@@ -3404,7 +3459,7 @@ TEST_F(BridgeTests, ExtendAddressChain)
       };
 
       std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-         new Armory::Seeds::ClearTextSeed_Armory135());
+         new Armory::Seeds::ClearTextSeed_Armory());
       auto assetWlt = AssetWallet_Single::createFromSeed(
          std::move(seed), params);
       walletPath = assetWlt->getDbFilename();
@@ -3476,7 +3531,7 @@ TEST_F(BridgeTests, ForkWO)
       };
 
       std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-         new Armory::Seeds::ClearTextSeed_Armory135());
+         new Armory::Seeds::ClearTextSeed_Armory());
       auto assetWlt = AssetWallet_Single::createFromSeed(
          std::move(seed), params);
       walletPath = assetWlt->getDbFilename();

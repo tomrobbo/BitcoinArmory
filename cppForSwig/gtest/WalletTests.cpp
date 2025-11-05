@@ -4099,8 +4099,8 @@ TEST_F(WalletsTest, CreateCloseOpen_Test)
          "lbl", "dsc"
       };
    
-      std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-         new Armory::Seeds::ClearTextSeed_Armory135());
+      std::unique_ptr<ClearTextSeed> seed(
+         new ClearTextSeed_Armory());
       auto assetWlt = AssetWallet_Single::createFromSeed(
          std::move(seed), params);
 
@@ -4142,8 +4142,8 @@ TEST_F(WalletsTest, CreateCloseOpen_Test)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(WalletsTest, RejectCreationAtPassphrase)
 {
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_Armory());
    auto filename = homedir_ / std::filesystem::path{
       "armory_" + seed->getMasterId() + "_wallet.lmdb"};
 
@@ -4190,8 +4190,8 @@ TEST_F(WalletsTest, CreateWOCopy_Test)
       nullptr, 4
    };
 
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_Armory());
    auto assetWlt = AssetWallet_Single::createFromSeed(
       move(seed), params);
    auto filename = assetWlt->getDbFilename();
@@ -4307,8 +4307,8 @@ TEST_F(WalletsTest, IDs)
    auto rawPubkey = CryptoECDSA().ComputePublicKey(rawEntropy);
    std::string id;
    {
-      auto chaincode = BtcUtils::computeChainCode_Armory135(rawEntropy);
-      id = generateWalletId(rawPubkey, chaincode, SeedType::Armory135);
+      auto chaincode = BtcUtils::computeChainCode_ArmoryLegacy(rawEntropy);
+      id = generateWalletId(rawPubkey, chaincode, SeedType::ArmoryLegacy);
    }
    ASSERT_FALSE(id.empty());
 
@@ -4321,8 +4321,9 @@ TEST_F(WalletsTest, IDs)
 
    //legacy wallet
    {
-      std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-         new Armory::Seeds::ClearTextSeed_Armory135(rawEntropy));
+      std::unique_ptr<ClearTextSeed> seed(
+         new ClearTextSeed_Armory(
+            rawEntropy, {}, LegacyType::Armory200));
       auto wlt = AssetWallet_Single::createFromSeed(
          move(seed), params);
 
@@ -4331,10 +4332,10 @@ TEST_F(WalletsTest, IDs)
 
    //bip32 wallet
    {
-      std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-         new Armory::Seeds::ClearTextSeed_BIP32(
+      std::unique_ptr<ClearTextSeed> seed(
+         new ClearTextSeed_BIP32(
             rawEntropy,
-            Armory::Seeds::SeedType::BIP32_Structured));
+            SeedType::BIP32_Structured));
       auto wlt = AssetWallet_Single::createFromSeed(
          std::move(seed), params);
 
@@ -4428,13 +4429,13 @@ TEST_F(WalletsTest, IDs)
    //legacy with chaincode
    auto chaincode = CryptoPRNG::generateRandom(32);
    auto idcc = generateWalletId(rawPubkey, chaincode,
-      SeedType::Armory135);
+      SeedType::ArmoryLegacy);
    ASSERT_NE(id, idcc);
 
    {
-      std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-         new Armory::Seeds::ClearTextSeed_Armory135(
-            rawEntropy, chaincode));
+      std::unique_ptr<ClearTextSeed> seed(
+         new ClearTextSeed_Armory(
+            rawEntropy, chaincode, LegacyType::Armory200));
       auto wlt = AssetWallet_Single::createFromSeed(
          std::move(seed), params);
       EXPECT_EQ(wlt->getID(), idcc);
@@ -4449,18 +4450,18 @@ TEST_F(WalletsTest, ID_fromSeeds)
 
    //Armory135
    {
-      auto seed135 = std::make_unique<ClearTextSeed_Armory135>(
-         rawSBD, ClearTextSeed_Armory135::LegacyType::Armory135);
+      auto seed135 = std::make_unique<ClearTextSeed_Armory>(
+         rawSBD, SecureBinaryData{}, LegacyType::Armory135);
       EXPECT_EQ(seed135->getWalletId(), "2vrVAxyHR");
       EXPECT_EQ(seed135->getMasterId(), "LZxsEgeT");
    }
 
    //Armory200a
    {
-      auto seed135 = std::make_unique<ClearTextSeed_Armory135>(
-         rawSBD, ClearTextSeed_Armory135::LegacyType::Armory200);
-      EXPECT_EQ(seed135->getWalletId(), "2vrVAxyHR");
-      EXPECT_EQ(seed135->getMasterId(), "LZxsEgeT");
+      auto seed200 = std::make_unique<ClearTextSeed_Armory>(
+         rawSBD, SecureBinaryData{}, LegacyType::Armory200);
+      EXPECT_EQ(seed200->getWalletId(), "2vrVAxyHR");
+      EXPECT_EQ(seed200->getMasterId(), "LZxsEgeT");
    }
 
    //BIP32 structured
@@ -4513,13 +4514,14 @@ TEST_F(WalletsTest, Encryption_Test)
    };
 
    auto rawEntropy = CryptoPRNG::generateRandom(32);
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_Armory135(rawEntropy));
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_Armory(rawEntropy, {},
+         LegacyType::Armory200));
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
    //derive private chain from root
-   auto chaincode = BtcUtils::computeChainCode_Armory135(rawEntropy);
+   auto chaincode = BtcUtils::computeChainCode_ArmoryLegacy(rawEntropy);
 
    std::vector<SecureBinaryData> privateKeys;
    auto currentPrivKey = &rawEntropy;
@@ -4614,9 +4616,9 @@ TEST_F(WalletsTest, SeedEncryption)
    //create regular wallet
    auto rawEntropy = CryptoPRNG::generateRandom(32);
 
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_BIP32(
-         rawEntropy, Armory::Seeds::SeedType::BIP32_Structured));
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_BIP32(
+         rawEntropy, SeedType::BIP32_Structured));
    auto wlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
    //check clear text seed does not exist on disk
@@ -4728,8 +4730,9 @@ TEST_F(WalletsTest, LockAndExtend_Legacy)
    };
 
    auto rawEntropy = CryptoPRNG::generateRandom(32);
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_Armory135(rawEntropy));
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_Armory(rawEntropy,
+         {}, LegacyType::Armory200));
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
@@ -4741,7 +4744,7 @@ TEST_F(WalletsTest, LockAndExtend_Legacy)
    assetWlt->setPassphrasePromptLambda(passLbd);
 
    //derive private chain from root
-   auto chaincode = BtcUtils::computeChainCode_Armory135(rawEntropy);
+   auto chaincode = BtcUtils::computeChainCode_ArmoryLegacy(rawEntropy);
 
    std::vector<std::pair<SecureBinaryData, SecureBinaryData>> pkeys;
    auto currentPrivKey = &rawEntropy;
@@ -4909,9 +4912,9 @@ TEST_F(WalletsTest, LockAndExtend_BIP32)
    };
 
    auto rawEntropy = CryptoPRNG::generateRandom(32);
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_BIP32(rawEntropy,
-         Armory::Seeds::SeedType::BIP32_Structured));
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_BIP32(rawEntropy,
+         SeedType::BIP32_Structured));
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
@@ -5126,8 +5129,8 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
          nullptr, 4
       };
 
-      std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-         new Armory::Seeds::ClearTextSeed_Armory135());
+      std::unique_ptr<ClearTextSeed> seed(
+         new ClearTextSeed_Armory());
       auto assetWlt = AssetWallet_Single::createFromSeed(
          std::move(seed), params);
       filename = assetWlt->getDbFilename();
@@ -5285,9 +5288,9 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
          nullptr, 4
       };
 
-      std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-         new Armory::Seeds::ClearTextSeed_BIP32(
-            Armory::Seeds::SeedType::BIP32_Structured));
+      std::unique_ptr<ClearTextSeed> seed(
+         new ClearTextSeed_BIP32(
+            SeedType::BIP32_Structured));
       auto assetWlt = AssetWallet_Single::createFromSeed(
          std::move(seed), params);
       filename2 = assetWlt->getDbFilename();
@@ -5442,8 +5445,9 @@ TEST_F(WalletsTest, SignPassphrase)
    };
 
    auto rawEntropy = CryptoPRNG::generateRandom(32);
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_Armory135(rawEntropy));
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_Armory(rawEntropy,
+         {}, LegacyType::Armory200));
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
@@ -5502,7 +5506,7 @@ TEST_F(WalletsTest, SignPassphrase)
       auto& privkey = assetWlt->getDecryptedValue(asset_single->getPrivKey());
 
       //make sure decrypted privkey is valid
-      auto chaincode = BtcUtils::computeChainCode_Armory135(rawEntropy);
+      auto chaincode = BtcUtils::computeChainCode_ArmoryLegacy(rawEntropy);
       auto privkey_ex = CryptoECDSA().ComputeChainedPrivateKey(rawEntropy, chaincode);
       ASSERT_EQ(privkey, privkey_ex);
    } catch (const DecryptedDataContainerException&) {
@@ -5523,9 +5527,9 @@ TEST_F(WalletsTest, WrongPassphrase_BIP32)
    };
 
    auto rawEntropy = CryptoPRNG::generateRandom(32);
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_BIP32(
-         rawEntropy, Armory::Seeds::SeedType::BIP32_Structured));
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_BIP32(
+         rawEntropy, SeedType::BIP32_Structured));
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
@@ -5672,12 +5676,13 @@ TEST_F(WalletsTest, ChangePassphrase)
    };
 
    auto rawEntropy = CryptoPRNG::generateRandom(32);
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_Armory135(rawEntropy));
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_Armory(rawEntropy,
+         {}, LegacyType::Armory200));
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
-   auto chaincode = BtcUtils::computeChainCode_Armory135(rawEntropy);
+   auto chaincode = BtcUtils::computeChainCode_ArmoryLegacy(rawEntropy);
    auto privkey_ex = CryptoECDSA().ComputeChainedPrivateKey(rawEntropy, chaincode);
    auto filename = assetWlt->getDbFilename();
 
@@ -5900,11 +5905,12 @@ TEST_F(WalletsTest, ChangePassphrase_ChangeKDF)
    };
 
    auto rawEntropy = CryptoPRNG::generateRandom(32);
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_Armory135(rawEntropy));
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_Armory(rawEntropy,
+         {}, LegacyType::Armory200));
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
-   auto chaincode = BtcUtils::computeChainCode_Armory135(rawEntropy);
+   auto chaincode = BtcUtils::computeChainCode_ArmoryLegacy(rawEntropy);
    auto privkey_ex = CryptoECDSA().ComputeChainedPrivateKey(rawEntropy, chaincode);
 
    auto asset0 = TestUtils::getMainAccountAssetForIndex(assetWlt, 0);
@@ -6295,14 +6301,15 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet)
    };
 
    auto rawEntropy = CryptoPRNG::generateRandom(32);
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_Armory135(rawEntropy));
-   auto seed135 = dynamic_cast<ClearTextSeed_Armory135*>(seed.get());
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_Armory(rawEntropy,
+         {}, LegacyType::Armory200));
+   auto seed135 = dynamic_cast<ClearTextSeed_Armory*>(seed.get());
    auto clearRoot = seed135->getRoot();
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
-   auto chaincode = BtcUtils::computeChainCode_Armory135(rawEntropy);
+   auto chaincode = BtcUtils::computeChainCode_ArmoryLegacy(rawEntropy);
    auto privkey_ex = CryptoECDSA().ComputeChainedPrivateKey(rawEntropy, chaincode);
    auto filename = assetWlt->getDbFilename();
    auto newPass = SecureBinaryData::fromString("newpass");
@@ -6682,9 +6689,9 @@ TEST_F(WalletsTest, ChangePassphrase_SeedBIP32)
    };
 
    auto rawEntropy = CryptoPRNG::generateRandom(32);
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_BIP32(rawEntropy,
-         Armory::Seeds::SeedType::BIP32_Virgin));
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_BIP32(rawEntropy,
+         SeedType::BIP32_Virgin));
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
    auto newPass = SecureBinaryData::fromString("newpass");
@@ -6877,9 +6884,9 @@ TEST_F(WalletsTest, ChangeControlPassphrase)
    //create wallet
    std::filesystem::path filename;
    {
-      std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-         new Armory::Seeds::ClearTextSeed_BIP32(
-            Armory::Seeds::SeedType::BIP32_Structured));
+      std::unique_ptr<ClearTextSeed> seed(
+         new ClearTextSeed_BIP32(
+            SeedType::BIP32_Structured));
       auto assetWlt = AssetWallet_Single::createFromSeed(
          std::move(seed), params);
       filename = assetWlt->getDbFilename();
@@ -7011,8 +7018,8 @@ TEST_F(WalletsTest, MultiplePassphrase)
       nullptr, 4
    };
 
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_Armory());
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
@@ -7113,9 +7120,9 @@ TEST_F(WalletsTest, BIP32_Chain)
       nullptr, 0
    };
 
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_BIP32(
-         wltSeed, Armory::Seeds::SeedType::BIP32_Virgin));
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_BIP32(
+         wltSeed, SeedType::BIP32_Virgin));
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
@@ -7220,9 +7227,9 @@ TEST_F(WalletsTest, BIP32_ArmoryDefault)
       nullptr, 5
    };
 
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_BIP32(
-         rawEntropy, Armory::Seeds::SeedType::BIP32_Structured));
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_BIP32(
+         rawEntropy, SeedType::BIP32_Structured));
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
@@ -7273,9 +7280,9 @@ TEST_F(WalletsTest, BIP32_Chain_AddAccount)
       nullptr, 0
    };
 
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_BIP32(
-         rawEntropy, Armory::Seeds::SeedType::BIP32_Virgin));
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_BIP32(
+         rawEntropy, SeedType::BIP32_Virgin));
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
@@ -7457,9 +7464,9 @@ TEST_F(WalletsTest, BIP32_Fork_WatchingOnly)
    };
 
    //create regular wallet
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_BIP32(
-         Armory::Seeds::SeedType::BIP32_Structured));
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_BIP32(
+         SeedType::BIP32_Structured));
    auto wlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
@@ -7557,9 +7564,9 @@ TEST_F(WalletsTest, BIP32_WatchingOnly_FromXPub)
 
    //create regular wallet
    auto rawEntropy = CryptoPRNG::generateRandom(32);
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_BIP32(
-         rawEntropy, Armory::Seeds::SeedType::BIP32_Structured));
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_BIP32(
+         rawEntropy, SeedType::BIP32_Structured));
    auto wlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
@@ -7640,9 +7647,9 @@ TEST_F(WalletsTest, AddressEntryTypes)
    };
 
    //create regular wallet
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_BIP32(
-         Armory::Seeds::SeedType::BIP32_Structured));
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_BIP32(
+         SeedType::BIP32_Structured));
    auto wlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
@@ -7727,9 +7734,9 @@ TEST_F(WalletsTest, LegacyUncompressedAddressTypes)
 
    //create regular wallet
    auto rawEntropy = CryptoPRNG::generateRandom(32);
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_BIP32(
-         rawEntropy, Armory::Seeds::SeedType::BIP32_Virgin));
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_BIP32(
+         rawEntropy, SeedType::BIP32_Virgin));
    auto wlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
@@ -7852,9 +7859,9 @@ TEST_F(WalletsTest, BIP32_SaltedAccount)
 
    {
       //create empty wallet
-      std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-         new Armory::Seeds::ClearTextSeed_BIP32(
-            rawEntropy, Armory::Seeds::SeedType::BIP32_Virgin));
+      std::unique_ptr<ClearTextSeed> seed(
+         new ClearTextSeed_BIP32(
+            rawEntropy, SeedType::BIP32_Virgin));
       auto passphrase = SecureBinaryData::fromString("password");
       IO::CreateWalletParams params{
          homedir_,
@@ -8083,9 +8090,9 @@ TEST_F(WalletsTest, ECDH_Account)
          nullptr, 0
       };
 
-      std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-         new Armory::Seeds::ClearTextSeed_BIP32(
-            Armory::Seeds::SeedType::BIP32_Virgin));
+      std::unique_ptr<ClearTextSeed> seed(
+         new ClearTextSeed_BIP32(
+            SeedType::BIP32_Virgin));
       auto assetWlt = AssetWallet_Single::createFromSeed(
          std::move(seed), params);
 
@@ -8389,9 +8396,9 @@ TEST_F(WalletsTest, AssetPathResolution)
          nullptr, 0
       };
 
-      std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-         new Armory::Seeds::ClearTextSeed_BIP32(
-            rawEntropy, Armory::Seeds::SeedType::BIP32_Virgin));
+      std::unique_ptr<ClearTextSeed> seed(
+         new ClearTextSeed_BIP32(
+            rawEntropy, SeedType::BIP32_Virgin));
       auto wlt = AssetWallet_Single::createFromSeed(
          std::move(seed), params);
 
@@ -8472,9 +8479,9 @@ TEST_F(WalletsTest, isAssetIdInUse)
    };
 
    //create regular wallet
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_BIP32(
-         Armory::Seeds::SeedType::BIP32_Structured));
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_BIP32(
+         SeedType::BIP32_Structured));
    auto wlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
@@ -9536,9 +9543,8 @@ TEST_F(WalletMetaDataTest, Comments)
          nullptr, 10
       };
 
-      std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-         new Armory::Seeds::ClearTextSeed_BIP32(
-            Armory::Seeds::SeedType::BIP32_Structured));
+      std::unique_ptr<ClearTextSeed> seed(
+         new ClearTextSeed_BIP32(SeedType::BIP32_Structured));
       auto wlt = AssetWallet_Single::createFromSeed(
          std::move(seed), params);
       filename = wlt->getDbFilename();
@@ -9714,14 +9720,14 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BackupTests, Easy16)
 {
-   for (const auto& index : Armory::Seeds::Easy16Codec::eligibleIndexes_) {
+   for (const auto& index : Easy16Codec::eligibleIndexes) {
       auto root = CryptoPRNG::generateRandom(32);
 
       //encode the root
-      auto encoded = Armory::Seeds::Easy16Codec::encode(root.getRef(), index);
+      auto encoded = Easy16Codec::encode(root.getRef(), index);
       ASSERT_EQ(encoded.size(), 2ULL);
 
-      auto decoded = Armory::Seeds::Easy16Codec::decode(encoded);
+      auto decoded = Easy16Codec::decode(encoded);
       ASSERT_EQ(decoded.checksumIndexes_.size(), 2ULL);
       EXPECT_EQ(decoded.checksumIndexes_[0], (uint8_t)index);
       EXPECT_EQ(decoded.checksumIndexes_[1], (uint8_t)index);
@@ -9745,7 +9751,7 @@ TEST_F(BackupTests, Easy16_Repair)
       auto& val = line[charPos];
       char newChar;
       while (true) {
-         newChar = Armory::Seeds::Easy16Codec::e16chars_[newVal % 16];
+         newChar = Easy16Codec::characters[newVal % 16];
          if (newChar != val) {
             break;
          }
@@ -9762,8 +9768,8 @@ TEST_F(BackupTests, Easy16_Repair)
       auto root = prng.generateRandom(32);
 
       //encode the root
-      auto encoded = Armory::Seeds::Easy16Codec::encode(root.getRef(),
-         Armory::Seeds::BackupType::Armory135c);
+      auto encoded = Easy16Codec::encode(root.getRef(),
+         BackupType::Armory135c);
       ASSERT_EQ(encoded.size(), 2ULL);
 
       //corrupt one character in one line
@@ -9778,7 +9784,7 @@ TEST_F(BackupTests, Easy16_Repair)
       ASSERT_NE(encoded[lineSelect], corrupted[lineSelect]);
 
       //decode the corrupted data, should yield an incorrect value
-      auto decoded = Armory::Seeds::Easy16Codec::decode(corrupted);
+      auto decoded = Easy16Codec::decode(corrupted);
       ASSERT_EQ(decoded.checksumIndexes_.size(), 2ULL);
       if (lineSelect == 0) {
          EXPECT_NE(decoded.checksumIndexes_[0], 0);
@@ -9791,7 +9797,7 @@ TEST_F(BackupTests, Easy16_Repair)
 
       //attempt to repair, may fail because of collisions (no unique solution)
       try {
-         auto result = Armory::Seeds::Easy16Codec::repair(decoded);
+         auto result = Easy16Codec::repair(decoded);
          if (result) {
             ASSERT_EQ(decoded.repairedIndexes_.size(), 2ULL);
             EXPECT_EQ(decoded.repairedIndexes_[0], 0);
@@ -9799,7 +9805,7 @@ TEST_F(BackupTests, Easy16_Repair)
             EXPECT_EQ(root, decoded.data_);
             ++succesfulRepairs;
          }
-      } catch (const Armory::Seeds::Easy16RepairError&) {}
+      } catch (const Easy16RepairError&) {}
    }
    EXPECT_GE(succesfulRepairs, 20U);
 
@@ -9808,8 +9814,8 @@ TEST_F(BackupTests, Easy16_Repair)
       auto root = prng.generateRandom(32);
 
       //encode the root
-      auto encoded = Armory::Seeds::Easy16Codec::encode(root.getRef(),
-         Armory::Seeds::BackupType::Armory135c);
+      auto encoded = Easy16Codec::encode(root.getRef(),
+         BackupType::Armory135c);
       ASSERT_EQ(encoded.size(), 2ULL);
 
       //corrupt 2 characters in one line
@@ -9832,7 +9838,7 @@ TEST_F(BackupTests, Easy16_Repair)
       ASSERT_NE(encoded[lineSelect], corrupted[lineSelect]);
 
       //decode, should yield an incorrect value
-      auto decoded = Armory::Seeds::Easy16Codec::decode(corrupted);
+      auto decoded = Easy16Codec::decode(corrupted);
       ASSERT_EQ(decoded.checksumIndexes_.size(), 2ULL);
       if (lineSelect == 0) {
          EXPECT_EQ(decoded.checksumIndexes_[0], EASY16_INVALID_CHECKSUM_INDEX);
@@ -9844,7 +9850,7 @@ TEST_F(BackupTests, Easy16_Repair)
       EXPECT_NE(root, decoded.data_);
 
       //attempt to repair, should fail
-      auto result = Armory::Seeds::Easy16Codec::repair(decoded);
+      auto result = Easy16Codec::repair(decoded);
       if (result) {
          EXPECT_NE(decoded.data_, root);
       }
@@ -9856,8 +9862,8 @@ TEST_F(BackupTests, Easy16_Repair)
       auto root = prng.generateRandom(32);
 
       //encode the root
-      auto encoded = Armory::Seeds::Easy16Codec::encode(root.getRef(),
-         Armory::Seeds::BackupType::Armory135c);
+      auto encoded = Easy16Codec::encode(root.getRef(),
+         BackupType::Armory135c);
       ASSERT_EQ(encoded.size(), 2ULL);
 
       //corrupt 1 character per line
@@ -9875,14 +9881,14 @@ TEST_F(BackupTests, Easy16_Repair)
       corruptLine(corrupted, 1, wordSelect2, charSelect2, newVal2);
 
       //decode, should yield an incorrect value
-      auto decoded = Armory::Seeds::Easy16Codec::decode(corrupted);
+      auto decoded = Easy16Codec::decode(corrupted);
       ASSERT_EQ(decoded.checksumIndexes_.size(), 2ULL);
       EXPECT_NE(decoded.checksumIndexes_[0], 0);
       EXPECT_NE(decoded.checksumIndexes_[1], 0);
 
       //attempt to repair, may fail because of collisions (no evident solution)
       try {
-         auto result = Armory::Seeds::Easy16Codec::repair(decoded);
+         auto result = Easy16Codec::repair(decoded);
          if (result) {
             ASSERT_EQ(decoded.repairedIndexes_.size(), 2ULL);
             if (decoded.repairedIndexes_[0] != decoded.repairedIndexes_[1] ||
@@ -9893,7 +9899,7 @@ TEST_F(BackupTests, Easy16_Repair)
             ++succesfulRepairs;
          }
       }
-      catch (const Armory::Seeds::Easy16RepairError&) {}
+      catch (const Easy16RepairError&) {}
    }
    EXPECT_GE(succesfulRepairs, 5U);
 }
@@ -9904,14 +9910,14 @@ TEST_F(BackupTests, SecurePrint)
    auto root = CryptoPRNG::generateRandom(32);
    
    //encrypt the root
-   Armory::Seeds::SecurePrint spEncr;
+   SecurePrint spEncr;
    auto encryptedData = spEncr.encrypt(root, {});
    ASSERT_FALSE(spEncr.getPassphrase().empty());
    ASSERT_EQ(encryptedData.first.getSize(), 32ULL);
    ASSERT_EQ(encryptedData.second.getSize(), 0ULL);
    EXPECT_NE(encryptedData.first, root);
 
-   Armory::Seeds::SecurePrint spDecr;
+   SecurePrint spDecr;
    auto decryptedData = spDecr.decrypt(encryptedData.first, spEncr.getPassphrase());
 
    ASSERT_EQ(decryptedData.getSize(), 32ULL);
@@ -9920,7 +9926,7 @@ TEST_F(BackupTests, SecurePrint)
    //with chaincode
    auto chaincode = CryptoPRNG::generateRandom(32);
 
-   Armory::Seeds::SecurePrint spWithCC;
+   SecurePrint spWithCC;
    auto dataWithCC = spWithCC.encrypt(root, chaincode);
 
    ASSERT_FALSE(spWithCC.getPassphrase().empty());
@@ -9931,7 +9937,7 @@ TEST_F(BackupTests, SecurePrint)
    EXPECT_NE(spEncr.getPassphrase(), spWithCC.getPassphrase());
    EXPECT_NE(encryptedData.first, dataWithCC.first);
 
-   Armory::Seeds::SecurePrint spDecrWithCC;
+   SecurePrint spDecrWithCC;
    auto decrRoot = spDecrWithCC.decrypt(dataWithCC.first, spWithCC.getPassphrase());
 
    ASSERT_EQ(decrRoot.getSize(), 32ULL);
@@ -9947,7 +9953,7 @@ TEST_F(BackupTests, SecurePrint)
       ASSERT_GE(mangledPass.getSize(), 4ULL);
       mangledPass.getPtr()[3] ^= 0xFF;
 
-      Armory::Seeds::SecurePrint spDecrWithCC;
+      SecurePrint spDecrWithCC;
       auto decrypted = spDecrWithCC.decrypt(dataWithCC.first, mangledPass);
       ASSERT_FALSE(true);
    } catch (const std::runtime_error& e) {
@@ -9961,7 +9967,7 @@ TEST_F(BackupTests, SecurePrint)
       passphrase.append(passhash.getPtr()[0] ^ 0xFF);
 
       auto passB58 = BinaryData::fromString(BtcUtils::base58_encode(passphrase));
-      Armory::Seeds::SecurePrint spDecrWithCC;
+      SecurePrint spDecrWithCC;
       auto decrypted = spDecrWithCC.decrypt(dataWithCC.first, passB58);
       ASSERT_FALSE(true);
    } catch (const std::runtime_error& e) {
@@ -9970,7 +9976,7 @@ TEST_F(BackupTests, SecurePrint)
 
    //mismatched pass
    {
-      Armory::Seeds::SecurePrint spDecrWithCC;
+      SecurePrint spDecrWithCC;
       auto decrypted = spDecrWithCC.decrypt(
          dataWithCC.first, spEncr.getPassphrase());
       EXPECT_NE(decrypted, dataWithCC.first);
@@ -9988,9 +9994,8 @@ TEST_F(BackupTests, BackupStrings_Legacy)
       nullptr, 4
    };
 
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_Armory135(
-         Armory::Seeds::ClearTextSeed_Armory135::LegacyType::Armory135));
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_Armory(LegacyType::Armory135));
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
@@ -10000,7 +10005,7 @@ TEST_F(BackupTests, BackupStrings_Legacy)
       return { SecureBinaryData::fromString("passphrase"), true };
    };
    assetWlt->setPassphrasePromptLambda(passLbd);
-   auto backupData = Helpers::getWalletBackup(assetWlt);
+   auto backupData = Helpers::getWalletBackup(assetWlt, true);
    auto backupEasy16 = dynamic_cast<Backup_Easy16*>(backupData.get());
 
    auto newPass = CryptoPRNG::generateRandom(10).toHexStr();
@@ -10036,10 +10041,10 @@ TEST_F(BackupTests, BackupStrings_Legacy)
    {
       //restore wallet
       auto backupCopy = Backup_Easy16::fromLines({
-         backupEasy16->getRoot(Backup_Easy16::LineIndex::One, false),
-         backupEasy16->getRoot(Backup_Easy16::LineIndex::Two, false),
+         backupEasy16->getRoot(LineIndex::One, false),
+         backupEasy16->getRoot(LineIndex::Two, false),
       });
-      auto restoreResult = Armory::Seeds::Helpers::restoreFromBackup(
+      auto restoreResult = Helpers::restoreFromBackup(
          std::move(backupCopy), callback, IO::CreateWalletParams{
             newHomeDir,
             Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass)},
@@ -10055,13 +10060,14 @@ TEST_F(BackupTests, BackupStrings_Legacy)
       restoreResult.wltPtr->setPassphrasePromptLambda(passLbd2);
 
       auto newWalletSingle = std::dynamic_pointer_cast<AssetWallet_Single>(restoreResult.wltPtr);
-      auto backupData2 = Armory::Seeds::Helpers::getWalletBackup(newWalletSingle);
+      auto backupData2 = Helpers::getWalletBackup(
+         newWalletSingle, true);
       auto backupEasy16_2 = dynamic_cast<Backup_Easy16*>(backupData2.get());
 
-      EXPECT_EQ(backupEasy16->getRoot(Backup_Easy16::LineIndex::One, false),
-         backupEasy16_2->getRoot(Backup_Easy16::LineIndex::One, false));
-      EXPECT_EQ(backupEasy16->getRoot(Backup_Easy16::LineIndex::Two, false),
-         backupEasy16_2->getRoot(Backup_Easy16::LineIndex::Two, false));
+      EXPECT_EQ(backupEasy16->getRoot(LineIndex::One, false),
+         backupEasy16_2->getRoot(LineIndex::One, false));
+      EXPECT_EQ(backupEasy16->getRoot(LineIndex::Two, false),
+         backupEasy16_2->getRoot(LineIndex::Two, false));
 
       EXPECT_EQ(backupEasy16->getWalletId(), backupEasy16_2->getWalletId());
       filename = restoreResult.wltPtr->getDbFilename();
@@ -10082,8 +10088,8 @@ TEST_F(BackupTests, BackupStrings_Legacy_Armory200a)
       nullptr, 4
    };
 
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_Armory());
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
@@ -10093,7 +10099,8 @@ TEST_F(BackupTests, BackupStrings_Legacy_Armory200a)
       return { SecureBinaryData::fromString("passphrase"), true };
    };
    assetWlt->setPassphrasePromptLambda(passLbd);
-   auto backupData = Armory::Seeds::Helpers::getWalletBackup(assetWlt);
+   auto backupData = Helpers::getWalletBackup(
+      assetWlt, true);
    auto backupEasy16 = dynamic_cast<Backup_Easy16*>(backupData.get());
 
    auto newPass = CryptoPRNG::generateRandom(10).toHexStr();
@@ -10129,10 +10136,10 @@ TEST_F(BackupTests, BackupStrings_Legacy_Armory200a)
    {
       //restore wallet
       auto backupCopy = Backup_Easy16::fromLines({
-         backupEasy16->getRoot(Backup_Easy16::LineIndex::One, false),
-         backupEasy16->getRoot(Backup_Easy16::LineIndex::Two, false),
+         backupEasy16->getRoot(LineIndex::One, false),
+         backupEasy16->getRoot(LineIndex::Two, false),
       });
-      auto restoreResult = Armory::Seeds::Helpers::restoreFromBackup(
+      auto restoreResult = Helpers::restoreFromBackup(
          move(backupCopy), callback, IO::CreateWalletParams{
             newHomeDir,
             Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass)},
@@ -10148,13 +10155,14 @@ TEST_F(BackupTests, BackupStrings_Legacy_Armory200a)
       restoreResult.wltPtr->setPassphrasePromptLambda(passLbd2);
 
       auto newWalletSingle = std::dynamic_pointer_cast<AssetWallet_Single>(restoreResult.wltPtr);
-      auto backupData2 = Armory::Seeds::Helpers::getWalletBackup(newWalletSingle);
+      auto backupData2 = Helpers::getWalletBackup(
+         newWalletSingle, true);
       auto backupEasy16_2 = dynamic_cast<Backup_Easy16*>(backupData2.get());
 
-      EXPECT_EQ(backupEasy16->getRoot(Backup_Easy16::LineIndex::One, false),
-         backupEasy16_2->getRoot(Backup_Easy16::LineIndex::One, false));
-      EXPECT_EQ(backupEasy16->getRoot(Backup_Easy16::LineIndex::Two, false),
-         backupEasy16_2->getRoot(Backup_Easy16::LineIndex::Two, false));
+      EXPECT_EQ(backupEasy16->getRoot(LineIndex::One, false),
+         backupEasy16_2->getRoot(LineIndex::One, false));
+      EXPECT_EQ(backupEasy16->getRoot(LineIndex::Two, false),
+         backupEasy16_2->getRoot(LineIndex::Two, false));
 
       EXPECT_EQ(backupEasy16->getWalletId(), backupEasy16_2->getWalletId());
       filename = restoreResult.wltPtr->getDbFilename();
@@ -10175,9 +10183,8 @@ TEST_F(BackupTests, BackupStrings_Legacy_SecurePrint)
       nullptr, 4
    };
 
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_Armory135(
-         Armory::Seeds::ClearTextSeed_Armory135::LegacyType::Armory135));
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_Armory(LegacyType::Armory135));
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
@@ -10188,7 +10195,8 @@ TEST_F(BackupTests, BackupStrings_Legacy_SecurePrint)
    };
    assetWlt->setPassphrasePromptLambda(passLbd);
 
-   auto backupData = Armory::Seeds::Helpers::getWalletBackup(assetWlt);
+   auto backupData = Helpers::getWalletBackup(
+      assetWlt, true);
    auto backupEasy16 = dynamic_cast<Backup_Easy16*>(backupData.get());
 
    auto newPass = CryptoPRNG::generateRandom(10).toHexStr();
@@ -10224,26 +10232,26 @@ TEST_F(BackupTests, BackupStrings_Legacy_SecurePrint)
       //try without sp pass
       try {
          auto backupCopy = Backup_Easy16::fromLines({
-            backupEasy16->getRoot(Backup_Easy16::LineIndex::One, true),
-            backupEasy16->getRoot(Backup_Easy16::LineIndex::Two, true),
+            backupEasy16->getRoot(LineIndex::One, true),
+            backupEasy16->getRoot(LineIndex::Two, true),
          });
-         Armory::Seeds::Helpers::restoreFromBackup(
+         Helpers::restoreFromBackup(
             move(backupCopy), callback, IO::CreateWalletParams{
                newHomeDir,
                Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass)},
                Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newCtrl)},
                nullptr, 10});
          ASSERT_TRUE(false);
-      } catch (const Armory::Seeds::RestoreUserException& e) {
+      } catch (const RestoreUserException& e) {
          EXPECT_EQ(e.what(), std::string{"user rejected id"});
       }
 
       //try with secure print now
       auto backupCopy = Backup_Easy16::fromLines({
-         backupEasy16->getRoot(Backup_Easy16::LineIndex::One, true),
-         backupEasy16->getRoot(Backup_Easy16::LineIndex::Two, true)},
+         backupEasy16->getRoot(LineIndex::One, true),
+         backupEasy16->getRoot(LineIndex::Two, true)},
          backupEasy16->getSpPass());
-      auto restoreResult = Armory::Seeds::Helpers::restoreFromBackup(
+      auto restoreResult = Helpers::restoreFromBackup(
          std::move(backupCopy), callback, IO::CreateWalletParams{
             newHomeDir,
                Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass)},
@@ -10259,13 +10267,14 @@ TEST_F(BackupTests, BackupStrings_Legacy_SecurePrint)
       restoreResult.wltPtr->setPassphrasePromptLambda(passLbd2);
 
       auto newWalletSingle = std::dynamic_pointer_cast<AssetWallet_Single>(restoreResult.wltPtr);
-      auto backupData2 = Armory::Seeds::Helpers::getWalletBackup(newWalletSingle);
+      auto backupData2 = Helpers::getWalletBackup(
+         newWalletSingle, true);
       auto backupEasy16_2 = dynamic_cast<Backup_Easy16*>(backupData2.get());
 
-      EXPECT_EQ(backupEasy16->getRoot(Backup_Easy16::LineIndex::One, true),
-         backupEasy16_2->getRoot(Backup_Easy16::LineIndex::One, true));
-      EXPECT_EQ(backupEasy16->getRoot(Backup_Easy16::LineIndex::Two, true),
-         backupEasy16_2->getRoot(Backup_Easy16::LineIndex::Two, true));
+      EXPECT_EQ(backupEasy16->getRoot(LineIndex::One, true),
+         backupEasy16_2->getRoot(LineIndex::One, true));
+      EXPECT_EQ(backupEasy16->getRoot(LineIndex::Two, true),
+         backupEasy16_2->getRoot(LineIndex::Two, true));
       EXPECT_EQ(backupEasy16->getWalletId(), backupEasy16_2->getWalletId());
 
       filename = restoreResult.wltPtr->getDbFilename();
@@ -10291,7 +10300,7 @@ TEST_F(BackupTests, Easy16_AutoRepair)
       auto& val = line[charPos];
       char newChar;
       while (true) {
-         newChar = Armory::Seeds::Easy16Codec::e16chars_[newVal % 16];
+         newChar = Easy16Codec::characters[newVal % 16];
          if (newChar != val) {
             break;
          }
@@ -10302,7 +10311,7 @@ TEST_F(BackupTests, Easy16_AutoRepair)
 
    auto computeWalletID = [](const SecureBinaryData& root)->std::string
    {
-      auto chaincode = BtcUtils::computeChainCode_Armory135(root);
+      auto chaincode = BtcUtils::computeChainCode_ArmoryLegacy(root);
       auto derScheme = std::make_shared<DerivationScheme_ArmoryLegacy>(chaincode);
 
       auto pubkey = CryptoECDSA().ComputePublicKey(root);
@@ -10317,7 +10326,23 @@ TEST_F(BackupTests, Easy16_AutoRepair)
       if (firstEntry == nullptr) {
          throw std::runtime_error("unexpected asset entry type");
       }
-      return BtcUtils::computeID(firstEntry->getPubKey()->getUncompressedKey());
+
+      auto h160 = BtcUtils::getHash160(
+         firstEntry->getPubKey()->getUncompressedKey());
+
+      BinaryWriter bw;
+      bw.put_uint8_t(BitcoinSettings::getPubkeyHashPrefix());
+      bw.put_BinaryDataRef(h160.getSliceRef(0, 5));
+
+      //now reverse it
+      auto& data = bw.getData();
+      auto ptr = data.getPtr();
+      BinaryWriter bwReverse;
+      for (unsigned i = 0; i < data.getSize(); i++) {
+         bwReverse.put_uint8_t(ptr[data.getSize() - 1 - i]);
+      }
+      auto idBd = bwReverse.getData();
+      return BtcUtils::base58_encode(idBd);
    };
 
    PRNG_Fortuna prng;
@@ -10388,7 +10413,7 @@ TEST_F(BackupTests, Easy16_AutoRepair)
             std::string_view(corrupted[0].toCharPtr(), corrupted[0].getSize()),
             std::string_view(corrupted[1].toCharPtr(), corrupted[1].getSize())
          });
-         Armory::Seeds::Helpers::restoreFromBackup(
+         Helpers::restoreFromBackup(
             std::move(backup), userPrompt, IO::CreateWalletParams{
                homedir_,
                Armory::Passphrase::SetNew{1ms, 0, {}},
@@ -10414,9 +10439,10 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode)
       nullptr, 4
    };
 
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_Armory135(
-         CryptoPRNG::generateRandom(32), CryptoPRNG::generateRandom(32)
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_Armory(
+         CryptoPRNG::generateRandom(32), CryptoPRNG::generateRandom(32),
+         LegacyType::Armory135
    ));
    auto assetWlt = AssetWallet_Single::createFromSeed(std::move(seed), params);
 
@@ -10427,7 +10453,8 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode)
    };
    assetWlt->setPassphrasePromptLambda(passLbd);
 
-   auto backupData = Armory::Seeds::Helpers::getWalletBackup(assetWlt);
+   auto backupData = Helpers::getWalletBackup(
+      assetWlt, true);
    auto backupEasy16 = dynamic_cast<Backup_Easy16*>(backupData.get());
 
    auto corruptLine = [](std::string& line,
@@ -10442,7 +10469,7 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode)
       auto& val = line[charPos];
       char newChar;
       while (true) {
-         newChar = Armory::Seeds::Easy16Codec::e16chars_[newVal % 16];
+         newChar = Easy16Codec::characters[newVal % 16];
          if (newChar != val) {
             break;
          }
@@ -10507,10 +10534,10 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode)
    std::filesystem::path filename;
    {
       std::vector<std::string> backupLines {
-         std::string{backupEasy16->getRoot(Backup_Easy16::LineIndex::One, false)},
-         std::string{backupEasy16->getRoot(Backup_Easy16::LineIndex::Two, false)},
-         std::string{backupEasy16->getChaincode(Backup_Easy16::LineIndex::One, false)},
-         std::string{backupEasy16->getChaincode(Backup_Easy16::LineIndex::Two, false)},
+         std::string{backupEasy16->getRoot(LineIndex::One, false)},
+         std::string{backupEasy16->getRoot(LineIndex::Two, false)},
+         std::string{backupEasy16->getChaincode(LineIndex::One, false)},
+         std::string{backupEasy16->getChaincode(LineIndex::Two, false)},
       };
 
       //attempts with corrupted lines
@@ -10534,14 +10561,14 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode)
             auto corruptedBackup = Backup_Easy16::fromLines({
                backupCopy[0], backupCopy[1], backupCopy[2], backupCopy[3]
             });
-            Armory::Seeds::Helpers::restoreFromBackup(
+            Helpers::restoreFromBackup(
                std::move(corruptedBackup), callback, IO::CreateWalletParams{
                   newHomeDir,
                   Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass)},
                   Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newCtrl)},
                   nullptr, 10});
             ASSERT_TRUE(false);
-         } catch (const Armory::Seeds::RestoreUserException& e) {
+         } catch (const RestoreUserException& e) {
             EXPECT_EQ(e.what(), std::string{"failed to create seed from backup"});
          }
       }
@@ -10549,7 +10576,7 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode)
       //try with valid backup now
       auto validBackup = Backup_Easy16::fromLines({
          backupLines[0], backupLines[1], backupLines[2], backupLines[3]});
-      auto restoreResult = Armory::Seeds::Helpers::restoreFromBackup(
+      auto restoreResult = Helpers::restoreFromBackup(
          std::move(validBackup), callback, IO::CreateWalletParams{
             newHomeDir,
             Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass)},
@@ -10565,18 +10592,19 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode)
       restoreResult.wltPtr->setPassphrasePromptLambda(passLbd2);
 
       auto newWalletSingle = std::dynamic_pointer_cast<AssetWallet_Single>(restoreResult.wltPtr);
-      auto backupData2 = Armory::Seeds::Helpers::getWalletBackup(newWalletSingle);
+      auto backupData2 = Helpers::getWalletBackup(
+         newWalletSingle, true);
       auto backupEasy16_2 = dynamic_cast<Backup_Easy16*>(backupData2.get());
 
-      EXPECT_EQ(backupEasy16->getRoot(Backup_Easy16::LineIndex::One, false),
-         backupEasy16_2->getRoot(Backup_Easy16::LineIndex::One, false));
-      EXPECT_EQ(backupEasy16->getRoot(Backup_Easy16::LineIndex::Two, false),
-         backupEasy16_2->getRoot(Backup_Easy16::LineIndex::Two, false));
+      EXPECT_EQ(backupEasy16->getRoot(LineIndex::One, false),
+         backupEasy16_2->getRoot(LineIndex::One, false));
+      EXPECT_EQ(backupEasy16->getRoot(LineIndex::Two, false),
+         backupEasy16_2->getRoot(LineIndex::Two, false));
 
-      EXPECT_EQ(backupEasy16->getChaincode(Backup_Easy16::LineIndex::One, false),
-         backupEasy16_2->getChaincode(Backup_Easy16::LineIndex::One, false));
-      EXPECT_EQ(backupEasy16->getChaincode(Backup_Easy16::LineIndex::Two, false),
-         backupEasy16_2->getChaincode(Backup_Easy16::LineIndex::Two, false));
+      EXPECT_EQ(backupEasy16->getChaincode(LineIndex::One, false),
+         backupEasy16_2->getChaincode(LineIndex::One, false));
+      EXPECT_EQ(backupEasy16->getChaincode(LineIndex::Two, false),
+         backupEasy16_2->getChaincode(LineIndex::Two, false));
 
       EXPECT_EQ(backupEasy16->getWalletId(), backupEasy16_2->getWalletId());
       filename = restoreResult.wltPtr->getDbFilename();
@@ -10597,9 +10625,10 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode_SecurePrint)
       nullptr, 4
    };
 
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_Armory135(
-      CryptoPRNG::generateRandom(32), CryptoPRNG::generateRandom(32)));
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_Armory(
+      CryptoPRNG::generateRandom(32), CryptoPRNG::generateRandom(32),
+      LegacyType::Armory135));
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
@@ -10610,7 +10639,8 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode_SecurePrint)
    };
    assetWlt->setPassphrasePromptLambda(passLbd);
 
-   auto backupData = Armory::Seeds::Helpers::getWalletBackup(assetWlt);
+   auto backupData = Helpers::getWalletBackup(
+      assetWlt, true);
    auto backupEasy16 = dynamic_cast<Backup_Easy16*>(backupData.get());
 
    auto newPass = CryptoPRNG::generateRandom(10).toHexStr();
@@ -10646,31 +10676,31 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode_SecurePrint)
       //try without sp pass
       try {
          auto backupCopy = Backup_Easy16::fromLines({
-            backupEasy16->getRoot(Backup_Easy16::LineIndex::One, true),
-            backupEasy16->getRoot(Backup_Easy16::LineIndex::Two, true),
-            backupEasy16->getChaincode(Backup_Easy16::LineIndex::One, true),
-            backupEasy16->getChaincode(Backup_Easy16::LineIndex::Two, true),
+            backupEasy16->getRoot(LineIndex::One, true),
+            backupEasy16->getRoot(LineIndex::Two, true),
+            backupEasy16->getChaincode(LineIndex::One, true),
+            backupEasy16->getChaincode(LineIndex::Two, true),
          });
-         Armory::Seeds::Helpers::restoreFromBackup(
+         Helpers::restoreFromBackup(
             std::move(backupCopy), callback, IO::CreateWalletParams{
                newHomeDir,
                Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass)},
                Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newCtrl)},
                nullptr, 10});
          ASSERT_TRUE(false);
-      } catch (const Armory::Seeds::RestoreUserException& e) {
+      } catch (const RestoreUserException& e) {
          EXPECT_EQ(e.what(), std::string{"user rejected id"});
       }
 
       //try with secure print now
       auto backupCopy = Backup_Easy16::fromLines({
-         backupEasy16->getRoot(Backup_Easy16::LineIndex::One, true),
-         backupEasy16->getRoot(Backup_Easy16::LineIndex::Two, true),
-         backupEasy16->getChaincode(Backup_Easy16::LineIndex::One, true),
-         backupEasy16->getChaincode(Backup_Easy16::LineIndex::Two, true)},
+         backupEasy16->getRoot(LineIndex::One, true),
+         backupEasy16->getRoot(LineIndex::Two, true),
+         backupEasy16->getChaincode(LineIndex::One, true),
+         backupEasy16->getChaincode(LineIndex::Two, true)},
          backupEasy16->getSpPass()
       );
-      auto restoreResult = Armory::Seeds::Helpers::restoreFromBackup(
+      auto restoreResult = Helpers::restoreFromBackup(
          std::move(backupCopy), callback, IO::CreateWalletParams{
             newHomeDir,
             Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass)},
@@ -10686,18 +10716,19 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode_SecurePrint)
       restoreResult.wltPtr->setPassphrasePromptLambda(passLbd2);
 
       auto newWalletSingle = std::dynamic_pointer_cast<AssetWallet_Single>(restoreResult.wltPtr);
-      auto backupData2 = Armory::Seeds::Helpers::getWalletBackup(newWalletSingle);
+      auto backupData2 = Helpers::getWalletBackup(
+         newWalletSingle, true);
       auto backupEasy16_2 = dynamic_cast<Backup_Easy16*>(backupData2.get());
 
-      EXPECT_EQ(backupEasy16->getRoot(Backup_Easy16::LineIndex::One, true),
-         backupEasy16_2->getRoot(Backup_Easy16::LineIndex::One, true));
-      EXPECT_EQ(backupEasy16->getRoot(Backup_Easy16::LineIndex::Two, true),
-         backupEasy16_2->getRoot(Backup_Easy16::LineIndex::Two, true));
+      EXPECT_EQ(backupEasy16->getRoot(LineIndex::One, true),
+         backupEasy16_2->getRoot(LineIndex::One, true));
+      EXPECT_EQ(backupEasy16->getRoot(LineIndex::Two, true),
+         backupEasy16_2->getRoot(LineIndex::Two, true));
 
-      EXPECT_EQ(backupEasy16->getChaincode(Backup_Easy16::LineIndex::One, true),
-         backupEasy16_2->getChaincode(Backup_Easy16::LineIndex::One, true));
-      EXPECT_EQ(backupEasy16->getChaincode(Backup_Easy16::LineIndex::Two, true),
-         backupEasy16_2->getChaincode(Backup_Easy16::LineIndex::Two, true));
+      EXPECT_EQ(backupEasy16->getChaincode(LineIndex::One, true),
+         backupEasy16_2->getChaincode(LineIndex::One, true));
+      EXPECT_EQ(backupEasy16->getChaincode(LineIndex::Two, true),
+         backupEasy16_2->getChaincode(LineIndex::Two, true));
 
       EXPECT_EQ(backupEasy16->getWalletId(), backupEasy16_2->getWalletId());
       filename = restoreResult.wltPtr->getDbFilename();
@@ -10705,6 +10736,33 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode_SecurePrint)
 
    EXPECT_TRUE(compareWalletWithBackup(assetWlt, filename, newPass, newCtrl));
    FileUtils::removeDirectory(newHomeDir);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(BackupTests, BackupString_LegacyWO)
+{
+   //create a legacy wallet
+   IO::CreateWalletParams params{
+      homedir_,
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("passphrase")},
+      Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("control")},
+      nullptr, 4
+   };
+
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_Armory());
+   auto assetWlt = AssetWallet_Single::createFromSeed(
+      std::move(seed), params);
+
+   auto passLbd = [](const std::set<EncryptionKeyId>&)
+   ->Armory::Passphrase::Result
+   {
+      return { SecureBinaryData::fromString("passphrase"), true };
+   };
+   assetWlt->setPassphrasePromptLambda(passLbd);
+   auto backupData = Helpers::getWalletBackup(
+      assetWlt, false);
+   auto backupEasy16 = dynamic_cast<Backup_Easy16*>(backupData.get());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -10717,9 +10775,9 @@ TEST_F(BackupTests, BackupStrings_BIP32)
       Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("control")},
       nullptr, 4
    };
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_BIP32(
-         Armory::Seeds::SeedType::BIP32_Structured));
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_BIP32(
+         SeedType::BIP32_Structured));
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
@@ -10730,7 +10788,8 @@ TEST_F(BackupTests, BackupStrings_BIP32)
    };
    assetWlt->setPassphrasePromptLambda(passLbd);
 
-   auto backupData = Armory::Seeds::Helpers::getWalletBackup(assetWlt);
+   auto backupData = Helpers::getWalletBackup(
+      assetWlt, true);
    auto backupEasy16 = dynamic_cast<Backup_Easy16*>(backupData.get());
 
    auto newPass = CryptoPRNG::generateRandom(10).toHexStr();
@@ -10766,10 +10825,10 @@ TEST_F(BackupTests, BackupStrings_BIP32)
    {
       //restore wallet
       auto backupCopy = Backup_Easy16::fromLines({
-         backupEasy16->getRoot(Backup_Easy16::LineIndex::One, false),
-         backupEasy16->getRoot(Backup_Easy16::LineIndex::Two, false),
+         backupEasy16->getRoot(LineIndex::One, false),
+         backupEasy16->getRoot(LineIndex::Two, false),
       });
-      auto restoreResult = Armory::Seeds::Helpers::restoreFromBackup(
+      auto restoreResult = Helpers::restoreFromBackup(
          std::move(backupCopy), callback, IO::CreateWalletParams{
             newHomeDir,
             Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass)},
@@ -10784,14 +10843,16 @@ TEST_F(BackupTests, BackupStrings_BIP32)
       };
       restoreResult.wltPtr->setPassphrasePromptLambda(passLbd2);
 
-      auto newWalletSingle = std::dynamic_pointer_cast<AssetWallet_Single>(restoreResult.wltPtr);
-      auto backupData2 = Armory::Seeds::Helpers::getWalletBackup(newWalletSingle);
+      auto newWalletSingle = std::dynamic_pointer_cast<AssetWallet_Single>(
+         restoreResult.wltPtr);
+      auto backupData2 = Helpers::getWalletBackup(
+         newWalletSingle, true);
       auto backupEasy16_2 = dynamic_cast<Backup_Easy16*>(backupData2.get());
 
-      EXPECT_EQ(backupEasy16->getRoot(Backup_Easy16::LineIndex::One, false),
-         backupEasy16_2->getRoot(Backup_Easy16::LineIndex::One, false));
-      EXPECT_EQ(backupEasy16->getRoot(Backup_Easy16::LineIndex::Two, false),
-         backupEasy16_2->getRoot(Backup_Easy16::LineIndex::Two, false));
+      EXPECT_EQ(backupEasy16->getRoot(LineIndex::One, false),
+         backupEasy16_2->getRoot(LineIndex::One, false));
+      EXPECT_EQ(backupEasy16->getRoot(LineIndex::Two, false),
+         backupEasy16_2->getRoot(LineIndex::Two, false));
 
       EXPECT_EQ(backupEasy16->getWalletId(), backupEasy16_2->getWalletId());
       filename = restoreResult.wltPtr->getDbFilename();
@@ -10811,9 +10872,9 @@ TEST_F(BackupTests, BackupStrings_BIP32_Virgin)
       Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("control")},
       nullptr, 4
    };
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_BIP32(
-         Armory::Seeds::SeedType::BIP32_Virgin
+   std::unique_ptr<ClearTextSeed> seed(
+      new ClearTextSeed_BIP32(
+         SeedType::BIP32_Virgin
       ));
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
@@ -10825,8 +10886,9 @@ TEST_F(BackupTests, BackupStrings_BIP32_Virgin)
    };
    assetWlt->setPassphrasePromptLambda(passLbd);
 
-   auto backupData = Armory::Seeds::Helpers::getWalletBackup(assetWlt);
-   auto backupEasy16 = dynamic_cast<Armory::Seeds::Backup_Easy16*>(
+   auto backupData = Helpers::getWalletBackup(
+      assetWlt, true);
+   auto backupEasy16 = dynamic_cast<Backup_Easy16*>(
       backupData.get());
 
    auto newPass = CryptoPRNG::generateRandom(10).toHexStr();
@@ -10860,10 +10922,10 @@ TEST_F(BackupTests, BackupStrings_BIP32_Virgin)
 
    //restore wallet
    auto backupCopy = Backup_Easy16::fromLines({
-      backupEasy16->getRoot(Backup_Easy16::LineIndex::One, false),
-      backupEasy16->getRoot(Backup_Easy16::LineIndex::Two, false),
+      backupEasy16->getRoot(LineIndex::One, false),
+      backupEasy16->getRoot(LineIndex::Two, false),
    });
-   auto restoreResult = Armory::Seeds::Helpers::restoreFromBackup(
+   auto restoreResult = Helpers::restoreFromBackup(
       std::move(backupCopy), callback, IO::CreateWalletParams{
          newHomeDir,
          Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass)},
@@ -10885,15 +10947,17 @@ TEST_F(BackupTests, BackupStrings_BIP32_Virgin)
    };
    restoreResult.wltPtr->setPassphrasePromptLambda(passLbd2);
 
-   auto newWalletSingle = std::dynamic_pointer_cast<AssetWallet_Single>(restoreResult.wltPtr);
-   auto backupData2 = Armory::Seeds::Helpers::getWalletBackup(newWalletSingle);
-   auto backupEasy16_2 = dynamic_cast<Armory::Seeds::Backup_Easy16*>(
+   auto newWalletSingle = std::dynamic_pointer_cast<AssetWallet_Single>(
+      restoreResult.wltPtr);
+   auto backupData2 = Helpers::getWalletBackup(
+      newWalletSingle, true);
+   auto backupEasy16_2 = dynamic_cast<Backup_Easy16*>(
       backupData2.get());
 
-   EXPECT_EQ(backupEasy16->getRoot(Backup_Easy16::LineIndex::One, false),
-      backupEasy16_2->getRoot(Backup_Easy16::LineIndex::One, false));
-   EXPECT_EQ(backupEasy16->getRoot(Backup_Easy16::LineIndex::Two, false),
-      backupEasy16_2->getRoot(Backup_Easy16::LineIndex::Two, false));
+   EXPECT_EQ(backupEasy16->getRoot(LineIndex::One, false),
+      backupEasy16_2->getRoot(LineIndex::One, false));
+   EXPECT_EQ(backupEasy16->getRoot(LineIndex::Two, false),
+      backupEasy16_2->getRoot(LineIndex::Two, false));
 
    EXPECT_EQ(backupEasy16->getWalletId(), backupEasy16_2->getWalletId());
 
@@ -10949,8 +11013,10 @@ TEST_F(BackupTests, BackupStrings_BIP32_FromBase58)
       };
       restoreResult.wltPtr->setPassphrasePromptLambda(passLbd);
 
-      auto walletSingle = std::dynamic_pointer_cast<AssetWallet_Single>(restoreResult.wltPtr);
-      auto backupData = Helpers::getWalletBackup(walletSingle);
+      auto walletSingle = std::dynamic_pointer_cast<AssetWallet_Single>(
+         restoreResult.wltPtr);
+      auto backupData = Helpers::getWalletBackup(
+         walletSingle, true);
       auto backupBase58 = dynamic_cast<Backup_Base58*>(backupData.get());
       EXPECT_EQ(backupBase58->getBase58String(), b58seed);
       filename = restoreResult.wltPtr->getDbFilename();
@@ -10976,8 +11042,10 @@ TEST_F(BackupTests, BackupStrings_BIP32_FromBase58)
       };
       loadedWlt->setPassphrasePromptLambda(passLbd);
 
-      auto walletSingle = std::dynamic_pointer_cast<AssetWallet_Single>(loadedWlt);
-      auto backupData = Helpers::getWalletBackup(walletSingle);
+      auto walletSingle = std::dynamic_pointer_cast<AssetWallet_Single>(
+         loadedWlt);
+      auto backupData = Helpers::getWalletBackup(
+         walletSingle, true);
       auto backupBase58 = dynamic_cast<Backup_Base58*>(backupData.get());
       EXPECT_EQ(backupBase58->getBase58String(), b58seed);
    }
@@ -10993,7 +11061,7 @@ TEST_F(BackupTests, BackupStrings_BIP39)
       Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("passphrase")},
       Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("control")},
       nullptr, 4};
-   std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
+   std::unique_ptr<ClearTextSeed> seed(
       new ClearTextSeed_BIP39(
          ClearTextSeed_BIP39::Dictionnary::English_Trezor));
    auto assetWlt = AssetWallet_Single::createFromSeed(
@@ -11006,10 +11074,10 @@ TEST_F(BackupTests, BackupStrings_BIP39)
    };
    auto walletId = assetWlt->getID();
    assetWlt->setPassphrasePromptLambda(passLbd);
-   auto backupDataBIP39 = Armory::Seeds::Helpers::getWalletBackup(
-      assetWlt, BackupType::BIP39);
-   auto backupDataArmory200d = Armory::Seeds::Helpers::getWalletBackup(
-      assetWlt, BackupType::Armory200d);
+   auto backupDataBIP39 = Helpers::getWalletBackup(
+      assetWlt, true, BackupType::BIP39);
+   auto backupDataArmory200d = Helpers::getWalletBackup(
+      assetWlt, true, BackupType::Armory200d);
 
    EXPECT_EQ(walletId, backupDataBIP39->getWalletId());
    EXPECT_EQ(walletId, backupDataArmory200d->getWalletId());
@@ -11048,10 +11116,10 @@ TEST_F(BackupTests, BackupStrings_BIP39)
       auto backupE16 = dynamic_cast<Backup_Easy16*>(backupDataArmory200d.get());
       ASSERT_NE(backupE16, nullptr);
       auto backupE16Copy = Backup_Easy16::fromLines({
-         backupE16->getRoot(Backup_Easy16::LineIndex::One, false),
-         backupE16->getRoot(Backup_Easy16::LineIndex::Two, false),
+         backupE16->getRoot(LineIndex::One, false),
+         backupE16->getRoot(LineIndex::Two, false),
       });
-      auto restoreResult = Armory::Seeds::Helpers::restoreFromBackup(
+      auto restoreResult = Helpers::restoreFromBackup(
          std::move(backupE16Copy), callback, IO::CreateWalletParams{
             newHomeDir,
             Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass)},
@@ -11067,14 +11135,14 @@ TEST_F(BackupTests, BackupStrings_BIP39)
       restoreResult.wltPtr->setPassphrasePromptLambda(passLbd2);
 
       auto newWalletSingle = std::dynamic_pointer_cast<AssetWallet_Single>(restoreResult.wltPtr);
-      auto backupData2 = Armory::Seeds::Helpers::getWalletBackup(
-         newWalletSingle, BackupType::Armory200d);
+      auto backupData2 = Helpers::getWalletBackup(
+         newWalletSingle, true, BackupType::Armory200d);
       auto backupE16_2 = dynamic_cast<Backup_Easy16*>(backupData2.get());
 
-      EXPECT_EQ(backupE16->getRoot(Backup_Easy16::LineIndex::One, false),
-         backupE16_2->getRoot(Backup_Easy16::LineIndex::One, false));
-      EXPECT_EQ(backupE16->getRoot(Backup_Easy16::LineIndex::Two, false),
-         backupE16_2->getRoot(Backup_Easy16::LineIndex::Two, false));
+      EXPECT_EQ(backupE16->getRoot(LineIndex::One, false),
+         backupE16_2->getRoot(LineIndex::One, false));
+      EXPECT_EQ(backupE16->getRoot(LineIndex::Two, false),
+         backupE16_2->getRoot(LineIndex::Two, false));
       EXPECT_EQ(backupE16->getWalletId(), backupE16_2->getWalletId());
       filename = restoreResult.wltPtr->getDbFilename();
    }
@@ -11117,7 +11185,7 @@ TEST_F(BackupTests, BackupStrings_BIP39)
 
       auto backupBIP39Copy = Backup_BIP39::fromMnemonicString(
          backupBIP39->getMnemonicString());
-      auto restoreResult = Armory::Seeds::Helpers::restoreFromBackup(
+      auto restoreResult = Helpers::restoreFromBackup(
          std::move(backupBIP39Copy), callbackBip39, IO::CreateWalletParams{
             newHomeDir,
             Armory::Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass2)},
@@ -11132,8 +11200,10 @@ TEST_F(BackupTests, BackupStrings_BIP39)
       };
       restoreResult.wltPtr->setPassphrasePromptLambda(passLbd2);
 
-      auto newWalletSingle = std::dynamic_pointer_cast<AssetWallet_Single>(restoreResult.wltPtr);
-      auto backupData2 = Armory::Seeds::Helpers::getWalletBackup(newWalletSingle);
+      auto newWalletSingle = std::dynamic_pointer_cast<AssetWallet_Single>(
+         restoreResult.wltPtr);
+      auto backupData2 = Helpers::getWalletBackup(
+         newWalletSingle, true);
       auto backupBIP39_2 = dynamic_cast<Backup_BIP39*>(backupData2.get());
 
       EXPECT_EQ(backupBIP39->getMnemonicString(), backupBIP39_2->getMnemonicString());

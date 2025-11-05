@@ -2351,7 +2351,7 @@ TEST_F(ZeroConfTests_FullNode, Replace_ZC_Test)
 
    //create a root private key
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+      new Armory::Seeds::ClearTextSeed_Armory());
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
@@ -2849,7 +2849,7 @@ TEST_F(ZeroConfTests_FullNode, RegisterAddress_AfterZC)
       nullptr, 3
    };
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+      new Armory::Seeds::ClearTextSeed_Armory());
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
@@ -3065,7 +3065,7 @@ TEST_F(ZeroConfTests_FullNode, ChainZC_RBFchild_Test)
       nullptr, 10
    };
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+      new Armory::Seeds::ClearTextSeed_Armory());
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
@@ -3538,7 +3538,7 @@ TEST_F(ZeroConfTests_FullNode, TwoZC_CheckLedgers)
       nullptr, 5
    };
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+      new Armory::Seeds::ClearTextSeed_Armory());
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
@@ -4318,7 +4318,7 @@ TEST_F(ZeroConfTests_Supernode, ZC_Reorg)
       nullptr, 3
    };
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+      new Armory::Seeds::ClearTextSeed_Armory());
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
    auto addr1_ptr = assetWlt->getNewAddress();
@@ -4497,7 +4497,7 @@ TEST_F(ZeroConfTests_Supernode, ChainZC_RBFchild_Test)
       nullptr, 10
    };
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+      new Armory::Seeds::ClearTextSeed_Armory());
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 

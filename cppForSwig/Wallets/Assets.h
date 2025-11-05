@@ -49,6 +49,11 @@ namespace Armory
       class MetaDataAccount;
    };
 
+   namespace Seeds
+   {
+      enum class LegacyType : int;
+   }
+
    namespace Assets
    {
       class AssetException : public std::runtime_error
@@ -216,18 +221,21 @@ namespace Armory
       {
       private:
          const SecureBinaryData chaincode_;
+         const Seeds::LegacyType seedType_;
 
       public:
          //tors
          AssetEntry_ArmoryLegacyRoot(
             Wallets::AssetId, SecureBinaryData&,
             std::shared_ptr<Asset_PrivateKey>,
-            const SecureBinaryData&);
+            const SecureBinaryData&, Seeds::LegacyType);
 
          BinaryData serialize(void) const override;
          AssetEntryType getType(void) const override;
-         const SecureBinaryData& getChaincode(void) const;
          std::shared_ptr<AssetEntry_Single> getPublicCopy(void) override;
+
+         Seeds::LegacyType getSeedType(void) const;
+         const SecureBinaryData& getChaincode(void) const;
       };
 
       //////////////////////////////////////////////////////////////////////////

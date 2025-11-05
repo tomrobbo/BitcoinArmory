@@ -1759,17 +1759,17 @@ TEST_F(BlockUtilsWithWalletTest, MultipleSigners_2of3_NativeP2WSH)
 
    //create a root private key
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed1(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+      new Armory::Seeds::ClearTextSeed_Armory());
    auto assetWlt_1 = AssetWallet_Single::createFromSeed(
       std::move(seed1), params);
 
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed2(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+      new Armory::Seeds::ClearTextSeed_Armory());
    auto assetWlt_2 = AssetWallet_Single::createFromSeed(
       std::move(seed2), params);
 
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed3(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+      new Armory::Seeds::ClearTextSeed_Armory());
    auto assetWlt_3 = AssetWallet_Single::createFromSeed(
       std::move(seed3), params);
 

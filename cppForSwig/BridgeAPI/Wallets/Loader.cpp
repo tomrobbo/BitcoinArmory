@@ -486,15 +486,16 @@ std::shared_ptr<Wallets::AssetWallet_Single> Armory135Header::migrate(
       Derive chaincode from the clear text root. If it matches the
       chaincode from file, this is a 1.35c root (deterministic chaincode)
       */
-      auto derivedCc = BtcUtils::computeChainCode_Armory135(decryptedRoot);
+      auto derivedCc = BtcUtils::computeChainCode_ArmoryLegacy(decryptedRoot);
       if (derivedCc == chaincodeCopy) {
          //deterministic chaincode, clear it
          chaincodeCopy.clear();
       }
 
       std::unique_ptr<Seeds::ClearTextSeed> seed(
-         new Seeds::ClearTextSeed_Armory135(
-            decryptedRoot, chaincodeCopy
+         new Seeds::ClearTextSeed_Armory(
+            decryptedRoot, chaincodeCopy,
+            Seeds::LegacyType::Armory135
       ));
       wallet = Wallets::AssetWallet_Single::createFromSeed(
          std::move(seed), newParams);

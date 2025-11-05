@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2021-2023, goatpig                                          //
+//  Copyright (C) 2021-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -10,8 +10,68 @@
 #include "DerivationScheme.h"
 #include "Assets.h"
 #include "WalletHeader.h"
+#include "Seeds/Seeds.h"
+#include "../BitcoinSettings.h"
 
 using namespace Armory::Wallets;
+
+namespace
+{
+   BinaryData computeID(const SecureBinaryData& pubkey)
+   {
+      BinaryDataRef bdr(pubkey);
+      auto h160 = BtcUtils::getHash160(bdr);
+
+      BinaryWriter bw;
+      bw.put_uint8_t(Armory::Config::BitcoinSettings::getPubkeyHashPrefix());
+      bw.put_BinaryDataRef(h160.getSliceRef(0, 5));
+
+      //now reverse it
+      auto& data = bw.getData();
+      auto ptr = data.getPtr();
+      BinaryWriter bwReverse;
+      for (unsigned i = 0; i < data.getSize(); i++) {
+         bwReverse.put_uint8_t(ptr[data.getSize() - 1 - i]);
+      }
+      return bwReverse.getData();
+   }
+
+   BinaryData generateWalletIdRaw(
+      std::shared_ptr<Armory::Assets::DerivationScheme> derScheme,
+      std::shared_ptr<Armory::Assets::AssetEntry> rootEntry,
+      Armory::Seeds::SeedType sType)
+   {
+      if (sType == Armory::Seeds::SeedType::ArmoryLegacyPublic) {
+         /*
+         Legacy wallets root and seeds are essentially the same.
+         A public (wathcing-only) legacy wallet is a root pubkey + chaincode.
+         Legacy wallets may or may not have a deterministic chaincode, but you
+         cannot tell with WO root, so we distinguish on disk between full roots
+         (with a private key) and WO roots (pubkey + cc), by using different
+         SeedType prefix.
+
+         However this prefix is used to compute wallet ids, and we do not want
+         WO wallets to have different ids from their full counterparts, so the
+         public seed type is always set to a full one id computations.
+         */
+         sType = Armory::Seeds::SeedType::ArmoryLegacy;
+      }
+
+      //derive '(int)sType' amount of addresses, use last one as id
+      auto addrVec = derScheme->extendPublicChain(rootEntry,
+         0, (int)sType, nullptr);
+      if (addrVec.size() != (int)sType+1) {
+         throw WalletException("unexpected chain derivation output");
+      }
+
+      auto entry = std::dynamic_pointer_cast<Armory::Assets::AssetEntry_Single>(
+         addrVec[int(sType)]);
+      if (entry == nullptr) {
+         throw WalletException("unexpected asset entry type");
+      }
+      return computeID(entry->getPubKey()->getUncompressedKey());
+   }
+}
 
 IdException::IdException(const std::string& err) :
    std::runtime_error(err)
@@ -768,29 +828,7 @@ std::string KdfId::toHexStr() const
 }
 
 ///////////////////////// - wallet & master id - ///////////////////////////////
-WalletId Armory::Wallets::generateWalletId(
-   std::shared_ptr<Armory::Assets::DerivationScheme> derScheme,
-   std::shared_ptr<Armory::Assets::AssetEntry> rootEntry,
-   Armory::Seeds::SeedType sType)
-{
-   auto addrVec = derScheme->extendPublicChain(rootEntry,
-      0, (int)sType, nullptr);
-   if (addrVec.size() != (int)sType+1) {
-      throw WalletException("unexpected chain derivation output");
-   }
-
-   auto entry = std::dynamic_pointer_cast<Armory::Assets::AssetEntry_Single>(
-      addrVec[int(sType)]);
-   if (entry == nullptr) {
-      throw WalletException("unexpected asset entry type");
-   }
-
-   auto id = BtcUtils::computeID(entry->getPubKey()->getUncompressedKey());
-   return {std::string_view{id}};
-}
-
-////
-WalletId Armory::Wallets::generateWalletId(
+BinaryData Armory::Wallets::generateWalletIdRaw(
    SecureBinaryData pubkey,
    SecureBinaryData chaincode,
    Armory::Seeds::SeedType sType)
@@ -811,9 +849,17 @@ WalletId Armory::Wallets::generateWalletId(
    auto asset_single = std::make_shared<Armory::Assets::AssetEntry_Single>(
       AssetId::getRootAssetId(), pubkey, nullptr
    );
+   return ::generateWalletIdRaw(derScheme, asset_single, sType);
+}
 
-   //derive '(int)sType' amount of addresses, use last one as id
-   return Armory::Wallets::generateWalletId(derScheme, asset_single, sType);
+WalletId Armory::Wallets::generateWalletId(
+   SecureBinaryData pubkey,
+   SecureBinaryData chaincode,
+   Armory::Seeds::SeedType sType)
+{
+   auto idBd = generateWalletIdRaw(pubkey, chaincode, sType);
+   auto idB58 = BtcUtils::base58_encode(idBd);
+   return {std::string_view{idB58}};
 }
 
 ////////
@@ -827,6 +873,7 @@ WalletId Armory::Wallets::generateMasterId(const SecureBinaryData& pubkey,
    auto masterID_long = BtcUtils::getHMAC256(
       bw.getData(), hmacMasterMsg);
 
-   auto id = BtcUtils::computeID(masterID_long);
-   return {std::string_view{id}};
+   auto idBd = computeID(masterID_long);
+   auto idB58 = BtcUtils::base58_encode(idBd);
+   return {std::string_view{idB58}};
 }

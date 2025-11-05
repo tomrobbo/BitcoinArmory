@@ -10,12 +10,13 @@
 #include "BtcUtils.h"
 #include "ScriptRecipient.h"
 #include "BIP32_Node.h"
+#include "Seeds/Seeds.h"
 
 #define ASSET_VERSION                  0x00000001
 
 #define ASSETENTRY_SINGLE_VERSION      0x00000001
 #define ASSETENTRY_BIP32ROOT_VERSION   0x00000002
-#define ASSETENTRY_LEGACYROOT_VERSION  0x00000001
+#define ASSETENTRY_LEGACYROOT_VERSION  0x00000002
 
 #define PRIVKEY_VERSION                0x00000002
 #define PUBKEY_COMPRESSED_VERSION      0x00000001
@@ -320,7 +321,30 @@ std::shared_ptr<AssetEntry> AssetEntry::deserDBValue(
                auto rootEntry = std::make_shared<AssetEntry_ArmoryLegacyRoot>(
                   assetId,
                   pubKeyCompressed, privKeyPtr,
-                  chaincode);
+                  chaincode,
+                  Seeds::LegacyType::Undefined);
+               rootEntry->doNotCommit();
+               return rootEntry;
+            }
+
+            case 0x00000002:
+            {
+               auto seedType = (Seeds::LegacyType)brrVal.get_uint8_t();
+               auto cclen = brrVal.get_var_int();
+               auto chaincode = brrVal.get_BinaryData(cclen);
+
+               std::shared_ptr<Asset_PrivateKey> privKeyPtr;
+               SecureBinaryData pubKeyCompressed;
+               SecureBinaryData pubKeyUncompressed;
+               getKeyData(
+                  brrVal, privKeyPtr,
+                  pubKeyCompressed, pubKeyUncompressed);
+
+               auto rootEntry = std::make_shared<AssetEntry_ArmoryLegacyRoot>(
+                  assetId,
+                  pubKeyCompressed, privKeyPtr,
+                  chaincode,
+                  seedType);
                rootEntry->doNotCommit();
                return rootEntry;
             }
@@ -706,14 +730,22 @@ std::string AssetEntry_BIP32Root::getXPub(void) const
 AssetEntry_ArmoryLegacyRoot::AssetEntry_ArmoryLegacyRoot(
    Wallets::AssetId id, SecureBinaryData& pubkey,
    std::shared_ptr<Asset_PrivateKey> privkey,
-   const SecureBinaryData& chaincode):
-   AssetEntry_Single(id, pubkey, privkey), chaincode_(chaincode)
+   const SecureBinaryData& chaincode,
+   Armory::Seeds::LegacyType seedType):
+   AssetEntry_Single(id, pubkey, privkey),
+   chaincode_(chaincode), seedType_(seedType)
 {}
 
 ////
 AssetEntryType AssetEntry_ArmoryLegacyRoot::getType() const
 {
    return AssetEntryType_ArmoryLegacyRoot;
+}
+
+Armory::Seeds::LegacyType
+AssetEntry_ArmoryLegacyRoot::getSeedType() const
+{
+   return seedType_;
 }
 
 ////
@@ -730,6 +762,9 @@ BinaryData AssetEntry_ArmoryLegacyRoot::serialize() const
 
    auto entryType = getType();
    bw.put_uint8_t(entryType);
+
+   auto seedType = (uint8_t)getSeedType();
+   bw.put_uint8_t(seedType);
 
    bw.put_var_int(chaincode_.getSize());
    bw.put_BinaryData(chaincode_);
@@ -756,7 +791,7 @@ std::shared_ptr<AssetEntry_Single> AssetEntry_ArmoryLegacyRoot::getPublicCopy()
       throw AssetException("Armory legacy root missing uncompressed pubkey");
    }
    auto woCopy = std::make_shared<AssetEntry_ArmoryLegacyRoot>(
-      getID(), pubkey, nullptr, chaincode_);
+      getID(), pubkey, nullptr, chaincode_, getSeedType());
    return woCopy;
 }
 

@@ -389,7 +389,7 @@ TEST_F(SignerTest, SpendTest_SizeEstimates)
    };
 
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+      new Armory::Seeds::ClearTextSeed_Armory());
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
@@ -1033,7 +1033,8 @@ TEST_F(SignerTest, SpendTest_MixedInputTypes)
    node.initFromSeed(rawEntropy);
 
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_Armory135(rawEntropy));
+      new Armory::Seeds::ClearTextSeed_Armory(
+         rawEntropy, {}, Armory::Seeds::LegacyType::Armory200));
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
@@ -1963,12 +1964,12 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs)
 
    //// create 2 assetWlt ////
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed1(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+      new Armory::Seeds::ClearTextSeed_Armory());
    auto assetWlt_1 = AssetWallet_Single::createFromSeed(
       std::move(seed1), params);
 
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed2(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+      new Armory::Seeds::ClearTextSeed_Armory());
    auto assetWlt_2 = AssetWallet_Single::createFromSeed(
       std::move(seed2), params);
 
@@ -2254,12 +2255,12 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs_Strings)
 
    //// create 2 assetWlt ////
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed1(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+      new Armory::Seeds::ClearTextSeed_Armory());
    auto assetWlt_1 = AssetWallet_Single::createFromSeed(
       std::move(seed1), params);
 
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed2(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+      new Armory::Seeds::ClearTextSeed_Armory());
    auto assetWlt_2 = AssetWallet_Single::createFromSeed(
       std::move(seed2), params);
 
@@ -2544,12 +2545,12 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs_StringsLegacy)
 
    //// create 2 assetWlt ////
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed1(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+      new Armory::Seeds::ClearTextSeed_Armory());
    auto assetWlt_1 = AssetWallet_Single::createFromSeed(
       std::move(seed1), params);
 
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed2(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+      new Armory::Seeds::ClearTextSeed_Armory());
    auto assetWlt_2 = AssetWallet_Single::createFromSeed(
       std::move(seed2), params);
 
@@ -2851,12 +2852,12 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning)
 
    //// create 2 assetWlt ////
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed1(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+      new Armory::Seeds::ClearTextSeed_Armory());
    auto assetWlt_1 = AssetWallet_Single::createFromSeed(
       std::move(seed1), params);
 
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed2(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+      new Armory::Seeds::ClearTextSeed_Armory());
    auto assetWlt_2 = AssetWallet_Single::createFromSeed(
       std::move(seed2), params);
 
@@ -3544,7 +3545,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning_GetUnsignedTx_Neste
       std::move(seed1), params);
 
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed2(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+      new Armory::Seeds::ClearTextSeed_Armory());
    auto assetWlt_2 = AssetWallet_Single::createFromSeed(
       std::move(seed2), params);
 
@@ -3961,7 +3962,7 @@ TEST_F(SignerTest, GetUnsignedTxId)
       std::move(seed1), params);
 
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed2(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+      new Armory::Seeds::ClearTextSeed_Armory());
    auto assetWlt_2 = AssetWallet_Single::createFromSeed(
       std::move(seed2), params);
 
@@ -5139,7 +5140,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2PK)
       nullptr, 3
    };
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+      new Armory::Seeds::ClearTextSeed_Armory());
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
 
@@ -6037,7 +6038,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Armory135)
       nullptr, 5
    };
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+      new Armory::Seeds::ClearTextSeed_Armory());
    auto assetWlt = AssetWallet_Single::createFromSeed(
       move(seed), params);
 
@@ -7447,17 +7448,17 @@ TEST_F(SignerTest, SpendTest_InjectSignature_Multisig)
    };
 
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed1(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+      new Armory::Seeds::ClearTextSeed_Armory());
    auto assetWlt_1 = AssetWallet_Single::createFromSeed(
       move(seed1), params);
 
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed2(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+      new Armory::Seeds::ClearTextSeed_Armory());
    auto assetWlt_2 = AssetWallet_Single::createFromSeed(
       move(seed2), params);
 
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed3(
-      new Armory::Seeds::ClearTextSeed_Armory135());
+      new Armory::Seeds::ClearTextSeed_Armory());
    auto assetWlt_3 = AssetWallet_Single::createFromSeed(
       move(seed3), params);
 

@@ -30,7 +30,7 @@ namespace Armory
 
    namespace Seeds
    {
-      enum class SeedType;
+      enum class SeedType : int;
    }
 
    namespace Wallets
@@ -230,10 +230,10 @@ namespace Armory
       };
 
       ////////////////////////////////////////////////////////////////////////
-      Wallets::WalletId generateWalletId(std::shared_ptr<Assets::DerivationScheme>,
-         std::shared_ptr<Assets::AssetEntry>, Seeds::SeedType);
-      Wallets::WalletId generateWalletId(SecureBinaryData, SecureBinaryData,
-         Seeds::SeedType);
+      BinaryData generateWalletIdRaw(SecureBinaryData,
+         SecureBinaryData, Seeds::SeedType);
+      Wallets::WalletId generateWalletId(SecureBinaryData,
+         SecureBinaryData, Seeds::SeedType);
       Wallets::WalletId generateMasterId(const SecureBinaryData&,
          const SecureBinaryData&);
 

@@ -356,7 +356,7 @@ WalletContainer::getUpdatedAddressMap()
 
 ////////////////////////////////////////////////////////////////////////////////
 std::unique_ptr<Seeds::WalletBackup> WalletContainer::getBackupStrings(
-   const Passphrase::UnlockFunc& passLbd) const
+   bool isPriv, const Passphrase::UnlockFunc& passLbd) const
 {
    auto wltSingle = std::dynamic_pointer_cast<Wallets::AssetWallet_Single>(wallet_);
    if (wltSingle == nullptr) {
@@ -366,7 +366,7 @@ std::unique_ptr<Seeds::WalletBackup> WalletContainer::getBackupStrings(
    }
 
    wltSingle->setPassphrasePromptLambda(passLbd);
-   auto backupStrings = Seeds::Helpers::getWalletBackup(wltSingle);
+   auto backupStrings = Seeds::Helpers::getWalletBackup(wltSingle, isPriv);
    wltSingle->resetPassphrasePromptLambda();
 
    return backupStrings;

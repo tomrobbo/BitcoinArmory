@@ -115,7 +115,7 @@ namespace Armory
          std::map<BinaryData, std::shared_ptr<AddressEntry>> getUpdatedAddressMap();
 
          std::unique_ptr<Seeds::WalletBackup> getBackupStrings(
-            const Passphrase::UnlockFunc&) const;
+            bool, const Passphrase::UnlockFunc&) const;
          void changePassphrase(const Passphrase::UnlockFunc&,
             Passphrase::SetNew&, bool);
 
