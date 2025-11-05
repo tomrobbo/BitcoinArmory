@@ -8,7 +8,7 @@
 
 #include "BinaryData.h"
 #include "BtcUtils.h"
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 BinaryData::BinaryData(BinaryDataRef const & bdRef)

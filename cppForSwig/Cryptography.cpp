@@ -5,7 +5,7 @@
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 #include "log.h"
 #include <btc/ecc.h>
 #include <btc/sha2.h>

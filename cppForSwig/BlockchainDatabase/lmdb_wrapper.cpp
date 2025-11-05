@@ -3306,6 +3306,22 @@ unique_ptr<ShardFilter> ShardFilter::deserialize(BinaryDataRef dataRef)
 //// ShardFilter_ScrAddr
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
+ShardFilter_ScrAddr::ShardFilter_ScrAddr(unsigned step) :
+   step_(step)
+{
+#ifndef UNIT_TESTS
+   //x < -exp(step * 1.6 / 50k) / (1 - exp(step * 1.6 / 50k))
+   auto eVal = expf(step * 1.6f / 50000.0f);
+   thresholdId_ = unsigned(-eVal / (1.0f - eVal));
+
+   //height = (ln(id) / 1.6 + 4) * 50k
+   thresholdValue_ = unsigned((logf(thresholdId_) / 1.6f + 4.0f) * 50000.0f);
+#else
+   thresholdId_ = 0;
+   thresholdValue_ = 0;
+#endif
+}
+
 BinaryData ShardFilter_ScrAddr::serialize() const
 {
    BinaryWriter bw;
@@ -3368,6 +3384,22 @@ unsigned ShardFilter_ScrAddr::getHeightForId(unsigned id) const
 //// ShardFilter_Spentness
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
+ShardFilter_Spentness::ShardFilter_Spentness(unsigned step) :
+   step_(step)
+{
+#ifndef UNIT_TESTS
+   //x < -exp(step / 50k) / (1 - exp(step / 50k))
+   auto eVal = expf(step / 50000.0f);
+   thresholdId_ = unsigned(-eVal / (1.0f - eVal));
+
+   //height = (ln(id) + 4) * 50k
+   thresholdValue_ = unsigned((logf(thresholdId_) + 4.0f) * 50000.0f);
+#else 
+   thresholdId_ = 0;
+   thresholdValue_ = 0;
+#endif
+}
+
 BinaryData ShardFilter_Spentness::serialize() const
 {
    BinaryWriter bw;

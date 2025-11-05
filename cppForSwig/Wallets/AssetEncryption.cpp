@@ -7,7 +7,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "AssetEncryption.h"
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 #include "BtcUtils.h"
 #include "KDF.h"
 #include "DBUtils.h"

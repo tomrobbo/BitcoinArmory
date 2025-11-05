@@ -32,7 +32,7 @@
 #endif
 
 #include "SecureBinaryData.h"
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 
 /////////////////////////////////////////////////////////////////////////////
 void SecureBinaryData::lockData()

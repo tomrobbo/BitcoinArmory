@@ -45,7 +45,7 @@ extern "C" {
 #include "chachapoly_aead.h"
 }
 #include "BinaryData.h"
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 
 // With ChaCha20Poly1305, 1 GB is the max 
 #ifndef UNIT_TESTS

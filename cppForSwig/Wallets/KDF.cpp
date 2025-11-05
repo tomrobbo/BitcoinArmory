@@ -11,7 +11,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "KDF.h"
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 
 #define KDF_ROMIX_VERSION  0x00000001
 #define KDF_ROMIX_PREFIX   0xC100

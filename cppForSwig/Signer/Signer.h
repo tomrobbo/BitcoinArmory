@@ -13,7 +13,7 @@
 
 #include "TxEvalState.h"
 #include "TxClasses.h"
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 #include "Transactions.h"
 #include "ScriptRecipient.h"
 #include "ResolverFeed.h"

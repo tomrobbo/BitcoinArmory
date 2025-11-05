@@ -15,7 +15,7 @@
 #include <memory>
 
 #include "BinaryData.h"
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 #include "WalletIdTypes.h"
 #include "AssetEncryption.h"
 

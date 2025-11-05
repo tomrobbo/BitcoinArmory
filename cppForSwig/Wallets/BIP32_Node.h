@@ -10,7 +10,7 @@
 #define _BIP32_SERIALIZATION_H
 
 #include "BtcUtils.h"
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 #include "btc/bip32.h"
 
 class BIP32_Node

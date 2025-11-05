@@ -10,7 +10,7 @@
 #include "BtcUtils.h"
 #include "DBUtils.h"
 #include "DbHeader.h"
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 #include "JSON_codec.h"
 #include "SocketObject.h"
 #include "BIP150_151.h"

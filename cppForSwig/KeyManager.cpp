@@ -12,7 +12,7 @@
 #include <sstream>
 
 #include "btc/ecc.h"
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 #include "AuthorizedPeers.h"
 #include "TerminalPassphrasePrompt.h"
 #include "Wallets/IOHeader.h"

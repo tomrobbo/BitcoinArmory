@@ -8,7 +8,7 @@
 
 #include "EncryptedDB.h"
 #include "BtcUtils.h"
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 #include "AssetEncryption.h"
 
 using namespace std;

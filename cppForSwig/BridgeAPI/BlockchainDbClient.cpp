@@ -20,7 +20,7 @@
 #include "Wallets/Manager.h"
 #include "Wallets/Notifications.h"
 #include "Wallets/IOHeader.h"
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 #include "AsyncClient.h"
 
 #include <random>

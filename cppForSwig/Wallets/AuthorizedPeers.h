@@ -15,7 +15,7 @@
 #include <filesystem>
 
 #include "btc/ecc_key.h"
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 #include "Wallets.h"
 #include "DBUtils.h"
 #include "ArmoryConfig.h"

@@ -17,7 +17,7 @@
 
 #include "BitcoinP2P.h"
 #include "BlockDataViewer.h"
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 #include "LedgerEntry.h"
 #include "DbHeader.h"
 #include "BDV_Notification.h"

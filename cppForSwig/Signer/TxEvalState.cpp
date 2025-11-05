@@ -7,7 +7,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "TxEvalState.h"
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 
 using namespace Armory;
 

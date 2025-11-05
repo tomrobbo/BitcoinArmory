@@ -11,7 +11,7 @@
 #include <string.h>
 #include "BitcoinP2P.h"
 #include "SocketWritePayload.h"
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 #include "BitcoinSettings.h"
 
 using namespace Armory::Threading;

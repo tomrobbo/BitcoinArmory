@@ -21,7 +21,7 @@
 #include "ThreadSafeClasses.h"
 #include "BDV_Notification.h"
 #include "BinaryData.h"
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 #include "ArmoryConfig.h"
 #include "SocketService.h"
 #include "BIP150_151.h"

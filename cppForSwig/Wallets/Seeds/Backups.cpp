@@ -7,7 +7,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "Backups.h"
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 #include "BtcUtils.h"
 #include "../WalletIdTypes.h"
 #include "../KDF.h"

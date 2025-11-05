@@ -13,15 +13,9 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Implements canned routines in Crypto++ for AES encryption (for wallet
-// security), ECDSA (which is already available in the python interface,
-// but it is slow, so we might as well use the fast C++ method if avail),
-// time- and memory-hard key derivation functions (resistent to brute
-// force, and designed to be too difficult for a GPU to implement), and
-// secure binary data handling (to make sure we don't leave sensitive 
-// data floating around in application memory).
+// ECDSA, SHA, AES and PRNG from libbtc
 //
-// 
+//
 // For the KDF:
 //
 // This technique is described in Colin Percival's paper on memory-hard 
@@ -37,7 +31,7 @@
 //
 // Even with less than 1,000,000 hashes, as long as it requires more than 64
 // kB of memory, a GPU will have to store the computed lookup tables in global
-// memory, which is extremely slow for random lookup.  As a result, GPUs are 
+// memory, which is extremely slow for random lookup.  As a result, GPUs are
 // no better (and possibly much worse) than a CPU for brute-forcing the passwd
 //
 // This KDF is actually the ROMIX algorithm described on page 6 of Colin's

@@ -13,7 +13,7 @@
 
 #include "BtcUtils.h"
 #include "BinaryData.h"
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 #include "ArmoryConfig.h"
 #include "btc/segwit_addr.h"
 #include "TxOutScrRef.h"

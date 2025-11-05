@@ -26,7 +26,7 @@
 #include <algorithm>
 #include <deque>
 #include "BinaryData.h"
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 #include "BtcUtils.h"
 #include "SigHashEnum.h"
 #include "TxEvalState.h"

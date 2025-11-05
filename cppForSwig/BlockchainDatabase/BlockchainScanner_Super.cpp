@@ -7,7 +7,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "BlockchainScanner_Super.h"
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 #include "TxOutScrRef.h"
 
 using namespace std;

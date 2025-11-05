@@ -172,7 +172,7 @@ ARMORYCOMMON_SOURCE_FILES = capnp/Types.capnp.c++ \
 	BtcUtils.cpp \
 	DBClientClasses.cpp \
 	CoinSelection.cpp \
-	EncryptionUtils.cpp \
+	Cryptography.cpp \
 	log.cpp \
 	BitcoinSettings.cpp \
 	ReentrantLock.cpp \

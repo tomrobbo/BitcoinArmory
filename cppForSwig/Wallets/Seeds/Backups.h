@@ -13,7 +13,7 @@
 #include <string>
 #include <string_view>
 #include "SecureBinaryData.h"
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 #include "../GetPassphrase.h"
 
 #define EASY16_INVALID_CHECKSUM_INDEX UINT8_MAX

@@ -8,7 +8,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "AsyncClient.h"
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 #include "ArmoryErrors.h"
 #include "WebSocketMessage.h"
 

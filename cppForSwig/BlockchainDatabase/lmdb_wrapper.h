@@ -360,21 +360,7 @@ struct ShardFilter_ScrAddr : public ShardFilter
    unsigned thresholdId_;
    unsigned thresholdValue_;
 
-   ShardFilter_ScrAddr(unsigned step) : 
-      step_(step)
-   {
-#ifndef UNIT_TESTS
-      //x < -exp(step * 1.6 / 50k) / (1 - exp(step * 1.6 / 50k))
-      auto eVal = expf(step * 1.6f / 50000.0f);
-      thresholdId_ = unsigned(-eVal / (1.0f - eVal));
-
-      //height = (ln(id) / 1.6 + 4) * 50k
-      thresholdValue_ = unsigned((logf(thresholdId_) / 1.6f + 4.0f) * 50000.0f);
-#else
-      thresholdId_ = 0;
-      thresholdValue_ = 0;
-#endif
-   }
+   ShardFilter_ScrAddr(unsigned);
 
    unsigned keyToId(BinaryDataRef) const;
    unsigned getHeightForId(unsigned) const;
@@ -390,21 +376,7 @@ struct ShardFilter_Spentness : public ShardFilter
    unsigned thresholdId_;
    unsigned thresholdValue_;
 
-   ShardFilter_Spentness(unsigned step) :
-      step_(step)
-   {      
-#ifndef UNIT_TESTS
-      //x < -exp(step / 50k) / (1 - exp(step / 50k))
-      auto eVal = expf(step / 50000.0f);
-      thresholdId_ = unsigned(-eVal / (1.0f - eVal));
-
-      //height = (ln(id) + 4) * 50k
-      thresholdValue_ = unsigned((logf(thresholdId_) + 4.0f) * 50000.0f);
-#else 
-      thresholdId_ = 0;
-      thresholdValue_ = 0;
-#endif
-   }
+   ShardFilter_Spentness(unsigned);
 
    unsigned keyToId(BinaryDataRef) const;
    unsigned getHeightForId(unsigned) const;
@@ -428,7 +400,7 @@ private:
 
       return iter->second;
    }
-   
+
 public:
    LMDBBlockDatabase(std::shared_ptr<Blockchain>, const std::filesystem::path&);
    ~LMDBBlockDatabase(void);

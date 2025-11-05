@@ -17,7 +17,7 @@
 #include "../../ReentrantLock.h"
 #include "../../BinaryData.h"
 #include "../WalletIdTypes.h"
-#include "../../EncryptionUtils.h"
+#include "../../Cryptography.h"
 #include "../Assets.h"
 #include "../Addresses.h"
 #include "../DerivationScheme.h"

@@ -10,7 +10,7 @@
 #include "Container.h"
 #include "Wallets/Wallets.h"
 #include "Wallets/Seeds/Backups.h"
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 #include "AsyncClient.h"
 
 using namespace Armory;

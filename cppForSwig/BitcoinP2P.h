@@ -17,7 +17,7 @@
 /***TODO: replace the use of BinaryData with self written class***/
 #include "ThreadSafeClasses.h"
 #include "BinaryData.h"
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 
 #include "TxClasses.h"
 #include "SocketObject.h"

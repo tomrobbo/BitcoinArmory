@@ -14,7 +14,7 @@
 #include <memory>
 
 #include "BinaryData.h"
-#include "EncryptionUtils.h"
+#include "Cryptography.h"
 #include "Assets.h"
 
 #define DERIVATIONSCHEME_LEGACY        0xA0
