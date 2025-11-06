@@ -10,6 +10,8 @@
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
+#include <algorithm>
+
 #include "BtcWallet.h"
 #include "BlockchainDatabase/BlockUtils.h"
 #include "BlockchainDatabase/txio.h"

@@ -24,203 +24,6 @@ using namespace Armory::Wallets;
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-// TODO:  These tests were taken directly from the BlockUtilsSuper.cpp where 
-//        they previously ran without issue.  After bringing them over to here,
-//        they now seg-fault.  Disabled for now, since the PartialMerkleTrees 
-//        are not actually in use anywhere yet.
-class DISABLED_PartialMerkleTest : public ::testing::Test
-{
-protected:
-
-   virtual void SetUp(void)
-   {
-      vector<BinaryData> txList_(7);
-      // The "abcd" quartets are to trigger endianness errors -- without them,
-      // these hashes are palindromes that work regardless of your endian-handling
-      txList_[0] = READHEX("00000000000000000000000000000000"
-         "000000000000000000000000abcd0000");
-      txList_[1] = READHEX("11111111111111111111111111111111"
-         "111111111111111111111111abcd1111");
-      txList_[2] = READHEX("22222222222222222222222222222222"
-         "222222222222222222222222abcd2222");
-      txList_[3] = READHEX("33333333333333333333333333333333"
-         "333333333333333333333333abcd3333");
-      txList_[4] = READHEX("44444444444444444444444444444444"
-         "444444444444444444444444abcd4444");
-      txList_[5] = READHEX("55555555555555555555555555555555"
-         "555555555555555555555555abcd5555");
-      txList_[6] = READHEX("66666666666666666666666666666666"
-         "666666666666666666666666abcd6666");
-
-      vector<BinaryData> merkleTree_ = BtcUtils::calculateMerkleTree(txList_);
-
-      /*
-      cout << "Merkle Tree looks like the following (7 tx): " << endl;
-      cout << "The ** indicates the nodes we care about for partial tree test" << endl;
-      cout << "                                                    \n";
-      cout << "                   _____0a10_____                   \n";
-      cout << "                  /              \\                  \n";
-      cout << "                _/                \\_                \n";
-      cout << "            65df                    b4d6            \n";
-      cout << "          /      \\                /      \\          \n";
-      cout << "      6971        22dc        5675        d0b6      \n";
-      cout << "     /    \\      /    \\      /    \\      /          \n";
-      cout << "   0000  1111  2222  3333  4444  5555  6666         \n";
-      cout << "    **                            **                \n";
-      cout << "    " << endl;
-      cout << endl;
-
-      cout << "Full Merkle Tree (this one has been unit tested before):" << endl;
-      for(uint32_t i=0; i<merkleTree_.size(); i++)
-      cout << "    " << i << " " << merkleTree_[i].toHexStr() << endl;
-      */
-   }
-
-   vector<BinaryData> txList_;
-   vector<BinaryData> merkleTree_;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(DISABLED_PartialMerkleTest, FullTree)
-{
-   vector<bool> isOurs(7);
-   isOurs[0] = true;
-   isOurs[1] = true;
-   isOurs[2] = true;
-   isOurs[3] = true;
-   isOurs[4] = true;
-   isOurs[5] = true;
-   isOurs[6] = true;
-
-   //cout << "Start serializing a full tree" << endl;
-   PartialMerkleTree pmtFull(7, &isOurs, &txList_);
-   BinaryData pmtSerFull = pmtFull.serialize();
-
-   //cout << "Finished serializing (full)" << endl;
-   //cout << "Merkle Root: " << pmtFull.getMerkleRoot().toHexStr() << endl;
-
-   //cout << "Starting unserialize (full):" << endl;
-   //cout << "Serialized: " << pmtSerFull.toHexStr() << endl;
-   PartialMerkleTree pmtFull2(7);
-   pmtFull2.unserialize(pmtSerFull);
-   BinaryData pmtSerFull2 = pmtFull2.serialize();
-   //cout << "Reserializ: " << pmtSerFull2.toHexStr() << endl;
-   //cout << "Equal? " << (pmtSerFull==pmtSerFull2 ? "True" : "False") << endl;
-
-   //cout << "Print Tree:" << endl;
-   //pmtFull2.pprintTree();
-   EXPECT_EQ(pmtSerFull, pmtSerFull2);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(DISABLED_PartialMerkleTest, SingleLeaf)
-{
-   vector<bool> isOurs(7);
-   /////////////////////////////////////////////////////////////////////////////
-   // Test all 7 single-flagged trees
-   for (uint32_t i = 0; i<7; i++)
-   {
-      for (uint32_t j = 0; j<7; j++)
-         isOurs[j] = i == j;
-
-      PartialMerkleTree pmt(7, &isOurs, &txList_);
-      //cout << "Serializing (partial)" << endl;
-      BinaryData pmtSer = pmt.serialize();
-      PartialMerkleTree pmt2(7);
-      //cout << "Unserializing (partial)" << endl;
-      pmt2.unserialize(pmtSer);
-      //cout << "Reserializing (partial)" << endl;
-      BinaryData pmtSer2 = pmt2.serialize();
-      //cout << "Serialized (Partial): " << pmtSer.toHexStr() << endl;
-      //cout << "Reserializ (Partial): " << pmtSer.toHexStr() << endl;
-      //cout << "Equal? " << (pmtSer==pmtSer2 ? "True" : "False") << endl;
-
-      //cout << "Print Tree:" << endl;
-      //pmt2.pprintTree();
-      EXPECT_EQ(pmtSer, pmtSer2);
-   }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(DISABLED_PartialMerkleTest, MultiLeaf)
-{
-   // Use deterministic seed
-   srand(0);
-
-   vector<bool> isOurs(7);
-
-   /////////////////////////////////////////////////////////////////////////////
-   // Test a variety of 3-flagged trees
-   for (uint32_t i = 0; i<512; i++)
-   {
-      if (i<256)
-      {
-         // 2/3 of leaves will be selected
-         for (uint32_t j = 0; j<7; j++)
-            isOurs[j] = (rand() % 3 < 2);
-      }
-      else
-      {
-         // 1/3 of leaves will be selected
-         for (uint32_t j = 0; j<7; j++)
-            isOurs[j] = (rand() % 3 < 1);
-      }
-
-      PartialMerkleTree pmt(7, &isOurs, &txList_);
-      //cout << "Serializing (partial)" << endl;
-      BinaryData pmtSer = pmt.serialize();
-      PartialMerkleTree pmt2(7);
-      //cout << "Unserializing (partial)" << endl;
-      pmt2.unserialize(pmtSer);
-      //cout << "Reserializing (partial)" << endl;
-      BinaryData pmtSer2 = pmt2.serialize();
-      //cout << "Serialized (Partial): " << pmtSer.toHexStr() << endl;
-      //cout << "Reserializ (Partial): " << pmtSer.toHexStr() << endl;
-      cout << "Equal? " << (pmtSer == pmtSer2 ? "True" : "False") << endl;
-
-      //cout << "Print Tree:" << endl;
-      //pmt2.pprintTree();
-      EXPECT_EQ(pmtSer, pmtSer2);
-   }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(DISABLED_PartialMerkleTest, EmptyTree)
-{
-   vector<bool> isOurs(7);
-   isOurs[0] = false;
-   isOurs[1] = false;
-   isOurs[2] = false;
-   isOurs[3] = false;
-   isOurs[4] = false;
-   isOurs[5] = false;
-   isOurs[6] = false;
-
-   //cout << "Start serializing a full tree" << endl;
-   PartialMerkleTree pmtFull(7, &isOurs, &txList_);
-   BinaryData pmtSerFull = pmtFull.serialize();
-
-   //cout << "Finished serializing (full)" << endl;
-   //cout << "Merkle Root: " << pmtFull.getMerkleRoot().toHexStr() << endl;
-
-   //cout << "Starting unserialize (full):" << endl;
-   //cout << "Serialized: " << pmtSerFull.toHexStr() << endl;
-   PartialMerkleTree pmtFull2(7);
-   pmtFull2.unserialize(pmtSerFull);
-   BinaryData pmtSerFull2 = pmtFull2.serialize();
-   //cout << "Reserializ: " << pmtSerFull2.toHexStr() << endl;
-   //cout << "Equal? " << (pmtSerFull==pmtSerFull2 ? "True" : "False") << endl;
-
-   //cout << "Print Tree:" << endl;
-   //pmtFull2.pprintTree();
-   EXPECT_EQ(pmtSerFull, pmtSerFull2);
-
-}
-
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
 class BlockUtilsSuper : public ::testing::Test
 {
 protected:
@@ -2241,7 +2044,7 @@ TEST_F(WebSocketTests, DISABLED_WebSocketStack_ParallelAsync)
          BinaryWriter bw;
          bw.put_uint8_t(SCRIPT_PREFIX_HASH160);
 
-         auto&& addrData = CryptoPRNG::generateRandom(20);
+         auto&& addrData = Cryptography::PRNG::generateRandomStrong(20);
          bw.put_BinaryData(addrData);
 
          result.push_back(bw.getData());
@@ -2714,7 +2517,7 @@ TEST_F(WebSocketTests, DISABLED_WebSocketStack_ParallelAsync_ShutdownClients)
          BinaryWriter bw;
          bw.put_uint8_t(SCRIPT_PREFIX_HASH160);
 
-         auto&& addrData = CryptoPRNG::generateRandom(20);
+         auto&& addrData = Cryptography::PRNG::generateRandomStrong(20);
          bw.put_BinaryData(addrData);
 
          result.push_back(bw.getData());
@@ -2771,7 +2574,7 @@ TEST_F(WebSocketTests, DISABLED_WebSocketStack_ParallelAsync_ShutdownClients)
          if (this_id % 3 != 0)
             return false;
 
-         auto rndVal = CryptoPRNG::generateRandom(1);
+         auto rndVal = Cryptography::PRNG::generateRandomStrong(1);
          ++killCount;
          return rndVal.getPtr()[0] % 3 || killCount == 3;
       };
@@ -3179,7 +2982,7 @@ TEST_F(WebSocketTests, WebSocketStack_ManyLargeWallets)
          BinaryWriter bw;
          bw.put_uint8_t(SCRIPT_PREFIX_HASH160);
 
-         auto addrData = CryptoPRNG::generateRandom(20);
+         auto addrData = Cryptography::PRNG::generateRandomStrong(20);
          bw.put_BinaryData(addrData);
 
          result.emplace_back(bw.getData());
@@ -3325,7 +3128,7 @@ TEST_F(WebSocketTests, WebSocketStack_AddrOpLoop)
          BinaryWriter bw;
          bw.put_uint8_t(SCRIPT_PREFIX_HASH160);
 
-         auto&& addrData = CryptoPRNG::generateRandom(20);
+         auto&& addrData = Cryptography::PRNG::generateRandomStrong(20);
          bw.put_BinaryData(addrData);
 
          result.push_back(bw.getData());
@@ -3583,7 +3386,7 @@ TEST_F(WebSocketTests, WebSocketStack_CombinedCalls)
          BinaryWriter bw;
          bw.put_uint8_t(SCRIPT_PREFIX_HASH160);
 
-         auto&& addrData = CryptoPRNG::generateRandom(20);
+         auto&& addrData = Cryptography::PRNG::generateRandomStrong(20);
          bw.put_BinaryData(addrData);
 
          result.push_back(bw.getData());
@@ -3729,7 +3532,7 @@ TEST_F(WebSocketTests, WebSocketStack_UnregisterAddresses)
          BinaryWriter bw;
          bw.put_uint8_t(SCRIPT_PREFIX_HASH160);
 
-         auto addrData = CryptoPRNG::generateRandom(20);
+         auto addrData = Cryptography::PRNG::generateRandomStrong(20);
          bw.put_BinaryData(addrData);
 
          result.push_back(bw.getData());
@@ -4875,8 +4678,8 @@ TEST_F(WebSocketTests, WebSocketStack_GetSpentness)
       vector<BinaryData> result;
       for (unsigned i = 0; i < count; i++) {
          KeyPair kp;
-         kp.priv_ = CryptoPRNG::generateRandom(32);
-         kp.pub_ = CryptoECDSA().ComputePublicKey(kp.priv_, true);
+         kp.priv_ = Cryptography::PRNG::generateRandomStrong(32);
+         kp.pub_ = Cryptography::ECDSA::computePublicKey(kp.priv_, true);
          kp.scrHash_ = BtcUtils::getHash160(kp.pub_);
 
          BinaryWriter bw;
@@ -5329,7 +5132,7 @@ GTEST_API_ int main(int argc, char **argv)
    WSAStartup(wVersion, &wsaData);
 #endif
 
-   CryptoECDSA::setupContext();
+   Cryptography::ECDSA::setupContext();
 
    srand(time(0));
    std::cout << "Running main() from gtest_main.cc\n";
@@ -5342,6 +5145,6 @@ GTEST_API_ int main(int argc, char **argv)
    FLUSHLOG();
    CLEANUPLOG();
 
-   CryptoECDSA::shutdown();
+   Cryptography::ECDSA::shutdown();
    return exitCode;
 }

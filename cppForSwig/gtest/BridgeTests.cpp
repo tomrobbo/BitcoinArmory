@@ -162,26 +162,26 @@ namespace {
       };
 
       auto walletId = std::string{"walletWO_" +
-         prng_fortuna.generateRandom(3).toHexStr()};
+         Cryptography::PRNG::fortuna.generateRandom(3).toHexStr()};
 
       //create empty WO wallet
       auto wltWO = AssetWallet_Single::createBlank(
          {std::string_view{walletId}}, params);
       wltWO->setupImportAccount();
 
-      auto pubKeyB = CryptoECDSA().ComputePublicKey(TestChain::privKeyAddrB);
+      auto pubKeyB = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrB);
       wltWO->importPublicKey(pubKeyB, AddressEntryType(
          AddressEntryType_P2PKH | AddressEntryType_Uncompressed));
 
-      auto pubKeyC = CryptoECDSA().ComputePublicKey(TestChain::privKeyAddrC);
+      auto pubKeyC = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrC);
       wltWO->importPublicKey(pubKeyC, AddressEntryType(
          AddressEntryType_P2PKH | AddressEntryType_Uncompressed));
 
-      auto pubKeyD = CryptoECDSA().ComputePublicKey(TestChain::privKeyAddrD);
+      auto pubKeyD = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrD);
       wltWO->importPublicKey(pubKeyD, AddressEntryType(
          AddressEntryType_P2PKH | AddressEntryType_Uncompressed));
 
-      auto pubKeyE = CryptoECDSA().ComputePublicKey(TestChain::privKeyAddrE);
+      auto pubKeyE = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrE);
       wltWO->importPublicKey(pubKeyE, AddressEntryType(
          AddressEntryType_P2PKH | AddressEntryType_Uncompressed));
 
@@ -323,7 +323,7 @@ namespace {
       const std::string& walletId,
       const std::string& currentPass, const std::string& newPass)
    {
-      auto callbackId = prng_fortuna.generateRandom(10).toHexStr();
+      auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
       auto refId = rand();
 
       //start passphrase change sequence
@@ -457,7 +457,7 @@ namespace {
       const std::string& walletId, const std::string& accountId,
       const std::string& dbId, unsigned count, bool isNew)
    {
-      auto callbackId = prng_fortuna.generateRandom(10).toHexStr();
+      auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
       auto refId = rand();
 
       //start chain extension sequence
@@ -985,7 +985,7 @@ TEST_F(WalletManagerTests, ListStageLoad)
       auto failUnlockLbd = [&count](
          const std::set<EncryptionKeyId>&)->Armory::Passphrase::Result {
          if (count++ < 2) {
-            return { prng_fortuna.generateRandom(10), true };
+            return { Cryptography::PRNG::fortuna.generateRandom(10), true };
          }
          //give up after 2 tries
          return { {}, false };
@@ -1331,19 +1331,19 @@ protected:
       auto wltWO = AssetWallet_Single::createBlank("walletWO1"sv, params);
       wltWO->setupImportAccount();
 
-      auto pubKeyB = CryptoECDSA().ComputePublicKey(TestChain::privKeyAddrB);
+      auto pubKeyB = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrB);
       wltWO->importPublicKey(pubKeyB, AddressEntryType(
          AddressEntryType_P2PKH | AddressEntryType_Uncompressed));
 
-      auto pubKeyC = CryptoECDSA().ComputePublicKey(TestChain::privKeyAddrC);
+      auto pubKeyC = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrC);
       wltWO->importPublicKey(pubKeyC, AddressEntryType(
          AddressEntryType_P2PKH | AddressEntryType_Uncompressed));
 
-      auto pubKeyD = CryptoECDSA().ComputePublicKey(TestChain::privKeyAddrD);
+      auto pubKeyD = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrD);
       wltWO->importPublicKey(pubKeyD, AddressEntryType(
          AddressEntryType_P2PKH | AddressEntryType_Uncompressed));
 
-      auto pubKeyE = CryptoECDSA().ComputePublicKey(TestChain::privKeyAddrE);
+      auto pubKeyE = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrE);
       wltWO->importPublicKey(pubKeyE, AddressEntryType(
          AddressEntryType_P2PKH | AddressEntryType_Uncompressed));
    }
@@ -1597,7 +1597,7 @@ protected:
    bool unlockWallet(const std::string& path, const std::string& passphrase)
    {
       auto refId = rand();
-      auto callbackId = prng_fortuna.generateRandom(10).toHexStr();
+      auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
 
       //request unlock
       {
@@ -1695,7 +1695,7 @@ protected:
    int failToUnlockWallet(const std::string& path, unsigned count)
    {
       auto refId = rand();
-      auto callbackId = prng_fortuna.generateRandom(10).toHexStr();
+      auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
 
       //request unlock
       {
@@ -1743,7 +1743,7 @@ protected:
 
             if (attempts != count) {
                notifReply.setSuccess(true);
-               auto badPass = prng_fortuna.generateRandom(10).toHexStr();
+               auto badPass = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
                notifReply.setUnlockRequest(badPass);
             } else {
                notifReply.setSuccess(false);
@@ -2044,7 +2044,7 @@ protected:
       const std::string& passphrase, Bridge::WalletBackup::Type backupType)
    {
       auto refId = rand();
-      auto callbackId = prng_fortuna.generateRandom(10).toHexStr();
+      auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
 
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Bridge::ToBridge>();
@@ -2164,7 +2164,7 @@ protected:
 
       //restore the wallet
       auto refId = rand();
-      auto callbackId = prng_fortuna.generateRandom(10).toHexStr();
+      auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
 
       {
          capnp::MallocMessageBuilder message;
@@ -2583,7 +2583,7 @@ TEST_F(BridgeTests, CreateWallet)
 {
    //create the wallet
    auto refId = rand();
-   auto callbackId = prng_fortuna.generateRandom(10).toHexStr();
+   auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
 
    capnp::MallocMessageBuilder message;
    auto toBridge = message.initRoot<Bridge::ToBridge>();
@@ -2665,7 +2665,7 @@ TEST_F(BridgeTests, DeleteWallet)
    {
       //create the wallet
       auto refId = rand();
-      auto callbackId = prng_fortuna.generateRandom(10).toHexStr();
+      auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
 
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Bridge::ToBridge>();
@@ -2759,7 +2759,7 @@ TEST_F(BridgeTests, CreateWallet_Reject)
 {
    //create the wallet
    auto refId = rand();
-   auto callbackId = prng_fortuna.generateRandom(10).toHexStr();
+   auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
 
    capnp::MallocMessageBuilder message;
    auto toBridge = message.initRoot<Bridge::ToBridge>();
@@ -2840,7 +2840,7 @@ TEST_F(BridgeTests, RestoreWallet_Legacy)
    //grab backup strings via callback
    {
       auto refId = rand();
-      auto callbackId = prng_fortuna.generateRandom(10).toHexStr();
+      auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
 
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Bridge::ToBridge>();
@@ -2931,7 +2931,7 @@ TEST_F(BridgeTests, RestoreMerge)
 {
    //create the wallet
    auto refId = rand();
-   auto callbackId = prng_fortuna.generateRandom(10).toHexStr();
+   auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
    std::string passphrase{"pass2"};
    std::string passphrase2{"pass3"};
    unsigned lookup = 46;
@@ -3091,7 +3091,7 @@ TEST_F(BridgeTests, Migrate_Legacy)
    }
 
    //migrate it
-   auto callbackId = prng_fortuna.generateRandom(10).toHexStr();
+   auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
    auto refId = rand();
    {
       capnp::MallocMessageBuilder message;
@@ -3257,7 +3257,7 @@ TEST_F(BridgeTests, ImportWallet_Legacy)
    }
 
    /* migrate the wallet */
-   auto callbackId = prng_fortuna.generateRandom(10).toHexStr();
+   auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
    refId = rand();
    {
       capnp::MallocMessageBuilder message;
@@ -3568,7 +3568,7 @@ TEST_F(BridgeTests, ForkWO)
    /* 3. fork it */
    auto refId = rand();
    {
-      auto callbackId = prng_fortuna.generateRandom(10).toHexStr();
+      auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
 
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Bridge::ToBridge>();
@@ -4336,7 +4336,7 @@ TEST_F(BridgeWebsocketsAutoDB, Connect)
 ////////////////////////////////////////////////////////////////////////////////
 GTEST_API_ int main(int argc, char **argv)
 {
-   CryptoECDSA::setupContext();
+   Cryptography::ECDSA::setupContext();
 
    srand(time(0));
    std::cout << "Running main() from gtest_main.cc\n";
@@ -4352,6 +4352,6 @@ GTEST_API_ int main(int argc, char **argv)
    FLUSHLOG();
    CLEANUPLOG();
 
-   CryptoECDSA::shutdown();
+   Cryptography::ECDSA::shutdown();
    return exitCode;
 }

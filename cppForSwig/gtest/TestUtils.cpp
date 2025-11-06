@@ -690,8 +690,8 @@ namespace DBTestUtils
    pair<BinaryData, BinaryData> getAddrAndPubKeyFromPrivKey(
       BinaryData privKey, bool compressed)
    {
-      auto&& pubkey = CryptoECDSA().ComputePublicKey(privKey, compressed);
-      auto&& h160 = BtcUtils::getHash160(pubkey);
+      auto pubkey = Cryptography::ECDSA::computePublicKey(privKey, compressed);
+      auto h160 = BtcUtils::getHash160(pubkey);
 
       pair<BinaryData, BinaryData> result;
       result.second = pubkey;

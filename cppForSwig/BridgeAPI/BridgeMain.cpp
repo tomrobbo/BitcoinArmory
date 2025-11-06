@@ -21,7 +21,7 @@ int main(int argc, char* argv[])
    WSAStartup(wVersion, &wsaData);
 #endif
 
-   CryptoECDSA::setupContext();
+   Cryptography::ECDSA::setupContext();
    startupBIP151CTX();
    startupBIP150CTX(4);
 
@@ -91,7 +91,7 @@ int main(int argc, char* argv[])
    LOGINFO << "exiting";
 
    shutdownBIP151CTX();
-   CryptoECDSA::shutdown();
+   Cryptography::ECDSA::shutdown();
 
    return 0;
 }

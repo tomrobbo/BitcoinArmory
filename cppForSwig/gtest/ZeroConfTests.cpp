@@ -8317,7 +8317,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BatchZcChain_AlreadyInChain)
       DBTestUtils::pushNewZc(theBDMt_, zcVec, true);
 
       //mine 1 block
-      DBTestUtils::mineNewBlock(theBDMt_, CryptoPRNG::generateRandom(20), 1);
+      DBTestUtils::mineNewBlock(theBDMt_, Cryptography::PRNG::generateRandomStrong(20), 1);
       pCallback->waitOnSignal(BDMAction_NewBlock);
 
       //batch push all tx
@@ -11812,7 +11812,7 @@ GTEST_API_ int main(int argc, char **argv)
    std::cout << "   POOL_MERGE_THRESHOLD: " << POOL_MERGE_THRESHOLD << std::endl;
    std::cout << "   COINBASE_MATURITY: " << COINBASE_MATURITY << std::endl;
 
-   CryptoECDSA::setupContext();
+   Cryptography::ECDSA::setupContext();
 
    srand(time(0));
    std::cout << "Running main() from gtest_main.cc" << std::endl;
@@ -11823,6 +11823,6 @@ GTEST_API_ int main(int argc, char **argv)
    FLUSHLOG();
    CLEANUPLOG();
 
-   CryptoECDSA::shutdown();
+   Cryptography::ECDSA::shutdown();
    return exitCode;
 }

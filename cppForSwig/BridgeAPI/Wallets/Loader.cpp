@@ -455,11 +455,11 @@ std::shared_ptr<Wallets::AssetWallet_Single> Armory135Header::migrate(
                auto derivedPass = myKdf.DeriveKey(result.passphrase);
 
                //decrypt the privkey
-               auto decryptedKey = CryptoAES::DecryptCFB(
+               auto decryptedKey = Cryptography::Encryption::AES::decryptCFB(
                   rootAddrObj.privKey(), derivedPass, rootAddrObj.iv());
 
                //generate pubkey
-               auto computedPubKey = CryptoECDSA().ComputePublicKey(
+               auto computedPubKey = Cryptography::ECDSA::computePublicKey(
                   decryptedKey, false);
 
                if (rootAddrObj.pubKey() != computedPubKey) {

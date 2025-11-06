@@ -19,13 +19,15 @@ using namespace std;
 using namespace Armory::Wallets;
 using namespace Armory::Wallets::Encryption;
 
+namespace
+{
+   Cryptography::PRNG::Fortuna fortuna;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 //// Cipher
 ////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-const PRNG_Fortuna Cipher::fortuna_;
-
 ////////////////////////////////////////////////////////////////////////////////
 Cipher::~Cipher()
 {}
@@ -44,7 +46,7 @@ unsigned Cipher::getBlockSize(CipherType type)
    {
       case CipherType_AES:
       {
-         blockSize = AES_BLOCK_SIZE;
+         blockSize = Cryptography::Encryption::AES::BLOCK_SIZE;
          break;
       }
 
@@ -57,7 +59,7 @@ unsigned Cipher::getBlockSize(CipherType type)
 ////////////////////////////////////////////////////////////////////////////////
 SecureBinaryData Cipher::generateIV(void) const
 {
-   return fortuna_.generateRandom(getBlockSize(type_));
+   return fortuna.generateRandom(getBlockSize(type_));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -146,10 +148,8 @@ SecureBinaryData Cipher_AES::encrypt(ClearTextEncryptionKey* const key,
    if (key == nullptr) {
       throw std::runtime_error("null key ptr");
    }
-   auto& encryptionKey = key->getDerivedKey(kdfId);
-
-   CryptoAES cipher;
-   return cipher.EncryptCBC(data, encryptionKey, iv_);
+   const auto& encryptionKey = key->getDerivedKey(kdfId);
+   return Cryptography::Encryption::AES::encryptCBC(data, encryptionKey, iv_);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -166,8 +166,7 @@ SecureBinaryData Cipher_AES::encrypt(ClearTextEncryptionKey* const key,
 SecureBinaryData Cipher_AES::decrypt(const SecureBinaryData& key,
    const SecureBinaryData& data) const
 {
-   CryptoAES aes_cipher;
-   return aes_cipher.DecryptCBC(data, key, iv_);
+   return Cryptography::Encryption::AES::decryptCBC(data, key, iv_);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -471,7 +470,7 @@ EncryptionKeyId ClearTextEncryptionKey::computeId(
 {
    //treat value as scalar, get pubkey for it
    auto hashedKey = BtcUtils::getHash256(key);
-   auto pubkey = CryptoECDSA().ComputePublicKey(hashedKey);
+   auto pubkey = Cryptography::ECDSA::computePublicKey(hashedKey);
 
    //HMAC the pubkey, get last 16 bytes as ID
    return EncryptionKeyId(

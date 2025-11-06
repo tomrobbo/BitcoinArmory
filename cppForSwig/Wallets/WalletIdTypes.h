@@ -6,12 +6,11 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _H_WALLET_ID_TYPES
-#define _H_WALLET_ID_TYPES
+#pragma once
 
 #include <string>
 #include <stdexcept>
-#include "../BinaryData.h"
+#include "BinaryData.h"
 
 #define KDF_PREFIX 0xC1
 
@@ -35,7 +34,6 @@ namespace Armory
 
    namespace Wallets
    {
-      ////////////////////////////////////////////////////////////////////////
       using AssetKeyType   = int32_t;
       using AccountKeyType = int32_t;
 
@@ -236,7 +234,5 @@ namespace Armory
          SecureBinaryData, Seeds::SeedType);
       Wallets::WalletId generateMasterId(const SecureBinaryData&,
          const SecureBinaryData&);
-
-   }// namespace Wallets
+   } // namespace Wallets
 }
-#endif

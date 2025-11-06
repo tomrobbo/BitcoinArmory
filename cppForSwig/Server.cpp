@@ -97,7 +97,7 @@ int WebSocketServer::callback(struct lws *wsi,
 
       case LWS_CALLBACK_ESTABLISHED:
       {
-         auto bdid = CryptoPRNG::generateRandom(8);
+         auto bdid = Cryptography::PRNG::generateRandomStrong(8);
          session_data->id_ = *(uint64_t*)bdid.getPtr();
 
          auto instance = WebSocketServer::getInstance();

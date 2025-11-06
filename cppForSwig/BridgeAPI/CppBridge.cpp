@@ -41,7 +41,7 @@ enum CppBridgeState
 
 namespace
 {
-   PRNG_Fortuna fortuna;
+   Cryptography::PRNG::Fortuna fortuna;
 
    ////
    BinaryData serializeCapnp(capnp::MallocMessageBuilder& msg)

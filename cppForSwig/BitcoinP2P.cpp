@@ -669,7 +669,7 @@ void Payload_Version::setVersionHeaderIPv4(uint32_t version,
    vheader_.addr_recv_.setIPv4(services, recvaddr);
    vheader_.addr_from_.setIPv4(services, fromaddr);
 
-   auto randombytes = prng_fortuna.generateRandom(8);
+   auto randombytes = Cryptography::PRNG::fortuna.generateRandom(8);
    memcpy(&vheader_.nonce_, randombytes.getPtr(), 8);
 }
 

@@ -85,15 +85,15 @@ TEST_F(PRNGTest, FortunaTest)
       return { collisionP1, collisionP2, collisions, offSizes };
    };
 
-   PRNG_Fortuna prng1;
-   PRNG_Fortuna prng2;
+   Cryptography::PRNG::Fortuna prng1;
+   Cryptography::PRNG::Fortuna prng2;
 
    //conscutive
    std::set<SecureBinaryData> pool1, pool2;
-   for (unsigned i=0; i<sampleSize; i++) {
+   for (unsigned i=0; i < sampleSize; i++) {
       pool1.insert(prng1.generateRandom(32));
    }
-   for (unsigned i=0; i<sampleSize; i++) {
+   for (unsigned i=0; i < sampleSize; i++) {
       pool2.insert(prng2.generateRandom(32));
    }
    auto check1 = checkPools(pool1, pool2, sampleSize, 32);
@@ -1028,7 +1028,7 @@ TEST_F(SignerTest, SpendTest_MixedInputTypes)
       nullptr, 5
    };
 
-   auto rawEntropy = CryptoPRNG::generateRandom(32);
+   auto rawEntropy = Cryptography::PRNG::generateRandomStrong(32);
    BIP32_Node node;
    node.initFromSeed(rawEntropy);
 
@@ -1053,12 +1053,12 @@ TEST_F(SignerTest, SpendTest_MixedInputTypes)
    //register with db
    std::vector<std::shared_ptr<AddressEntry>> addrVec;
    addrVec.push_back(assetWlt->getNewAddress(AddressEntryType(
-         AddressEntryType_P2PKH | AddressEntryType_Uncompressed)));
+      AddressEntryType_P2PKH | AddressEntryType_Uncompressed)));
    addrVec.push_back(assetWlt->getNewAddress(AddressEntryType_P2WPKH));
    addrVec.push_back(assetWlt->getNewAddress(AddressEntryType(
-         AddressEntryType_P2PK | AddressEntryType_P2SH)));
+      AddressEntryType_P2PK | AddressEntryType_P2SH)));
    addrVec.push_back(assetWlt->getNewAddress(AddressEntryType(
-         AddressEntryType_P2WPKH | AddressEntryType_P2SH)));
+      AddressEntryType_P2WPKH | AddressEntryType_P2SH)));
    addrVec.push_back(assetWlt->getNewAddress(AddressEntryType_P2WPKH));
 
    std::vector<BinaryData> hashVec;
@@ -4569,7 +4569,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2WPKH_WOResolution_fromWOCopy)
 
    //// create assetWlt ////
 
-   auto rawEntropy = CryptoPRNG::generateRandom(32);
+   auto rawEntropy = Cryptography::PRNG::generateRandomStrong(32);
    std::filesystem::path woPath, wltPath;
 
    IO::CreateWalletParams params{
@@ -4870,7 +4870,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2WPKH_WOResolution_fromXPub)
       nullptr, 0
    };
 
-   auto rawEntropy = CryptoPRNG::generateRandom(32);
+   auto rawEntropy = Cryptography::PRNG::generateRandomStrong(32);
    std::unique_ptr<Armory::Seeds::ClearTextSeed> seed(
       new Armory::Seeds::ClearTextSeed_BIP32(
          rawEntropy, Armory::Seeds::SeedType::BIP32_Virgin));
@@ -5768,7 +5768,7 @@ TEST_F(SignerTest, SpendTest_BIP32_Accounts)
 
    //salted account
    std::vector<unsigned> derPath = { 0x80000099, 0x80000001 };
-   auto salt = CryptoPRNG::generateRandom(32);
+   auto salt = Cryptography::PRNG::generateRandomStrong(32);
    auto saltedAccType =
       AccountType_BIP32_Salted::makeFromDerPaths(seedFingerprint, {derPath}, salt);
    saltedAccType->setAddressLookup(5);
@@ -6544,9 +6544,9 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Salted)
    auto seedFingerprint = rootBip32->getSeedFingerprint(true);
 
    std::vector<unsigned> derPath = {0x80000099, 0x80000001};
-   auto salt = CryptoPRNG::generateRandom(32);
-   auto saltedAccType =
-      AccountType_BIP32_Salted::makeFromDerPaths(seedFingerprint, {derPath}, salt);
+   auto salt = Cryptography::PRNG::generateRandomStrong(32);
+   auto saltedAccType = AccountType_BIP32_Salted::makeFromDerPaths(
+      seedFingerprint, {derPath}, salt);
    saltedAccType->setAddressLookup(5);
    saltedAccType->setDefaultAddressType(
       AddressEntryType_P2WPKH);
@@ -6786,7 +6786,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_ECDH)
    //ecdh account base key pair
    auto privKey = READHEX(
       "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F");
-   auto pubKey = CryptoECDSA().ComputePublicKey(privKey, true);
+   auto pubKey = Cryptography::ECDSA::computePublicKey(privKey, true);
 
    //setup bdm
    TestUtils::setBlocks({ "0", "1", "2", "3" }, blk0dat_);
@@ -6869,7 +6869,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_ECDH)
 
    for (unsigned i = 0; i < 5; i++) {
       auto tx = assetWlt->beginSubDBTransaction(assetWlt->getID(), true);
-      auto salt = CryptoPRNG::generateRandom(32);
+      auto salt = Cryptography::PRNG::generateRandomStrong(32);
       accPtr->addSalt(tx, salt);
    }
 
@@ -9198,13 +9198,13 @@ TEST_F(ExtrasTest, PSBT)
       nodeCopy.derivePrivate(derStep);
       privKeys.emplace_back(nodeCopy.movePrivateKey());
       pubKeys.emplace_back(
-         CryptoECDSA().ComputePublicKey(privKeys.back(), true));
+         Cryptography::ECDSA::computePublicKey(privKeys.back(), true));
    }
 
    auto supportingTx1 = READHEX("0200000000010158e87a21b56daf0c23be8e7070456c336f7cbaa5c8757924f545887bb2abdd7501000000171600145f275f436b09a8cc9a2eb2a2f528485c68a56323feffffff02d8231f1b0100000017a914aed962d6654f9a2b36608eb9d64d2b260db4f1118700c2eb0b0000000017a914b7f5faf40e3d40a5a459b1db3535f2b72fa921e88702483045022100a22edcc6e5bc511af4cc4ae0de0fcd75c7e04d8c1c3a8aa9d820ed4b967384ec02200642963597b9b1bc22c75e9f3e117284a962188bf5e8a74c895089046a20ad770121035509a48eb623e10aace8bfd0212fdb8a8e5af3c94b0b133b95e114cab89e4f7965000000");
    auto supportingTx2 = READHEX("0200000001aad73931018bd25f84ae400b68848be09db706eac2ac18298babee71ab656f8b0000000048473044022058f6fc7c6a33e1b31548d481c826c015bd30135aad42cd67790dab66d2ad243b02204a1ced2604c6735b6393e5b41691dd78b00f0c5942fb9f751856faa938157dba01feffffff0280f0fa020000000017a9140fb9463421696b82c833af241c78c17ddbde493487d0f20a270100000017a91429ca74f8a08f81999428185c97b5d852e4063f618765000000");
    auto utxo1_1 = getUtxoFromRawTx(supportingTx1, 1);
-   
+
    //setup
    {
       auto signer = createSigner();
@@ -9519,8 +9519,8 @@ TEST_F(ExtrasTest, BitcoinMessage)
 
    //randomized run
    {
-      auto privkey = CryptoPRNG::generateRandom(32);
-      auto pubkey = CryptoECDSA().ComputePublicKey(privkey, true);
+      auto privkey = Cryptography::PRNG::generateRandomStrong(32);
+      auto pubkey = Cryptography::ECDSA::computePublicKey(privkey, true);
       auto pubkeyCopy = pubkey;
 
       auto assetPubKey = std::make_shared<Asset_PublicKey>(pubkeyCopy);
@@ -9547,7 +9547,7 @@ TEST_F(ExtrasTest, BitcoinMessage)
       auto privKeyDecode = BtcUtils::decodePrivKeyBase58(privkeyB58);
       ASSERT_EQ(privKeyDecode, privkey);
 
-      auto pubkey = CryptoECDSA().ComputePublicKey(privKeyDecode, true);
+      auto pubkey = Cryptography::ECDSA::computePublicKey(privKeyDecode, true);
       auto pubkeyCopy = pubkey;
 
       auto assetPubKey = std::make_shared<Asset_PublicKey>(pubkeyCopy);
@@ -9610,7 +9610,7 @@ protected:
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(ExtrasTest_Mainnet, Bip32PathDiscovery)
 {
-   auto rawEntropy = CryptoPRNG::generateRandom(32);
+   auto rawEntropy = Cryptography::PRNG::generateRandomStrong(32);
 
    BIP32_Node node;
    node.initFromSeed(rawEntropy);
@@ -9714,11 +9714,11 @@ GTEST_API_ int main(int argc, char **argv)
    srand(time(0));
    std::cout << "Running main() from gtest_main.cc\n";
 
-   CryptoECDSA::setupContext();
+   Cryptography::ECDSA::setupContext();
 
    testing::InitGoogleTest(&argc, argv);
    int exitCode = RUN_ALL_TESTS();
-   CryptoECDSA::shutdown();
+   Cryptography::ECDSA::shutdown();
 
    FLUSHLOG();
    CLEANUPLOG();

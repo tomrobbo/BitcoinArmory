@@ -6,8 +6,7 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _H_WALLETFILEINTERFACE_
-#define _H_WALLETFILEINTERFACE_
+#pragma once
 
 #include <memory>
 #include <vector>
@@ -154,7 +153,6 @@ namespace Armory
             std::unique_ptr<Armory::Seeds::EncryptedSeed> controlSeed_;
 
             unsigned encryptionVersion_ = UINT32_MAX;
-            std::unique_ptr<PRNG_Fortuna> fortuna_;
 
          private:
             //control objects loading
@@ -228,5 +226,3 @@ namespace Armory
       }; //namespace IO
    }; //namespace Wallets
 }; //namespace Armory
-
-#endif

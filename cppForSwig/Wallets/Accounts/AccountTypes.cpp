@@ -471,10 +471,10 @@ AddressAccountId AccountType_ECDH::getAccountID() const
       BinaryRefReader brr(pub_hash160.getRef());
       accountKey = brr.get_int32_t(BE);
    } else {
-      auto&& root_pub = CryptoECDSA().ComputePublicKey(privateKey_, true);
+      auto root_pub = Cryptography::ECDSA::computePublicKey(privateKey_, true);
       root_pub.getPtr()[0] ^= (uint8_t)type();
 
-      auto&& pub_hash160 = BtcUtils::getHash160(root_pub);
+      auto pub_hash160 = BtcUtils::getHash160(root_pub);
       BinaryRefReader brr(pub_hash160.getRef());
       accountKey = brr.get_int32_t(BE);
    }

@@ -408,8 +408,8 @@ std::unique_ptr<ClearTextSeed> ClearTextSeed::deserialize(
 // ClearTextSeed_Armory
 ClearTextSeed_Armory::ClearTextSeed_Armory(LegacyType lType) :
    ClearTextSeed{SeedType::ArmoryLegacy},
-   root_{CryptoPRNG::generateRandom(32)}, chaincode_{},
-   legacyType_{lType}
+   root_{Cryptography::PRNG::generateRandomStrong(32)},
+   chaincode_{}, legacyType_{lType}
 {}
 
 ClearTextSeed_Armory::ClearTextSeed_Armory(const SecureBinaryData& root,
@@ -440,14 +440,14 @@ WalletId ClearTextSeed_Armory::computeWalletId() const
    if (chaincode_.empty()) {
       chaincodeCopy = BtcUtils::computeChainCode_ArmoryLegacy(root_);
    }
-   auto pubkey = CryptoECDSA().ComputePublicKey(root_);
+   auto pubkey = Cryptography::ECDSA::computePublicKey(root_);
    return Armory::Wallets::generateWalletId(pubkey, chaincodeCopy, type());
 }
 
 WalletId ClearTextSeed_Armory::computeMasterId() const
 {
    //uncompressed pubkey
-   auto pubkey = CryptoECDSA().ComputePublicKey(root_);
+   auto pubkey = Cryptography::ECDSA::computePublicKey(root_);
    return generateMasterId(pubkey, chaincode_);
 }
 
@@ -535,7 +535,7 @@ WalletId ClearTextSeed_ArmoryPublic::computeMasterId() const
 {
    //uncompressed pubkey
    if (pubRoot_.getSize() != 65) {
-      auto rootUnc = CryptoECDSA().UncompressPoint(pubRoot_);
+      auto rootUnc = Cryptography::ECDSA::uncompressPoint(pubRoot_);
       return generateMasterId(rootUnc, chaincode_);
    } else {
       return generateMasterId(pubRoot_, chaincode_);
@@ -589,7 +589,7 @@ void ClearTextSeed_ArmoryPublic::serialize(BinaryWriter& bw) const
 ////////////////////////////////////////////////////////////////////////////////
 // ClearTextSeed_BIP32
 ClearTextSeed_BIP32::ClearTextSeed_BIP32(SeedType sType) :
-   ClearTextSeed_BIP32(CryptoPRNG::generateRandom(32), sType)
+   ClearTextSeed_BIP32(Cryptography::PRNG::generateRandomStrong(32), sType)
 {}
 
 ClearTextSeed_BIP32::ClearTextSeed_BIP32(const SecureBinaryData& raw,
@@ -744,8 +744,10 @@ ClearTextSeed_BIP39::ClearTextSeed_BIP39(const SecureBinaryData& raw,
 {}
 
 ClearTextSeed_BIP39::ClearTextSeed_BIP39(Dictionnary dictType) :
-   ClearTextSeed_BIP32{CryptoPRNG::generateRandom(32), SeedType::BIP39},
-   dictionnary_{dictType}
+   ClearTextSeed_BIP32{
+      Cryptography::PRNG::generateRandomStrong(32),
+      SeedType::BIP39
+   }, dictionnary_{dictType}
 {}
 
 ClearTextSeed_BIP39::~ClearTextSeed_BIP39()

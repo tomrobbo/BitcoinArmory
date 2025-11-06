@@ -636,16 +636,16 @@ void StackInterpreter::op_max(void)
 void StackInterpreter::op_checksig()
 {
    //pop sig and pubkey from the stack
-   if (stack_.size() < 2)
+   if (stack_.size() < 2) {
       throw ScriptException("insufficient stack size for checksig operation");
+   }
 
    txInEvalState_.n_ = 1;
    txInEvalState_.m_ = 1;
 
-   auto&& pubkey = pop_back();
-   auto&& sigScript = pop_back();
-   if (sigScript.getSize() < 65)
-   {
+   auto pubkey = pop_back();
+   auto sigScript = pop_back();
+   if (sigScript.getSize() < 65) {
       txInEvalState_.pubKeyState_.insert(make_pair(pubkey, false));
       stack_.push_back(move(intToRawBinary(false)));
       return;
@@ -658,115 +658,106 @@ void StackInterpreter::op_checksig()
    auto hashType = getSigHashSingleByte(brrSig.get_uint8_t());
 
    //get data for sighash
-   if (sigHashDataObject_ == nullptr)
-      sigHashDataObject_ = make_shared<SigHashDataLegacy>();
-   auto&& sighashdata =
-      sigHashDataObject_->getDataForSigHash(hashType, *txStubPtr_,
+   if (sigHashDataObject_ == nullptr) {
+      sigHashDataObject_ = std::make_shared<SigHashDataLegacy>();
+   }
+   auto sighashdata = sigHashDataObject_->getDataForSigHash(
+      hashType, *txStubPtr_,
       outputScriptRef_, inputIndex_);
 
-   if(!CryptoECDSA().VerifyPublicKeyValid(pubkey))
-      throw runtime_error("invalid pubkey");
+   if (!Cryptography::ECDSA::verifyPublicKeyValid(pubkey)) {
+      throw std::runtime_error("invalid pubkey");
+   }
 
    //check signature
-   auto result = CryptoECDSA().VerifyData(sighashdata, sig, pubkey);
-   stack_.push_back(move(intToRawBinary(result)));
+   auto result = Cryptography::ECDSA::verifyData(sighashdata, sig, pubkey);
+   stack_.emplace_back(intToRawBinary(result));
 
-   if (result)
-      txInEvalState_.pubKeyState_.insert(make_pair(pubkey, true));
+   if (result) {
+      txInEvalState_.pubKeyState_.emplace(pubkey, true);
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 void StackInterpreter::op_checkmultisig()
 {
    //stack needs to have at least m, n, output script
-   if (stack_.size() < 3)
+   if (stack_.size() < 3) {
       throw ScriptException("insufficient stack size for checkmultisig operation");
+   }
 
    //pop n
-   auto&& n = pop_back();
+   auto n = pop_back();
    auto nI = rawBinaryToInt(n);
-   if (nI < 0 || nI > 20)
+   if (nI < 0 || nI > 20) {
       throw ScriptException("invalid n");
+   }
 
    //pop pubkeys
-   map<unsigned, BinaryData> pubkeys;
-   for (unsigned i = 0; i < nI; i++)
-   {
-      auto&& pubkey = pop_back();
-      if(CryptoECDSA().VerifyPublicKeyValid(pubkey))
-      {
-         txInEvalState_.pubKeyState_.insert(make_pair(pubkey, false));
-         pubkeys.insert(move(make_pair(i, pubkey)));        
+   std::map<unsigned, BinaryData> pubkeys;
+   for (unsigned i = 0; i < nI; i++) {
+      auto pubkey = pop_back();
+      if (Cryptography::ECDSA::verifyPublicKeyValid(pubkey)) {
+         txInEvalState_.pubKeyState_.emplace(pubkey, false);
+         pubkeys.emplace(i, std::move(pubkey));
       }
    }
 
    //pop m
    auto&& m = pop_back();
    auto mI = rawBinaryToInt(m);
-   if (mI < 0 || mI > nI)
+   if (mI < 0 || mI > nI) {
       throw ScriptException("invalid m");
+   }
 
    txInEvalState_.n_ = nI;
    txInEvalState_.m_ = mI;
 
    //pop sigs
-   struct sigData
+   struct SigData
    {
-      BinaryData sig_;
-      SIGHASH_TYPE hashType_;
+      BinaryData sig;
+      SIGHASH_TYPE hashType;
    };
-   vector<sigData> sigVec;
+   std::vector<SigData> sigVec;
+   sigVec.reserve(stack_.size());
 
-   while (stack_.size() > 0)
-   {
-      auto&& sig = pop_back();
-      if (sig.getSize() == 0)
+   while (!stack_.empty()) {
+      auto sig = pop_back();
+      if (sig.empty()) {
          break;
-
-      sigData sdata;
-
-      sdata.sig_ = sig.getSliceCopy(0, sig.getSize() - 1);
-
-      //grab hash type
-      sdata.hashType_ = 
-         getSigHashSingleByte(*(sig.getPtr() + sig.getSize() - 1));
-
-      //push to vector
-      sigVec.push_back(move(sdata));
+      }
+      sigVec.emplace_back(SigData{
+         sig.getSliceCopy(0, sig.getSize() - 1),
+         getSigHashSingleByte(*(sig.getPtr() + sig.getSize() - 1))
+      });
    }
-
-   //should have at least as many sigs as m
-   /*if (sigVec.size() < mI)
-      throw ScriptException("invalid sig count");*/
 
    //check sigs
    map<SIGHASH_TYPE, BinaryData> dataToHash;
 
    //check sighashdata object
-   if (sigHashDataObject_ == nullptr)
-      sigHashDataObject_ = make_shared<SigHashDataLegacy>();
+   if (sigHashDataObject_ == nullptr) {
+      sigHashDataObject_ = std::make_shared<SigHashDataLegacy>();
+   }
 
    unsigned validSigCount = 0;
    int index = nI - 1;
-   auto sigIter = sigVec.rbegin();
-   while(sigIter != sigVec.rend())
-   {
-      auto& sigD = *sigIter++;
+   for (unsigned i=0; i < sigVec.size(); i++) {
+      const auto& sigD = sigVec[sigVec.size() - i - 1];
 
       //get data to hash
-      auto& hashdata = dataToHash[sigD.hashType_];
-      if (hashdata.getSize() == 0)
-      {
+      auto& hashdata = dataToHash[sigD.hashType];
+      if (hashdata.empty()) {
          hashdata = sigHashDataObject_->getDataForSigHash(
-            sigD.hashType_, *txStubPtr_, outputScriptRef_, inputIndex_);
+            sigD.hashType, *txStubPtr_, outputScriptRef_, inputIndex_);
       }
 
       //prepare sig
-      auto&& rs = BtcUtils::extractRSFromDERSig(sigD.sig_);
+      auto rs = BtcUtils::extractRSFromDERSig(sigD.sig);
 
       //pop pubkeys from deque to verify against sig
-      while (pubkeys.size() > 0)
-      {
+      while (!pubkeys.empty()) {
          auto pubkey = pubkeys[index];
          pubkeys.erase(index--);
 
@@ -774,29 +765,28 @@ void StackInterpreter::op_checkmultisig()
          LOGWARN << "Verifying sig for: ";
          LOGWARN << "   pubkey: " << pubkey.second.toHexStr();
 
-         auto&& msg_hash = BtcUtils::getHash256(hashdata);
+         auto msg_hash = BtcUtils::getHash256(hashdata);
          LOGWARN << "   message: " << hashdata.toHexStr();
 #endif
-         if(CryptoECDSA().VerifyData(hashdata, sigD.sig_, pubkey))
-         {
+         if (Cryptography::ECDSA::verifyData(hashdata, sigD.sig, pubkey)) {
             txInEvalState_.pubKeyState_[pubkey] = true;
             validSigCount++;
             break;
-         }        
+         }
       }
    }
 
-   if (validSigCount >= mI)
+   if (validSigCount >= mI) {
       op_true();
-   else
+   } else {
       op_0();
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 void StackInterpreter::processSW(BinaryDataRef outputScript)
 {
-   if (flags_ & SCRIPT_VERIFY_SEGWIT)
-   {
+   if (flags_ & SCRIPT_VERIFY_SEGWIT) {
       //set sig hash object to sw if it's missing
       sigHashDataObject_ = SHD_SW_;
 
@@ -805,51 +795,51 @@ void StackInterpreter::processSW(BinaryDataRef outputScript)
 
       switch (versionByte)
       {
-      case 0:
-      {
-         auto&& scriptSize = brr.get_uint8_t();
-         auto&& scriptHash = brr.get_BinaryDataRef(scriptSize);
-
-         if (brr.getSizeRemaining() > 0)
-            throw ScriptException("invalid v0 SW ouput size");
-
-         switch (scriptSize)
+         case 0:
          {
-         case 20:
-         {
-            //P2WPKH
-            process_p2wpkh(scriptHash);
-            break;
-         }
+            auto&& scriptSize = brr.get_uint8_t();
+            auto&& scriptHash = brr.get_BinaryDataRef(scriptSize);
 
-         case 32:
-         {
-            //P2WSH
-            process_p2wsh(scriptHash);
+            if (brr.getSizeRemaining() > 0) {
+               throw ScriptException("invalid v0 SW ouput size");
+            }
+
+            switch (scriptSize)
+            {
+               case 20:
+               {
+                  //P2WPKH
+                  process_p2wpkh(scriptHash);
+                  break;
+               }
+
+               case 32:
+               {
+                  //P2WSH
+                  process_p2wsh(scriptHash);
+                  break;
+               }
+
+               default:
+                  throw ScriptException("invalid data size for version 0 SW");
+            }
             break;
          }
 
          default:
-            throw ScriptException("invalid data size for version 0 SW");
-         }
-
-         break;
+            throw ScriptException("unsupported SW versions");
       }
-
-      default:
-         throw ScriptException("unsupported SW versions");
-      }
-   }
-   else
+   } else {
       throw ScriptException("not flagged for SW parsing");
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 void StackInterpreter::checkState()
 {
-   if (!isValid_)
+   if (!isValid_) {
       op_verify();
-
+   }
    txInEvalState_.validStack_ = true;
 }
 

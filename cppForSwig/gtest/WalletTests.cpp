@@ -789,13 +789,13 @@ TEST_F(DerivationTests, ArmoryChain_Tests)
    SecureBinaryData privateKey = READHEX(
       "0x0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a");
 
-   auto&& privkey1 = CryptoECDSA().ComputeChainedPrivateKey(
+   auto privkey1 = Cryptography::ECDSA::computeChainedPrivateKey(
       privateKey, chaincode);
-   auto&& privkey2 = CryptoECDSA().ComputeChainedPrivateKey(
+   auto privkey2 = Cryptography::ECDSA::computeChainedPrivateKey(
       privkey1, chaincode);
-   auto&& privkey3 = CryptoECDSA().ComputeChainedPrivateKey(
+   auto privkey3 = Cryptography::ECDSA::computeChainedPrivateKey(
       privkey2, chaincode);
-   auto&& privkey4 = CryptoECDSA().ComputeChainedPrivateKey(
+   auto privkey4 = Cryptography::ECDSA::computeChainedPrivateKey(
       privkey3, chaincode);
 
    EXPECT_EQ(privkey1.toHexStr(),
@@ -807,15 +807,15 @@ TEST_F(DerivationTests, ArmoryChain_Tests)
    EXPECT_EQ(privkey4.toHexStr(),
       "dd39a855e2528898fbb0e8c99c9237c70915c80d690741c0c87f1c6e74b9a8d4");
 
-   auto&& publicKey = CryptoECDSA().ComputePublicKey(privateKey);
+   auto publicKey = Cryptography::ECDSA::computePublicKey(privateKey);
 
-   auto&& pubkey1 = CryptoECDSA().ComputeChainedPublicKey(
+   auto pubkey1 = Cryptography::ECDSA::computeChainedPublicKey(
       publicKey, chaincode);
-   auto&& pubkey2 = CryptoECDSA().ComputeChainedPublicKey(
+   auto pubkey2 = Cryptography::ECDSA::computeChainedPublicKey(
       pubkey1, chaincode);
-   auto&& pubkey3 = CryptoECDSA().ComputeChainedPublicKey(
+   auto pubkey3 = Cryptography::ECDSA::computeChainedPublicKey(
       pubkey2, chaincode);
-   auto&& pubkey4 = CryptoECDSA().ComputeChainedPublicKey(
+   auto pubkey4 = Cryptography::ECDSA::computeChainedPublicKey(
       pubkey3, chaincode);
 
    EXPECT_EQ(pubkey1.toHexStr(),
@@ -982,7 +982,7 @@ TEST_F(DerivationTests, DerivationTree_FromSeed)
       4
    };
 
-   auto seed = CryptoPRNG::generateRandom(32);
+   auto seed = Cryptography::PRNG::generateRandomStrong(32);
    BIP32_Node rootNode;
    rootNode.initFromSeed(seed);
 
@@ -1098,7 +1098,7 @@ TEST_F(DerivationTests, DerivationTree_FromRoots)
       4
    };
 
-   auto seed = CryptoPRNG::generateRandom(32);
+   auto seed = Cryptography::PRNG::generateRandomStrong(32);
    BIP32_Node rootNode;
    rootNode.initFromSeed(seed);
 
@@ -1227,7 +1227,7 @@ TEST_F(DerivationTests, DerivationTree_FromPublicRoots)
       4
    };
 
-   auto seed = CryptoPRNG::generateRandom(32);
+   auto seed = Cryptography::PRNG::generateRandomStrong(32);
    BIP32_Node rootNode;
    rootNode.initFromSeed(seed);
 
@@ -1412,7 +1412,7 @@ TEST_F(DerivationTests, DerivationTree_FromWalletRoot)
       4
    };
 
-   auto seed = CryptoPRNG::generateRandom(32);
+   auto seed = Cryptography::PRNG::generateRandomStrong(32);
    BIP32_Node rootNode;
    rootNode.initFromSeed(seed);
 
@@ -1640,8 +1640,8 @@ protected:
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(AddressEntryTest, P2PKH)
 {
-   auto privKey = CryptoPRNG::generateRandom(32);
-   auto pubKey = CryptoECDSA().ComputePublicKey(privKey, false);
+   auto privKey = Cryptography::PRNG::generateRandomStrong(32);
+   auto pubKey = Cryptography::ECDSA::computePublicKey(privKey, false);
 
    auto pubKeyCopy = pubKey; //assetentry ctor moves in crypto assets
    auto assetPtr = std::make_shared<AssetEntry_Single>(
@@ -1662,7 +1662,7 @@ TEST_F(AddressEntryTest, P2PKH)
    //compressed
    AddressEntry_P2PKH addressCmp(assetPtr, true);
    auto addrStrCmp = addressCmp.getAddress();
-   auto pubKeyCmp = CryptoECDSA().CompressPoint(pubKey);
+   auto pubKeyCmp = Cryptography::ECDSA::compressPoint(pubKey);
 
    auto scrAddrCmp = BtcUtils::getHash160(pubKeyCmp);
    BinaryWriter bwCmp;
@@ -1676,8 +1676,8 @@ TEST_F(AddressEntryTest, P2PKH)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(AddressEntryTest, P2WPKH)
 {
-   auto privKey = CryptoPRNG::generateRandom(32);
-   auto pubKey = CryptoECDSA().ComputePublicKey(privKey, true);
+   auto privKey = Cryptography::PRNG::generateRandomStrong(32);
+   auto pubKey = Cryptography::ECDSA::computePublicKey(privKey, true);
 
    auto pubKeyCopy = pubKey; //assetentry ctor moves in crypto assets
    auto assetPtr = std::make_shared<AssetEntry_Single>(
@@ -1696,8 +1696,8 @@ TEST_F(AddressEntryTest, P2WPKH)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(AddressEntryTest, P2SH)
 {
-   auto privKey = CryptoPRNG::generateRandom(32);
-   auto pubKey = CryptoECDSA().ComputePublicKey(privKey, true);
+   auto privKey = Cryptography::PRNG::generateRandomStrong(32);
+   auto pubKey = Cryptography::ECDSA::computePublicKey(privKey, true);
 
    auto pubKeyCopy = pubKey; //assetentry ctor moves in crypto assets
    auto assetPtr = std::make_shared<AssetEntry_Single>(
@@ -1750,8 +1750,8 @@ TEST_F(AddressEntryTest, P2SH)
    {
       std::map<BinaryData, SecureBinaryData> pubKeys;
       for (unsigned i = 0; i < 3; i++) {
-         auto privKey = CryptoPRNG::generateRandom(32);
-         auto pubKey = CryptoECDSA().ComputePublicKey(privKey, true);
+         auto privKey = Cryptography::PRNG::generateRandomStrong(32);
+         auto pubKey = Cryptography::ECDSA::computePublicKey(privKey, true);
 
          std::stringstream ss;
          ss << "wallet" << i;
@@ -1799,8 +1799,8 @@ TEST_F(AddressEntryTest, P2WSH)
 {
    std::map<BinaryData, SecureBinaryData> pubKeys;
    for (unsigned i = 0; i < 3; i++) {
-      auto privKey = CryptoPRNG::generateRandom(32);
-      auto pubKey = CryptoECDSA().ComputePublicKey(privKey, true);
+      auto privKey = Cryptography::PRNG::generateRandomStrong(32);
+      auto pubKey = Cryptography::ECDSA::computePublicKey(privKey, true);
 
       std::stringstream ss;
       ss << "wallet" << i;
@@ -1957,7 +1957,7 @@ protected:
       auto macKey = brr.get_SecureBinaryData(32);
 
       //decryption private key sanity check
-      if (!CryptoECDSA::checkPrivKeyIsValid(decrPrivKey)) {
+      if (!Cryptography::ECDSA::checkPrivKeyIsValid(decrPrivKey)) {
          throw IO::WalletInterfaceException("invalid decryption private key");
       }
       return std::make_pair(std::move(decrPrivKey), std::move(macKey));
@@ -1992,12 +1992,12 @@ protected:
       const SecureBinaryData& privKey, const SecureBinaryData& macKey)
    {
       //generate decryption key
-      auto ecdhPubKey =
-         CryptoECDSA::PubKeyScalarMultiply(packet.pubKey_, privKey);
+      auto ecdhPubKey = Cryptography::ECDSA::pubKeyScalarMultiply(
+         packet.pubKey_, privKey);
       auto decrKey = BtcUtils::getHash256(ecdhPubKey);
 
       //decrypt packet
-      auto payload = CryptoAES::DecryptCBC(
+      auto payload = Cryptography::Encryption::AES::decryptCBC(
          packet.cipherText_, decrKey, packet.iv_);
 
       //break down payload
@@ -2062,8 +2062,8 @@ TEST_F(WalletInterfaceTest, WalletIfaceTransaction_Test)
    auto filename = dbEnv->getFilename();
    ASSERT_EQ(filename, dbPath_);
 
-   auto controlSalt = CryptoPRNG::generateRandom(32);
-   auto rawRoot = CryptoPRNG::generateRandom(32);
+   auto controlSalt = Cryptography::PRNG::generateRandomStrong(32);
+   auto rawRoot = Cryptography::PRNG::generateRandomStrong(32);
    std::string dbName{"test"};
 
    //setup db
@@ -2075,8 +2075,8 @@ TEST_F(WalletInterfaceTest, WalletIfaceTransaction_Test)
    std::map<BinaryData, BinaryData> keyValMap;
    for (unsigned i=0; i<50; i++) {
       keyValMap.emplace(
-         CryptoPRNG::generateRandom(20),
-         CryptoPRNG::generateRandom(80)
+         Cryptography::PRNG::generateRandomStrong(20),
+         Cryptography::PRNG::generateRandomStrong(80)
       );
    }
 
@@ -2155,24 +2155,24 @@ TEST_F(WalletInterfaceTest, WalletIfaceTransaction_Test)
          for (unsigned i=0; i<10; i++) {
             ++iter;
          }
-         iter->second = CryptoPRNG::generateRandom(35);
+         iter->second = Cryptography::PRNG::generateRandomStrong(35);
          auto valToWrite = iter->second;
          tx.insert(iter->first, valToWrite);
 
          for (unsigned i=0; i<10; i++) {
             ++iter;
          }
-         iter->second = CryptoPRNG::generateRandom(70);
+         iter->second = Cryptography::PRNG::generateRandomStrong(70);
          auto valToWrite2 = iter->second;
          tx.insert(iter->first, valToWrite2);
       }
 
       auto pair1 = std::make_pair(
-         CryptoPRNG::generateRandom(40),
-         CryptoPRNG::generateRandom(80));
+         Cryptography::PRNG::generateRandomStrong(40),
+         Cryptography::PRNG::generateRandomStrong(80));
       auto pair2 = std::make_pair(
-         CryptoPRNG::generateRandom(20),
-         CryptoPRNG::generateRandom(16));
+         Cryptography::PRNG::generateRandomStrong(20),
+         Cryptography::PRNG::generateRandomStrong(16));
 
       tx.insert(pair1.first, pair1.second);
       tx.insert(pair2.first, pair2.second);
@@ -2195,8 +2195,8 @@ TEST_F(WalletInterfaceTest, WalletIfaceTransaction_Concurrency_Test)
    auto filename = dbEnv->getFilename();
    ASSERT_EQ(filename, dbPath_);
 
-   auto controlSalt = CryptoPRNG::generateRandom(32);
-   auto rawRoot = CryptoPRNG::generateRandom(32);
+   auto controlSalt = Cryptography::PRNG::generateRandomStrong(32);
+   auto rawRoot = Cryptography::PRNG::generateRandomStrong(32);
    std::string dbName{"test"};
 
    auto dbIface = std::make_shared<IO::DBInterface>(
@@ -2210,16 +2210,16 @@ TEST_F(WalletInterfaceTest, WalletIfaceTransaction_Concurrency_Test)
    std::map<BinaryData, BinaryData> dataMap1;
    for (unsigned i=0; i<30; i++) {
       dataMap1.emplace(
-         CryptoPRNG::generateRandom(20),
-         CryptoPRNG::generateRandom(64)
+         Cryptography::PRNG::generateRandomStrong(20),
+         Cryptography::PRNG::generateRandomStrong(64)
       );
    }
 
    std::map<BinaryData, BinaryData> dataMap2;
    for (unsigned i=0; i<10; i++) {
       dataMap2.emplace(
-         CryptoPRNG::generateRandom(25),
-         CryptoPRNG::generateRandom(64)
+         Cryptography::PRNG::generateRandomStrong(25),
+         Cryptography::PRNG::generateRandomStrong(64)
       );
    }
 
@@ -2229,13 +2229,13 @@ TEST_F(WalletInterfaceTest, WalletIfaceTransaction_Concurrency_Test)
       for (unsigned i=0; i<8; i++) {
          ++iter;
       }
-      modifiedMap.emplace(iter->first, CryptoPRNG::generateRandom(48));
+      modifiedMap.emplace(iter->first, Cryptography::PRNG::generateRandomStrong(48));
 
       ++iter; ++iter;
-      modifiedMap.emplace(iter->first, CryptoPRNG::generateRandom(60));
+      modifiedMap.emplace(iter->first, Cryptography::PRNG::generateRandomStrong(60));
 
       ++iter; ++iter; ++iter;
-      modifiedMap.emplace(iter->first, CryptoPRNG::generateRandom(87));
+      modifiedMap.emplace(iter->first, Cryptography::PRNG::generateRandomStrong(87));
    }
    dataMap2.insert(modifiedMap.begin(), modifiedMap.end());
 
@@ -2305,8 +2305,8 @@ TEST_F(WalletInterfaceTest, WalletIfaceTransaction_Concurrency_Test)
    std::map<BinaryData, BinaryData> dataMap5;
    for (unsigned i=0; i<10; i++) {
       dataMap5.emplace(
-         CryptoPRNG::generateRandom(25),
-         CryptoPRNG::generateRandom(64)
+         Cryptography::PRNG::generateRandomStrong(25),
+         Cryptography::PRNG::generateRandomStrong(64)
       );
    }
 
@@ -2315,10 +2315,10 @@ TEST_F(WalletInterfaceTest, WalletIfaceTransaction_Concurrency_Test)
       for (unsigned i=0; i<25; i++) {
          ++iter;
       }
-      dataMap5.emplace(iter->first, CryptoPRNG::generateRandom(50));
+      dataMap5.emplace(iter->first, Cryptography::PRNG::generateRandomStrong(50));
 
       ++iter; ++iter;
-      dataMap5.emplace(iter->first, CryptoPRNG::generateRandom(65));
+      dataMap5.emplace(iter->first, Cryptography::PRNG::generateRandomStrong(65));
    }
 
    auto finalMap2 = dataMap5;
@@ -2363,8 +2363,8 @@ TEST_F(WalletInterfaceTest, EncryptionTest)
    auto filename = dbEnv->getFilename();
    ASSERT_EQ(filename, dbPath_);
 
-   auto controlSalt = CryptoPRNG::generateRandom(32);
-   auto rawRoot = CryptoPRNG::generateRandom(32);
+   auto controlSalt = Cryptography::PRNG::generateRandomStrong(32);
+   auto rawRoot = Cryptography::PRNG::generateRandomStrong(32);
    std::string dbName{"test"};
 
    auto dbIface = std::make_shared<IO::DBInterface>(
@@ -2376,15 +2376,15 @@ TEST_F(WalletInterfaceTest, EncryptionTest)
    ASSERT_EQ(dbIface->getEntryCount(), 0U);
 
    //generate data
-   auto key1 = CryptoPRNG::generateRandom(20);
-   auto key2 = CryptoPRNG::generateRandom(15);
-   auto key3 = CryptoPRNG::generateRandom(12);
+   auto key1 = Cryptography::PRNG::generateRandomStrong(20);
+   auto key2 = Cryptography::PRNG::generateRandomStrong(15);
+   auto key3 = Cryptography::PRNG::generateRandomStrong(12);
 
-   auto val1 = CryptoPRNG::generateRandom(64);
-   auto val2 = CryptoPRNG::generateRandom(64);
-   auto val3 = CryptoPRNG::generateRandom(240);
-   auto val4 = CryptoPRNG::generateRandom(16);
-   auto val5 = CryptoPRNG::generateRandom(120);
+   auto val1 = Cryptography::PRNG::generateRandomStrong(64);
+   auto val2 = Cryptography::PRNG::generateRandomStrong(64);
+   auto val3 = Cryptography::PRNG::generateRandomStrong(240);
+   auto val4 = Cryptography::PRNG::generateRandomStrong(16);
+   auto val5 = Cryptography::PRNG::generateRandomStrong(120);
 
    //check file content
    {
@@ -2459,7 +2459,7 @@ TEST_F(WalletInterfaceTest, EncryptionTest)
    for (unsigned i=0; i<packets.size(); i++) {
       auto& packet = packets[i];
 
-      ASSERT_TRUE(CryptoECDSA().VerifyPublicKeyValid(packet.pubKey_));
+      ASSERT_TRUE(Cryptography::ECDSA::verifyPublicKeyValid(packet.pubKey_));
       ASSERT_NE(packet.iv_, allZeroes16_);
 
       for (unsigned y=0; y<packets.size(); y++) {
@@ -2545,8 +2545,8 @@ TEST_F(WalletInterfaceTest, EncryptionTest_AmendValues)
    auto filename = dbEnv->getFilename();
    ASSERT_EQ(filename, dbPath_);
 
-   auto controlSalt = CryptoPRNG::generateRandom(32);
-   auto rawRoot = CryptoPRNG::generateRandom(32);
+   auto controlSalt = Cryptography::PRNG::generateRandomStrong(32);
+   auto rawRoot = Cryptography::PRNG::generateRandomStrong(32);
    std::string dbName("test");
 
    auto dbIface = std::make_shared<IO::DBInterface>(
@@ -2558,15 +2558,15 @@ TEST_F(WalletInterfaceTest, EncryptionTest_AmendValues)
    ASSERT_EQ(dbIface->getEntryCount(), 0U);
 
    //generate data
-   auto key1 = CryptoPRNG::generateRandom(20);
-   auto key2 = CryptoPRNG::generateRandom(15);
-   auto key3 = CryptoPRNG::generateRandom(12);
+   auto key1 = Cryptography::PRNG::generateRandomStrong(20);
+   auto key2 = Cryptography::PRNG::generateRandomStrong(15);
+   auto key3 = Cryptography::PRNG::generateRandomStrong(12);
 
-   auto val1 = CryptoPRNG::generateRandom(64);
-   auto val2 = CryptoPRNG::generateRandom(64);
-   auto val3 = CryptoPRNG::generateRandom(32);
-   auto val4 = CryptoPRNG::generateRandom(16);
-   auto val5 = CryptoPRNG::generateRandom(120);
+   auto val1 = Cryptography::PRNG::generateRandomStrong(64);
+   auto val2 = Cryptography::PRNG::generateRandomStrong(64);
+   auto val3 = Cryptography::PRNG::generateRandomStrong(32);
+   auto val4 = Cryptography::PRNG::generateRandomStrong(16);
+   auto val5 = Cryptography::PRNG::generateRandomStrong(120);
 
    //check file content
    {
@@ -2681,7 +2681,7 @@ TEST_F(WalletInterfaceTest, EncryptionTest_AmendValues)
    for(unsigned i=0; i<packets.size(); i++) {
       auto& packet = packets[i];
 
-      ASSERT_TRUE(CryptoECDSA().VerifyPublicKeyValid(packet.pubKey_));
+      ASSERT_TRUE(Cryptography::ECDSA::verifyPublicKeyValid(packet.pubKey_));
       ASSERT_NE(packet.iv_, allZeroes16_);
 
       for(unsigned y=0; y<packets.size(); y++) {
@@ -2770,8 +2770,8 @@ TEST_F(WalletInterfaceTest, EncryptionTest_OpenCloseAmend)
    auto filename = dbEnv->getFilename();
    ASSERT_EQ(filename, dbPath_);
 
-   auto controlSalt = CryptoPRNG::generateRandom(32);
-   auto rawRoot = CryptoPRNG::generateRandom(32);
+   auto controlSalt = Cryptography::PRNG::generateRandomStrong(32);
+   auto rawRoot = Cryptography::PRNG::generateRandomStrong(32);
    std::string dbName("test");
 
    auto dbIface = std::make_shared<IO::DBInterface>(
@@ -2783,15 +2783,15 @@ TEST_F(WalletInterfaceTest, EncryptionTest_OpenCloseAmend)
    ASSERT_EQ(dbIface->getEntryCount(), 0U);
 
    //generate data
-   auto key1 = CryptoPRNG::generateRandom(20);
-   auto key2 = CryptoPRNG::generateRandom(15);
-   auto key3 = CryptoPRNG::generateRandom(12);
+   auto key1 = Cryptography::PRNG::generateRandomStrong(20);
+   auto key2 = Cryptography::PRNG::generateRandomStrong(15);
+   auto key3 = Cryptography::PRNG::generateRandomStrong(12);
 
-   auto val1 = CryptoPRNG::generateRandom(64);
-   auto val2 = CryptoPRNG::generateRandom(64);
-   auto val3 = CryptoPRNG::generateRandom(32);
-   auto val4 = CryptoPRNG::generateRandom(16);
-   auto val5 = CryptoPRNG::generateRandom(120);
+   auto val1 = Cryptography::PRNG::generateRandomStrong(64);
+   auto val2 = Cryptography::PRNG::generateRandomStrong(64);
+   auto val3 = Cryptography::PRNG::generateRandomStrong(32);
+   auto val4 = Cryptography::PRNG::generateRandomStrong(16);
+   auto val5 = Cryptography::PRNG::generateRandomStrong(120);
 
    //check file content
    {
@@ -2906,7 +2906,7 @@ TEST_F(WalletInterfaceTest, EncryptionTest_OpenCloseAmend)
    for (unsigned i=0; i<packets.size(); i++) {
       auto& packet = packets[i];
 
-      ASSERT_TRUE(CryptoECDSA().VerifyPublicKeyValid(packet.pubKey_));
+      ASSERT_TRUE(Cryptography::ECDSA::verifyPublicKeyValid(packet.pubKey_));
       ASSERT_NE(packet.iv_, allZeroes16_);
 
       for (unsigned y=0; y<packets.size(); y++) {
@@ -3012,8 +3012,8 @@ TEST_F(WalletInterfaceTest, EncryptionTest_OpenCloseAmend)
       EXPECT_EQ(key3Data, val4);
    }
 
-   auto key4 = CryptoPRNG::generateRandom(30);
-   auto val6 = CryptoPRNG::generateRandom(154);
+   auto key4 = Cryptography::PRNG::generateRandomStrong(30);
+   auto val6 = Cryptography::PRNG::generateRandomStrong(154);
 
    {
       //amend db in new transaction
@@ -3087,7 +3087,7 @@ TEST_F(WalletInterfaceTest, EncryptionTest_OpenCloseAmend)
    for (unsigned i=0; i<packets.size(); i++) {
       auto& packet = packets[i];
 
-      ASSERT_TRUE(CryptoECDSA().VerifyPublicKeyValid(packet.pubKey_));
+      ASSERT_TRUE(Cryptography::ECDSA::verifyPublicKeyValid(packet.pubKey_));
       ASSERT_NE(packet.iv_, allZeroes16_);
 
       for(unsigned y=0; y<packets.size(); y++) {
@@ -3370,8 +3370,8 @@ TEST_F(WalletInterfaceTest, DbCount_Test)
    std::map<BinaryData, BinaryData> db1Values;
    for (unsigned i=0; i<10; i++) {
       db1Values.emplace(
-         CryptoPRNG::generateRandom(10),
-         CryptoPRNG::generateRandom(30)
+         Cryptography::PRNG::generateRandomStrong(10),
+         Cryptography::PRNG::generateRandomStrong(30)
       );
    }
    
@@ -3397,18 +3397,18 @@ TEST_F(WalletInterfaceTest, DbCount_Test)
       auto tx = dbIface.beginWriteTransaction("db1");
       auto db1Iter = db1Values.begin();
       db1Iter++; db1Iter++;
-      db1Iter->second = CryptoPRNG::generateRandom(18);
+      db1Iter->second = Cryptography::PRNG::generateRandomStrong(18);
       auto valToWrite = db1Iter->second;
       tx->insert(db1Iter->first, valToWrite);
 
       db1Iter++; db1Iter++;
-      db1Iter->second = CryptoPRNG::generateRandom(42);
+      db1Iter->second = Cryptography::PRNG::generateRandomStrong(42);
       valToWrite = db1Iter->second;
       tx->insert(db1Iter->first, valToWrite);
 
       auto dataPair = std::make_pair(
-         CryptoPRNG::generateRandom(14),
-         CryptoPRNG::generateRandom(80));
+         Cryptography::PRNG::generateRandomStrong(14),
+         Cryptography::PRNG::generateRandomStrong(80));
       valToWrite = dataPair.second;
       tx->insert(dataPair.first, valToWrite);
       db1Values.insert(dataPair);
@@ -3436,8 +3436,8 @@ TEST_F(WalletInterfaceTest, DbCount_Test)
    std::map<BinaryData, BinaryData> db2Values;
    for (unsigned i=0; i<15; i++) {
       db2Values.emplace(
-         CryptoPRNG::generateRandom(12),
-         CryptoPRNG::generateRandom(38)
+         Cryptography::PRNG::generateRandomStrong(12),
+         Cryptography::PRNG::generateRandomStrong(38)
       );
    }
 
@@ -3530,18 +3530,18 @@ TEST_F(WalletInterfaceTest, DbCount_Test)
       auto tx = dbIface.beginWriteTransaction("db2");
       auto db2Iter = db2Values.begin();
       db2Iter++; db2Iter++; db2Iter++;
-      db2Iter->second = CryptoPRNG::generateRandom(22);
+      db2Iter->second = Cryptography::PRNG::generateRandomStrong(22);
       auto valToWrite = db2Iter->second;
       tx->insert(db2Iter->first, valToWrite);
 
       db2Iter++;
-      db2Iter->second = CryptoPRNG::generateRandom(16);
+      db2Iter->second = Cryptography::PRNG::generateRandomStrong(16);
       valToWrite = db2Iter->second;
       tx->insert(db2Iter->first, valToWrite);
 
       auto dataPair = std::make_pair(
-         CryptoPRNG::generateRandom(36),
-         CryptoPRNG::generateRandom(124));
+         Cryptography::PRNG::generateRandomStrong(36),
+         Cryptography::PRNG::generateRandomStrong(124));
       valToWrite = dataPair.second;
       tx->insert(dataPair.first, valToWrite);
       db2Values.insert(dataPair);
@@ -3551,8 +3551,8 @@ TEST_F(WalletInterfaceTest, DbCount_Test)
    std::map<BinaryData, BinaryData> db3Values;
    for (unsigned i=0; i<20; i++) {
       db3Values.emplace(
-         CryptoPRNG::generateRandom(24),
-         CryptoPRNG::generateRandom(48)
+         Cryptography::PRNG::generateRandomStrong(24),
+         Cryptography::PRNG::generateRandomStrong(48)
       );
    }
 
@@ -3627,8 +3627,8 @@ TEST_F(WalletInterfaceTest, WipeEntries_Test)
    std::map<BinaryData, BinaryData> dataMap1;
    for (unsigned i=0; i<30; i++) {
       dataMap1.emplace(
-         CryptoPRNG::generateRandom(20),
-         CryptoPRNG::generateRandom(64)
+         Cryptography::PRNG::generateRandomStrong(20),
+         Cryptography::PRNG::generateRandomStrong(64)
       );
    }
 
@@ -3814,19 +3814,19 @@ TEST_F(WalletInterfaceTest, WipeEntries_Test)
       for (unsigned i=0; i<10; i++) {
          ++iter;
       }
-      replaceMap.emplace(iter->first, CryptoPRNG::generateRandom(60));
+      replaceMap.emplace(iter->first, Cryptography::PRNG::generateRandomStrong(60));
 
       ++iter;
-      replaceMap.emplace(iter->first, CryptoPRNG::generateRandom(70));
+      replaceMap.emplace(iter->first, Cryptography::PRNG::generateRandomStrong(70));
 
       ++iter; ++iter; ++iter; ++iter;
-      replaceMap.emplace(iter->first, CryptoPRNG::generateRandom(80));
+      replaceMap.emplace(iter->first, Cryptography::PRNG::generateRandomStrong(80));
 
       ++iter;
-      replaceMap.emplace(iter->first, CryptoPRNG::generateRandom(90));
+      replaceMap.emplace(iter->first, Cryptography::PRNG::generateRandomStrong(90));
 
       ++iter;
-      replaceMap.emplace(iter->first, CryptoPRNG::generateRandom(100));
+      replaceMap.emplace(iter->first, Cryptography::PRNG::generateRandomStrong(100));
    }
 
    //check packets are on disk
@@ -4303,8 +4303,8 @@ TEST_F(WalletsTest, CreateWOCopy_Test)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(WalletsTest, IDs)
 {
-   auto rawEntropy = CryptoPRNG::generateRandom(32);
-   auto rawPubkey = CryptoECDSA().ComputePublicKey(rawEntropy);
+   auto rawEntropy = Cryptography::PRNG::generateRandomStrong(32);
+   auto rawPubkey = Cryptography::ECDSA::computePublicKey(rawEntropy);
    std::string id;
    {
       auto chaincode = BtcUtils::computeChainCode_ArmoryLegacy(rawEntropy);
@@ -4427,7 +4427,7 @@ TEST_F(WalletsTest, IDs)
    }
 
    //legacy with chaincode
-   auto chaincode = CryptoPRNG::generateRandom(32);
+   auto chaincode = Cryptography::PRNG::generateRandomStrong(32);
    auto idcc = generateWalletId(rawPubkey, chaincode,
       SeedType::ArmoryLegacy);
    ASSERT_NE(id, idcc);
@@ -4513,7 +4513,7 @@ TEST_F(WalletsTest, Encryption_Test)
       nullptr, 4
    };
 
-   auto rawEntropy = CryptoPRNG::generateRandom(32);
+   auto rawEntropy = Cryptography::PRNG::generateRandomStrong(32);
    std::unique_ptr<ClearTextSeed> seed(
       new ClearTextSeed_Armory(rawEntropy, {},
          LegacyType::Armory200));
@@ -4527,15 +4527,15 @@ TEST_F(WalletsTest, Encryption_Test)
    auto currentPrivKey = &rawEntropy;
 
    for (int i = 0; i < 4; i++) {
-      privateKeys.push_back(std::move(CryptoECDSA().ComputeChainedPrivateKey(
-         *currentPrivKey, chaincode)));
+      privateKeys.emplace_back(Cryptography::ECDSA::computeChainedPrivateKey(
+         *currentPrivKey, chaincode));
       currentPrivKey = &privateKeys.back();
    }
 
    //compute public keys
    std::vector<SecureBinaryData> publicKeys;
    for (auto& privkey : privateKeys) {
-      publicKeys.push_back(std::move(CryptoECDSA().ComputePublicKey(privkey)));
+      publicKeys.emplace_back(Cryptography::ECDSA::computePublicKey(privkey));
    }
 
    //compare with wallet's own
@@ -4544,7 +4544,7 @@ TEST_F(WalletsTest, Encryption_Test)
    for (int i = 0; i < 4; i++) {
       //grab indexes from 0 to 3
       auto assetptr = outerAcc->getAssetForKey(i);
-      ASSERT_EQ(assetptr->getType(), AssetEntryType_Single);
+      ASSERT_EQ(assetptr->getType(), AssetEntryType::Single);
 
       auto asset_single = std::dynamic_pointer_cast<AssetEntry_Single>(assetptr);
       if (asset_single == nullptr) {
@@ -4614,7 +4614,7 @@ TEST_F(WalletsTest, SeedEncryption)
    };
 
    //create regular wallet
-   auto rawEntropy = CryptoPRNG::generateRandom(32);
+   auto rawEntropy = Cryptography::PRNG::generateRandomStrong(32);
 
    std::unique_ptr<ClearTextSeed> seed(
       new ClearTextSeed_BIP32(
@@ -4729,7 +4729,7 @@ TEST_F(WalletsTest, LockAndExtend_Legacy)
       nullptr, 4
    };
 
-   auto rawEntropy = CryptoPRNG::generateRandom(32);
+   auto rawEntropy = Cryptography::PRNG::generateRandomStrong(32);
    std::unique_ptr<ClearTextSeed> seed(
       new ClearTextSeed_Armory(rawEntropy,
          {}, LegacyType::Armory200));
@@ -4749,9 +4749,9 @@ TEST_F(WalletsTest, LockAndExtend_Legacy)
    std::vector<std::pair<SecureBinaryData, SecureBinaryData>> pkeys;
    auto currentPrivKey = &rawEntropy;
    for (int i = 0; i < 10; i++) {
-      auto privKey = CryptoECDSA().ComputeChainedPrivateKey(
+      auto privKey = Cryptography::ECDSA::computeChainedPrivateKey(
          *currentPrivKey, chaincode);
-      auto pubkey = CryptoECDSA().ComputePublicKey(privKey, true);
+      auto pubkey = Cryptography::ECDSA::computePublicKey(privKey, true);
       pkeys.emplace_back(pubkey, privKey);
       currentPrivKey = &pkeys.back().second;
    }
@@ -4911,7 +4911,7 @@ TEST_F(WalletsTest, LockAndExtend_BIP32)
       nullptr, 4
    };
 
-   auto rawEntropy = CryptoPRNG::generateRandom(32);
+   auto rawEntropy = Cryptography::PRNG::generateRandomStrong(32);
    std::unique_ptr<ClearTextSeed> seed(
       new ClearTextSeed_BIP32(rawEntropy,
          SeedType::BIP32_Structured));
@@ -5114,8 +5114,8 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
    std::map<BinaryData, BinaryData> subDbData;
    for (unsigned i=0; i<20; i++) {
       subDbData.emplace(
-         CryptoPRNG::generateRandom(20),
-         CryptoPRNG::generateRandom(124)
+         Cryptography::PRNG::generateRandomStrong(20),
+         Cryptography::PRNG::generateRandomStrong(124)
       );
    }
 
@@ -5142,7 +5142,7 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
       ->Armory::Passphrase::Result
       {
          while (count++ < 3) {
-            return { CryptoPRNG::generateRandom(15), true };
+            return { Cryptography::PRNG::generateRandomStrong(15), true };
          }
          return { {}, false };
       };
@@ -5177,7 +5177,7 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
          if (badPassCtr++ > 3) {
             return { {}, false };
          }
-         return { CryptoPRNG::generateRandom(20), true };
+         return { Cryptography::PRNG::generateRandomStrong(20), true };
       };
 
       try {
@@ -5219,7 +5219,7 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
                   throw std::range_error("");
                }
                wltPassID = *ids.begin();
-               return { CryptoPRNG::generateRandom(10), true };
+               return { Cryptography::PRNG::generateRandomStrong(10), true };
             }
             return { {}, false };
          };
@@ -5249,7 +5249,7 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
          ->Armory::Passphrase::Result
          {
             while (ctr++ < 2) {
-               return { CryptoPRNG::generateRandom(18), true };
+               return { Cryptography::PRNG::generateRandomStrong(18), true };
             }
             return { {}, false };
          };
@@ -5370,7 +5370,7 @@ TEST_F(WalletsTest, ControlPassphrase_Test)
       ->Armory::Passphrase::Result
       {
          while (count++ < 5) {
-            return { CryptoPRNG::generateRandom(12), true };
+            return { Cryptography::PRNG::generateRandomStrong(12), true };
          }
          return { {}, false };
       };
@@ -5444,7 +5444,7 @@ TEST_F(WalletsTest, SignPassphrase)
       nullptr, 4
    };
 
-   auto rawEntropy = CryptoPRNG::generateRandom(32);
+   auto rawEntropy = Cryptography::PRNG::generateRandomStrong(32);
    std::unique_ptr<ClearTextSeed> seed(
       new ClearTextSeed_Armory(rawEntropy,
          {}, LegacyType::Armory200));
@@ -5507,7 +5507,8 @@ TEST_F(WalletsTest, SignPassphrase)
 
       //make sure decrypted privkey is valid
       auto chaincode = BtcUtils::computeChainCode_ArmoryLegacy(rawEntropy);
-      auto privkey_ex = CryptoECDSA().ComputeChainedPrivateKey(rawEntropy, chaincode);
+      auto privkey_ex = Cryptography::ECDSA::computeChainedPrivateKey(
+         rawEntropy, chaincode);
       ASSERT_EQ(privkey, privkey_ex);
    } catch (const DecryptedDataContainerException&) {
       ASSERT_TRUE(false);
@@ -5526,7 +5527,7 @@ TEST_F(WalletsTest, WrongPassphrase_BIP32)
       nullptr, 4
    };
 
-   auto rawEntropy = CryptoPRNG::generateRandom(32);
+   auto rawEntropy = Cryptography::PRNG::generateRandomStrong(32);
    std::unique_ptr<ClearTextSeed> seed(
       new ClearTextSeed_BIP32(
          rawEntropy, SeedType::BIP32_Structured));
@@ -5675,7 +5676,7 @@ TEST_F(WalletsTest, ChangePassphrase)
       nullptr, 4
    };
 
-   auto rawEntropy = CryptoPRNG::generateRandom(32);
+   auto rawEntropy = Cryptography::PRNG::generateRandomStrong(32);
    std::unique_ptr<ClearTextSeed> seed(
       new ClearTextSeed_Armory(rawEntropy,
          {}, LegacyType::Armory200));
@@ -5683,7 +5684,8 @@ TEST_F(WalletsTest, ChangePassphrase)
       std::move(seed), params);
 
    auto chaincode = BtcUtils::computeChainCode_ArmoryLegacy(rawEntropy);
-   auto privkey_ex = CryptoECDSA().ComputeChainedPrivateKey(rawEntropy, chaincode);
+   auto privkey_ex = Cryptography::ECDSA::computeChainedPrivateKey(
+      rawEntropy, chaincode);
    auto filename = assetWlt->getDbFilename();
 
    //grab all IVs and encrypted private keys
@@ -5904,14 +5906,15 @@ TEST_F(WalletsTest, ChangePassphrase_ChangeKDF)
       nullptr, 4
    };
 
-   auto rawEntropy = CryptoPRNG::generateRandom(32);
+   auto rawEntropy = Cryptography::PRNG::generateRandomStrong(32);
    std::unique_ptr<ClearTextSeed> seed(
       new ClearTextSeed_Armory(rawEntropy,
          {}, LegacyType::Armory200));
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
    auto chaincode = BtcUtils::computeChainCode_ArmoryLegacy(rawEntropy);
-   auto privkey_ex = CryptoECDSA().ComputeChainedPrivateKey(rawEntropy, chaincode);
+   auto privkey_ex = Cryptography::ECDSA::computeChainedPrivateKey(
+      rawEntropy, chaincode);
 
    auto asset0 = TestUtils::getMainAccountAssetForIndex(assetWlt, 0);
    auto asset0_single = std::dynamic_pointer_cast<AssetEntry_Single>(asset0);
@@ -6300,7 +6303,7 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet)
       nullptr, 4
    };
 
-   auto rawEntropy = CryptoPRNG::generateRandom(32);
+   auto rawEntropy = Cryptography::PRNG::generateRandomStrong(32);
    std::unique_ptr<ClearTextSeed> seed(
       new ClearTextSeed_Armory(rawEntropy,
          {}, LegacyType::Armory200));
@@ -6310,7 +6313,8 @@ TEST_F(WalletsTest, ChangePassphrase_FromUnencryptedWallet)
       std::move(seed), params);
 
    auto chaincode = BtcUtils::computeChainCode_ArmoryLegacy(rawEntropy);
-   auto privkey_ex = CryptoECDSA().ComputeChainedPrivateKey(rawEntropy, chaincode);
+   auto privkey_ex = Cryptography::ECDSA::computeChainedPrivateKey(
+      rawEntropy, chaincode);
    auto filename = assetWlt->getDbFilename();
    auto newPass = SecureBinaryData::fromString("newpass");
 
@@ -6688,7 +6692,7 @@ TEST_F(WalletsTest, ChangePassphrase_SeedBIP32)
       nullptr, 4
    };
 
-   auto rawEntropy = CryptoPRNG::generateRandom(32);
+   auto rawEntropy = Cryptography::PRNG::generateRandomStrong(32);
    std::unique_ptr<ClearTextSeed> seed(
       new ClearTextSeed_BIP32(rawEntropy,
          SeedType::BIP32_Virgin));
@@ -6927,7 +6931,7 @@ TEST_F(WalletsTest, ChangeControlPassphrase)
       (const std::set<EncryptionKeyId>&)->Armory::Passphrase::Result
    {
       while (counter++ < 10) {
-         return { prng_fortuna.generateRandom(20), true };
+         return { Cryptography::PRNG::fortuna.generateRandom(20), true };
       }
       return { {}, false };
    };
@@ -7216,7 +7220,7 @@ TEST_F(WalletsTest, BIP32_ArmoryDefault)
       0x80000000
    };
 
-   auto rawEntropy = CryptoPRNG::generateRandom(32);
+   auto rawEntropy = Cryptography::PRNG::generateRandomStrong(32);
 
    //create empty wallet
    auto passphrase = SecureBinaryData::fromString("password");
@@ -7269,7 +7273,7 @@ TEST_F(WalletsTest, BIP32_Chain_AddAccount)
    };
 
    //random seed
-   auto rawEntropy = CryptoPRNG::generateRandom(32);
+   auto rawEntropy = Cryptography::PRNG::generateRandomStrong(32);
 
    //create empty wallet
    auto passphrase = SecureBinaryData::fromString("password");
@@ -7563,7 +7567,7 @@ TEST_F(WalletsTest, BIP32_WatchingOnly_FromXPub)
    };
 
    //create regular wallet
-   auto rawEntropy = CryptoPRNG::generateRandom(32);
+   auto rawEntropy = Cryptography::PRNG::generateRandomStrong(32);
    std::unique_ptr<ClearTextSeed> seed(
       new ClearTextSeed_BIP32(
          rawEntropy, SeedType::BIP32_Structured));
@@ -7733,7 +7737,7 @@ TEST_F(WalletsTest, LegacyUncompressedAddressTypes)
    };
 
    //create regular wallet
-   auto rawEntropy = CryptoPRNG::generateRandom(32);
+   auto rawEntropy = Cryptography::PRNG::generateRandomStrong(32);
    std::unique_ptr<ClearTextSeed> seed(
       new ClearTextSeed_BIP32(
          rawEntropy, SeedType::BIP32_Virgin));
@@ -7803,7 +7807,7 @@ TEST_F(WalletsTest, LegacyUncompressedAddressTypes)
       nodeCopy.derivePublic(1); //asset #1
 
       auto pubkey = nodeCopy.getPublicKey();
-      auto pubkey2 = CryptoECDSA().UncompressPoint(pubkey);
+      auto pubkey2 = Cryptography::ECDSA::uncompressPoint(pubkey);
       auto hash160 = BtcUtils::getHash160(pubkey2);
       BinaryWriter bw;
       bw.put_uint8_t(BitcoinSettings::getPubkeyHashPrefix());
@@ -7848,9 +7852,9 @@ TEST_F(WalletsTest, BIP32_SaltedAccount)
       327
    };
 
-   auto rawEntropy = CryptoPRNG::generateRandom(32);
-   auto salt1 = CryptoPRNG::generateRandom(32);
-   auto salt2 = CryptoPRNG::generateRandom(32);
+   auto rawEntropy = Cryptography::PRNG::generateRandomStrong(32);
+   auto salt1 = Cryptography::PRNG::generateRandomStrong(32);
+   auto salt2 = Cryptography::PRNG::generateRandomStrong(32);
 
    std::filesystem::path filename;
    AddressAccountId accountID1;
@@ -7924,7 +7928,8 @@ TEST_F(WalletsTest, BIP32_SaltedAccount)
             auto nodeCopy = seedNode;
             nodeCopy.derivePrivate(i);
             auto pubkey = nodeCopy.getPublicKey();
-            auto saltedKey = CryptoECDSA::PubKeyScalarMultiply(pubkey, salt1);
+            auto saltedKey = Cryptography::ECDSA::pubKeyScalarMultiply(
+               pubkey, salt1);
             EXPECT_EQ(saltedKey, addrVec1[i]->getPreimage());
          }
       }
@@ -7939,7 +7944,8 @@ TEST_F(WalletsTest, BIP32_SaltedAccount)
             auto nodeCopy = seedNode;
             nodeCopy.derivePrivate(i);
             auto pubkey = nodeCopy.getPublicKey();
-            auto saltedKey = CryptoECDSA::PubKeyScalarMultiply(pubkey, salt2);
+            auto saltedKey = Cryptography::ECDSA::pubKeyScalarMultiply(
+               pubkey, salt2);
             EXPECT_EQ(saltedKey, addrVec2[i]->getPreimage());
          }
       }
@@ -7977,7 +7983,8 @@ TEST_F(WalletsTest, BIP32_SaltedAccount)
             auto nodeCopy = seedNode;
             nodeCopy.derivePrivate(i + 10);
             auto pubkey = nodeCopy.getPublicKey();
-            auto saltedKey = CryptoECDSA::PubKeyScalarMultiply(pubkey, salt1);
+            auto saltedKey = Cryptography::ECDSA::pubKeyScalarMultiply(
+               pubkey, salt1);
             EXPECT_EQ(saltedKey, addrVec1[i]->getPreimage());
          }
       }
@@ -7992,7 +7999,8 @@ TEST_F(WalletsTest, BIP32_SaltedAccount)
             auto nodeCopy = seedNode;
             nodeCopy.derivePrivate(i + 10);
             auto pubkey = nodeCopy.getPublicKey();
-            auto saltedKey = CryptoECDSA::PubKeyScalarMultiply(pubkey, salt2);
+            auto saltedKey = Cryptography::ECDSA::pubKeyScalarMultiply(
+               pubkey, salt2);
             EXPECT_EQ(saltedKey, addrVec2[i]->getPreimage());
          }
       }
@@ -8036,7 +8044,8 @@ TEST_F(WalletsTest, BIP32_SaltedAccount)
             auto nodeCopy = seedNode;
             nodeCopy.derivePrivate(i + 20);
             auto pubkey = nodeCopy.getPublicKey();
-            auto saltedKey = CryptoECDSA::PubKeyScalarMultiply(pubkey, salt1);
+            auto saltedKey = Cryptography::ECDSA::pubKeyScalarMultiply(
+               pubkey, salt1);
             EXPECT_EQ(saltedKey, addrVec1[i]->getPreimage());
          }
       }
@@ -8051,7 +8060,8 @@ TEST_F(WalletsTest, BIP32_SaltedAccount)
             auto nodeCopy = seedNode;
             nodeCopy.derivePrivate(i + 20);
             auto pubkey = nodeCopy.getPublicKey();
-            auto saltedKey = CryptoECDSA::PubKeyScalarMultiply(pubkey, salt2);
+            auto saltedKey = Cryptography::ECDSA::pubKeyScalarMultiply(
+               pubkey, salt2);
             EXPECT_EQ(saltedKey, addrVec2[i]->getPreimage());
          }
       }
@@ -8066,11 +8076,11 @@ TEST_F(WalletsTest, ECDH_Account)
 
    auto privKey1 = READHEX(
       "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F");
-   auto pubKey1 = CryptoECDSA().ComputePublicKey(privKey1, true);
+   auto pubKey1 = Cryptography::ECDSA::computePublicKey(privKey1, true);
 
    auto privKey2 = READHEX(
       "101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C2D2E2F");
-   auto pubKey2 = CryptoECDSA().ComputePublicKey(privKey2, true);
+   auto pubKey2 = Cryptography::ECDSA::computePublicKey(privKey2, true);
 
 
    auto passphrase = SecureBinaryData::fromString("password");
@@ -8136,11 +8146,11 @@ TEST_F(WalletsTest, ECDH_Account)
          //add salts
          auto tx = assetWlt->beginSubDBTransaction(assetWlt->getID(), true);
          for (unsigned i = 0; i < 5; i++) {
-            auto salt = CryptoPRNG::generateRandom(32);
+            auto salt = Cryptography::PRNG::generateRandomStrong(32);
             auto index = accEcdh1->addSalt(tx, salt);
             saltMap1.emplace(index, salt);
 
-            salt = CryptoPRNG::generateRandom(32);
+            salt = Cryptography::PRNG::generateRandomStrong(32);
             index = accEcdh2->addSalt(tx, salt);
             saltMap2.emplace(index, salt);
          }
@@ -8154,11 +8164,13 @@ TEST_F(WalletsTest, ECDH_Account)
    
       //derive locally, check addresses match
       for (unsigned i = 0; i < 5; i++) {
-         auto saltedKey = CryptoECDSA::PubKeyScalarMultiply(pubKey1, saltMap1[i]);
+         auto saltedKey = Cryptography::ECDSA::pubKeyScalarMultiply(
+            pubKey1, saltMap1[i]);
          auto hash = BtcUtils::getHash160(saltedKey);
          EXPECT_EQ(addrMap1[i], hash);
 
-         saltedKey = CryptoECDSA::PubKeyScalarMultiply(pubKey2, saltMap2[i]);
+         saltedKey = Cryptography::ECDSA::pubKeyScalarMultiply(
+            pubKey2, saltMap2[i]);
          hash = BtcUtils::getHash160(saltedKey);
          EXPECT_EQ(addrMap2[i], hash);
       }
@@ -8179,7 +8191,8 @@ TEST_F(WalletsTest, ECDH_Account)
       EXPECT_EQ(addrHashSet.size(), 10ULL);
 
       for (unsigned i = 0; i < 5; i++) {
-         auto saltedKey = CryptoECDSA::PubKeyScalarMultiply(pubKey1, saltMap1[i]);
+         auto saltedKey = Cryptography::ECDSA::pubKeyScalarMultiply(
+            pubKey1, saltMap1[i]);
          auto hash = BtcUtils::getHash160(saltedKey);
          BinaryWriter bwAddr;
          bwAddr.put_uint8_t(SCRIPT_PREFIX_P2WPKH);
@@ -8189,7 +8202,8 @@ TEST_F(WalletsTest, ECDH_Account)
          EXPECT_NE(iter, addrHashSet.end());
 
          //
-         saltedKey = CryptoECDSA::PubKeyScalarMultiply(pubKey2, saltMap2[i]);
+         saltedKey = Cryptography::ECDSA::pubKeyScalarMultiply(
+            pubKey2, saltMap2[i]);
          hash = BtcUtils::getHash160(saltedKey);
          BinaryWriter bwAddr2;
          bwAddr2.put_uint8_t(SCRIPT_PREFIX_P2WPKH);
@@ -8208,7 +8222,7 @@ TEST_F(WalletsTest, ECDH_Account)
       }
       {
          auto tx = assetWlt->beginSubDBTransaction(assetWlt->getID(), true);
-         auto salt = CryptoPRNG::generateRandom(32);
+         auto salt = Cryptography::PRNG::generateRandomStrong(32);
          auto index = accEcdh->addSalt(tx, salt);
          saltMap1.insert(std::make_pair(index, salt));
       }
@@ -8216,7 +8230,8 @@ TEST_F(WalletsTest, ECDH_Account)
       {
          //grab another address & check it
          auto addr = assetWlt->getNewAddress()->getHash();
-         auto saltedKey = CryptoECDSA::PubKeyScalarMultiply(pubKey1, saltMap1[5]);
+         auto saltedKey = Cryptography::ECDSA::pubKeyScalarMultiply(
+            pubKey1, saltMap1[5]);
          auto hash = BtcUtils::getHash160(saltedKey);
          EXPECT_EQ(addr, hash);
       }
@@ -8235,7 +8250,6 @@ TEST_F(WalletsTest, ECDH_Account)
       }
 
       auto accPtr2 = assetWlt->getAccountForID(accID2);
-
       {
          //same with account 2
          auto assAcc2 = accPtr2->getOuterAccount();
@@ -8275,7 +8289,8 @@ TEST_F(WalletsTest, ECDH_Account)
       EXPECT_EQ(addrHashSet.size(), 11ULL);
 
       for (unsigned i = 0; i < 6; i++) {
-         auto saltedKey = CryptoECDSA::PubKeyScalarMultiply(pubKey1, saltMap1[i]);
+         auto saltedKey = Cryptography::ECDSA::pubKeyScalarMultiply(
+            pubKey1, saltMap1[i]);
          auto hash = BtcUtils::getHash160(saltedKey);
          BinaryWriter bwAddr;
          bwAddr.put_uint8_t(SCRIPT_PREFIX_P2WPKH);
@@ -8299,7 +8314,7 @@ TEST_F(WalletsTest, ECDH_Account)
 
       {
          auto tx = assetWlt->beginSubDBTransaction(assetWlt->getID(), true);
-         auto salt = CryptoPRNG::generateRandom(32);
+         auto salt = Cryptography::PRNG::generateRandomStrong(32);
          auto index = accEcdh->addSalt(tx, salt);
          saltMap1.insert(std::make_pair(index, salt));
       }
@@ -8307,7 +8322,8 @@ TEST_F(WalletsTest, ECDH_Account)
       {
          //grab another address & check it
          auto addr = assetWlt->getNewAddress()->getHash();
-         auto saltedKey = CryptoECDSA::PubKeyScalarMultiply(pubKey1, saltMap1[6]);
+         auto saltedKey = Cryptography::ECDSA::pubKeyScalarMultiply(
+            pubKey1, saltMap1[6]);
          auto hash = BtcUtils::getHash160(saltedKey);
          EXPECT_EQ(addr, hash);
       }
@@ -8316,7 +8332,8 @@ TEST_F(WalletsTest, ECDH_Account)
       auto accPtr2 = assetWlt->getAccountForID(accID2);
 
       for (unsigned i = 0; i < 5; i++) {
-         auto saltedKey = CryptoECDSA::PubKeyScalarMultiply(pubKey2, saltMap2[i]);
+         auto saltedKey = Cryptography::ECDSA::pubKeyScalarMultiply(
+            pubKey2, saltMap2[i]);
          auto hash = BtcUtils::getHash160(saltedKey);
          BinaryWriter bwAddr;
          bwAddr.put_uint8_t(SCRIPT_PREFIX_P2WPKH);
@@ -8332,7 +8349,7 @@ TEST_F(WalletsTest, ECDH_Account)
 TEST_F(WalletsTest, AssetPathResolution)
 {
    //seed shared across all wallet instances
-   auto rawEntropy = CryptoPRNG::generateRandom(32);
+   auto rawEntropy = Cryptography::PRNG::generateRandomStrong(32);
    std::vector<uint32_t> derPath {
       0x800012ab,
       0x8000ff13,
@@ -8596,13 +8613,13 @@ TEST_F(WalletsTest, ImportPublicKeys)
    //import addr B & C
    {
       //B
-      auto pubKeyB = CryptoECDSA().ComputePublicKey(TestChain::privKeyAddrB);
+      auto pubKeyB = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrB);
       auto keyB = wltWO->importPublicKey(pubKeyB, AddressEntryType(
          AddressEntryType_P2PKH | AddressEntryType_Uncompressed));
       keyToAddrMap.emplace(TestChain::scrAddrB, keyB);
 
       //C
-      auto pubKeyC = CryptoECDSA().ComputePublicKey(TestChain::privKeyAddrC);
+      auto pubKeyC = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrC);
       auto keyC = wltWO->importPublicKey(pubKeyC, AddressEntryType(
          AddressEntryType_P2PKH | AddressEntryType_Uncompressed));
       keyToAddrMap.emplace(TestChain::scrAddrC, keyC);
@@ -8611,7 +8628,7 @@ TEST_F(WalletsTest, ImportPublicKeys)
 
    //import addr D
    {
-      auto pubKeyD = CryptoECDSA().ComputePublicKey(TestChain::privKeyAddrD);
+      auto pubKeyD = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrD);
       auto keyD = wltWO->importPublicKey(pubKeyD, AddressEntryType(
          AddressEntryType_P2PKH | AddressEntryType_Uncompressed));
       keyToAddrMap.emplace(TestChain::scrAddrD, keyD);
@@ -8632,7 +8649,7 @@ TEST_F(WalletsTest, ImportPublicKeys)
 
    //import addr E
    {
-      auto pubKeyE = CryptoECDSA().ComputePublicKey(TestChain::privKeyAddrE);
+      auto pubKeyE = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrE);
       auto keyE = wltWO->importPublicKey(pubKeyE, AddressEntryType(
          AddressEntryType_P2PKH | AddressEntryType_Uncompressed));
       keyToAddrMap.emplace(TestChain::scrAddrE, keyE);
@@ -8700,19 +8717,19 @@ TEST_F(WalletMetaDataTest, AuthPeers)
    auto authPeers = std::make_unique<AuthorizedPeers>(roFileParams);
 
    //auth meta account expects valid pubkeys
-   auto privKey1 = CryptoPRNG::generateRandom(32);
-   auto pubkey1 = CryptoECDSA().ComputePublicKey(privKey1);
-   auto pubkey1_compressed = CryptoECDSA().CompressPoint(pubkey1);
+   auto privKey1 = Cryptography::PRNG::generateRandomStrong(32);
+   auto pubkey1 = Cryptography::ECDSA::computePublicKey(privKey1);
+   auto pubkey1_compressed = Cryptography::ECDSA::compressPoint(pubkey1);
    authPeers->addPeer(pubkey1, "1.1.1.1", "0123::4567::89ab::cdef::", "test.com");
 
-   auto privKey2 = CryptoPRNG::generateRandom(32);
-   auto pubkey2 = CryptoECDSA().ComputePublicKey(privKey2);
-   auto pubkey2_compressed = CryptoECDSA().CompressPoint(pubkey2);
+   auto privKey2 = Cryptography::PRNG::generateRandomStrong(32);
+   auto pubkey2 = Cryptography::ECDSA::computePublicKey(privKey2);
+   auto pubkey2_compressed = Cryptography::ECDSA::compressPoint(pubkey2);
    authPeers->addPeer(pubkey2_compressed, "2.2.2.2", "domain.com");
 
-   auto privKey3 = CryptoPRNG::generateRandom(32);
-   auto pubkey3 = CryptoECDSA().ComputePublicKey(privKey3);
-   auto pubkey3_compressed = CryptoECDSA().CompressPoint(pubkey3);
+   auto privKey3 = Cryptography::PRNG::generateRandomStrong(32);
+   auto pubkey3 = Cryptography::ECDSA::computePublicKey(privKey3);
+   auto pubkey3_compressed = Cryptography::ECDSA::compressPoint(pubkey3);
    std::string domain_name("anotherdomain.com");
    authPeers->addPeer(pubkey3_compressed, "3.3.3.3", "test.com", domain_name);
 
@@ -8825,18 +8842,18 @@ TEST_F(WalletMetaDataTest, AuthPeers)
    }
 
    //add more keys
-   auto privKey4 = CryptoPRNG::generateRandom(32);
-   auto pubkey4 = CryptoECDSA().ComputePublicKey(privKey4);
-   auto pubkey4_compressed = CryptoECDSA().CompressPoint(pubkey4);
+   auto privKey4 = Cryptography::PRNG::generateRandomStrong(32);
+   auto pubkey4 = Cryptography::ECDSA::computePublicKey(privKey4);
+   auto pubkey4_compressed = Cryptography::ECDSA::compressPoint(pubkey4);
    btc_pubkey btckey4;
    btc_pubkey_init(&btckey4);
    std::memcpy(btckey4.pubkey, pubkey4.getPtr(), 65);
-   btc_pubkey btckey4_cmp = CryptoECDSA::CompressPoint(btckey4);
+   btc_pubkey btckey4_cmp = Cryptography::ECDSA::compressPoint(btckey4);
    authPeers->addPeer(btckey4, "4.4.4.4", "more.com");
 
-   auto privKey5 = CryptoPRNG::generateRandom(32);
-   auto pubkey5 = CryptoECDSA().ComputePublicKey(privKey5);
-   auto pubkey5_compressed = CryptoECDSA().CompressPoint(pubkey5);
+   auto privKey5 = Cryptography::PRNG::generateRandomStrong(32);
+   auto pubkey5 = Cryptography::ECDSA::computePublicKey(privKey5);
+   auto pubkey5_compressed = Cryptography::ECDSA::compressPoint(pubkey5);
    btc_pubkey btckey5;
    btc_pubkey_init(&btckey5);
    std::memcpy(btckey5.pubkey, pubkey5_compressed.getPtr(), 33);
@@ -9145,9 +9162,9 @@ TEST_F(WalletMetaDataTest, AuthPeers)
    /* master key checks */
 
    //set an invalid key
-   auto privKey6 = CryptoPRNG::generateRandom(32);
-   auto pubkey6 = CryptoECDSA().ComputePublicKey(privKey6);
-   auto pubkey6_compressed = CryptoECDSA().CompressPoint(pubkey6);
+   auto privKey6 = Cryptography::PRNG::generateRandomStrong(32);
+   auto pubkey6 = Cryptography::ECDSA::computePublicKey(privKey6);
+   auto pubkey6_compressed = Cryptography::ECDSA::compressPoint(pubkey6);
 
    btc_pubkey btckey6;
    btc_pubkey_init(&btckey6);
@@ -9249,19 +9266,19 @@ TEST_F(WalletMetaDataTest, AuthPeers_Ephemeral)
    auto authPeers = std::make_unique<AuthorizedPeers>();
 
    //auth meta account expects valid pubkeys
-   auto privKey1 = CryptoPRNG::generateRandom(32);
-   auto pubkey1 = CryptoECDSA().ComputePublicKey(privKey1);
-   auto pubkey1_compressed = CryptoECDSA().CompressPoint(pubkey1);
+   auto privKey1 = Cryptography::PRNG::generateRandomStrong(32);
+   auto pubkey1 = Cryptography::ECDSA::computePublicKey(privKey1);
+   auto pubkey1_compressed = Cryptography::ECDSA::compressPoint(pubkey1);
    authPeers->addPeer(pubkey1, "1.1.1.1", "0123::4567::89ab::cdef::", "test.com");
 
-   auto privKey2 = CryptoPRNG::generateRandom(32);
-   auto pubkey2 = CryptoECDSA().ComputePublicKey(privKey2);
-   auto pubkey2_compressed = CryptoECDSA().CompressPoint(pubkey2);
+   auto privKey2 = Cryptography::PRNG::generateRandomStrong(32);
+   auto pubkey2 = Cryptography::ECDSA::computePublicKey(privKey2);
+   auto pubkey2_compressed = Cryptography::ECDSA::compressPoint(pubkey2);
    authPeers->addPeer(pubkey2_compressed, "2.2.2.2", "domain.com");
 
-   auto privKey3 = CryptoPRNG::generateRandom(32);
-   auto pubkey3 = CryptoECDSA().ComputePublicKey(privKey3);
-   auto pubkey3_compressed = CryptoECDSA().CompressPoint(pubkey3);
+   auto privKey3 = Cryptography::PRNG::generateRandomStrong(32);
+   auto pubkey3 = Cryptography::ECDSA::computePublicKey(privKey3);
+   auto pubkey3_compressed = Cryptography::ECDSA::compressPoint(pubkey3);
    std::string domain_name{"anotherdomain.com"};
    authPeers->addPeer(pubkey3_compressed, "3.3.3.3", "test.com", domain_name);
 
@@ -9318,18 +9335,18 @@ TEST_F(WalletMetaDataTest, AuthPeers_Ephemeral)
    }
 
    //add more keys
-   auto privKey4 = CryptoPRNG::generateRandom(32);
-   auto pubkey4 = CryptoECDSA().ComputePublicKey(privKey4);
-   auto pubkey4_compressed = CryptoECDSA().CompressPoint(pubkey4);
+   auto privKey4 = Cryptography::PRNG::generateRandomStrong(32);
+   auto pubkey4 = Cryptography::ECDSA::computePublicKey(privKey4);
+   auto pubkey4_compressed = Cryptography::ECDSA::compressPoint(pubkey4);
    btc_pubkey btckey4;
    btc_pubkey_init(&btckey4);
    std::memcpy(btckey4.pubkey, pubkey4.getPtr(), 65);
-   btc_pubkey btckey4_cmp = CryptoECDSA::CompressPoint(btckey4);
+   btc_pubkey btckey4_cmp = Cryptography::ECDSA::compressPoint(btckey4);
    authPeers->addPeer(btckey4, "4.4.4.4", "more.com");
 
-   auto privKey5 = CryptoPRNG::generateRandom(32);
-   auto pubkey5 = CryptoECDSA().ComputePublicKey(privKey5);
-   auto pubkey5_compressed = CryptoECDSA().CompressPoint(pubkey5);
+   auto privKey5 = Cryptography::PRNG::generateRandomStrong(32);
+   auto pubkey5 = Cryptography::ECDSA::computePublicKey(privKey5);
+   auto pubkey5_compressed = Cryptography::ECDSA::compressPoint(pubkey5);
    btc_pubkey btckey5;
    btc_pubkey_init(&btckey5);
    std::memcpy(btckey5.pubkey, pubkey5_compressed.getPtr(), 33);
@@ -9721,7 +9738,7 @@ public:
 TEST_F(BackupTests, Easy16)
 {
    for (const auto& index : Easy16Codec::eligibleIndexes) {
-      auto root = CryptoPRNG::generateRandom(32);
+      auto root = Cryptography::PRNG::generateRandomStrong(32);
 
       //encode the root
       auto encoded = Easy16Codec::encode(root.getRef(), index);
@@ -9760,7 +9777,7 @@ TEST_F(BackupTests, Easy16_Repair)
       val = newChar;
    };
 
-   PRNG_Fortuna prng;
+   Cryptography::PRNG::Fortuna prng;
 
    //1 error, auto repair
    unsigned succesfulRepairs = 0;
@@ -9907,7 +9924,7 @@ TEST_F(BackupTests, Easy16_Repair)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BackupTests, SecurePrint)
 {
-   auto root = CryptoPRNG::generateRandom(32);
+   auto root = Cryptography::PRNG::generateRandomStrong(32);
    
    //encrypt the root
    SecurePrint spEncr;
@@ -9924,7 +9941,7 @@ TEST_F(BackupTests, SecurePrint)
    EXPECT_EQ(decryptedData, root);
 
    //with chaincode
-   auto chaincode = CryptoPRNG::generateRandom(32);
+   auto chaincode = Cryptography::PRNG::generateRandomStrong(32);
 
    SecurePrint spWithCC;
    auto dataWithCC = spWithCC.encrypt(root, chaincode);
@@ -9962,7 +9979,7 @@ TEST_F(BackupTests, SecurePrint)
 
    //jibberish passphrase
    try {
-      auto passphrase = CryptoPRNG::generateRandom(7);
+      auto passphrase = Cryptography::PRNG::generateRandomStrong(7);
       auto passhash = BtcUtils::getHash256(passphrase);
       passphrase.append(passhash.getPtr()[0] ^ 0xFF);
 
@@ -10008,7 +10025,7 @@ TEST_F(BackupTests, BackupStrings_Legacy)
    auto backupData = Helpers::getWalletBackup(assetWlt, true);
    auto backupEasy16 = dynamic_cast<Backup_Easy16*>(backupData.get());
 
-   auto newPass = CryptoPRNG::generateRandom(10).toHexStr();
+   auto newPass = Cryptography::PRNG::generateRandomStrong(10).toHexStr();
    auto callback = [&backupData](
       const RestorePrompt& prompt)->PromptReply
    {
@@ -10103,8 +10120,8 @@ TEST_F(BackupTests, BackupStrings_Legacy_Armory200a)
       assetWlt, true);
    auto backupEasy16 = dynamic_cast<Backup_Easy16*>(backupData.get());
 
-   auto newPass = CryptoPRNG::generateRandom(10).toHexStr();
-   auto newCtrl = CryptoPRNG::generateRandom(10).toHexStr();
+   auto newPass = Cryptography::PRNG::generateRandomStrong(10).toHexStr();
+   auto newCtrl = Cryptography::PRNG::generateRandomStrong(10).toHexStr();
    auto callback = [&backupData](
       const RestorePrompt& prompt)->PromptReply
    {
@@ -10199,8 +10216,8 @@ TEST_F(BackupTests, BackupStrings_Legacy_SecurePrint)
       assetWlt, true);
    auto backupEasy16 = dynamic_cast<Backup_Easy16*>(backupData.get());
 
-   auto newPass = CryptoPRNG::generateRandom(10).toHexStr();
-   auto newCtrl = CryptoPRNG::generateRandom(10).toHexStr();
+   auto newPass = Cryptography::PRNG::generateRandomStrong(10).toHexStr();
+   auto newCtrl = Cryptography::PRNG::generateRandomStrong(10).toHexStr();
    auto callback = [&backupData](
       const RestorePrompt& prompt)->PromptReply
    {
@@ -10314,7 +10331,7 @@ TEST_F(BackupTests, Easy16_AutoRepair)
       auto chaincode = BtcUtils::computeChainCode_ArmoryLegacy(root);
       auto derScheme = std::make_shared<DerivationScheme_ArmoryLegacy>(chaincode);
 
-      auto pubkey = CryptoECDSA().ComputePublicKey(root);
+      auto pubkey = Cryptography::ECDSA::computePublicKey(root);
       auto asset_single = std::make_shared<AssetEntry_Single>(
          AssetId::getRootAssetId(), pubkey, nullptr);
 
@@ -10345,7 +10362,7 @@ TEST_F(BackupTests, Easy16_AutoRepair)
       return BtcUtils::base58_encode(idBd);
    };
 
-   PRNG_Fortuna prng;
+   Cryptography::PRNG::Fortuna prng;
 
    //1 error, auto repair
    unsigned succesfulRepairs = 0;
@@ -10441,7 +10458,7 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode)
 
    std::unique_ptr<ClearTextSeed> seed(
       new ClearTextSeed_Armory(
-         CryptoPRNG::generateRandom(32), CryptoPRNG::generateRandom(32),
+         Cryptography::PRNG::generateRandomStrong(32), Cryptography::PRNG::generateRandomStrong(32),
          LegacyType::Armory135
    ));
    auto assetWlt = AssetWallet_Single::createFromSeed(std::move(seed), params);
@@ -10478,8 +10495,8 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode)
       val = newChar;
    };
 
-   auto newPass = CryptoPRNG::generateRandom(10).toHexStr();
-   auto newCtrl = CryptoPRNG::generateRandom(10).toHexStr();
+   auto newPass = Cryptography::PRNG::generateRandomStrong(10).toHexStr();
+   auto newCtrl = Cryptography::PRNG::generateRandomStrong(10).toHexStr();
    std::vector<std::set<uint8_t>> corruptions{
       { 1 }, //corrupt second root line
       { 0, 2 }, //corrupt first line of root and chaincode
@@ -10529,7 +10546,7 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode)
    std::filesystem::path newHomeDir("./newhomedir");
    FileUtils::removeDirectory(newHomeDir);
    std::filesystem::create_directory(newHomeDir);
-   PRNG_Fortuna prng;
+   Cryptography::PRNG::Fortuna prng;
 
    std::filesystem::path filename;
    {
@@ -10627,7 +10644,7 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode_SecurePrint)
 
    std::unique_ptr<ClearTextSeed> seed(
       new ClearTextSeed_Armory(
-      CryptoPRNG::generateRandom(32), CryptoPRNG::generateRandom(32),
+      Cryptography::PRNG::generateRandomStrong(32), Cryptography::PRNG::generateRandomStrong(32),
       LegacyType::Armory135));
    auto assetWlt = AssetWallet_Single::createFromSeed(
       std::move(seed), params);
@@ -10643,8 +10660,8 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode_SecurePrint)
       assetWlt, true);
    auto backupEasy16 = dynamic_cast<Backup_Easy16*>(backupData.get());
 
-   auto newPass = CryptoPRNG::generateRandom(10).toHexStr();
-   auto newCtrl = CryptoPRNG::generateRandom(10).toHexStr();
+   auto newPass = Cryptography::PRNG::generateRandomStrong(10).toHexStr();
+   auto newCtrl = Cryptography::PRNG::generateRandomStrong(10).toHexStr();
    auto callback = [&backupData](
       const RestorePrompt& prompt)->PromptReply
    {
@@ -10792,8 +10809,8 @@ TEST_F(BackupTests, BackupStrings_BIP32)
       assetWlt, true);
    auto backupEasy16 = dynamic_cast<Backup_Easy16*>(backupData.get());
 
-   auto newPass = CryptoPRNG::generateRandom(10).toHexStr();
-   auto newCtrl = CryptoPRNG::generateRandom(10).toHexStr();
+   auto newPass = Cryptography::PRNG::generateRandomStrong(10).toHexStr();
+   auto newCtrl = Cryptography::PRNG::generateRandomStrong(10).toHexStr();
    auto callback = [&backupData](
       const RestorePrompt& prompt)->PromptReply
    {
@@ -10891,8 +10908,8 @@ TEST_F(BackupTests, BackupStrings_BIP32_Virgin)
    auto backupEasy16 = dynamic_cast<Backup_Easy16*>(
       backupData.get());
 
-   auto newPass = CryptoPRNG::generateRandom(10).toHexStr();
-   auto newCtrl = CryptoPRNG::generateRandom(10).toHexStr();
+   auto newPass = Cryptography::PRNG::generateRandomStrong(10).toHexStr();
+   auto newCtrl = Cryptography::PRNG::generateRandomStrong(10).toHexStr();
    auto callback = [&backupData](
       const RestorePrompt& prompt)->PromptReply
    {
@@ -10970,8 +10987,8 @@ TEST_F(BackupTests, BackupStrings_BIP32_FromBase58)
    auto b58seed = std::string_view{
       "tprv8ZgxMBicQKsPd9TeAdPADNnSyH9SSUUbTVeFszDE23Ki6TBB5nCefAdHkK8Fm3qMQR6sHwA56zqRmKmxnHk37JkiFzvncDqoKmPWubu7hDF"};
 
-   auto newPass = CryptoPRNG::generateRandom(10).toHexStr();
-   auto newCtrl = CryptoPRNG::generateRandom(10).toHexStr();
+   auto newPass = Cryptography::PRNG::generateRandomStrong(10).toHexStr();
+   auto newCtrl = Cryptography::PRNG::generateRandomStrong(10).toHexStr();
    auto callback = [](const RestorePrompt& prompt)->PromptReply
    {
       switch (prompt.promptType)
@@ -11083,8 +11100,8 @@ TEST_F(BackupTests, BackupStrings_BIP39)
    EXPECT_EQ(walletId, backupDataArmory200d->getWalletId());
 
    //restore Armory200d lambda
-   auto newPass = CryptoPRNG::generateRandom(10).toHexStr();
-   auto newCtrl = CryptoPRNG::generateRandom(10).toHexStr();
+   auto newPass = Cryptography::PRNG::generateRandomStrong(10).toHexStr();
+   auto newCtrl = Cryptography::PRNG::generateRandomStrong(10).toHexStr();
    auto callback = [&walletId](
       const RestorePrompt& prompt)->PromptReply
    {
@@ -11152,8 +11169,8 @@ TEST_F(BackupTests, BackupStrings_BIP39)
    std::filesystem::create_directory(newHomeDir);
 
    //restore BIP39 lambda
-   auto newPass2 = CryptoPRNG::generateRandom(10).toHexStr();
-   auto newCtrl2 = CryptoPRNG::generateRandom(10).toHexStr();
+   auto newPass2 = Cryptography::PRNG::generateRandomStrong(10).toHexStr();
+   auto newCtrl2 = Cryptography::PRNG::generateRandomStrong(10).toHexStr();
    auto callbackBip39 = [&walletId](
       const RestorePrompt& prompt)->PromptReply
    {
@@ -11235,7 +11252,7 @@ GTEST_API_ int main(int argc, char **argv)
    WSAStartup(wVersion, &wsaData);
 #endif
 
-   CryptoECDSA::setupContext();
+   Cryptography::ECDSA::setupContext();
 
    srand(time(0));
    std::cout << "Running main() from gtest_main.cc\n";
@@ -11248,6 +11265,6 @@ GTEST_API_ int main(int argc, char **argv)
    FLUSHLOG();
    CLEANUPLOG();
 
-   CryptoECDSA::shutdown();
+   Cryptography::ECDSA::shutdown();
    return exitCode;
 }

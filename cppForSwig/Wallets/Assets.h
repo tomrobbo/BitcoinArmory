@@ -70,22 +70,22 @@ namespace Armory
          PrivateKey,
       };
 
-      enum MetaType
+      enum class MetaType : int
       {
-         MetaType_Comment,
-         MetaType_AuthorizedPeer,
-         MetaType_PeerRootKey,
-         MetaType_PeerRootSig,
-         MetaType_PeerMasterKey
+         Comment,
+         AuthorizedPeer,
+         PeerRootKey,
+         PeerRootSig,
+         PeerMasterKey
       };
 
       ////
-      enum AssetEntryType
+      enum class AssetEntryType : int
       {
-         AssetEntryType_Single = 0x01,
-         AssetEntryType_Multisig,
-         AssetEntryType_BIP32Root,
-         AssetEntryType_ArmoryLegacyRoot
+         Single = 0x01,
+         Multisig,
+         BIP32Root,
+         ArmoryLegacyRoot
       };
 
       enum ScriptHashType

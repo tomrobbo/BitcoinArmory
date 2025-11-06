@@ -64,7 +64,7 @@ void KdfRomix::computeKdfParams(
 {
    // Create a random salt, even though this is probably unnecessary;
    // the variation in numIter and memReqts is probably effective enough
-   salt_ = CryptoPRNG::generateRandom(32);
+   salt_ = Cryptography::PRNG::generateRandomStrong(32);
 
    //12 bytes test key
    auto testKey = SecureBinaryData::fromString("- Test Key -");
@@ -159,7 +159,7 @@ SecureBinaryData KdfRomix::DeriveKey_OneIter(SecureBinaryData const & password)
    uint8_t* nextWrite = NULL;
 
    // First hash to seed the lookup table, input is variable length anyway
-   CryptoSHA2::getSha512(saltedPassword.getRef(), frontOfLUT);
+   Cryptography::Hash::getSha512(saltedPassword.getRef(), frontOfLUT);
 
    // Compute <sequenceCount_> consecutive hashes of the passphrase
    // Every iteration is stored in the next 64-bytes in the Lookup table
@@ -168,7 +168,7 @@ SecureBinaryData KdfRomix::DeriveKey_OneIter(SecureBinaryData const & password)
       nextRead = frontOfLUT + nByte;
       nextWrite = nextRead + hashOutputBytes;
       BinaryDataRef bdr_next(nextRead, hashOutputBytes);
-      CryptoSHA2::getSha512(bdr_next, nextWrite);
+      Cryptography::Hash::getSha512(bdr_next, nextWrite);
    }
 
    // LookupTable should be complete, now start lookup sequence.
@@ -205,7 +205,7 @@ SecureBinaryData KdfRomix::DeriveKey_OneIter(SecureBinaryData const & password)
 
       // Hash the xor'd data to get the next index for lookup
       BinaryDataRef bdrY(Y.getPtr(), HSZ);
-      CryptoSHA2::getSha512(bdrY, X.getPtr());
+      Cryptography::Hash::getSha512(bdrY, X.getPtr());
    }
 
    // Truncate the final result to get the final key
@@ -317,7 +317,7 @@ KdfId KeyDerivationFunction_Romix::computeID() const
    bw.put_uint32_t(memTargetBytes_);
 
    BinaryData bd(32);
-   CryptoSHA2::getHash256(bw.getData(), bd.getPtr());
+   Cryptography::Hash::getHash256(bw.getData(), bd.getPtr());
    return KdfId::fromBinaryData(bd);
 }
 

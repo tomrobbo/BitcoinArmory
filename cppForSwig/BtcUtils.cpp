@@ -11,6 +11,8 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
+#include <algorithm>
+
 #include "BtcUtils.h"
 #include "BinaryData.h"
 #include "Cryptography.h"
@@ -140,7 +142,7 @@ void BtcUtils::getSha256(const uint8_t* data, size_t len,
    }
 
    BinaryDataRef dataBdr(data, len);
-   CryptoSHA2::getSha256(dataBdr, hashOutput.getPtr());
+   Cryptography::Hash::getSha256(dataBdr, hashOutput.getPtr());
 }
 
 BinaryData BtcUtils::getSha256(const BinaryData& bd)
@@ -159,7 +161,6 @@ BinaryData BtcUtils::getHMAC256(const SecureBinaryData& key,
    getHMAC256(key.getPtr(), key.getSize(), 
       message.getCharPtr(), message.getSize(),
       digest.getPtr());
-
    return digest;
 }
 
@@ -168,11 +169,11 @@ void BtcUtils::getHash256(const uint8_t* strToHash, size_t nBytes,
    BinaryData& hashOutput)
 {
    if (hashOutput.getSize() != 32) {
-         hashOutput.resize(32);
+      hashOutput.resize(32);
    }
 
    BinaryDataRef dataBdr(strToHash, nBytes);
-   CryptoSHA2::getHash256(dataBdr, hashOutput.getPtr());
+   Cryptography::Hash::getHash256(dataBdr, hashOutput.getPtr());
 }
 
 BinaryData BtcUtils::getHash256(const uint8_t* strToHash, size_t nBytes)
@@ -180,7 +181,7 @@ BinaryData BtcUtils::getHash256(const uint8_t* strToHash, size_t nBytes)
    BinaryData hashOutput(32);
    BinaryDataRef dataBdr(strToHash, nBytes);
 
-   CryptoSHA2::getHash256(dataBdr, hashOutput.getPtr());
+   Cryptography::Hash::getHash256(dataBdr, hashOutput.getPtr());
    return hashOutput;
 }
 
@@ -219,8 +220,8 @@ void BtcUtils::getHash160(const uint8_t* strToHash, size_t nBytes,
    BinaryDataRef bdr(strToHash, nBytes);
    BinaryData sha2_digest(32);
 
-   CryptoSHA2::getSha256(bdr, sha2_digest.getPtr());
-   CryptoHASH160::getHash160(sha2_digest.getRef(), hashOutput.getPtr());
+   Cryptography::Hash::getSha256(bdr, sha2_digest.getPtr());
+   Cryptography::Hash::getHash160(sha2_digest.getRef(), hashOutput.getPtr());
 }
 
 BinaryData BtcUtils::getHash160(const uint8_t* strToHash, size_t nBytes)
@@ -252,7 +253,7 @@ BinaryData BtcUtils::getHash160(const BinaryData& strToHash)
 BinaryData BtcUtils::ripemd160(const BinaryData& strToHash)
 {
    BinaryData bd(20);
-   CryptoHASH160::getHash160(strToHash.getRef(), bd.getPtr());
+   Cryptography::Hash::getHash160(strToHash.getRef(), bd.getPtr());
    return bd;
 }
 
@@ -305,13 +306,12 @@ SecureBinaryData BtcUtils::getHMAC512(const std::string& key,
    return digest;
 }
 
-
 void BtcUtils::getHMAC256(const uint8_t* keyptr, size_t keylen,
    const char* msgptr, size_t msglen, uint8_t* digest)
 {
    BinaryDataRef key_bdr(keyptr, keylen);
    BinaryDataRef msg_bdr((uint8_t*)msgptr, msglen);
-   CryptoSHA2::getHMAC256(key_bdr, msg_bdr, digest);
+   Cryptography::Hash::getHMAC256(key_bdr, msg_bdr, digest);
 }
 
 void BtcUtils::getHMAC512(const void* keyptr, size_t keylen,
@@ -319,7 +319,7 @@ void BtcUtils::getHMAC512(const void* keyptr, size_t keylen,
 {
    BinaryDataRef key_bdr((uint8_t*)keyptr, keylen);
    BinaryDataRef msg_bdr((uint8_t*)msgptr, msglen);
-   CryptoSHA2::getHMAC512(key_bdr, msg_bdr, (uint8_t*)digest);
+   Cryptography::Hash::getHMAC512(key_bdr, msg_bdr, (uint8_t*)digest);
 }
 
 BinaryData BtcUtils::getBotchedArmoryHMAC256(
@@ -382,7 +382,8 @@ std::vector<BinaryData> BtcUtils::calculateMerkleTree(
             merkleTree[nextLevelStart-1].copyTo(half2Ptr, 32);
          }
 
-         CryptoSHA2::getHash256(hashInput.getRef(), hashOutput.getPtr());
+         Cryptography::Hash::getHash256(
+            hashInput.getRef(), hashOutput.getPtr());
          merkleTree[nextLevelStart+j] = hashOutput;
       }
       levelSize = (levelSize+1)/2;

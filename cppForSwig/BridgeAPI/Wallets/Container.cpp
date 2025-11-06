@@ -25,7 +25,7 @@ WalletContainer::WalletContainer(const std::string& wltId,
    const Armory::Wallets::AddressAccountId& accId) :
    wltId_(wltId), accountId_(accId)
 {
-   dbId_ = prng_fortuna.generateRandom(6).toHexStr();
+   dbId_ = Cryptography::PRNG::fortuna.generateRandom(6).toHexStr();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

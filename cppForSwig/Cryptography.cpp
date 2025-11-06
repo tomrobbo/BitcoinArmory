@@ -7,31 +7,38 @@
 ////////////////////////////////////////////////////////////////////////////////
 #include "Cryptography.h"
 #include "log.h"
+#include <secp256k1.h>
 #include <btc/ecc.h>
+#include <btc/ecc_key.h>
 #include <btc/sha2.h>
 #include <btc/hash.h>
 #include <btc/ripemd160.h>
 #include <btc/ctaes.h>
 #include <btc/hmac.h>
-#include <secp256k1.h>
+#include <btc/random.h>
+#include <btc/aes256_cbc.h>
 
-using namespace std;
+std::once_flag contexFlag;
 
-#define CRYPTO_DEBUG false
+using namespace Cryptography;
+using namespace std::string_view_literals;
 
-const string CryptoECDSA::bitcoinMessageMagic_("Bitcoin Signed Message:\n");
-static secp256k1_context* crypto_ecdsa_ctx = nullptr;
+constexpr std::string_view ECDSA::bitcoinMessageMagic{
+   "Bitcoin Signed Message:\n"sv
+};
+constexpr size_t Encryption::AES::BLOCK_SIZE = AES_BLOCK_SIZE;
+secp256k1_context* ECDSA::crypto_ecdsa_ctx = nullptr;
+const PRNG::Fortuna PRNG::fortuna;
 
 /////////////////////////////////////////////////////////////////////////////
-//// CryptoPRNG
-/////////////////////////////////////////////////////////////////////////////
-SecureBinaryData CryptoPRNG::generateRandom(uint32_t numBytes,
+// PRNG
+SecureBinaryData PRNG::generateRandomStrong(uint32_t numBytes,
    const SecureBinaryData& extraEntropy)
 {
    SecureBinaryData sbd(numBytes);
    btc_random_init();
    if (!btc_random_bytes(sbd.getPtr(), numBytes, 0)) {
-      throw runtime_error("failed to generate random value");
+      throw std::runtime_error("failed to generate random value");
    }
 
    if (!extraEntropy.empty()) {
@@ -40,103 +47,102 @@ SecureBinaryData CryptoPRNG::generateRandom(uint32_t numBytes,
    return sbd;
 }
 
-/////////////////////////////////////////////////////////////////////////////
-//// PRNG_Fortuna
-/////////////////////////////////////////////////////////////////////////////
-PRNG_Fortuna::PRNG_Fortuna()
+// Fortuna
+PRNG::Fortuna::Fortuna()
 {
    reseed();
 }
 
-/////////////////////////////////////////////////////////////////////////////
-void PRNG_Fortuna::reseed() const
+void PRNG::Fortuna::reseed() const
 {
-   nBytes_.store(0, memory_order_relaxed);
-   auto rng = CryptoPRNG::generateRandom(32);
+   nBytes_.store(0, std::memory_order_relaxed);
+   auto rng = PRNG::generateRandomStrong(32);
 
-   auto newKey = make_shared<SecureBinaryData>(32);
+   auto newKey = std::make_shared<SecureBinaryData>(32);
    unsigned char digest[32];
    sha256_Raw(rng.getPtr(), rng.getSize(), digest);
    sha256_Raw(digest, 32, newKey->getPtr());
 
-   atomic_store_explicit(&key_, newKey, memory_order_relaxed);
+   std::atomic_store_explicit(&key_, newKey, std::memory_order_relaxed);
 }
 
-/////////////////////////////////////////////////////////////////////////////
-SecureBinaryData PRNG_Fortuna::generateRandom(uint32_t numBytes,
+SecureBinaryData PRNG::Fortuna::generateRandom(uint32_t numBytes,
    const SecureBinaryData& extraEntropy) const
 {
-   size_t blockCount = numBytes / AES_BLOCK_SIZE;
-   size_t spill = numBytes % AES_BLOCK_SIZE;
+   size_t blockCount = numBytes / Encryption::AES::BLOCK_SIZE;
+   size_t spill = numBytes % Encryption::AES::BLOCK_SIZE;
    SecureBinaryData result(numBytes);
 
-   unsigned char plainText[AES_BLOCK_SIZE];
-   memset(&plainText, 0, AES_BLOCK_SIZE);
+   unsigned char plainText[Encryption::AES::BLOCK_SIZE];
+   memset(&plainText, 0, Encryption::AES::BLOCK_SIZE);
 
    //setup AES object, seed with key_
-   auto keyPtr = atomic_load_explicit(&key_, memory_order_relaxed);
+   auto keyPtr = std::atomic_load_explicit(&key_, std::memory_order_relaxed);
    AES256_ctx aes_ctx;
    AES256_init(&aes_ctx, keyPtr->getPtr());
 
    //main body
    for (unsigned i=0; i<blockCount; i++) {
       //set counters in plain text block
-      for (unsigned y=0; y<4; y++) {
+      for (unsigned y=0; y < 4; y++) {
          auto ptr = (uint32_t*)plainText;
-         *ptr = counter_.fetch_add(1, memory_order_relaxed);
+         *ptr = counter_.fetch_add(1, std::memory_order_relaxed);
       }
 
       //encrypt counters with key
-      auto resultPtr = result.getPtr() + (i * AES_BLOCK_SIZE);
+      auto resultPtr = result.getPtr() + (i * Encryption::AES::BLOCK_SIZE);
       AES256_encrypt(&aes_ctx, 1, resultPtr, plainText);
 
       //xor with extra entropy if available
-      if (extraEntropy.getSize() >= (i + 1) * AES_BLOCK_SIZE) {
-         auto entropyPtr = extraEntropy.getPtr() + (i * AES_BLOCK_SIZE);
-         for (unsigned z=0; z<AES_BLOCK_SIZE; z++)
+      if (extraEntropy.getSize() >= (i + 1) * Encryption::AES::BLOCK_SIZE) {
+         auto entropyPtr = extraEntropy.getPtr() +
+            (i * Encryption::AES::BLOCK_SIZE);
+         for (unsigned z=0; z<Encryption::AES::BLOCK_SIZE; z++) {
             resultPtr[z] ^= entropyPtr[z];
+         }
       }
    }
 
    //return if we have no spill
    if (spill > 0) {
       //deal with spill block
-      for (unsigned y=0; y<4; y++) {
+      for (unsigned y=0; y < 4; y++) {
          auto ptr = (uint32_t*)plainText;
-         *ptr = counter_.fetch_add(1, memory_order_relaxed);
+         *ptr = counter_.fetch_add(1, std::memory_order_relaxed);
       }
 
-      unsigned char lastBlock[AES_BLOCK_SIZE];
-      AES256_encrypt(&aes_ctx, 1, lastBlock, plainText); 
-
+      unsigned char lastBlock[Encryption::AES::BLOCK_SIZE];
+      AES256_encrypt(&aes_ctx, 1, lastBlock, plainText);
       if (extraEntropy.getSize() >= numBytes) {
-         auto entropyPtr =
-            extraEntropy.getPtr() + blockCount * AES_BLOCK_SIZE;
-
-         for (unsigned z=0; z<spill; z++)
+         auto entropyPtr = extraEntropy.getPtr() +
+            blockCount * Encryption::AES::BLOCK_SIZE;
+         for (unsigned z=0; z < spill; z++) {
             lastBlock[z] ^= entropyPtr[z];
+         }
       }
-
-      memcpy(result.getPtr() + blockCount * AES_BLOCK_SIZE,
-         lastBlock, spill);
+      memcpy(
+         result.getPtr() + blockCount * Encryption::AES::BLOCK_SIZE,
+         lastBlock,
+         spill
+      );
    }
 
    //update size counter
-   nBytes_.fetch_add(numBytes, memory_order_relaxed);
+   nBytes_.fetch_add(numBytes, std::memory_order_relaxed);
 
    //reseed after 1MB
-   if (nBytes_.load(memory_order_relaxed) >= 1048576) {
+   if (nBytes_.load(std::memory_order_relaxed) >= 1048576) {
       reseed();
    }
    return result;
 }
 
 /////////////////////////////////////////////////////////////////////////////
-//// CryptoAES
-/////////////////////////////////////////////////////////////////////////////
-// Implement AES encryption using AES mode, CFB
-SecureBinaryData CryptoAES::EncryptCFB(const SecureBinaryData& clearText,
-   const SecureBinaryData& key, const SecureBinaryData& iv)
+// Encryption
+SecureBinaryData Encryption::AES::encryptCFB(
+   const SecureBinaryData& clearText,
+   const SecureBinaryData& key,
+   const SecureBinaryData& iv)
 {
    //TODO: needs test coverage
 
@@ -145,30 +151,29 @@ SecureBinaryData CryptoAES::EncryptCFB(const SecureBinaryData& clearText,
    v1.35 wallet root keys (always 32 bytes)
    */
 
-   if(clearText.getSize() == 0 || clearText.getSize() % AES_BLOCK_SIZE) {
+   if(clearText.empty() || clearText.getSize() % BLOCK_SIZE) {
       throw std::runtime_error("invalid data size");
    }
    AES256_ctx aes_ctx;
    AES256_init(&aes_ctx, key.getPtr());
 
    SecureBinaryData cipherText(clearText.getSize());
-   SecureBinaryData intermediaryCipherText(AES_BLOCK_SIZE);
+   SecureBinaryData intermediaryCipherText(BLOCK_SIZE);
    const uint8_t* dataToEncrypt = iv.getPtr();
 
-   auto blockCount = clearText.getSize() / AES_BLOCK_SIZE;
-   for (unsigned i=0; i<blockCount; i++) {
+   auto blockCount = clearText.getSize() / BLOCK_SIZE;
+   for (unsigned i=0; i < blockCount; i++) {
       AES256_encrypt(
-         &aes_ctx, 1, 
+         &aes_ctx, 1,
          intermediaryCipherText.getPtr(),
          dataToEncrypt);
       
-      auto clearTextPtr = clearText.getPtr() + i * AES_BLOCK_SIZE;
-      auto cipherTextPtr = cipherText.getPtr() + i * AES_BLOCK_SIZE;
-      for (unsigned y=0; y<AES_BLOCK_SIZE; y++) {
+      auto clearTextPtr = clearText.getPtr() + i * BLOCK_SIZE;
+      auto cipherTextPtr = cipherText.getPtr() + i * BLOCK_SIZE;
+      for (unsigned y=0; y < BLOCK_SIZE; y++) {
          cipherTextPtr[y] =
             clearTextPtr[y] ^ intermediaryCipherText.getPtr()[y];
       }
-
       dataToEncrypt = cipherTextPtr;
    }
    return cipherText;
@@ -176,15 +181,17 @@ SecureBinaryData CryptoAES::EncryptCFB(const SecureBinaryData& clearText,
 
 /////////////////////////////////////////////////////////////////////////////
 // Implement AES decryption using AES mode, CFB
-SecureBinaryData CryptoAES::DecryptCFB(const SecureBinaryData& cipherText,
-   const SecureBinaryData& key, const SecureBinaryData& iv  )
+SecureBinaryData Encryption::AES::decryptCFB(
+   const SecureBinaryData& cipherText,
+   const SecureBinaryData& key,
+   const SecureBinaryData& iv)
 {
    /*
-   Not gonna bother with padding with CFB, this is only to decrypt Armory 
+   Not gonna bother with padding with CFB, this is only to decrypt Armory
    v1.35 wallet root keys (always 32 bytes)
    */
 
-   if(cipherText.empty() || cipherText.getSize() % AES_BLOCK_SIZE) {
+   if (cipherText.empty() || cipherText.getSize() % BLOCK_SIZE) {
       throw std::runtime_error("invalid data size");
    }
 
@@ -193,41 +200,39 @@ SecureBinaryData CryptoAES::DecryptCFB(const SecureBinaryData& cipherText,
    AES256_ctx aes_ctx;
    AES256_init(&aes_ctx, key.getPtr());
 
-   auto blockCount = cipherText.getSize() / AES_BLOCK_SIZE;
+   auto blockCount = cipherText.getSize() / BLOCK_SIZE;
    const uint8_t* dataToDecrypt = iv.getPtr();
-   SecureBinaryData intermediaryCipherText(AES_BLOCK_SIZE);
-   for (unsigned i=0; i<blockCount; i++) {
+   SecureBinaryData intermediaryCipherText(BLOCK_SIZE);
+   for (unsigned i=0; i < blockCount; i++) {
       AES256_encrypt(
          &aes_ctx, 1,
          intermediaryCipherText.getPtr(),
          dataToDecrypt);
 
-      auto clearTextPtr = clearText.getPtr() + i * AES_BLOCK_SIZE;
-      auto cipherTextPtr = cipherText.getPtr() + i * AES_BLOCK_SIZE;
-      for (unsigned y=0; y<AES_BLOCK_SIZE; y++) {
-         clearTextPtr[y] = 
+      auto clearTextPtr = clearText.getPtr() + i * BLOCK_SIZE;
+      auto cipherTextPtr = cipherText.getPtr() + i * BLOCK_SIZE;
+      for (unsigned y=0; y < BLOCK_SIZE; y++) {
+         clearTextPtr[y] =
             cipherTextPtr[y] ^ intermediaryCipherText.getPtr()[y];
       }
-
       dataToDecrypt = cipherTextPtr;
    }
    return clearText;
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// Same as above, but only changing the AES mode of operation (CBC, not CFB)
-SecureBinaryData CryptoAES::EncryptCBC(const SecureBinaryData& data,
-   const SecureBinaryData& key, const SecureBinaryData& iv)
+SecureBinaryData Encryption::AES::encryptCBC(
+   const SecureBinaryData& data,
+   const SecureBinaryData& key,
+   const SecureBinaryData& iv)
 {
-   if(data.empty()) {
+   if (data.empty()) {
       return {};
    }
-   size_t packet_count = data.getSize() / AES_BLOCK_SIZE + 1;
-
-   SecureBinaryData encrData(packet_count * AES_BLOCK_SIZE);
+   size_t packetCount = data.getSize() / BLOCK_SIZE + 1;
+   SecureBinaryData encrData(packetCount * BLOCK_SIZE);
 
    //sanity check
-   if (iv.getSize() != AES_BLOCK_SIZE) {
+   if (iv.getSize() != BLOCK_SIZE) {
       throw std::runtime_error("invalid IV size!");
    }
 
@@ -235,7 +240,8 @@ SecureBinaryData CryptoAES::EncryptCBC(const SecureBinaryData& data,
       key.getPtr(), iv.getPtr(),
       data.getPtr(), data.getSize(),
       1, //PKCS #5 padding
-      encrData.getPtr());
+      encrData.getPtr()
+   );
 
    if (result == 0) {
       LOGERR << "AES CBC encryption failed!";
@@ -247,12 +253,12 @@ SecureBinaryData CryptoAES::EncryptCBC(const SecureBinaryData& data,
    return encrData;
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// Same as above, but only changing the AES mode of operation (CBC, not CFB)
-SecureBinaryData CryptoAES::DecryptCBC(const SecureBinaryData& data,
-   const SecureBinaryData& key, const SecureBinaryData& iv)
+SecureBinaryData Encryption::AES::decryptCBC(
+   const SecureBinaryData& data,
+   const SecureBinaryData& key,
+   const SecureBinaryData& iv)
 {
-   if(data.empty()) {
+   if (data.empty()) {
       return {};
    }
 
@@ -261,7 +267,8 @@ SecureBinaryData CryptoAES::DecryptCBC(const SecureBinaryData& data,
       key.getPtr(), iv.getPtr(),
       data.getPtr(), data.getSize(),
       1, //PKCS #5 padding
-      unencrData.getPtr());
+      unencrData.getPtr()
+   );
 
    if (size == 0) {
       throw std::runtime_error("failed to decrypt packet");
@@ -273,32 +280,33 @@ SecureBinaryData CryptoAES::DecryptCBC(const SecureBinaryData& data,
 }
 
 /////////////////////////////////////////////////////////////////////////////
-//// CryptoECDSA
-/////////////////////////////////////////////////////////////////////////////
-void CryptoECDSA::setupContext()
+// ECDSA
+void ECDSA::setupContext()
 {
-   btc_ecc_start();
-   crypto_ecdsa_ctx = secp256k1_context_create(
-      SECP256K1_CONTEXT_SIGN | SECP256K1_CONTEXT_VERIFY);
+   std::call_once(contexFlag, [](){
+      btc_ecc_start();
+      crypto_ecdsa_ctx = secp256k1_context_create(
+         SECP256K1_CONTEXT_SIGN | SECP256K1_CONTEXT_VERIFY);
 
-   auto rando = CryptoPRNG::generateRandom(32);
-   if (!secp256k1_context_randomize(crypto_ecdsa_ctx, rando.getPtr()))
-      throw runtime_error("[CryptoECDSA::setupContext]");
+      auto rando = PRNG::generateRandomStrong(32);
+      if (!secp256k1_context_randomize(crypto_ecdsa_ctx, rando.getPtr())) {
+         throw std::runtime_error("[CryptoECDSA::setupContext]");
+      }
+   });
 }
 
-/////////////////////////////////////////////////////////////////////////////
-void CryptoECDSA::shutdown()
+void ECDSA::shutdown()
 {
    btc_ecc_stop();
-   if (crypto_ecdsa_ctx != nullptr)
-   {
+   if (crypto_ecdsa_ctx != nullptr) {
       secp256k1_context_destroy(crypto_ecdsa_ctx);
       crypto_ecdsa_ctx = nullptr;
    }
 }
 
 /////////////////////////////////////////////////////////////////////////////
-bool CryptoECDSA::checkPrivKeyIsValid(const SecureBinaryData& privKey)
+// private keys
+bool ECDSA::checkPrivKeyIsValid(const SecureBinaryData& privKey)
 {
    if (privKey.getSize() != 32)
       return false;
@@ -309,126 +317,32 @@ bool CryptoECDSA::checkPrivKeyIsValid(const SecureBinaryData& privKey)
    return btc_privkey_is_valid(&pkey);
 }
 
-/////////////////////////////////////////////////////////////////////////////
-SecureBinaryData CryptoECDSA::ComputePublicKey(
-   SecureBinaryData const & cppPrivKey, bool compressed) const
+SecureBinaryData ECDSA::createNewPrivateKey(
+   const SecureBinaryData& extraEntropy)
 {
-   if (cppPrivKey.getSize() != 32)
-      throw runtime_error("invalid priv key size");
-
-   btc_key pkey;
-   btc_privkey_init(&pkey);
-   memcpy(pkey.privkey, cppPrivKey.getPtr(), 32);
-   if (!btc_privkey_is_valid(&pkey))
-      throw runtime_error("invalid private key");
-
-   btc_pubkey pubkey;
-   btc_pubkey_init(&pubkey);
-
-   SecureBinaryData result;
-   size_t len;
-
-   if (!compressed)
-   {
-      len = BTC_ECKEY_UNCOMPRESSED_LENGTH;
-      btc_ecc_get_pubkey(pkey.privkey, pubkey.pubkey, &len, false);
+   while (true) {
+      auto privKey = PRNG::generateRandomStrong(32, extraEntropy);
+      if (checkPrivKeyIsValid(privKey)) {
+         return privKey;
+      }
    }
-   else
-   {
-      len = BTC_ECKEY_COMPRESSED_LENGTH;
-      btc_ecc_get_pubkey(pkey.privkey, pubkey.pubkey, &len, true);
-   }
-
-   result.resize(len);
-   memcpy(result.getPtr(), pubkey.pubkey, len);
-   return result;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-bool CryptoECDSA::VerifyPublicKeyValid(SecureBinaryData const & pubKey)
+bool ECDSA::checkPubPrivKeyMatch(const SecureBinaryData& cppPrivKey,
+   const SecureBinaryData& cppPubKey)
 {
-   if(CRYPTO_DEBUG)
-   {
-      cout << "BinPub: " << pubKey.toHexStr() << endl;
-   }
-
-   btc_pubkey key;
-   btc_pubkey_init(&key);
-   memcpy(key.pubkey, pubKey.getPtr(), pubKey.getSize());
-   key.compressed = pubKey.getSize() == 33 ? true : false;
-   return btc_pubkey_is_valid(&key);
+   auto pubkey = ECDSA::computePublicKey(cppPrivKey);
+   return pubkey == cppPubKey;
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// Use the secp256k1 curve to sign data of an arbitrary length.
-// Input:  Data to sign  (const SecureBinaryData&)
-//         The private key used to sign the data  (const BTC_PRIVKEY&)
-//         A flag indicating if deterministic signing is used  (const bool&)
-// Output: None
-// Return: The signature of the data  (SecureBinaryData)
-SecureBinaryData CryptoECDSA::SignData(BinaryData const & binToSign, 
-   SecureBinaryData const & cppPrivKey, const bool&)
-{
-   //hash message
-   BinaryData digest(32);
-   sha256_Raw(binToSign.getPtr(), binToSign.getSize(), digest.getPtr());
-   sha256_Raw(digest.getPtr(), 32, digest.getPtr());
-
-   // Only use RFC 6979
-   SecureBinaryData sig(74);
-   size_t outlen = 74;
-
-   btc_key pkey;
-   btc_privkey_init(&pkey);
-   memcpy(pkey.privkey, cppPrivKey.getPtr(), 32);
-
-   btc_key_sign_hash(&pkey, digest.getPtr(), sig.getPtr(), &outlen);
-   if(outlen != 74)
-      sig.resize(outlen);
-
-   return sig;
-}
-
-/////////////////////////////////////////////////////////////////////////////
-bool CryptoECDSA::VerifyData(BinaryData const & binMessage,
-   const BinaryData& sig,
-   BinaryData const & cppPubKey) const
-{
-   //pub keys are already validated by the script parser
-
-   // We execute the first SHA256 op, here.  Next one is done by Verifier
-   BinaryData digest1(32), digest2(32);
-   sha256_Raw(binMessage.getPtr(), binMessage.getSize(), digest1.getPtr());
-   sha256_Raw(digest1.getPtr(), 32, digest2.getPtr());
-
-   //setup pubkey
-   btc_pubkey key;
-   btc_pubkey_init(&key);
-   memcpy(key.pubkey, cppPubKey.getPtr(), cppPubKey.getSize());
-   key.compressed = cppPubKey.getSize() == 33 ? true : false;
-
-   // Verifying message 
-   return btc_pubkey_verify_sig(
-      &key, digest2.getPtr(),
-      (unsigned char*)sig.getCharPtr(), sig.getSize());
-}
-
-/////////////////////////////////////////////////////////////////////////////
 // Deterministically generate new private key using a chaincode
-// Changed:  added using the hash of the public key to the mix
-//           b/c multiplying by the chaincode alone is too "linear"
-//           (there's no reason to believe it's insecure, but it doesn't
-//           hurt to add some extra entropy/non-linearity to the chain
-//           generation process)
-SecureBinaryData CryptoECDSA::ComputeChainedPrivateKey(
-                                 SecureBinaryData const & binPrivKey,
-                                 SecureBinaryData const & chainCode,
-                                 SecureBinaryData* multiplierOut)
+SecureBinaryData ECDSA::computeChainedPrivateKey(
+   const SecureBinaryData& binPrivKey,
+   const SecureBinaryData& chainCode)
 {
-   auto&& binPubKey = ComputePublicKey(binPrivKey);
+   auto binPubKey = computePublicKey(binPrivKey);
 
-   if( binPrivKey.getSize() != 32 || chainCode.getSize() != 32)
-   {
+   if (binPrivKey.getSize() != 32 || chainCode.getSize() != 32) {
       LOGERR << "***ERROR:  Invalid private key or chaincode (both must be 32B)";
       LOGERR << "BinPrivKey: " << binPrivKey.getSize();
       LOGERR << "BinPrivKey: (not logged for security)";
@@ -440,33 +354,87 @@ SecureBinaryData CryptoECDSA::ComputeChainedPrivateKey(
    BinaryData chainMod  = binPubKey.getHash256();
    BinaryData chainOrig = chainCode.getRawCopy();
    BinaryData chainXor(32);
-      
-   for(uint8_t i=0; i<8; i++)
-   {
+
+   for (uint8_t i=0; i<8; i++) {
       uint8_t offset = 4*i;
       *(uint32_t*)(chainXor.getPtr()+offset) =
-                           *(uint32_t*)( chainMod.getPtr()+offset) ^ 
-                           *(uint32_t*)(chainOrig.getPtr()+offset);
+         *(uint32_t*)(chainMod.getPtr()+offset) ^
+         *(uint32_t*)(chainOrig.getPtr()+offset);
    }
 
    SecureBinaryData newPrivData(binPrivKey);
    if (!secp256k1_ec_seckey_tweak_mul(crypto_ecdsa_ctx,
-      newPrivData.getPtr(), chainXor.getPtr()))
-   {
-      throw runtime_error(
+      newPrivData.getPtr(), chainXor.getPtr())) {
+      throw std::runtime_error(
          "[ComputeChainedPrivateKey] failed to multiply priv key");
    }
+   return newPrivData;
+}
 
-   if(multiplierOut != NULL)
-      (*multiplierOut) = SecureBinaryData(chainXor);
-
+SecureBinaryData ECDSA::privKeyScalarMultiply(
+   const SecureBinaryData& privKey,
+   const SecureBinaryData& scalar)
+{
+   SecureBinaryData newPrivData(privKey);
+   if (!secp256k1_ec_seckey_tweak_mul(crypto_ecdsa_ctx,
+      newPrivData.getPtr(), scalar.getPtr())) {
+      throw std::runtime_error("failed to multiply priv key");
+   }
    return newPrivData;
 }
 
 /////////////////////////////////////////////////////////////////////////////
+// public keys
+SecureBinaryData ECDSA::computePublicKey(
+   const SecureBinaryData& cppPrivKey, bool compressed)
+{
+   if (cppPrivKey.getSize() != 32) {
+      throw std::runtime_error("invalid priv key size");
+   }
+
+   btc_key pkey;
+   btc_privkey_init(&pkey);
+   memcpy(pkey.privkey, cppPrivKey.getPtr(), 32);
+   if (!btc_privkey_is_valid(&pkey)) {
+      throw std::runtime_error("invalid private key");
+   }
+
+   btc_pubkey pubkey;
+   btc_pubkey_init(&pubkey);
+
+   SecureBinaryData result;
+   size_t len;
+
+   if (!compressed) {
+      len = BTC_ECKEY_UNCOMPRESSED_LENGTH;
+      btc_ecc_get_pubkey(pkey.privkey, pubkey.pubkey, &len, false);
+   } else {
+      len = BTC_ECKEY_COMPRESSED_LENGTH;
+      btc_ecc_get_pubkey(pkey.privkey, pubkey.pubkey, &len, true);
+   }
+
+   result.resize(len);
+   memcpy(result.getPtr(), pubkey.pubkey, len);
+   return result;
+}
+
+bool ECDSA::verifyPublicKeyValid(const SecureBinaryData& pubKey)
+{
+   if (CRYPTO_DEBUG) {
+      std::cout << "BinPub: " << pubKey.toHexStr() << std::endl;
+   }
+
+   btc_pubkey key;
+   btc_pubkey_init(&key);
+   memcpy(key.pubkey, pubKey.getPtr(), pubKey.getSize());
+   key.compressed = pubKey.getSize() == 33 ? true : false;
+   return btc_pubkey_is_valid(&key);
+}
+
 // Deterministically generate new public key using a chaincode
-SecureBinaryData CryptoECDSA::ComputeChainedPublicKey(
-   const SecureBinaryData& binPubKey, const SecureBinaryData& chainCode)
+SecureBinaryData ECDSA::computeChainedPublicKey(
+   const SecureBinaryData& binPubKey,
+   const SecureBinaryData& chainCode)
 {
    secp256k1_pubkey pubkey;
    if (!secp256k1_ec_pubkey_parse(
@@ -510,59 +478,51 @@ SecureBinaryData CryptoECDSA::ComputeChainedPublicKey(
    return pubKeyResult;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-bool CryptoECDSA::ECVerifyPoint(BinaryData const & x, BinaryData const & y)
+bool ECDSA::verifyPoint(const BinaryData& x, const BinaryData& y)
 {
    BinaryWriter bw;
    bw.put_uint8_t(4);
    bw.put_BinaryData(x);
    bw.put_BinaryData(y);
    auto ptr = bw.getDataRef().getPtr();
-
    return btc_ecc_verify_pubkey(ptr, false);
 }
 
-////////////////////////////////////////////////////////////////////////////////
-SecureBinaryData CryptoECDSA::CompressPoint(SecureBinaryData const & pubKey65)
+SecureBinaryData ECDSA::compressPoint(const SecureBinaryData& pubKey65)
 {
-   if (pubKey65.getSize() != 65)
-   {
-      if (pubKey65.getSize() == 33)
+   if (pubKey65.getSize() != 65) {
+      if (pubKey65.getSize() == 33) {
          return pubKey65;
-
-      throw runtime_error("[CompressPoint] invalid key size");
+      }
+      throw std::runtime_error("[CompressPoint] invalid key size");
    }
 
    secp256k1_pubkey pubkey;
    if (!secp256k1_ec_pubkey_parse(
-      crypto_ecdsa_ctx, &pubkey, pubKey65.getPtr(), 65))
-   {
-      throw runtime_error("[CompressPoint] invalid pubkey");
+      crypto_ecdsa_ctx, &pubkey, pubKey65.getPtr(), 65)) {
+      throw std::runtime_error("[CompressPoint] invalid pubkey");
    }
 
    SecureBinaryData ptCompressed(33);
    size_t outputLen = 33;
    if (!secp256k1_ec_pubkey_serialize(
       crypto_ecdsa_ctx, ptCompressed.getPtr(),
-      &outputLen, &pubkey, SECP256K1_EC_COMPRESSED) || outputLen != 33)
-   {
-      throw runtime_error("[CompressPoint] failed to compress pubkey");
+      &outputLen, &pubkey, SECP256K1_EC_COMPRESSED) || outputLen != 33) {
+      throw std::runtime_error("[CompressPoint] failed to compress pubkey");
    }
-
-   return ptCompressed; 
+   return ptCompressed;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-btc_pubkey CryptoECDSA::CompressPoint(btc_pubkey const & pubKey65)
+btc_pubkey ECDSA::compressPoint(const btc_pubkey& pubKey65)
 {
-   if (pubKey65.compressed)
+   if (pubKey65.compressed) {
       return pubKey65;
+   }
 
    secp256k1_pubkey pubkey;
    if (!secp256k1_ec_pubkey_parse(
-      crypto_ecdsa_ctx, &pubkey, pubKey65.pubkey, 65))
-   {
-      throw runtime_error("[CompressPoint] invalid pubkey");
+      crypto_ecdsa_ctx, &pubkey, pubKey65.pubkey, 65)) {
+      throw std::runtime_error("[CompressPoint] invalid pubkey");
    }
 
    btc_pubkey pbCompressed;
@@ -570,109 +530,136 @@ btc_pubkey CryptoECDSA::CompressPoint(btc_pubkey const & pubKey65)
    size_t outputLen = 33;
    if (!secp256k1_ec_pubkey_serialize(
       crypto_ecdsa_ctx, pbCompressed.pubkey,
-      &outputLen, &pubkey, SECP256K1_EC_COMPRESSED) || outputLen != 33)
-   {
-      throw runtime_error("[CompressPoint] failed to compress pubkey");
+      &outputLen, &pubkey, SECP256K1_EC_COMPRESSED) || outputLen != 33) {
+      throw std::runtime_error("[CompressPoint] failed to compress pubkey");
    }
 
    pbCompressed.compressed = true;
-   return pbCompressed; 
+   return pbCompressed;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-SecureBinaryData CryptoECDSA::UncompressPoint(SecureBinaryData const & pubKey33)
+SecureBinaryData ECDSA::uncompressPoint(const SecureBinaryData& pubKey33)
 {
-   if (pubKey33.getSize() != 33)
-   {
-      if (pubKey33.getSize() == 65)
+   if (pubKey33.getSize() != 33) {
+      if (pubKey33.getSize() == 65) {
          return pubKey33;
-
-      throw runtime_error("[UncompressPoint] invalid key size");
+      }
+      throw std::runtime_error("[UncompressPoint] invalid key size");
    }
 
    secp256k1_pubkey pubkey;
    if (!secp256k1_ec_pubkey_parse(
-      crypto_ecdsa_ctx, &pubkey, pubKey33.getPtr(), 33))
-   {
-      throw runtime_error("[UncompressPoint] invalid pubkey");
+      crypto_ecdsa_ctx, &pubkey, pubKey33.getPtr(), 33)) {
+      throw std::runtime_error("[UncompressPoint] invalid pubkey");
    }
 
    SecureBinaryData ptUncompressed(65);
    size_t outputLen = 65;
    if (!secp256k1_ec_pubkey_serialize(
       crypto_ecdsa_ctx, ptUncompressed.getPtr(),
-      &outputLen, &pubkey, SECP256K1_EC_UNCOMPRESSED) || outputLen != 65)
-   {
-      throw runtime_error("[CompressPoint] failed to compress pubkey");
+      &outputLen, &pubkey, SECP256K1_EC_UNCOMPRESSED) || outputLen != 65) {
+      throw std::runtime_error("[CompressPoint] failed to compress pubkey");
    }
-
-   return ptUncompressed; 
+   return ptUncompressed;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-SecureBinaryData CryptoECDSA::PrivKeyScalarMultiply(
-   const SecureBinaryData& privKey,
-   const SecureBinaryData& scalar)
-{
-   SecureBinaryData newPrivData(privKey);
-   if (!secp256k1_ec_seckey_tweak_mul(crypto_ecdsa_ctx,
-      newPrivData.getPtr(), scalar.getPtr()))
-   {
-      throw runtime_error("failed to multiply priv key");
-   }
-
-   return newPrivData;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-SecureBinaryData CryptoECDSA::PubKeyScalarMultiply(
+SecureBinaryData ECDSA::pubKeyScalarMultiply(
    const SecureBinaryData& pubKeyIn,
    const SecureBinaryData& scalar)
 {
-   if (scalar.getSize() != 32)
-      throw runtime_error("[PubKeyScalarMultiply]");
+   if (scalar.getSize() != 32) {
+      throw std::runtime_error("[PubKeyScalarMultiply]");
+   }
 
    secp256k1_pubkey pubkey;
    if (!secp256k1_ec_pubkey_parse(
-      crypto_ecdsa_ctx, &pubkey, pubKeyIn.getPtr(), pubKeyIn.getSize()))
-   {
-      throw runtime_error("[PubKeyScalarMultiply] invalid pubkey");
+      crypto_ecdsa_ctx, &pubkey, pubKeyIn.getPtr(), pubKeyIn.getSize())) {
+      throw std::runtime_error("[PubKeyScalarMultiply] invalid pubkey");
    }
 
    if (!secp256k1_ec_pubkey_tweak_mul(
-      crypto_ecdsa_ctx, &pubkey, scalar.getPtr()))
-   {
-      throw runtime_error("[PubKeyScalarMultiply] failed to multiply pub key");
+      crypto_ecdsa_ctx, &pubkey, scalar.getPtr())) {
+      throw std::runtime_error("[PubKeyScalarMultiply] failed to multiply pub key");
    }
 
    size_t outputLen = pubKeyIn.getSize();
    SecureBinaryData result(outputLen);
    if (!secp256k1_ec_pubkey_serialize(crypto_ecdsa_ctx, result.getPtr(),
       &outputLen, &pubkey, pubKeyIn.getSize() == 65 ?
-      SECP256K1_EC_UNCOMPRESSED : SECP256K1_EC_COMPRESSED))
-   {
-      throw runtime_error("failed to compress point");
+      SECP256K1_EC_UNCOMPRESSED : SECP256K1_EC_COMPRESSED)) {
+      throw std::runtime_error("failed to compress point");
    }
-
    return result;
 }
 
+
+/////////////////////////////////////////////////////////////////////////////
+// tx signing
+SecureBinaryData ECDSA::signData(const BinaryData& binToSign,
+   const SecureBinaryData& cppPrivKey)
+{
+   //hash message
+   BinaryData digest(32);
+   sha256_Raw(binToSign.getPtr(), binToSign.getSize(), digest.getPtr());
+   sha256_Raw(digest.getPtr(), 32, digest.getPtr());
+
+   // Only use RFC 6979
+   SecureBinaryData sig(74);
+   size_t outlen = 74;
+
+   btc_key pkey;
+   btc_privkey_init(&pkey);
+   memcpy(pkey.privkey, cppPrivKey.getPtr(), 32);
+
+   btc_key_sign_hash(&pkey, digest.getPtr(), sig.getPtr(), &outlen);
+   if (outlen != 74) {
+      sig.resize(outlen);
+   }
+   return sig;
+}
+
+bool ECDSA::verifyData(const BinaryData& binMessage,
+   const BinaryData& sig, const BinaryData& cppPubKey)
+{
+   /* pub keys are already validated by the script parser */
+
+   // We execute the first SHA256 op, here. Next one is done by Verifier
+   BinaryData digest1(32), digest2(32);
+   sha256_Raw(binMessage.getPtr(), binMessage.getSize(), digest1.getPtr());
+   sha256_Raw(digest1.getPtr(), 32, digest2.getPtr());
+
+   //setup pubkey
+   btc_pubkey key;
+   btc_pubkey_init(&key);
+   memcpy(key.pubkey, cppPubKey.getPtr(), cppPubKey.getSize());
+   key.compressed = cppPubKey.getSize() == 33 ? true : false;
+
+   // Verifying message
+   return btc_pubkey_verify_sig(
+      &key, digest2.getPtr(),
+      (unsigned char*)sig.getCharPtr(), sig.getSize());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
-BinaryData CryptoECDSA::SignBitcoinMessage(
-   const BinaryDataRef& msg, 
-   const SecureBinaryData& privKey, 
+// bitcoin message signing
+BinaryData ECDSA::signBitcoinMessage(
+   const BinaryDataRef& msg,
+   const SecureBinaryData& privKey,
    bool compressedPubKey)
 {
    //prepend message
    BinaryWriter msgToSign;
-   msgToSign.put_var_int(bitcoinMessageMagic_.size());
-   msgToSign.put_String(bitcoinMessageMagic_);
+   msgToSign.put_var_int(bitcoinMessageMagic.size());
+   msgToSign.put_StringView(bitcoinMessageMagic);
    msgToSign.put_var_int(msg.getSize());
    msgToSign.put_BinaryDataRef(msg);
 
    //hash it
    BinaryData digest(32);
-   btc_hash(msgToSign.getDataRef().getPtr(), msgToSign.getSize(), digest.getPtr());
+   btc_hash(
+      msgToSign.getDataRef().getPtr(),
+      msgToSign.getSize(),
+      digest.getPtr());
 
    //sign
    int rec = -1;
@@ -680,42 +667,43 @@ BinaryData CryptoECDSA::SignBitcoinMessage(
    size_t outlen = 0;
 
    if (!btc_ecc_sign_compact_recoverable(
-      privKey.getPtr(), digest.getPtr(), result.getPtr() + 1, &outlen, &rec))
-   {
-      throw runtime_error("failed to sign message");
+      privKey.getPtr(), digest.getPtr(), result.getPtr() + 1, &outlen, &rec)) {
+      throw std::runtime_error("failed to sign message");
    }
 
    *result.getPtr() = 27 + rec + (compressedPubKey ? 4 : 0);
    return result;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-BinaryData CryptoECDSA::VerifyBitcoinMessage(
-   const BinaryDataRef& msg, const BinaryDataRef& sig)
+BinaryData ECDSA::verifyBitcoinMessage(
+   const BinaryDataRef& msg,
+   const BinaryDataRef& sig)
 {
    //prepend message
    BinaryWriter msgToSign;
-   msgToSign.put_var_int(bitcoinMessageMagic_.size());
-   msgToSign.put_String(bitcoinMessageMagic_);
+   msgToSign.put_var_int(bitcoinMessageMagic.size());
+   msgToSign.put_StringView(bitcoinMessageMagic);
    msgToSign.put_var_int(msg.getSize());
    msgToSign.put_BinaryDataRef(msg);
 
    //hash it
    BinaryData digest(32);
-   btc_hash(msgToSign.getDataRef().getPtr(), msgToSign.getSize(), digest.getPtr());
+   btc_hash(
+      msgToSign.getDataRef().getPtr(),
+      msgToSign.getSize(),
+      digest.getPtr());
 
    //check sig and recover pubkey
    bool compressed = ((*sig.getPtr() - 27) & 4) != 0;
    int recid = (*sig.getPtr() - 27) & 3;
-   
-   size_t outlen; 
+
+   size_t outlen;
    outlen = compressed ? 33 : 65;
    BinaryData pubkey(outlen);
 
-   if (!btc_ecc_recover_pubkey(sig.getPtr() + 1, digest.getPtr(), recid, 
-      pubkey.getPtr(), &outlen))
-   {
-      throw runtime_error("failed to verify message signature");
+   if (!btc_ecc_recover_pubkey(sig.getPtr() + 1, digest.getPtr(), recid,
+      pubkey.getPtr(), &outlen)) {
+      throw std::runtime_error("failed to verify message signature");
    }
 
    //return the pubkey, caller will check vs expected address
@@ -723,46 +711,40 @@ BinaryData CryptoECDSA::VerifyBitcoinMessage(
 }
 
 /////////////////////////////////////////////////////////////////////////////
-//// CryptoSHA2
-////////////////////////////////////////////////////////////////////////////////
-void CryptoSHA2::getHash256(BinaryDataRef bdr, uint8_t* digest)
+// hashes
+void Hash::getHash256(BinaryDataRef bdr, uint8_t* digest)
 {
    sha256_Raw(bdr.getPtr(), bdr.getSize(), digest);
    sha256_Raw(digest, 32, digest);
 }
 
-////////////////////////////////////////////////////////////////////////////////
-void CryptoSHA2::getSha256(BinaryDataRef bdr, uint8_t* digest)
+void Hash::getSha256(BinaryDataRef bdr, uint8_t* digest)
 {
    sha256_Raw(bdr.getPtr(), bdr.getSize(), digest);
 }
 
-////////////////////////////////////////////////////////////////////////////////
-void CryptoSHA2::getHMAC256(BinaryDataRef data, BinaryDataRef msg, 
-   uint8_t* digest)
+void Hash::getHMAC256(BinaryDataRef data, BinaryDataRef msg, uint8_t* digest)
 {
-   hmac_sha256(data.getPtr(), data.getSize(), msg.getPtr(), msg.getSize(), 
+   hmac_sha256(
+      data.getPtr(), data.getSize(),
+      msg.getPtr(), msg.getSize(),
       digest);
 }
 
-////////////////////////////////////////////////////////////////////////////////
-void CryptoSHA2::getSha512(BinaryDataRef bdr, uint8_t* digest)
+void Hash::getSha512(BinaryDataRef bdr, uint8_t* digest)
 {
    sha512_Raw(bdr.getPtr(), bdr.getSize(), digest);
 }
 
-////////////////////////////////////////////////////////////////////////////////
-void CryptoSHA2::getHMAC512(BinaryDataRef data, BinaryDataRef msg,
-   uint8_t* digest)
+void Hash::getHMAC512(BinaryDataRef data, BinaryDataRef msg, uint8_t* digest)
 {
-   hmac_sha512(data.getPtr(), data.getSize(), msg.getPtr(), msg.getSize(),
+   hmac_sha512(
+      data.getPtr(), data.getSize(),
+      msg.getPtr(), msg.getSize(),
       digest);
 }
 
-/////////////////////////////////////////////////////////////////////////////
-//// CryptoHASH160
-////////////////////////////////////////////////////////////////////////////////
-void CryptoHASH160::getHash160(BinaryDataRef bdr, uint8_t* digest)
+void Hash::getHash160(BinaryDataRef bdr, uint8_t* digest)
 {
    btc_ripemd160(bdr.getPtr(), bdr.getSize(), digest);
 }

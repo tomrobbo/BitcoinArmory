@@ -537,11 +537,8 @@ TEST_F(BIP150_151Test, checkData_150_151)
    SecureBinaryData privCli(READHEX(cliHex));
 
    //compute public keys
-   auto&& pubServ = CryptoECDSA().ComputePublicKey(privServ);
-   pubServ = CryptoECDSA().CompressPoint(pubServ);
-
-   auto&& pubCli = CryptoECDSA().ComputePublicKey(privCli);
-   pubCli = CryptoECDSA().CompressPoint(pubCli);
+   auto pubServ = Cryptography::ECDSA::computePublicKey(privServ, true);
+   auto pubCli = Cryptography::ECDSA::computePublicKey(privCli, true);
 
    btc_pubkey servKey;
    btc_pubkey_init(&servKey);
@@ -800,11 +797,8 @@ TEST_F(BIP150_151Test, checkData_150_151_1Way)
    SecureBinaryData privCli(READHEX(cliHex));
    
    //compute public keys
-   auto&& pubServ = CryptoECDSA().ComputePublicKey(privServ);
-   pubServ = CryptoECDSA().CompressPoint(pubServ);
-   
-   auto&& pubCli = CryptoECDSA().ComputePublicKey(privCli);
-   pubCli = CryptoECDSA().CompressPoint(pubCli);
+   auto pubServ = Cryptography::ECDSA::computePublicKey(privServ, true);
+   auto pubCli = Cryptography::ECDSA::computePublicKey(privCli, true);
 
    btc_pubkey servKey;
    btc_pubkey_init(&servKey);
@@ -1045,13 +1039,10 @@ TEST_F(BIP150_151Test, checkData_150_151_privateClientToPublicServer)
    char cliHex[65];
    cli_isf.getline(cliHex, 65);
    SecureBinaryData privCli(READHEX(cliHex));
-   
+
    //compute public keys
-   auto&& pubServ = CryptoECDSA().ComputePublicKey(privServ);
-   pubServ = CryptoECDSA().CompressPoint(pubServ);
-   
-   auto&& pubCli = CryptoECDSA().ComputePublicKey(privCli);
-   pubCli = CryptoECDSA().CompressPoint(pubCli);
+   auto pubServ = Cryptography::ECDSA::computePublicKey(privServ, true);
+   auto pubCli = Cryptography::ECDSA::computePublicKey(privCli, true);
 
    btc_pubkey servKey;
    btc_pubkey_init(&servKey);
@@ -1261,13 +1252,10 @@ TEST_F(BIP150_151Test, checkData_150_151_publicClientToPrivateServer)
    char cliHex[65];
    cli_isf.getline(cliHex, 65);
    SecureBinaryData privCli(READHEX(cliHex));
-   
+
    //compute public keys
-   auto&& pubServ = CryptoECDSA().ComputePublicKey(privServ);
-   pubServ = CryptoECDSA().CompressPoint(pubServ);
-   
-   auto&& pubCli = CryptoECDSA().ComputePublicKey(privCli);
-   pubCli = CryptoECDSA().CompressPoint(pubCli);
+   auto pubServ = Cryptography::ECDSA::computePublicKey(privServ, true);
+   auto pubCli = Cryptography::ECDSA::computePublicKey(privCli, true);
 
    btc_pubkey servKey;
    btc_pubkey_init(&servKey);
@@ -2020,7 +2008,7 @@ TEST_F(BinaryDataTest, DISABLED_CompareBench)
    unordered_set<BinaryData> udSet;
    set<BinaryData> compareSet;
    for (unsigned i=0; i<setSize; i++) {
-      auto hash = prng_fortuna.generateRandom(32);
+      auto hash = Cryptography::PRNG::fortuna.generateRandom(32);
 
       if ((hash.getPtr()[0] % 8) == 0 && compareSet.size() < compareSize) {
          compareSet.emplace(hash);
@@ -2030,7 +2018,7 @@ TEST_F(BinaryDataTest, DISABLED_CompareBench)
    }
 
    for (unsigned i=0; i<compareSize; i++) {
-      compareSet.emplace(prng_fortuna.generateRandom(32));
+      compareSet.emplace(Cryptography::PRNG::fortuna.generateRandom(32));
    }
 
    ASSERT_EQ(dataSet.size(), setSize);
@@ -6025,8 +6013,6 @@ protected:
       compPointPub2 = READHEX("0339a36013301597daef41fbe593a02cc513d0b55527ec2df1050e2e8ff49c85c2");
       uncompPointPub2 = READHEX("0439a36013301597daef41fbe593a02cc513d0b55527ec2df1050e2e8ff49c85c23cbe7ded0e7ce6a594896b8f62888fdbc5c8821305e2ea42bf01e37300116281");
 
-      invModRes = READHEX("000000000000000000000000000000000000000000000000000000000000006b");
-
       LOGDISABLESTDOUT();
    }
 
@@ -6066,25 +6052,23 @@ protected:
    SecureBinaryData compPointPrv2;
    SecureBinaryData uncompPointPub2;
    SecureBinaryData compPointPub2;
-
-   SecureBinaryData invModRes;
 };
 
 // Verify that a point known to be on the secp256k1 curve is recognized as such.
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(TestCryptoECDSA, VerifySECP256K1Point)
 {
-   EXPECT_TRUE(CryptoECDSA().ECVerifyPoint(verifyX, verifyY));
+   EXPECT_TRUE(Cryptography::ECDSA::verifyPoint(verifyX, verifyY));
 }
 
 // Verify that some public keys (compressed and uncompressed) are valid.
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(TestCryptoECDSA, VerifyPubKeyValidity)
 {
-   EXPECT_TRUE(CryptoECDSA().VerifyPublicKeyValid(compPointPub1));
-   EXPECT_TRUE(CryptoECDSA().VerifyPublicKeyValid(compPointPub2));
-   EXPECT_TRUE(CryptoECDSA().VerifyPublicKeyValid(uncompPointPub1));
-   EXPECT_TRUE(CryptoECDSA().VerifyPublicKeyValid(uncompPointPub2));
+   EXPECT_TRUE(Cryptography::ECDSA::verifyPublicKeyValid(compPointPub1));
+   EXPECT_TRUE(Cryptography::ECDSA::verifyPublicKeyValid(compPointPub2));
+   EXPECT_TRUE(Cryptography::ECDSA::verifyPublicKeyValid(uncompPointPub1));
+   EXPECT_TRUE(Cryptography::ECDSA::verifyPublicKeyValid(uncompPointPub2));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -6148,7 +6132,7 @@ TEST_F(TestTxHashFilters, SerializeWriter)
          auto insertIt = hashMap.emplace(i, list<BinaryData>{});
          auto& hashList = insertIt.first->second;
          for (unsigned y=0; y<hashCount; y++) {
-            auto hash = prng_fortuna.generateRandom(32);
+            auto hash = Cryptography::PRNG::fortuna.generateRandom(32);
             bucket.update(hash);
             hashList.emplace_back(hash);
          }
@@ -6172,7 +6156,7 @@ TEST_F(TestTxHashFilters, SerializeWriter)
          auto insertIt = hashMap.emplace(i, list<BinaryData>{});
          auto& hashList = insertIt.first->second;
          for (unsigned y=0; y<hashCount; y++) {
-            auto hash = prng_fortuna.generateRandom(32);
+            auto hash = Cryptography::PRNG::fortuna.generateRandom(32);
             bucket.update(hash);
             hashList.emplace_back(hash);
          }
@@ -6254,12 +6238,11 @@ TEST_F(TestTxHashFilters, FilterALot)
             BlockHashVector bucket(bucketId);
             bucket.reserve(hashPerBlock);
             for (unsigned y=0; y<hashPerBlock; y++) {
-               auto hash = prng_fortuna.generateRandom(32);
+               auto hash = Cryptography::PRNG::fortuna.generateRandom(32);
                bucket.update(hash);
 
                if (hash.getPtr()[y%32] < 10 &&
-                  localHashes.size() < hashesPerBucket)
-               {
+                  localHashes.size() < hashesPerBucket) {
                   localHashes.emplace(hash, make_pair(bucketId, y));
                }
             }
@@ -6634,7 +6617,7 @@ TEST_F(KdfTests, Romix_TargetTime)
    KeyDerivationFunction_Romix kdfRom3(
       kdfRom.iterations(),
       kdfRom.memTarget(),
-      CryptoPRNG::generateRandom(32)
+      Cryptography::PRNG::generateRandomStrong(32)
    );
 
    //derive key with 3rd kdf, check it takes over 2sec
@@ -6731,13 +6714,13 @@ GTEST_API_ int main(int argc, char **argv)
    std::cout << "Running main() from gtest_main.cc\n";
 
    // Required by libbtc.
-   CryptoECDSA::setupContext();
+   Cryptography::ECDSA::setupContext();
 
    testing::InitGoogleTest(&argc, argv);
    int exitCode = RUN_ALL_TESTS();
 
    // Required by libbtc.
-   CryptoECDSA::shutdown();
+   Cryptography::ECDSA::shutdown();
 
    FLUSHLOG();
    CLEANUPLOG();

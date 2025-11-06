@@ -206,7 +206,7 @@ GTEST_API_ int main(int argc, char **argv)
    LOGDISABLESTDOUT();
 
    // Required by libbtc.
-   CryptoECDSA::setupContext();
+   Cryptography::ECDSA::setupContext();
 
    testing::InitGoogleTest(&argc, argv);
    int exitCode = RUN_ALL_TESTS();

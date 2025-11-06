@@ -1953,7 +1953,7 @@ TEST_F(WebSocketTests_1Way, WebSocketStack)
       std::vector<BinaryData> result;
       result.reserve(count);
       for (unsigned i = 0; i < count; i++) {
-         auto addrData = CryptoPRNG::generateRandom(20);
+         auto addrData = Cryptography::PRNG::generateRandomStrong(20);
 
          BinaryWriter bw;
          bw.put_uint8_t(SCRIPT_PREFIX_HASH160);
@@ -2183,7 +2183,7 @@ TEST_F(WebSocketTests_1Way, WebSocketStack_Reconnect)
          BinaryWriter bw;
          bw.put_uint8_t(SCRIPT_PREFIX_HASH160);
 
-         auto addrData = CryptoPRNG::generateRandom(20);
+         auto addrData = Cryptography::PRNG::generateRandomStrong(20);
          bw.put_BinaryData(addrData);
 
          result.push_back(bw.getData());
@@ -2567,7 +2567,7 @@ TEST_F(WebSocketTests_2Way, GrabAddrLedger_PostReg)
    bdvObj->goOnline();
    pCallback->waitOnSignal(BDMAction_Ready);
 
-   const auto &walletId = CryptoPRNG::generateRandom(8).toHexStr();
+   const auto &walletId = Cryptography::PRNG::generateRandomStrong(8).toHexStr();
    auto wallet = bdvObj->getWalletObj(walletId);
    wallet.registerAddresses(scrAddrVec, false);
    pCallback->waitOnSignal(BDMAction_Refresh, walletId);
@@ -2757,14 +2757,14 @@ GTEST_API_ int main(int argc, char **argv)
    std::cout << "Running main() from gtest_main.cc\n";
 
    // Required by libbtc.
-   CryptoECDSA::setupContext();
+   Cryptography::ECDSA::setupContext();
    //LOGENABLESTDOUT();
 
    testing::InitGoogleTest(&argc, argv);
    int exitCode = RUN_ALL_TESTS();
 
    // Required by libbtc.
-   CryptoECDSA::shutdown();
+   Cryptography::ECDSA::shutdown();
 
    FLUSHLOG();
    CLEANUPLOG();

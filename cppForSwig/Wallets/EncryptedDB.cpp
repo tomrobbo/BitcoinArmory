@@ -21,17 +21,16 @@ using namespace Armory::Wallets::IO;
 ////////////////////////////////////////////////////////////////////////////////
 void IfaceDataMap::update(const std::vector<std::shared_ptr<InsertData>>& vec)
 {
-   for (auto& dataPtr : vec)
-   {
-      if (!dataPtr->write_)
-      {
+   for (auto& dataPtr : vec) {
+      if (!dataPtr->write_) {
          dataMap_.erase(dataPtr->key_);
          continue;
       }
 
-      auto insertIter = dataMap_.insert(make_pair(dataPtr->key_, dataPtr->value_));
-      if (!insertIter.second)
+      auto insertIter = dataMap_.emplace(dataPtr->key_, dataPtr->value_);
+      if (!insertIter.second) {
          insertIter.first->second = dataPtr->value_;
+      }
    }
 }
 
@@ -124,7 +123,7 @@ void DBInterface::loadAllEntries(const SecureBinaryData& rootKey)
       macKey = move(brr.get_SecureBinaryData(32));
 
       //decryption private key sanity check
-      if (!CryptoECDSA::checkPrivKeyIsValid(decrPrivKey))
+      if (!Cryptography::ECDSA::checkPrivKeyIsValid(decrPrivKey))
          throw EncryptedDBException("invalid decryption private key");
    };
 
@@ -263,13 +262,13 @@ void DBInterface::loadAllEntries(const SecureBinaryData& rootKey)
 
       auto flagKey = dataMapPtr_->getNewDbKey();
       BothBinaryDatas keyFlagBd(keyCycleFlag_);
-      auto&& encrPubKey = CryptoECDSA().ComputePublicKey(decrPrivKey, true);
-      auto flagPacket = createDataPacket(flagKey, BinaryData(), 
+      auto encrPubKey = Cryptography::ECDSA::computePublicKey(
+         decrPrivKey, true);
+      auto flagPacket = createDataPacket(flagKey, BinaryData(),
          keyFlagBd, encrPubKey, macKey, encrVersion_);
 
       CharacterArrayRef carKey(flagKey.getSize(), flagKey.getPtr());
       CharacterArrayRef carVal(flagPacket.getSize(), flagPacket.getPtr());
-
       db_.insert(carKey, carVal);
    }
 
@@ -278,7 +277,7 @@ void DBInterface::loadAllEntries(const SecureBinaryData& rootKey)
    computeKeyPair(decrKeyCounter);
 
    //set mac key for the current session
-   encrPubKey_ = CryptoECDSA().ComputePublicKey(decrPrivKey, true);
+   encrPubKey_ = Cryptography::ECDSA::computePublicKey(decrPrivKey, true);
    macKey_ = move(macKey);
 }
 
@@ -319,13 +318,14 @@ BinaryData DBInterface::createDataPacket(const BinaryData& dbKey,
 
    /* encryption key generation */
       //generate local encryption private key
-      auto localPrivKey = CryptoECDSA().createNewPrivateKey();
+      auto localPrivKey = Cryptography::ECDSA::createNewPrivateKey();
 
       //generate compressed pubkey
-      auto localPubKey = CryptoECDSA().ComputePublicKey(localPrivKey, true);
+      auto localPubKey = Cryptography::ECDSA::computePublicKey(
+         localPrivKey, true);
 
       //ECDH local private key with encryption public key
-      auto ecdhPubKey = CryptoECDSA::PubKeyScalarMultiply(
+      auto ecdhPubKey = Cryptography::ECDSA::pubKeyScalarMultiply(
          encrPubKey, localPrivKey);
 
       //hash256 the key as stand in for KDF
@@ -333,15 +333,15 @@ BinaryData DBInterface::createDataPacket(const BinaryData& dbKey,
 
    /* encryption leg */
       //generate IV
-      auto iv = prng_fortuna.generateRandom(
+      auto iv = Cryptography::PRNG::fortuna.generateRandom(
          Encryption::Cipher::getBlockSize(CipherType_AES));
 
       //AES_CBC (hmac | payload)
-      auto&& cipherText = CryptoAES::EncryptCBC(
+      auto cipherText = Cryptography::Encryption::AES::encryptCBC(
          bwData.getData(), encrKey, iv);
 
       //build IES packet
-      encrPacket.put_BinaryData(localPubKey); 
+      encrPacket.put_BinaryData(localPubKey);
       encrPacket.put_BinaryData(iv);
       encrPacket.put_BinaryData(cipherText);
 
@@ -373,26 +373,27 @@ pair<BinaryData, BothBinaryDatas> DBInterface::readDataPacket(
       BinaryRefReader brrCipher(dataPacket.getRef());
 
       //public key
-      auto&& localPubKey = brrCipher.get_SecureBinaryData(33);
+      auto localPubKey = brrCipher.get_SecureBinaryData(33);
 
       //ECDH with decryption private key
-      auto&& ecdhPubKey = 
-         CryptoECDSA::PubKeyScalarMultiply(localPubKey, decrPrivKey);
+      auto ecdhPubKey = Cryptography::ECDSA::pubKeyScalarMultiply(
+         localPubKey, decrPrivKey);
 
       //kdf
       auto&& decrKey = BtcUtils::getHash256(ecdhPubKey);
 
    /* decryption leg */
       //get iv
-      auto&& iv = brrCipher.get_SecureBinaryData(
+      auto iv = brrCipher.get_SecureBinaryData(
          Encryption::Cipher::getBlockSize(CipherType_AES));
 
       //get cipher text
-      auto&& cipherText = brrCipher.get_SecureBinaryData(
+      auto cipherText = brrCipher.get_SecureBinaryData(
          brrCipher.getSizeRemaining());
-      
+
       //decrypt
-      auto&& plainText = CryptoAES::DecryptCBC(cipherText, decrKey, iv);
+      auto plainText = Cryptography::Encryption::AES::decryptCBC(
+         cipherText, decrKey, iv);
 
    /* authentication leg */
       BinaryRefReader brrPlain(plainText.getRef());

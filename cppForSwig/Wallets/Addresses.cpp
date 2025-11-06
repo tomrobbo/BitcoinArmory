@@ -322,26 +322,23 @@ size_t AddressEntry_Multisig::getInputSize() const
 {
    switch (getAsset()->getType())
    {
-   case AssetEntryType_Multisig:
-   {
-      auto assetMS = dynamic_pointer_cast<AssetEntry_Multisig>(getAsset());
-      if (assetMS == nullptr)
-         throw AddressException("unexpected asset entry type");
+      case AssetEntryType::Multisig:
+      {
+         auto assetMS = dynamic_pointer_cast<AssetEntry_Multisig>(getAsset());
+         if (assetMS == nullptr) {
+            throw AddressException("unexpected asset entry type");
+         }
 
-      auto m = assetMS->getM();
+         auto m = assetMS->getM();
+         const auto& script = getScript();
+         size_t size = script.getSize() + 2;
+         size += 73 * m + 40; //m sigs + outpoint
+         return size;
+      }
 
-      auto& script = getScript();
-
-      size_t size = script.getSize() + 2;
-      size += 73 * m + 40; //m sigs + outpoint
-
-      return size;
+      default:
+         throw AddressException("unexpected asset type");
    }
-
-   default:
-      throw AddressException("unexpected asset type");
-   }
-
    return SIZE_MAX;
 }
 

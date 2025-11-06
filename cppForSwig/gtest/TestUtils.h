@@ -26,7 +26,6 @@
 #include "../BlockchainDatabase/BlockUtils.h"
 #include "../BlockchainDatabase/txio.h"
 #include "../BlockchainDatabase/StoredBlockObj.h"
-#include "../PartialMerkle.h"
 #include "../Cryptography.h"
 #include "../ScrAddrObj.h"
 #include "../BtcWallet.h"

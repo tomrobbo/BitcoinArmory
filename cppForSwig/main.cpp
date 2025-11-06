@@ -26,7 +26,7 @@ using namespace std::chrono_literals;
 
 int main(int argc, char* argv[])
 {
-   CryptoECDSA::setupContext();
+   Cryptography::ECDSA::setupContext();
    startupBIP151CTX();
    startupBIP150CTX(4);
 
@@ -123,7 +123,7 @@ int main(int argc, char* argv[])
    //shutdown BDM and cleanup crypto contexts
    bdmThread.shutdown();
    shutdownBIP151CTX();
-   CryptoECDSA::shutdown();
+   Cryptography::ECDSA::shutdown();
 
    return 0;
 }

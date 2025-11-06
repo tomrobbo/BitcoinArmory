@@ -14,6 +14,9 @@
 #include "Seeds.h"
 #include "Wallets.h"
 #include "IOHeader.h"
+
+#include <btc/aes256_cbc.h>
+
 extern "C" {
 #include <trezor-crypto/bip39.h>
 }
@@ -635,7 +638,8 @@ SecurePrint::SecurePrint()
    //setup aes IV and kdf
    auto iv32 = BtcUtils::getHash256(
       (const uint8_t*)digitsPI.data(), digitsPI.size());
-   iv16_ = std::move(iv32.getSliceCopy(0, AES_BLOCK_SIZE));
+   iv16_ = std::move(iv32.getSliceCopy(
+      0, Cryptography::Encryption::AES::BLOCK_SIZE));
 
    salt_ = std::move(BtcUtils::getHash256(
       (const uint8_t*)digitsE.data(), digitsE.size()));
@@ -1472,11 +1476,11 @@ Backup_Easy16Public::Backup_Easy16Public(BackupType bType,
    //prepare the pubkey, we need both uncompressed and compressed versions
    SecureBinaryData pubkeyComp, pubkeyUnc;
    if (pubRoot.getSize() == 65) {
-      pubkeyComp = CryptoECDSA().CompressPoint(pubRoot);
+      pubkeyComp = Cryptography::ECDSA::compressPoint(pubRoot);
       pubkeyUnc = pubRoot;
    } else {
       pubkeyComp = pubRoot;
-      pubkeyUnc = CryptoECDSA().UncompressPoint(pubRoot);
+      pubkeyUnc = Cryptography::ECDSA::uncompressPoint(pubRoot);
    }
 
    //prepare backupId for computation

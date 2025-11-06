@@ -262,9 +262,8 @@ std::unique_ptr<AddressAccount> AddressAccount::make_new(
             //full wallet
             auto pubkey = accEcdh->getPubKey();
             if (pubkey.empty()) {
-               auto pubkey_unc = CryptoECDSA().ComputePublicKey(
-                  accEcdh->getPrivKey());
-               pubkey = std::move(CryptoECDSA().CompressPoint(pubkey_unc));
+               pubkey = Cryptography::ECDSA::computePublicKey(
+                  accEcdh->getPrivKey(), true);
             }
 
             //encrypt private root

@@ -10,6 +10,8 @@
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
+#include <algorithm>
+
 #include "LedgerEntry.h"
 #include "BitcoinP2P.h"
 

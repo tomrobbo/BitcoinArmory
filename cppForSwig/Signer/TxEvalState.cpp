@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2017-2024, goatpig                                           //
+//  Copyright (C) 2017-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -23,7 +23,6 @@ bool Signing::TxInEvalState::isValid() const
       if (state.second)
          ++count;
    }
-
    return count >= m_;
 }
 
@@ -36,7 +35,6 @@ unsigned Signing::TxInEvalState::getSigCount() const
          ++count;
       }
    }
-
    return count;
 }
 
@@ -61,36 +59,35 @@ bool Signing::TxInEvalState::isSignedForPubKey(const BinaryData& pubkey) const
       return iter->second;
    } else if (type != PubKeyType::Mixed) {
       BinaryData modified_key;
-      if (type == PubKeyType::Compressed)
-         modified_key = CryptoECDSA().CompressPoint(pubkey);
-      else if (type == PubKeyType::Uncompressed)
-         modified_key = CryptoECDSA().UncompressPoint(pubkey);
+      if (type == PubKeyType::Compressed) {
+         modified_key = Cryptography::ECDSA::compressPoint(pubkey);
+      } else if (type == PubKeyType::Uncompressed) {
+         modified_key = Cryptography::ECDSA::uncompressPoint(pubkey);
+      }
 
       auto iter = pubKeyState_.find(modified_key);
-      if (iter == pubKeyState_.end())
+      if (iter == pubKeyState_.end()) {
          return false;
-
+      }
       return iter->second;
    } else {
       BinaryData modified_key;
-      if (type == PubKeyType::Compressed)
-         modified_key = CryptoECDSA().CompressPoint(pubkey);
-      else if (type == PubKeyType::Uncompressed)
-         modified_key = CryptoECDSA().UncompressPoint(pubkey);
-
-      auto iter = pubKeyState_.find(pubkey);
-      if (iter == pubKeyState_.end())
-      {
-         auto iter2 = pubKeyState_.find(modified_key);
-         if (iter2 == pubKeyState_.end())
-            return false;
-
-         return iter2->second;
+      if (type == PubKeyType::Compressed) {
+         modified_key = Cryptography::ECDSA::compressPoint(pubkey);
+      } else if (type == PubKeyType::Uncompressed) {
+         modified_key = Cryptography::ECDSA::uncompressPoint(pubkey);
       }
 
+      auto iter = pubKeyState_.find(pubkey);
+      if (iter == pubKeyState_.end()) {
+         auto iter2 = pubKeyState_.find(modified_key);
+         if (iter2 == pubKeyState_.end()) {
+            return false;
+         }
+         return iter2->second;
+      }
       return iter->second;
    }
-
    return false;
 }
 
@@ -125,17 +122,17 @@ Signing::PubKeyType Signing::TxInEvalState::getType() const
 ////////////////////////////////////////////////////////////////////////////////
 void Signing::TxEvalState::updateState(unsigned id, TxInEvalState state)
 {
-   evalMap_.insert(std::make_pair(id, state));
+   evalMap_.emplace(id, state);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 bool Signing::TxEvalState::isValid() const
 {
    for (const auto& state : evalMap_) {
-      if (!state.second.isValid())
+      if (!state.second.isValid()) {
          return false;
+      }
    }
-
    return true;
 }
 
@@ -147,7 +144,6 @@ const Signing::TxInEvalState& Signing::TxEvalState::getSignedStateForInput(
    if (iter == evalMap_.end()) {
       throw std::range_error("invalid input index");
    }
-
    return iter->second;
 }
 

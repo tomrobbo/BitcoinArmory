@@ -299,7 +299,7 @@ AuthPeerAssetMap AuthPeerAssetConversion::getAssetMap(
    for (const auto& asset : assets) {
       switch (asset.second->type())
       {
-         case MetaType_AuthorizedPeer:
+         case MetaType::AuthorizedPeer:
          {
             auto assetPeer = std::dynamic_pointer_cast<PeerPublicData>(
                asset.second);
@@ -315,7 +315,7 @@ AuthPeerAssetMap AuthPeerAssetConversion::getAssetMap(
             break;
          }
 
-         case MetaType_PeerRootKey:
+         case MetaType::PeerRootKey:
          {
             auto assetRoot = std::dynamic_pointer_cast<PeerRootKey>(
                asset.second);
@@ -327,7 +327,7 @@ AuthPeerAssetMap AuthPeerAssetConversion::getAssetMap(
             break;
          }
 
-         case MetaType_PeerRootSig:
+         case MetaType::PeerRootSig:
          {
             auto assetSig = std::dynamic_pointer_cast<PeerRootSignature>(
                asset.second);
@@ -336,9 +336,10 @@ AuthPeerAssetMap AuthPeerAssetConversion::getAssetMap(
             }
             result.rootSignature = std::make_pair(
                assetSig->getKey(), assetSig->getSig());
+            break;
          }
 
-         case MetaType_PeerMasterKey:
+         case MetaType::PeerMasterKey:
          {
             auto assetMasterKey = std::dynamic_pointer_cast<PeerMasterKey>(
                asset.second);
@@ -346,6 +347,7 @@ AuthPeerAssetMap AuthPeerAssetConversion::getAssetMap(
                continue;
             }
             result.masterKey = assetMasterKey->getKey();
+            break;
          }
 
          default:
@@ -481,12 +483,11 @@ void AuthPeerAssetConversion::clearMasterKeyAssets(MetaDataAccount* account)
 
    auto assets = account->getAssetMap();
    for (const auto& assetPair : assets) {
-      if (assetPair.second->type() == MetaType_PeerMasterKey) {
+      if (assetPair.second->type() == MetaType::PeerMasterKey) {
          assetPair.second->clear();
       }
    }
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////

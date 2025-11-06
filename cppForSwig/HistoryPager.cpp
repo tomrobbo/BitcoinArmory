@@ -5,6 +5,8 @@
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
+#include <algorithm>
+
 #include "HistoryPager.h"
 #include "BitcoinP2P.h"
 

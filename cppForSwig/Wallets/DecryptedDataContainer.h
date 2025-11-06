@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2017, goatpig                                               //
+//  Copyright (C) 2017-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -11,9 +11,9 @@
 
 #include <functional>
 
-#include "AssetEncryption.h"
 #include "ReentrantLock.h"
 #include "BinaryData.h"
+#include "WalletIdTypes.h"
 #include "GetPassphrase.h"
 
 #define ENCRYPTIONKEY_PREFIX        0xC0
@@ -34,6 +34,12 @@ namespace Armory
 
       namespace Encryption
       {
+         class ClearTextAssetData;
+         class KeyDerivationFunction;
+         class EncryptionKey;
+         class EncryptedAssetData;
+         class Cipher;
+
          class DecryptedDataContainerException : public std::runtime_error
          {
          public:
@@ -49,8 +55,8 @@ namespace Armory
             {}
          };
 
-         using WriteTxFuncType = std::function<std::unique_ptr<
-            IO::DBIfaceTransaction>(const std::string&)>;
+         using WriteTxFuncType = std::function<
+            std::unique_ptr<IO::DBIfaceTransaction>(const std::string&)>;
 
          ////
          class DecryptedDataContainer : public Lockable
@@ -58,8 +64,8 @@ namespace Armory
          private:
             struct DecryptedDataMaps
             {
-               std::map<EncryptionKeyId, std::unique_ptr<
-                  ClearTextEncryptionKey>> encryptionKeys_;
+               std::map<EncryptionKeyId,
+                  std::unique_ptr<ClearTextEncryptionKey>> encryptionKeys_;
 
                std::map<AssetId,
                   std::unique_ptr<ClearTextAssetData>> assetData_;
@@ -73,14 +79,7 @@ namespace Armory
                std::shared_ptr<DecryptedDataContainer> container_;
                std::shared_ptr<ReentrantLock> lock_;
 
-               OtherLockedContainer(std::shared_ptr<DecryptedDataContainer> obj)
-               {
-                  if (obj == nullptr) {
-                     throw std::runtime_error(
-                        "emtpy DecryptedDataContainer ptr");
-                  }
-                  lock_ = std::make_unique<ReentrantLock>(obj.get());
-               }
+               OtherLockedContainer(std::shared_ptr<DecryptedDataContainer>);
             };
             std::vector<OtherLockedContainer> otherLocks_ = {};
 
@@ -124,8 +123,8 @@ namespace Armory
             std::pair<EncryptionKeyId, EncryptionKeyId> populateEncryptionKey(
                const std::map<EncryptionKeyId, KdfId>&);
 
-            void initAfterLock(void);
-            void cleanUpBeforeUnlock(void);
+            void initAfterLock(void) override;
+            void cleanUpBeforeUnlock(void) override;
 
          public:
             DecryptedDataContainer(

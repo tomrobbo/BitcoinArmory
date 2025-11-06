@@ -45,8 +45,7 @@ void SecureBinaryData::lockData()
 ////
 void SecureBinaryData::destroy()
 {
-   if (!empty())
-   {
+   if (!empty()) {
       fill(0x00);
       munlock(getPtr(), getSize());
    }
@@ -57,13 +56,15 @@ void SecureBinaryData::destroy()
 // We have to explicitly re-define some of these methods...
 SecureBinaryData & SecureBinaryData::append(const SecureBinaryData & sbd2)
 {
-   if (sbd2.getSize() == 0)
+   if (sbd2.empty()) {
       return (*this);
+   }
 
-   if (getSize() == 0)
+   if (empty()) {
       BinaryData::copyFrom(sbd2.getPtr(), sbd2.getSize());
-   else
+   } else {
       BinaryData::append(sbd2.getRawRef());
+   }
 
    lockData();
    return (*this);
@@ -90,11 +91,14 @@ SecureBinaryData & SecureBinaryData::operator=(SecureBinaryData const & sbd2)
 /////////////////////////////////////////////////////////////////////////////
 bool SecureBinaryData::operator==(SecureBinaryData const & sbd2) const
 {
-   if (getSize() != sbd2.getSize())
+   if (getSize() != sbd2.getSize()) {
       return false;
-   for (unsigned int i = 0; i < getSize(); i++)
-      if ((*this)[i] != sbd2[i])
+   }
+   for (unsigned int i = 0; i < getSize(); i++) {
+      if ((*this)[i] != sbd2[i]) {
          return false;
+      }
+   }
    return true;
 }
 
@@ -107,16 +111,16 @@ SecureBinaryData SecureBinaryData::copySwapEndian(size_t pos1, size_t pos2) cons
 
 /////////////////////////////////////////////////////////////////////////////
 SecureBinaryData SecureBinaryData::getHash256(void) const
-{ 
+{
    SecureBinaryData digest(32);
-   CryptoSHA2::getHash256(getRef(), digest.getPtr()); 
+   Cryptography::Hash::getHash256(getRef(), digest.getPtr());
    return digest;
 }
 
 /////////////////////////////////////////////////////////////////////////////
 SecureBinaryData SecureBinaryData::getHash160(void) const
-{ 
+{
    SecureBinaryData digest(20);
-   CryptoHASH160::getHash160(getRef(), digest.getPtr()); 
+   Cryptography::Hash::getHash160(getRef(), digest.getPtr());
    return digest;
 }

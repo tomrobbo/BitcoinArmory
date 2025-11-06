@@ -673,7 +673,7 @@ public:
    uint8_t put_var_int(const uint64_t&);
    void put_BinaryData(const BinaryData&, size_t offset=0, uint32_t sz=0);
    void put_BinaryDataRef(const BinaryDataRef&);
-   void put_BinaryData(uint8_t const*, uint32_t);
+   void put_BinaryData(const uint8_t*, uint32_t);
    void put_String(const std::string&);
    void put_StringView(const std::string_view&);
 

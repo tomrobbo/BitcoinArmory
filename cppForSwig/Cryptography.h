@@ -18,7 +18,7 @@
 //
 // For the KDF:
 //
-// This technique is described in Colin Percival's paper on memory-hard 
+// This technique is described in Colin Percival's paper on memory-hard
 // key-derivation functions, used to create "scrypt":
 //
 //       http://www.tarsnap.com/scrypt/scrypt.pdf
@@ -49,254 +49,152 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _ENCRYPTION_UTILS_
-#define _ENCRYPTION_UTILS_
+#pragma once
 
-#include <iostream>
+#include <memory>
 #include <vector>
 #include <set>
-#include <map>
-#include <cmath>
-#include <algorithm>
-#include <functional>
 
-#include "BinaryData.h"
-#include "UniversalTimer.h"
 #include "SecureBinaryData.h"
-
-#include <btc/random.h>
-#include <btc/ctaes.h>
-#include <btc/aes256_cbc.h>
-#include <btc/ecc_key.h>
 
 #define CRYPTO_DEBUG false
 
-// libbtc doesn't have some #defines AES bits, so we'll make them.
-#define AES_MIN_KEY_LEN AES_BLOCK_SIZE
-#define AES_MAX_KEY_LEN AES_BLOCK_SIZE*2
+class BinaryDataRef;
+class SecureBinaryData;
 
-////////////////////////////////////////////////////////////////////////////////
-class CryptoSHA2
+struct secp256k1_context_struct;
+struct btc_pubkey_;
+
+namespace Cryptography
 {
-public:
-   static void getHash256(BinaryDataRef bdr, uint8_t* digest);
-   static void getSha256(BinaryDataRef bdr, uint8_t* digest);
-   static void getHMAC256(BinaryDataRef data, BinaryDataRef msg,
-      uint8_t* digest);
-
-   static void getSha512(BinaryDataRef bdr, uint8_t* digest);
-   static void getHMAC512(BinaryDataRef data, BinaryDataRef msg,
-      uint8_t* digest);
-};
-
-class CryptoHASH160
-{
-public:
-   static void getHash160(BinaryDataRef bdr, uint8_t* digest);
-};
-
-////////////////////////////////////////////////////////////////////////////////
-class CryptoPRNG
-{
-public:
-   static SecureBinaryData generateRandom(uint32_t numBytes,
-      const SecureBinaryData& extraEntropy = SecureBinaryData());
-};
-
-////////////////////////////////////////////////////////////////////////////////
-class PRNG_Fortuna
-{
-   /*
-   Not gonna bother with the entropy pooling, the crypto lib already offers
-   a PRNG.
-
-   This is an extra layer for applications that need a lot of rng but aren't 
-   critical to safety. It's also useful for RNG pulls that are presented to the
-   outside world, like session IDs, as it won't leak bytes directly from our
-   entropy source (the crypto lib PRNG).
-
-   Use the crypto lib's PRNG directly to generate wallet seeds instead.
-   */
-private:
-   mutable std::shared_ptr<SecureBinaryData> key_;
-   mutable std::atomic<unsigned> counter_ = { 1 };
-   mutable std::atomic<unsigned> nBytes_;
-
-private:
-   PRNG_Fortuna(const PRNG_Fortuna&) = delete; // no copies
-   PRNG_Fortuna(PRNG_Fortuna&&) = delete;
-   void reseed(void) const;
-
-public:
-   PRNG_Fortuna(void);
-
-   SecureBinaryData generateRandom(uint32_t numBytes,
-      const SecureBinaryData& extraEntropy = SecureBinaryData()) const;
-};
-
-static const PRNG_Fortuna prng_fortuna;
-
-////////////////////////////////////////////////////////////////////////////////
-class CryptoAES
-{
-public:
-   static SecureBinaryData EncryptCFB(const SecureBinaryData& data,
-      const SecureBinaryData& key, const SecureBinaryData& iv);
-
-   static SecureBinaryData DecryptCFB(const SecureBinaryData& data,
-      const SecureBinaryData& key, const SecureBinaryData& iv);
-
-   static SecureBinaryData EncryptCBC(const SecureBinaryData & data,
-      const SecureBinaryData& key, const SecureBinaryData& iv);
-
-   static SecureBinaryData DecryptCBC(const SecureBinaryData& data,
-      const SecureBinaryData& key, const SecureBinaryData& iv);
-};
-
-/*
-Serialize a pubkey object into a serialized byte sequence.
- *
- *  Returns: 1 always.
- *  Args:   ctx:        a secp256k1 context object.
- *  Out:    output:     a pointer to a 65-byte (if compressed==0) or 33-byte (if
- *                      compressed==1) byte array to place the serialized key
- *                      in.
- *  In/Out: outputlen:  a pointer to an integer which is initially set to the
- *                      size of output, and is overwritten with the written
- *                      size.
- *  In:     pubkey:     a pointer to a secp256k1_pubkey containing an
- *                      initialized public key.
- *          flags:      SECP256K1_EC_COMPRESSED if serialization should be in
- *                      compressed format, otherwise SECP256K1_EC_UNCOMPRESSED.
- *
-SECP256K1_API int secp256k1_ec_pubkey_serialize(
-    const secp256k1_context* ctx,
-    unsigned char *output,
-    size_t *outputlen,
-    const secp256k1_pubkey* pubkey,
-    unsigned int flags
-) SECP256K1_ARG_NONNULL(1) SECP256K1_ARG_NONNULL(2) SECP256K1_ARG_NONNULL(3) SECP256K1_ARG_NONNULL(4);
-*/
-
-
-////////////////////////////////////////////////////////////////////////////////
-// Create a C++ interface to the Crypto++ ECDSA ops:  should be more secure
-// and much faster than the pure-python methods created by Lis
-//
-// These methods might as well just be static methods, but SWIG doesn't like
-// static methods.  So we will invoke these via CryptoECDSA().Function()
-class CryptoECDSA
-{
-private:
-   static const std::string bitcoinMessageMagic_;
-
-public:
-   CryptoECDSA(void) {}
-
-   ////////////////////////////////////////////////////////////////////////////
-   static void setupContext(void);
-   static void shutdown(void);
-
-   /////////////////////////////////////////////////////////////////////////////
-   static bool checkPrivKeyIsValid(const SecureBinaryData&);
-
-   /////////////////////////////////////////////////////////////////////////////
-   static SecureBinaryData createNewPrivateKey(
-      SecureBinaryData extraEntropy = SecureBinaryData())
+   namespace Hash
    {
-      while(true) {
-         auto privKey = CryptoPRNG::generateRandom(32, extraEntropy);
-         if (checkPrivKeyIsValid(privKey)) {
-            return privKey;
-         }
-      }
-   }
-   
-   /////////////////////////////////////////////////////////////////////////////
-   static bool CheckPubPrivKeyMatch(SecureBinaryData const & cppPrivKey,
-      SecureBinaryData  const & cppPubKey)
-   {
-      auto pubkey = CryptoECDSA().ComputePublicKey(cppPrivKey);
-      return pubkey == cppPubKey;
+      void getHash256(BinaryDataRef, uint8_t*);
+      void getSha256(BinaryDataRef, uint8_t*);
+      void getHMAC256(BinaryDataRef, BinaryDataRef, uint8_t*);
+
+      void getSha512(BinaryDataRef, uint8_t*);
+      void getHMAC512(BinaryDataRef, BinaryDataRef, uint8_t*);
+
+      void getHash160(BinaryDataRef, uint8_t*);
    }
 
-   /////////////////////////////////////////////////////////////////////////////
-   // For signing and verification, pass in original, UN-HASHED binary string.
-   // For signing, k-value can use a PRNG or deterministic value (RFC 6979).
-   static SecureBinaryData SignData(BinaryData const & binToSign,
-      SecureBinaryData const & cppPrivKey, const bool& detSign = true);
+   namespace PRNG
+   {
+      //cryptographic strength PRNG
+      SecureBinaryData generateRandomStrong(uint32_t,
+         const SecureBinaryData& = {});
 
-   /////////////////////////////////////////////////////////////////////////////
-   // We need to make sure that we have methods that take only secure strings
-   // and return secure strings (I don't feel like figuring out how to get 
-   // SWIG to take BTC_PUBKEY and BTC_PRIVKEY
-   
-   /////////////////////////////////////////////////////////////////////////////
-   SecureBinaryData ComputePublicKey(
-      SecureBinaryData const & cppPrivKey, bool compressed = false) const;
+      class Fortuna
+      {
+         /*
+         Not gonna bother with the entropy pooling, the crypto lib
+         already offers a PRNG.
 
-   /////////////////////////////////////////////////////////////////////////////
-   bool VerifyPublicKeyValid(SecureBinaryData const & pubKey);
+         This is an extra layer for applications that need a lot of rng
+         but aren't critical for safety. It's also useful for RNG pulls that
+         are presented to the outside world, like session IDs, as it won't
+         leak bytes directly from our entropy source (the crypto lib PRNG).
 
-   /////////////////////////////////////////////////////////////////////////////
-   bool VerifyData(BinaryData const & binMessage,
-      const BinaryData& sig, BinaryData const & cppPubKey) const;
+         Use the crypto lib's PRNG directly to generate wallet seeds instead.
+         */
+      private:
+         mutable std::shared_ptr<SecureBinaryData> key_;
+         mutable std::atomic<unsigned> counter_;
+         mutable std::atomic<unsigned> nBytes_;
+
+      private:
+         Fortuna(const Fortuna&) = delete; // no copies
+         Fortuna(Fortuna&&) = delete;
+         void reseed(void) const;
+
+      public:
+         Fortuna(void);
+
+         SecureBinaryData generateRandom(uint32_t,
+            const SecureBinaryData& = {}) const;
+      };
+
+      extern const Fortuna fortuna;
+   }
 
 
-   /////////////////////////////////////////////////////////////////////////////
-   // Deterministically generate new private key using a chaincode
-   // Changed:  Added using the hash of the public key to the mix
-   //           b/c multiplying by the chaincode alone is too "linear"
-   //           (there's no reason to believe it's insecure, but it doesn't
-   //           hurt to add some extra entropy/non-linearity to the chain
-   //           generation process)
-   SecureBinaryData ComputeChainedPrivateKey(
-      SecureBinaryData const & binPrivKey,
-      SecureBinaryData const & chainCode,
-      SecureBinaryData* computedMultiplier=NULL);
+   namespace Encryption
+   {
+      namespace AES
+      {
+         extern const size_t BLOCK_SIZE;
 
-   /////////////////////////////////////////////////////////////////////////////
-   // Deterministically generate new private key using a chaincode
-   SecureBinaryData ComputeChainedPublicKey(
-      SecureBinaryData const & binPubKey,
-      SecureBinaryData const & chainCode);
+         SecureBinaryData encryptCFB(
+            const SecureBinaryData&, //data
+            const SecureBinaryData&, //key
+            const SecureBinaryData&  //iv
+         );
 
-   /////////////////////////////////////////////////////////////////////////////
-   // We need some direct access to Crypto++ math functions
-   SecureBinaryData InvMod(const SecureBinaryData& m);
+         SecureBinaryData decryptCFB(
+            const SecureBinaryData&,
+            const SecureBinaryData&,
+            const SecureBinaryData&
+         );
 
-   /////////////////////////////////////////////////////////////////////////////
-   // Some standard ECC operations
-   ////////////////////////////////////////////////////////////////////////////////
-   bool ECVerifyPoint(BinaryData const & x, BinaryData const & y);
+         SecureBinaryData encryptCBC(
+            const SecureBinaryData&,
+            const SecureBinaryData&,
+            const SecureBinaryData&
+         );
 
-   /////////////////////////////////////////////////////////////////////////////
-   // For Point-compression
-   static SecureBinaryData CompressPoint(SecureBinaryData const & pubKey65);
-   static btc_pubkey CompressPoint(btc_pubkey const & pubKey65);
-   static SecureBinaryData UncompressPoint(SecureBinaryData const & pubKey33);
+         SecureBinaryData decryptCBC(
+            const SecureBinaryData&,
+            const SecureBinaryData&,
+            const SecureBinaryData&
+         );
+      };
+   }
 
-   ////////////////////////////////////////////////////////////////////////////////
-   // for ECDH
-   static SecureBinaryData PrivKeyScalarMultiply(
-      const SecureBinaryData& privKey,
-      const SecureBinaryData& scalar);
+   namespace ECDSA
+   {
+      extern const std::string_view bitcoinMessageMagic;
+      extern secp256k1_context_struct* crypto_ecdsa_ctx;
 
-   ////////////////////////////////////////////////////////////////////////////////
-   static SecureBinaryData PubKeyScalarMultiply(
-      const SecureBinaryData& pubKey,
-      const SecureBinaryData& scalar);
+      void setupContext(void);
+      void shutdown(void);
 
-   /////////////////////////////////////////////////////////////////////////////
-   // takes unhashed, unprefixed message
-   static BinaryData SignBitcoinMessage(
-      const BinaryDataRef& msg, 
-      const SecureBinaryData& privKey, 
-      bool compressedPubKey);
+      //////////////////////////////////////////////////////////////////////////
+      bool checkPrivKeyIsValid(const SecureBinaryData&);
+      SecureBinaryData createNewPrivateKey(
+         const SecureBinaryData& = {});
+      bool checkPubPrivKeyMatch(const SecureBinaryData&,
+         const SecureBinaryData&);
+      SecureBinaryData computeChainedPrivateKey(
+         const SecureBinaryData&, const SecureBinaryData&);
+      SecureBinaryData privKeyScalarMultiply(
+         const SecureBinaryData&, const SecureBinaryData&);
 
-   static BinaryData VerifyBitcoinMessage(
-      const BinaryDataRef& msg,
-      const BinaryDataRef& sig);
-};
+      //////////////////////////////////////////////////////////////////////////
+      SecureBinaryData computePublicKey(const SecureBinaryData&, bool=false);
+      bool verifyPublicKeyValid(const SecureBinaryData&);
+      SecureBinaryData computeChainedPublicKey(
+         const SecureBinaryData&, const SecureBinaryData&);
 
-#endif
+      bool verifyPoint(const BinaryData&, const BinaryData&);
+      SecureBinaryData compressPoint(const SecureBinaryData&);
+      btc_pubkey_ compressPoint(const btc_pubkey_&);
+      SecureBinaryData uncompressPoint(const SecureBinaryData&);
+
+      SecureBinaryData pubKeyScalarMultiply(
+         const SecureBinaryData&, const SecureBinaryData&);
+
+      //////////////////////////////////////////////////////////////////////////
+      // For signing and verification, pass in original, UN-HASHED binary string.
+      // Always uses deterministic k-value (RFC 6979).
+      SecureBinaryData signData(const BinaryData&, const SecureBinaryData&);
+      bool verifyData(const BinaryData&, const BinaryData&, const BinaryData&);
+
+      //////////////////////////////////////////////////////////////////////////
+      // takes unhashed, unprefixed message
+      BinaryData signBitcoinMessage(const BinaryDataRef&,
+         const SecureBinaryData&, bool);
+      BinaryData verifyBitcoinMessage(const BinaryDataRef&,
+         const BinaryDataRef&);
+   }
+}

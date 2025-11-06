@@ -252,7 +252,7 @@ std::shared_ptr<WalletContainer> WalletManager::createNewWallet(
    const SecureBinaryData& extraEntropy,
    const Wallets::IO::CreateWalletParams& params)
 {
-   auto root = CryptoPRNG::generateRandom(32);
+   auto root = Cryptography::PRNG::generateRandomStrong(32);
    if (!extraEntropy.empty()) {
       auto hashTropy = BtcUtils::getHash256(extraEntropy);
       root.XOR(hashTropy);

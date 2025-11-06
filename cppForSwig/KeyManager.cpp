@@ -218,13 +218,13 @@ int processArgs(std::map<std::string, std::string> args)
          throw std::runtime_error("invalid public key size");
       }
 
-      if (!CryptoECDSA().VerifyPublicKeyValid(bd_key)) {
+      if (!Cryptography::ECDSA::verifyPublicKeyValid(bd_key)) {
          throw std::runtime_error("invalid public key");
       }
 
       SecureBinaryData key_compressed = bd_key;
       if (bd_key.getSize() == 65) {
-         key_compressed = CryptoECDSA().CompressPoint(bd_key);
+         key_compressed = Cryptography::ECDSA::compressPoint(bd_key);
       }
 
       std::vector<std::string> keyNames;
@@ -240,7 +240,7 @@ int processArgs(std::map<std::string, std::string> args)
 
 int main(int argc, char* argv[])
 {
-   CryptoECDSA::setupContext();
+   Cryptography::ECDSA::setupContext();
    Armory::Config::parseArgs({}, Armory::Config::ProcessType::KeyManager);
 
    std::map<std::string, std::string> args;

@@ -10,6 +10,7 @@
 #include "DerivationScheme.h"
 #include "EncryptedDB.h"
 #include "DecryptedDataContainer.h"
+#include "Cryptography.h"
 #include "BIP32_Node.h"
 
 #define DERSCHEME_LEGACY_VERSION 0x00000001
@@ -185,7 +186,7 @@ std::shared_ptr<AssetEntry_Single>
 DerivationScheme_ArmoryLegacy::computeNextPublicEntry(
    const SecureBinaryData& pubKey, AssetId id)
 {
-   auto nextPubkey = CryptoECDSA().ComputeChainedPublicKey(
+   auto nextPubkey = Cryptography::ECDSA::computeChainedPublicKey(
       pubKey, chainCode_);
    return std::make_shared<AssetEntry_Single>(id, nextPubkey, nullptr);
 }
@@ -231,11 +232,11 @@ DerivationScheme_ArmoryLegacy::computeNextPrivateEntry(
    AssetId id)
 {
    //chain the private key
-   auto nextPrivkeySBD = CryptoECDSA().ComputeChainedPrivateKey(
+   auto nextPrivkeySBD = Cryptography::ECDSA::computeChainedPrivateKey(
       privKeyData, chainCode_);
 
    //compute its pubkey
-   auto nextPubkey = CryptoECDSA().ComputePublicKey(nextPrivkeySBD);
+   auto nextPubkey = Cryptography::ECDSA::computePublicKey(nextPrivkeySBD);
 
    //encrypt the new privkey
    auto encryptedNextPrivKey = ddc->encryptData(
@@ -536,11 +537,11 @@ DerivationScheme_BIP32_Salted::computeNextPrivateEntry(
    node.derivePrivate(index);
 
    //salt the key
-   auto saltedPrivKey = CryptoECDSA::PrivKeyScalarMultiply(
+   auto saltedPrivKey = Cryptography::ECDSA::privKeyScalarMultiply(
       node.getPrivateKey(), salt_);
 
    //compute salted pubkey
-   auto saltedPubKey = CryptoECDSA().ComputePublicKey(saltedPrivKey, true);
+   auto saltedPubKey = Cryptography::ECDSA::computePublicKey(saltedPrivKey, true);
 
    //encrypt the new privkey
    auto newCipher = cipher->getCopy(); //copying a cypher cycles the IV
@@ -575,7 +576,8 @@ DerivationScheme_BIP32_Salted::computeNextPublicEntry(
    auto nextPubkey = node.movePublicKey();
 
    //salt it
-   auto saltedPubkey = CryptoECDSA::PubKeyScalarMultiply(nextPubkey, salt_);
+   auto saltedPubkey = Cryptography::ECDSA::pubKeyScalarMultiply(
+      nextPubkey, salt_);
    return std::make_shared<AssetEntry_Single>(id, saltedPubkey, nullptr);
 }
 
@@ -605,6 +607,11 @@ BinaryData DerivationScheme_BIP32_Salted::serialize() const
 //// DerivationScheme_ECDH
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
+DerivationScheme_ECDH::DerivationScheme_ECDH() :
+   DerivationScheme(DerivationSchemeType::ECDH),
+   id_(Cryptography::PRNG::fortuna.generateRandom(8))
+{}
+
 DerivationScheme_ECDH::DerivationScheme_ECDH(const BinaryData& id) :
    DerivationScheme(DerivationSchemeType::ECDH), id_(id)
 {}
@@ -813,7 +820,7 @@ std::shared_ptr<AssetEntry_Single> DerivationScheme_ECDH::computeNextPublicEntry
    }
 
    //salt root pubkey
-   auto saltedPubkey = CryptoECDSA::PubKeyScalarMultiply(
+   auto saltedPubkey = Cryptography::ECDSA::pubKeyScalarMultiply(
       pubKey, saltIter->first);
    return std::make_shared<AssetEntry_Single>(id, saltedPubkey, nullptr);
 }
@@ -886,11 +893,12 @@ DerivationScheme_ECDH::computeNextPrivateEntry(
    }
 
    //salt root privkey
-   auto saltedPrivKey = CryptoECDSA::PrivKeyScalarMultiply(
+   auto saltedPrivKey = Cryptography::ECDSA::privKeyScalarMultiply(
       privKeyData, saltIter->first);
 
    //compute salted pubkey
-   auto saltedPubKey = CryptoECDSA().ComputePublicKey(saltedPrivKey, true);
+   auto saltedPubKey = Cryptography::ECDSA::computePublicKey(
+      saltedPrivKey, true);
 
    //encrypt the new privkey
    auto newCipher = cipher->getCopy(); //copying a cypher cycles the IV

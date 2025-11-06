@@ -2998,7 +2998,7 @@ SecureBinaryData Signing::Signer::signScript(
       script, index);
 
 #ifdef SIGNER_DEBUG
-   auto&& pubkey = CryptoECDSA().ComputePublicKey(privKey);
+   auto pubkey = Cryptography::ECDSA::computePublicKey(privKey);
    LOGWARN << "signing for: ";
    LOGWARN << "   pubkey: " << pubkey.toHexStr();
 
@@ -3006,16 +3006,16 @@ SecureBinaryData Signing::Signer::signScript(
    LOGWARN << "   message: " << dataToHash.toHexStr();
 #endif
 
-   return CryptoECDSA().SignData(hashToSign, privKey, false);
+   return Cryptography::ECDSA::signData(hashToSign, privKey);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<Signing::ScriptSpender> Signing::Signer::getSpender(
    unsigned index) const
 {
-   if (index > spenders_.size())
+   if (index > spenders_.size()) {
       throw ScriptException("invalid spender index");
-
+   }
    return spenders_[index];
 }
 
@@ -3024,9 +3024,9 @@ std::shared_ptr<Signing::ScriptRecipient> Signing::Signer::getRecipient(
    unsigned index) const
 {
    auto recVector = getRecipientVector();
-   if (index >= recVector.size())
+   if (index >= recVector.size()) {
       throw ScriptException("invalid spender index");
-
+   }
    return recVector[index];
 }
 
@@ -4782,20 +4782,22 @@ BinaryData Signing::Signer::signMessage(
    std::shared_ptr<ResolverFeed> walletFeed)
 {
    //get pubkey for scrAddr. Resolver takes unprefixed hashes
-   if (scrAddr.getSize() < 21)
+   if (scrAddr.getSize() < 21) {
       throw std::runtime_error("invalid scrAddr");
+   }
 
    auto pubkey = walletFeed->getByVal(
       scrAddr.getSliceRef(1, scrAddr.getSize() - 1));
    bool compressed = true;
-   if (pubkey.getSize() == 65)
+   if (pubkey.getSize() == 65) {
       compressed = false;
+   }
 
    //get private key for pubkey
-   auto privkey = walletFeed->getPrivKeyForPubkey(pubkey);
+   const auto& privkey = walletFeed->getPrivKeyForPubkey(pubkey);
 
    //sign
-   return CryptoECDSA::SignBitcoinMessage(
+   return Cryptography::ECDSA::signBitcoinMessage(
       message.getRef(), privkey, compressed);
 }
 
@@ -4804,16 +4806,12 @@ bool Signing::Signer::verifyMessageSignature(
    const BinaryData& message, const BinaryData& scrAddr, const BinaryData& sig)
 {
    BinaryData pubkey;
-   try
-   {
-      pubkey = CryptoECDSA::VerifyBitcoinMessage(message, sig);
-   }
-   catch (const std::exception& e)
-   {
+   try {
+      pubkey = Cryptography::ECDSA::verifyBitcoinMessage(message, sig);
+   } catch (const std::exception& e) {
       LOGWARN << "failed to verify bitcoin message "
          "signature with the following error: ";
       LOGWARN << "   " << e.what();
-
       return false;
    }
 
@@ -4886,7 +4884,7 @@ bool Signing::Signer::verifyMessageSignature(
 ////////////////////////////////////////////////////////////////////////////////
 void Signing::Signer::prettyPrint() const
 {
-   //WIP
+   /* NOTE: WIP */
 
    auto signEvalState = evaluateSignedState();
 

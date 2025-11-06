@@ -42,17 +42,17 @@ uint8_t oneWayAuthClientPubKey_[33];
 // RET: N/A
 void startupBIP151CTX()
 {
-   if(secp256k1_ecdh_ctx == nullptr)
-   {
+   if (secp256k1_ecdh_ctx == nullptr) {
       // SIGN used to generate public keys from private keys. (Can be removed
       // once libbtc exports compressed public keys.)
       // VERIFY used to allow for EC multiplication, which won't work otherwise.
       secp256k1_ecdh_ctx = secp256k1_context_create(
          SECP256K1_CONTEXT_SIGN | SECP256K1_CONTEXT_VERIFY);
 
-      auto rando = CryptoPRNG::generateRandom(32);
-      if (!secp256k1_context_randomize(secp256k1_ecdh_ctx, rando.getPtr()))
+      auto rando = Cryptography::PRNG::generateRandomStrong(32);
+      if (!secp256k1_context_randomize(secp256k1_ecdh_ctx, rando.getPtr())) {
          throw std::runtime_error("[startupBIP151CTX");
+      }
    }
    assert(secp256k1_ecdh_ctx != nullptr);
 }
@@ -66,9 +66,7 @@ void shutdownBIP151CTX()
 {
    secp256k1_context* ctx = secp256k1_ecdh_ctx;
    secp256k1_ecdh_ctx = nullptr;
-
-   if(ctx != nullptr)
-   {
+   if(ctx != nullptr) {
       secp256k1_context_destroy(ctx);
    }
 }

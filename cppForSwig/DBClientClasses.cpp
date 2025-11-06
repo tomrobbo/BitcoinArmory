@@ -90,7 +90,7 @@ void initLibrary()
 {
    startupBIP150CTX(4);
    startupBIP151CTX();
-   CryptoECDSA::setupContext();
+   Cryptography::ECDSA::setupContext();
 }
 
 ///////////////////////////////////////////////////////////////////////////////

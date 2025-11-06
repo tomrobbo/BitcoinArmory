@@ -1450,7 +1450,7 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::initWalletDb(
          if (chaincode.empty()) {
             chaincode = BtcUtils::computeChainCode_ArmoryLegacy(privateRoot);
          }
-         auto pubkey = CryptoECDSA().ComputePublicKey(privateRoot);
+         auto pubkey = Cryptography::ECDSA::computePublicKey(privateRoot);
 
          auto cipherData = encryptPrivateData(privateRoot);
          auto rootAsset = std::make_shared<Asset_PrivateKey>(
