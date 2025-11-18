@@ -289,19 +289,33 @@ struct WalletManagerReply {
       loaded      @4;
    }
 
+   struct ExtendedLegacyData
+   {
+      label         @0 : Text;
+      description   @1 : Text;
+      highestIndex  @2 : Int64;
+      addressCount  @3 : UInt32;
+      timestamp     @4 : UInt64;
+   }
+
    struct WalletFileData {
       state          @0 : WalletLoadState;
       path           @1 : Text;
       walletId       @2 : Text;
       staged         @3 : Bool;
       watchingOnly   @4 : Bool;
+
+      union {
+         undefined   @5 : Void;
+         legacy      @6 : ExtendedLegacyData;
+      }
    }
 
    union {
-      unset                @0 : Void;
-      listWallets          @1 : List(WalletFileData);
-      migrateWallet        @2 : Types.WalletId;
-      loadWallets          @3 : List(WalletData);
+      unset          @0 : Void;
+      listWallets    @1 : List(WalletFileData);
+      migrateWallet  @2 : Types.WalletId;
+      loadWallets    @3 : List(WalletData);
    }
 }
 

@@ -578,6 +578,16 @@ BinaryData CppBridge::listWallets(MessageId msgId)
       } catch (const std::exception&) {
          capnWltObj.setWalletId("N/A");
       }
+
+      if (wltObj.second->state() == WalletLoadState::Legacy) {
+         auto a135Info = std::dynamic_pointer_cast<A135FileInfo>(wltObj.second);
+         auto extendedData = capnWltObj.initLegacy();
+         extendedData.setLabel(a135Info->name());
+         extendedData.setDescription(a135Info->description());
+         extendedData.setHighestIndex(a135Info->highestUsedIndex());
+         extendedData.setAddressCount(a135Info->addressCount());
+         extendedData.setTimestamp(a135Info->timestamp());
+      }
    }
 
    reply.setReferenceId(msgId);
