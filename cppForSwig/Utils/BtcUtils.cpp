@@ -17,10 +17,14 @@
 #include "BinaryData.h"
 #include "Cryptography.h"
 #include "ArmoryConfig.h"
-#include "btc/segwit_addr.h"
+#include "OpCodes.h"
 #include "TxOutScrRef.h"
+#include "varint.h"
+
+#include "btc/segwit_addr.h"
 #include "btc/base58.h"
 
+using namespace Armory;
 using namespace std::string_view_literals;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -49,88 +53,9 @@ const std::map<char, uint8_t> BtcUtils::base64Vals = {
 
 ////////////////////////////////////////////////////////////////////////////////
 // exceptions
-BlockDeserializingException::BlockDeserializingException(
-   const std::string& what) :
-   std::runtime_error(what)
-{}
-
-VarIntException::VarIntException(const std::string& what) :
-   BlockDeserializingException(what)
-{}
-
 DERException::DERException(const std::string& what) :
    std::runtime_error(what)
 {}
-
-////////////////////////////////////////////////////////////////////////////////
-// varint
-uint64_t BtcUtils::readVarInt(const uint8_t* strmPtr, size_t remaining,
-   uint8_t& lenOut)
-{
-   if (remaining < 1) {
-      throw VarIntException("invalid varint");
-   }
-   uint8_t firstByte = strmPtr[0];
-
-   if (firstByte < 0xfd) {
-      lenOut = 1;
-      return firstByte;
-   }
-
-   if (firstByte == 0xfd) {
-      if (remaining < 3) {
-         throw VarIntException("invalid varint");
-      }
-      lenOut = 3;
-      return READ_UINT16_LE(strmPtr+1);
-   } else if(firstByte == 0xfe) {
-      if (remaining < 5) {
-         throw VarIntException("invalid varint");
-      }
-      lenOut = 5;
-      return READ_UINT32_LE(strmPtr+1);
-   } else {
-      if (remaining < 9) {
-         throw VarIntException("invalid varint");
-      }
-      lenOut = 9;
-      return READ_UINT64_LE(strmPtr+1);
-   }
-}
-
-std::pair<uint64_t, uint8_t> BtcUtils::readVarInt(BinaryRefReader& brr)
-{
-   uint64_t outVal;
-   uint8_t outLen;
-   outVal = readVarInt(brr.getCurrPtr(), brr.getSizeRemaining(), outLen);
-   brr.advance(outLen);
-   return std::make_pair(outVal, outLen);
-}
-
-uint8_t BtcUtils::readVarIntLength(const uint8_t* strmPtr)
-{
-   switch (strmPtr[0])
-   {
-      case 0xfd: return 3;
-      case 0xfe: return 5;
-      case 0xff: return 9;
-      default:
-         return 1;
-   }
-}
-
-uint8_t BtcUtils::calcVarIntSize(const uint64_t& val)
-{
-   if (val < 0xfd) {
-      return 1;
-   } else if (val <= 0xffff) {
-      return 3;
-   } else if (val <= 0xffffffff) {
-      return 5;
-   } else {
-      return 9;
-   }
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 // hashes
@@ -152,14 +77,13 @@ BinaryData BtcUtils::getSha256(const BinaryData& bd)
    return hashOutput;
 }
 
-BinaryData BtcUtils::getHMAC256(const SecureBinaryData& key,
-   const SecureBinaryData& message)
+BinaryData BtcUtils::getHMAC256(BinaryDataRef key, BinaryDataRef message)
 {
    BinaryData digest;
    digest.resize(32);
    
-   getHMAC256(key.getPtr(), key.getSize(), 
-      message.getCharPtr(), message.getSize(),
+   getHMAC256(key.getPtr(), key.getSize(),
+      message.toCharPtr(), message.getSize(),
       digest.getPtr());
    return digest;
 }
@@ -258,19 +182,18 @@ BinaryData BtcUtils::ripemd160(const BinaryData& strToHash)
 }
 
 //// HMACs
-BinaryData BtcUtils::getHMAC512(const SecureBinaryData& key,
-   const SecureBinaryData& message)
+BinaryData BtcUtils::getHMAC512(BinaryDataRef key, BinaryDataRef message)
 {
    BinaryData digest;
    digest.resize(64);
 
    getHMAC512(key.getPtr(), key.getSize(),
-      message.getCharPtr(), message.getSize(),
+      message.toCharPtr(), message.getSize(),
       digest.getPtr());
    return digest;
 }
 
-BinaryData BtcUtils::getHMAC256(const BinaryData& key,
+BinaryData BtcUtils::getHMAC256(BinaryDataRef key,
    const std::string& message)
 {
    BinaryData digest;
@@ -282,7 +205,7 @@ BinaryData BtcUtils::getHMAC256(const BinaryData& key,
    return digest;
 }
 
-BinaryData BtcUtils::getHMAC512(const BinaryData& key,
+BinaryData BtcUtils::getHMAC512(BinaryDataRef key,
    const std::string& message)
 {
    BinaryData digest;
@@ -295,7 +218,7 @@ BinaryData BtcUtils::getHMAC512(const BinaryData& key,
 }
 
 SecureBinaryData BtcUtils::getHMAC512(const std::string& key,
-   const SecureBinaryData& message)
+   BinaryDataRef message)
 {
    SecureBinaryData digest;
    digest.resize(64);
@@ -323,7 +246,7 @@ void BtcUtils::getHMAC512(const void* keyptr, size_t keylen,
 }
 
 BinaryData BtcUtils::getBotchedArmoryHMAC256(
-   const BinaryData& key, const BinaryData& msg)
+   BinaryDataRef key, BinaryDataRef msg)
 {
    BinaryData hmacKey;
    if (key.getSize() > 32) {
@@ -410,7 +333,7 @@ void BtcUtils::TxInCalcLength(const uint8_t* ptr, size_t size,
 {
    BinaryRefReader brr(ptr, size);
    if (brr.getSizeRemaining() < 4) {
-      throw BlockDeserializingException();
+      throw BtcUtils::BlockDeserializingException();
    }
 
    // Tx Version
@@ -433,7 +356,7 @@ void BtcUtils::TxInCalcLength(const uint8_t* ptr, size_t size,
 size_t BtcUtils::TxInCalcLength(const uint8_t* ptr, size_t size)
 {
    if (size < 37) {
-      throw BlockDeserializingException();
+      throw BtcUtils::BlockDeserializingException();
    }
    uint8_t viLen;
    size_t scrLen = (size_t)readVarInt(ptr+36, size-36, viLen);
@@ -443,7 +366,7 @@ size_t BtcUtils::TxInCalcLength(const uint8_t* ptr, size_t size)
 size_t BtcUtils::TxOutCalcLength(const uint8_t* ptr, size_t size)
 {
    if (size < 9) {
-      throw BlockDeserializingException();
+      throw BtcUtils::BlockDeserializingException();
    }
 
    uint8_t viLen;
@@ -454,7 +377,7 @@ size_t BtcUtils::TxOutCalcLength(const uint8_t* ptr, size_t size)
 size_t BtcUtils::TxWitnessCalcLength(const uint8_t* ptr, size_t size)
 {
    if (size < 1) {
-      throw BlockDeserializingException();
+      throw BtcUtils::BlockDeserializingException();
    }
 
    size_t witLen = 0;
@@ -463,13 +386,13 @@ size_t BtcUtils::TxWitnessCalcLength(const uint8_t* ptr, size_t size)
    witLen += viStackLen;
    for (auto i = 0; i < stackLen; i++) {
       if (witLen >= size) {
-         throw BlockDeserializingException();
+         throw BtcUtils::BlockDeserializingException();
       }
       uint8_t viLen;
       witLen += readVarInt(ptr + witLen, size - witLen, viLen);
       witLen += viLen;
       if (witLen > size) {
-         throw BlockDeserializingException();
+         throw BtcUtils::BlockDeserializingException();
       }
    }
    return witLen;
@@ -488,7 +411,7 @@ size_t BtcUtils::TxCalcLength(const uint8_t* ptr, size_t size,
    BinaryRefReader brr(ptr, size);
 
    if (brr.getSizeRemaining() < 4) {
-      throw BlockDeserializingException();
+      throw BtcUtils::BlockDeserializingException();
    }
 
    // Tx Version;
@@ -669,62 +592,62 @@ size_t BtcUtils::StoredTxCalcLength(const uint8_t* ptr,
 
 ////////////////////////////////////////////////////////////////////////////////
 // script type parsing
-TXOUT_SCRIPT_TYPE BtcUtils::getTxOutScriptType(BinaryDataRef s)
+TxOutScriptType BtcUtils::getTxOutScriptType(BinaryDataRef s)
 {
    size_t sz = s.getSize();
    if (sz > 0 && sz < 81 && s[0] == 0x6a) {
-      return TXOUT_SCRIPT_OPRETURN;
+      return TxOutScriptType::OPRETURN;
    } else if (sz < 21) {
-      return TXOUT_SCRIPT_NONSTANDARD;
+      return TxOutScriptType::NONSTANDARD;
    } else if (sz == 22 && s[0] == 0x00 && s[1] == 0x14) {
-      return TXOUT_SCRIPT_P2WPKH;
+      return TxOutScriptType::P2WPKH;
    } else if (sz == 34 && s[0] == 0x00 && s[1] == 0x20) {
-      return TXOUT_SCRIPT_P2WSH;
+      return TxOutScriptType::P2WSH;
    } else if (sz == 25 &&
       s[0] == 0x76 &&
       s[1] == 0xa9 &&
       s[2] == 0x14 &&
       s[-2] == 0x88 &&
       s[-1] == 0xac) {
-      return TXOUT_SCRIPT_STDHASH160;
+      return TxOutScriptType::STDHASH160;
    } else if (sz == 67 && s[0] == 0x41 && s[1] == 0x04 && s[-1] == 0xac) {
-      return TXOUT_SCRIPT_STDPUBKEY65;
+      return TxOutScriptType::STDPUBKEY65;
    } else if (sz == 35 &&
       s[0] == 0x21 &&
       (s[1] == 0x02 || s[1] == 0x03) &&
       s[-1] == 0xac) {
-      return TXOUT_SCRIPT_STDPUBKEY33;
+      return TxOutScriptType::STDPUBKEY33;
    } else if (sz == 23 && s[0] == 0xa9 && s[1] == 0x14 && s[-1] == 0x87) {
-      return TXOUT_SCRIPT_P2SH;
+      return TxOutScriptType::P2SH;
    } else if (s[-1] == 0xae && isMultisigScript(s)) {
-      return TXOUT_SCRIPT_MULTISIG;
+      return TxOutScriptType::MULTISIG;
    } else {
-      return TXOUT_SCRIPT_NONSTANDARD;
+      return TxOutScriptType::NONSTANDARD;
    }
 }
 
-TXIN_SCRIPT_TYPE BtcUtils::getTxInScriptType(BinaryDataRef script,
+TxInScriptType BtcUtils::getTxInScriptType(BinaryDataRef script,
    BinaryDataRef prevTxHash)
 {
    if (prevTxHash == EmptyHash) {
-      return TXIN_SCRIPT_COINBASE;
+      return TxInScriptType::COINBASE;
    }
 
    if (script.empty()) {
-      return TXIN_SCRIPT_WITNESS;
+      return TxInScriptType::WITNESS;
    }
    if (script.getSize() == 23 && script[1] == 0x00 && script[2] == 0x14) {
-      return TXIN_SCRIPT_P2WPKH_P2SH;
+      return TxInScriptType::P2WPKH_P2SH;
    }
    if (script.getSize() == 35 && script[1] == 0x00 && script[2] == 0x20) {
-      return TXIN_SCRIPT_P2WSH_P2SH;
+      return TxInScriptType::P2WSH_P2SH;
    }
 
    // Technically, this doesn't recognize all P2SH spends. Only
    // spends of P2SH scripts that are, themselves, standard
    BinaryData lastPush = getLastPushDataInScript(script);
-   if (getTxOutScriptType(lastPush) != TXOUT_SCRIPT_NONSTANDARD) {
-      return TXIN_SCRIPT_SPENDP2SH;
+   if (getTxOutScriptType(lastPush) != TxOutScriptType::NONSTANDARD) {
+      return TxInScriptType::SPENDP2SH;
    }
 
    if (script[0]==0x00) {
@@ -733,79 +656,79 @@ TXIN_SCRIPT_TYPE BtcUtils::getTxInScriptType(BinaryDataRef script,
       std::vector<BinaryDataRef> splitScr = splitPushOnlyScriptRefs(script);
 
       if (splitScr.empty()) {
-         return TXIN_SCRIPT_NONSTANDARD;
+         return TxInScriptType::NONSTANDARD;
       }
 
       // TODO: Maybe should identify whether the other pushed data
       //       in the script is a potential solution for the
       //       subscript... meh?
       if (script[2]==0x30 && script[4]==0x02) {
-         return TXIN_SCRIPT_SPENDMULTI;
+         return TxInScriptType::SPENDMULTI;
       }
    }
 
    if (!(script[1]==0x30 && script[3]==0x02)) {
-      return TXIN_SCRIPT_NONSTANDARD;
+      return TxInScriptType::NONSTANDARD;
    }
 
    uint32_t sigSize = script[2] + 4;
    if (script.getSize() == sigSize) {
-      return TXIN_SCRIPT_SPENDPUBKEY;
+      return TxInScriptType::SPENDPUBKEY;
    }
 
    uint32_t keySizeFull = 66;  // \x41 \x04 [X32] [Y32]
    uint32_t keySizeCompr= 34;  // \x41 \x02 [X32]
 
    if (script.getSize() == sigSize + keySizeFull) {
-      return TXIN_SCRIPT_STDUNCOMPR;
+      return TxInScriptType::STDUNCOMPR;
    } else if (script.getSize() == sigSize + keySizeCompr) {
-      return TXIN_SCRIPT_STDCOMPR;
+      return TxInScriptType::STDCOMPR;
    }
-   return TXIN_SCRIPT_NONSTANDARD;
+   return TxInScriptType::NONSTANDARD;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // txin address helpers
 BinaryData BtcUtils::getTxInAddr(BinaryDataRef script,
-   BinaryDataRef prevTxHash, TXIN_SCRIPT_TYPE type)
+   BinaryDataRef prevTxHash, TxInScriptType type)
 {
-   if (type==TXIN_SCRIPT_NONSTANDARD) {
+   if (type==TxInScriptType::NONSTANDARD) {
       type = getTxInScriptType(script, prevTxHash);
    }
    return getTxInAddrFromType(script, type);
 }
 
 BinaryData BtcUtils::getTxInAddrFromType(BinaryDataRef script,
-   TXIN_SCRIPT_TYPE type)
+   TxInScriptType type)
 {
    switch(type)
    {
-      case TXIN_SCRIPT_STDUNCOMPR:
+      case TxInScriptType::STDUNCOMPR:
       {
          if (script.getSize() < 65) {
-               throw BlockDeserializingException();
+            throw BtcUtils::BlockDeserializingException();
          }
          return getHash160(script.getSliceRef(-65, 65));
       }
 
-      case TXIN_SCRIPT_STDCOMPR:
+      case TxInScriptType::STDCOMPR:
       {
          if (script.getSize() < 33) {
-            throw BlockDeserializingException();
+            throw BtcUtils::BlockDeserializingException();
          }
          return getHash160(script.getSliceRef(-33, 33));
       }
 
-      case TXIN_SCRIPT_SPENDP2SH:
+      case TxInScriptType::SPENDP2SH:
       {
          auto pushVect = splitPushOnlyScriptRefs(script);
          return getHash160(pushVect[pushVect.size()-1]);
       }
 
-      case TXIN_SCRIPT_COINBASE:
-      case TXIN_SCRIPT_SPENDPUBKEY:
-      case TXIN_SCRIPT_SPENDMULTI:
-      case TXIN_SCRIPT_NONSTANDARD:
+      case TxInScriptType::COINBASE:
+      case TxInScriptType::SPENDPUBKEY:
+      case TxInScriptType::SPENDMULTI:
+      case TxInScriptType::NONSTANDARD:
          return BadAddress;
 
       default:
@@ -817,7 +740,7 @@ BinaryData BtcUtils::getTxInAddrFromType(BinaryDataRef script,
 BinaryData BtcUtils::getTxInAddrFromTypeInt(const BinaryData& script,
    uint32_t typeInt)
 {
-   return getTxInAddrFromType(script.getRef(), (TXIN_SCRIPT_TYPE)typeInt);
+   return getTxInAddrFromType(script.getRef(), (TxInScriptType)typeInt);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -916,26 +839,26 @@ std::vector<BinaryDataRef> BtcUtils::splitPushOnlyScriptRefs(
    uint8_t nextOp;
    while (brr.getSizeRemaining() > 0) {
       nextOp = brr.get_uint8_t();
-      if(nextOp == 0) {
+      if (nextOp == 0) {
          // Implicit pushdata
          brr.rewind(1);
          opList.emplace_back(brr.get_BinaryDataRef(1));
-      } else if(nextOp < 76) {
+      } else if (nextOp < 76) {
          // Implicit pushdata
          opList.emplace_back(brr.get_BinaryDataRef(nextOp));
-      } else if(nextOp == 76) {
+      } else if (nextOp == 76) {
          uint8_t nb = brr.get_uint8_t();
-         opList.emplace_back( brr.get_BinaryDataRef(nb));
-      } else if(nextOp == 77) {
+         opList.emplace_back(brr.get_BinaryDataRef(nb));
+      } else if( nextOp == 77) {
          uint16_t nb = brr.get_uint16_t();
-         opList.emplace_back( brr.get_BinaryDataRef(nb));
-      } else if(nextOp == 78) {
+         opList.emplace_back(brr.get_BinaryDataRef(nb));
+      } else if (nextOp == 78) {
          uint16_t nb = brr.get_uint32_t();
-         opList.push_back( brr.get_BinaryDataRef(nb));
+         opList.emplace_back(brr.get_BinaryDataRef(nb));
       }
-      else if(nextOp > 78 && nextOp < 97 && nextOp !=80) {
+      else if (nextOp > 78 && nextOp < 97 && nextOp !=80) {
          brr.rewind(1);
-         opList.push_back( brr.get_BinaryDataRef(1));
+         opList.emplace_back(brr.get_BinaryDataRef(1));
       } else {
          return {};
       }
@@ -1147,7 +1070,7 @@ BinaryData BtcUtils::getScrAddrForAddrStr(const std::string& addrStr)
          case 20:
          {
             scrAddr.resize(21);
-            memset(scrAddr.getPtr(), SCRIPT_PREFIX_P2WPKH, 1);
+            memset(scrAddr.getPtr(), (uint8_t)ScriptPrefix::P2WPKH, 1);
             memcpy(scrAddr.getPtr() + 1, scrAddrPair.first.getPtr(), 20);
             break;
          }
@@ -1155,7 +1078,7 @@ BinaryData BtcUtils::getScrAddrForAddrStr(const std::string& addrStr)
          case 32:
          {
             scrAddr.resize(33);
-            memset(scrAddr.getPtr(), SCRIPT_PREFIX_P2WSH, 1);
+            memset(scrAddr.getPtr(), (uint8_t)ScriptPrefix::P2WSH, 1);
             memcpy(scrAddr.getPtr() + 1, scrAddrPair.first.getPtr(), 32);
             break;
          }
@@ -1173,10 +1096,10 @@ BinaryData BtcUtils::getScrAddrForAddrStr(const std::string& addrStr)
 }
 
 BinaryData BtcUtils::getTxOutScrAddr(BinaryDataRef script,
-   TXOUT_SCRIPT_TYPE type)
+   TxOutScriptType type)
 {
    BinaryWriter bw;
-   if (type == TXOUT_SCRIPT_NONSTANDARD) {
+   if (type == TxOutScriptType::NONSTANDARD) {
       type = getTxOutScriptType(script);
    }
 
@@ -1185,65 +1108,65 @@ BinaryData BtcUtils::getTxOutScrAddr(BinaryDataRef script,
 
    switch (type)
    {
-      case TXOUT_SCRIPT_STDHASH160:
+      case TxOutScriptType::STDHASH160:
       {
          bw.put_uint8_t(h160Prefix);
          bw.put_BinaryData(script.getSliceCopy(3, 20));
          return bw.getData();
       }
 
-      case TXOUT_SCRIPT_P2WPKH:
+      case TxOutScriptType::P2WPKH:
       {
-         bw.put_uint8_t(SCRIPT_PREFIX_P2WPKH);
+         bw.put_uint8_t((uint8_t)ScriptPrefix::P2WPKH);
          bw.put_BinaryData(script.getSliceCopy(2, 20));
          return bw.getData();
       }
 
-      case TXOUT_SCRIPT_P2WSH:
+      case TxOutScriptType::P2WSH:
       {
-         bw.put_uint8_t(SCRIPT_PREFIX_P2WSH);
+         bw.put_uint8_t((uint8_t)ScriptPrefix::P2WSH);
          bw.put_BinaryData(script.getSliceCopy(2, 32));
          return bw.getData();
       }
 
-      case TXOUT_SCRIPT_STDPUBKEY65:
+      case TxOutScriptType::STDPUBKEY65:
       {
          bw.put_uint8_t(h160Prefix);
          bw.put_BinaryData(getHash160(script.getSliceRef(1, 65)));
          return bw.getData();
       }
 
-      case TXOUT_SCRIPT_STDPUBKEY33:
+      case TxOutScriptType::STDPUBKEY33:
       {
          bw.put_uint8_t(h160Prefix);
          bw.put_BinaryData(getHash160(script.getSliceRef(1, 33)));
          return bw.getData();
       }
 
-      case TXOUT_SCRIPT_P2SH:
+      case TxOutScriptType::P2SH:
       {
          bw.put_uint8_t(scriptPrefix);
          bw.put_BinaryData(script.getSliceCopy(2, 20));
          return bw.getData();
       }
 
-      case TXOUT_SCRIPT_NONSTANDARD:
+      case TxOutScriptType::NONSTANDARD:
       {
-         bw.put_uint8_t(SCRIPT_PREFIX_NONSTD);
+         bw.put_uint8_t((uint8_t)ScriptPrefix::NONSTD);
          bw.put_BinaryData(getHash160(script));
          return bw.getData();
       }
 
-      case TXOUT_SCRIPT_MULTISIG:
+      case TxOutScriptType::MULTISIG:
       {
-         bw.put_uint8_t(SCRIPT_PREFIX_MULTISIG);
+         bw.put_uint8_t((uint8_t)ScriptPrefix::MULTISIG);
          bw.put_BinaryData(getMultisigUniqueKey(script));
          return bw.getData();
       }
 
-      case TXOUT_SCRIPT_OPRETURN:
+      case TxOutScriptType::OPRETURN:
       {
-         bw.put_uint8_t(SCRIPT_PREFIX_NONSTD);
+         bw.put_uint8_t((uint8_t)ScriptPrefix::OPRETURN);
          unsigned msg_pos = 1;
          if (script.getSize() > 77) {
             msg_pos += 2;
@@ -1270,21 +1193,20 @@ BinaryData BtcUtils::getTxOutScriptForScrAddr(BinaryDataRef scrAddr)
 
    BinaryRefReader brr(scrAddr);
    auto prefix = brr.get_uint8_t();
-
    switch (prefix)
    {
-      case SCRIPT_PREFIX_HASH160:
-      case SCRIPT_PREFIX_HASH160_TESTNET:
+      case (uint8_t)ScriptPrefix::HASH160:
+      case (uint8_t)ScriptPrefix::HASH160_TESTNET:
          return getP2PKHScript(brr.get_BinaryData(brr.getSizeRemaining()));
 
-      case SCRIPT_PREFIX_P2SH:
-      case SCRIPT_PREFIX_P2SH_TESTNET:
+      case (uint8_t)ScriptPrefix::P2SH:
+      case (uint8_t)ScriptPrefix::P2SH_TESTNET:
          return getP2SHScript(brr.get_BinaryData(brr.getSizeRemaining()));
 
-      case SCRIPT_PREFIX_P2WPKH:
+      case (uint8_t)ScriptPrefix::P2WPKH:
          return getP2WPKHOutputScript(brr.get_BinaryData(brr.getSizeRemaining()));
       
-      case SCRIPT_PREFIX_P2WSH:
+      case (uint8_t)ScriptPrefix::P2WSH:
          return getP2WSHOutputScript(brr.get_BinaryData(brr.getSizeRemaining()));
 
       default:
@@ -1292,7 +1214,7 @@ BinaryData BtcUtils::getTxOutScriptForScrAddr(BinaryDataRef scrAddr)
    }
 }
 
-TXOUT_SCRIPT_TYPE BtcUtils::getScriptTypeForScrAddr(BinaryDataRef scrAddr)
+TxOutScriptType BtcUtils::getScriptTypeForScrAddr(BinaryDataRef scrAddr)
 {
    if (scrAddr.getSize() == 21) {
       auto h160Prefix = Armory::Config::BitcoinSettings::getPubkeyHashPrefix();
@@ -1300,19 +1222,19 @@ TXOUT_SCRIPT_TYPE BtcUtils::getScriptTypeForScrAddr(BinaryDataRef scrAddr)
 
       auto prefix = *scrAddr.getPtr();
       if (prefix == h160Prefix) {
-         return TXOUT_SCRIPT_STDHASH160;
-      } else if (prefix == SCRIPT_PREFIX_P2WPKH) {
-         return TXOUT_SCRIPT_P2WPKH;
+         return TxOutScriptType::STDHASH160;
+      } else if (prefix == (uint8_t)ScriptPrefix::P2WPKH) {
+         return TxOutScriptType::P2WPKH;
       } else if (prefix == scriptPrefix) {
-         return TXOUT_SCRIPT_P2SH;
+         return TxOutScriptType::P2SH;
       }
    } else if (scrAddr.getSize() == 32) {
       auto prefix = *scrAddr.getPtr();
-      if (prefix == SCRIPT_PREFIX_P2WSH) {
-         return TXOUT_SCRIPT_P2WSH;
+      if (prefix == (uint8_t)ScriptPrefix::P2WSH) {
+         return TxOutScriptType::P2WSH;
       }
    }
-   return TXOUT_SCRIPT_NONSTANDARD;
+   return TxOutScriptType::NONSTANDARD;
 }
 
 std::string BtcUtils::getAddressStrFromScrAddr(BinaryDataRef scrAddrRef)
@@ -1320,16 +1242,16 @@ std::string BtcUtils::getAddressStrFromScrAddr(BinaryDataRef scrAddrRef)
    auto scrType = getScriptTypeForScrAddr(scrAddrRef);
    switch (scrType)
    {
-      case TXOUT_SCRIPT_P2WPKH:
-      case TXOUT_SCRIPT_P2WSH:
+      case TxOutScriptType::P2WPKH:
+      case TxOutScriptType::P2WSH:
       {
-         auto scrAddrNoPrefix =
-            scrAddrRef.getSliceRef(1, scrAddrRef.getSize() -1);
+         auto scrAddrNoPrefix = scrAddrRef.getSliceRef(
+            1, scrAddrRef.getSize() -1);
          return BtcUtils::scrAddrToSegWitAddress(scrAddrNoPrefix);
       }
 
-      case TXOUT_SCRIPT_STDHASH160:
-      case TXOUT_SCRIPT_P2SH:
+      case TxOutScriptType::STDHASH160:
+      case TxOutScriptType::P2SH:
       {
          return BtcUtils::scrAddrToBase58(scrAddrRef);
       }
@@ -1339,82 +1261,57 @@ std::string BtcUtils::getAddressStrFromScrAddr(BinaryDataRef scrAddrRef)
    }
 }
 
-//no copy version, the regular one is too slow for scanning operations
 TxOutScriptRef BtcUtils::getTxOutScrAddrNoCopy(BinaryDataRef script)
 {
-   TxOutScriptRef outputRef;
-
-   auto p2pkh_prefix = SCRIPT_PREFIX(
-      Armory::Config::BitcoinSettings::getPubkeyHashPrefix());
-   auto p2sh_prefix = SCRIPT_PREFIX(
-      Armory::Config::BitcoinSettings::getScriptHashPrefix());
+   auto p2pkh_prefix = (ScriptPrefix)
+      Armory::Config::BitcoinSettings::getPubkeyHashPrefix();
 
    auto type = getTxOutScriptType(script);
    switch (type)
    {
-      case TXOUT_SCRIPT_STDHASH160:
+      case TxOutScriptType::STDHASH160:
+         return TxOutScriptRef::fromRef(
+            p2pkh_prefix, script.getSliceRef(3, 20));
+
+      case TxOutScriptType::P2WPKH:
+         return TxOutScriptRef::fromRef(
+            ScriptPrefix::P2WPKH, script.getSliceRef(2, 20));
+
+      case TxOutScriptType::P2WSH:
+         return TxOutScriptRef::fromRef(
+            ScriptPrefix::P2WSH, script.getSliceRef(2, 32));
+
+      case TxOutScriptType::STDPUBKEY65:
       {
-         outputRef.type_ = p2pkh_prefix;
-         outputRef.scriptRef_ = script.getSliceRef(3, 20);
-         break;
+         auto hash = getHash160(script.getSliceRef(1, 65));
+         return TxOutScriptRef{p2pkh_prefix, hash};
       }
 
-      case TXOUT_SCRIPT_P2WPKH:
+      case TxOutScriptType::STDPUBKEY33:
       {
-         outputRef.type_ = SCRIPT_PREFIX_P2WPKH;
-         outputRef.scriptRef_ = script.getSliceRef(2, 20);
-         break;
+         auto hash = getHash160(script.getSliceRef(1, 33));
+         return TxOutScriptRef{p2pkh_prefix, hash};
       }
 
-      case TXOUT_SCRIPT_P2WSH:
+      case TxOutScriptType::P2SH:
+         return TxOutScriptRef::fromRef(
+            (ScriptPrefix)Config::BitcoinSettings::getScriptHashPrefix(),
+            script.getSliceRef(2, 20));
+
+      case TxOutScriptType::NONSTANDARD:
       {
-         outputRef.type_ = SCRIPT_PREFIX_P2WSH;
-         outputRef.scriptRef_ = script.getSliceRef(2, 32);
-         break;
+         auto hash = getHash160(script);
+         return TxOutScriptRef{ScriptPrefix::NONSTD, hash};
       }
 
-      case TXOUT_SCRIPT_STDPUBKEY65:
+      case TxOutScriptType::MULTISIG:
       {
-         outputRef.type_ = p2pkh_prefix;
-         outputRef.scriptCopy_ = getHash160(script.getSliceRef(1, 65));
-         outputRef.scriptRef_.setRef(outputRef.scriptCopy_);
-         break;
+         auto msKey = getMultisigUniqueKey(script);
+         return TxOutScriptRef{ScriptPrefix::MULTISIG, msKey};
       }
 
-      case TXOUT_SCRIPT_STDPUBKEY33:
+      case TxOutScriptType::OPRETURN:
       {
-         outputRef.type_ = p2pkh_prefix;
-         outputRef.scriptCopy_ = getHash160(script.getSliceRef(1, 33));
-         outputRef.scriptRef_.setRef(outputRef.scriptCopy_);
-         break;
-      }
-
-      case TXOUT_SCRIPT_P2SH:
-      {
-         outputRef.type_ = p2sh_prefix;
-         outputRef.scriptRef_ = script.getSliceRef(2, 20);
-         break;
-      }
-
-      case TXOUT_SCRIPT_NONSTANDARD:
-      {
-         outputRef.type_ = SCRIPT_PREFIX_NONSTD;
-         outputRef.scriptCopy_ = getHash160(script);
-         outputRef.scriptRef_.setRef(outputRef.scriptCopy_);
-         break;
-      }
-
-      case TXOUT_SCRIPT_MULTISIG:
-      {
-         outputRef.type_ = SCRIPT_PREFIX_MULTISIG;
-         outputRef.scriptCopy_ = getMultisigUniqueKey(script);
-         outputRef.scriptRef_.setRef(outputRef.scriptCopy_);
-         break;
-      }
-
-      case TXOUT_SCRIPT_OPRETURN:
-      {
-         outputRef.type_ = SCRIPT_PREFIX_OPRETURN;
          auto size = script.getSize();
          size_t pos = 1;
          if (size > 77) {
@@ -1423,33 +1320,47 @@ TxOutScriptRef BtcUtils::getTxOutScrAddrNoCopy(BinaryDataRef script)
          if (size > 1) {
             ++pos;
          }
-         outputRef.scriptRef_ = script.getSliceRef(pos, size - pos);
-         break;
+         return TxOutScriptRef::fromRef(
+            ScriptPrefix::OPRETURN,
+            script.getSliceRef(pos, size - pos)
+         );
       }
 
       default:
-         LOGERR << "What kind of TxOutScript did we get?";
+         throw std::runtime_error("What kind of TxOutScript did we get?");
    }
-   return outputRef;
 }
 
 BinaryData BtcUtils::getTxOutRecipientAddr(const BinaryDataRef& script,
-   TXOUT_SCRIPT_TYPE type)
+   TxOutScriptType type)
 {
-   if (type==TXOUT_SCRIPT_NONSTANDARD) {
+   if (type==TxOutScriptType::NONSTANDARD) {
       type = getTxOutScriptType(script);
    }
    switch(type)
    {
-      case TXOUT_SCRIPT_STDHASH160:    return script.getSliceCopy(3,20);
-      case TXOUT_SCRIPT_STDPUBKEY65:   return getHash160(script.getSliceRef(1,65));
-      case TXOUT_SCRIPT_STDPUBKEY33:   return getHash160(script.getSliceRef(1,33));
-      case TXOUT_SCRIPT_P2SH:          return script.getSliceCopy(2,20);
-      case TXOUT_SCRIPT_P2WSH:         return script.getSliceCopy(2,32);
-      case TXOUT_SCRIPT_P2WPKH:        return script.getSliceCopy(2,20);
-      case TXOUT_SCRIPT_MULTISIG:      return BadAddress;
-      case TXOUT_SCRIPT_NONSTANDARD:   return BadAddress;
-      default:                         return BadAddress;
+      case TxOutScriptType::STDHASH160:
+         return script.getSliceCopy(3,20);
+
+      case TxOutScriptType::STDPUBKEY65:
+         return getHash160(script.getSliceRef(1,65));
+
+      case TxOutScriptType::STDPUBKEY33:
+         return getHash160(script.getSliceRef(1,33));
+
+      case TxOutScriptType::P2SH:
+         return script.getSliceCopy(2,20);
+
+      case TxOutScriptType::P2WSH:
+         return script.getSliceCopy(2,32);
+
+      case TxOutScriptType::P2WPKH:
+         return script.getSliceCopy(2,20);
+
+      case TxOutScriptType::MULTISIG:
+      case TxOutScriptType::NONSTANDARD:
+      default:
+         return BadAddress;
    }
 }
 
@@ -1664,10 +1575,10 @@ std::string BtcUtils::scrAddrToSegWitAddress(const BinaryData& scrAddr)
    //hardcoded for version 0 witness programs for now
    const char* headerPtr;
    if (Armory::Config::BitcoinSettings::getPubkeyHashPrefix() ==
-      SCRIPT_PREFIX_HASH160) {
+      (uint8_t)ScriptPrefix::HASH160) {
       headerPtr = SEGWIT_ADDRESS_MAINNET_HEADER;
    } else if (Armory::Config::BitcoinSettings::getPubkeyHashPrefix() ==
-      SCRIPT_PREFIX_HASH160_TESTNET) {
+      (uint8_t)ScriptPrefix::HASH160_TESTNET) {
       headerPtr = SEGWIT_ADDRESS_TESTNET_HEADER;
    } else {
       throw std::runtime_error("invalid network for segwit address");
@@ -1696,10 +1607,10 @@ std::pair<BinaryData, int> BtcUtils::segWitAddressToScrAddr(
    //hardcoded for version 0 witness programs for now
    const char* headerPtr;
    if (Armory::Config::BitcoinSettings::getPubkeyHashPrefix() ==
-      SCRIPT_PREFIX_HASH160) {
+      (uint8_t)ScriptPrefix::HASH160) {
       headerPtr = SEGWIT_ADDRESS_MAINNET_HEADER;
    } else if (Armory::Config::BitcoinSettings::getPubkeyHashPrefix() ==
-      SCRIPT_PREFIX_HASH160_TESTNET) {
+      (uint8_t)ScriptPrefix::HASH160_TESTNET) {
       headerPtr = SEGWIT_ADDRESS_TESTNET_HEADER;
    } else {
       throw std::runtime_error("invalid network for segwit address");
@@ -1819,216 +1730,6 @@ BinaryData BtcUtils::convertDoubleToDiffBits(double diff)
    ptr[3] = nShift;
 
    return diffBits;
-}
-
-////
-std::string BtcUtils::getOpCodeName(OPCODETYPE opcode)
-{
-   switch (opcode)
-   {
-      // push value
-      case OP_0                     : return "OP_0";
-      case OP_PUSHDATA1             : return "OP_PUSHDATA1";
-      case OP_PUSHDATA2             : return "OP_PUSHDATA2";
-      case OP_PUSHDATA4             : return "OP_PUSHDATA4";
-      case OP_1NEGATE               : return "OP_1NEGATE";
-      case OP_RESERVED              : return "OP_RESERVED";
-      case OP_1                     : return "OP_1";
-      case OP_2                     : return "OP_2";
-      case OP_3                     : return "OP_3";
-      case OP_4                     : return "OP_4";
-      case OP_5                     : return "OP_5";
-      case OP_6                     : return "OP_6";
-      case OP_7                     : return "OP_7";
-      case OP_8                     : return "OP_8";
-      case OP_9                     : return "OP_9";
-      case OP_10                    : return "OP_10";
-      case OP_11                    : return "OP_11";
-      case OP_12                    : return "OP_12";
-      case OP_13                    : return "OP_13";
-      case OP_14                    : return "OP_14";
-      case OP_15                    : return "OP_15";
-      case OP_16                    : return "OP_16";
-
-      // control
-      case OP_NOP                   : return "OP_NOP";
-      case OP_VER                   : return "OP_VER";
-      case OP_IF                    : return "OP_IF";
-      case OP_NOTIF                 : return "OP_NOTIF";
-      case OP_VERIF                 : return "OP_VERIF";
-      case OP_VERNOTIF              : return "OP_VERNOTIF";
-      case OP_ELSE                  : return "OP_ELSE";
-      case OP_ENDIF                 : return "OP_ENDIF";
-      case OP_VERIFY                : return "OP_VERIFY";
-      case OP_RETURN                : return "OP_RETURN";
-
-      // stack ops
-      case OP_TOALTSTACK            : return "OP_TOALTSTACK";
-      case OP_FROMALTSTACK          : return "OP_FROMALTSTACK";
-      case OP_2DROP                 : return "OP_2DROP";
-      case OP_2DUP                  : return "OP_2DUP";
-      case OP_3DUP                  : return "OP_3DUP";
-      case OP_2OVER                 : return "OP_2OVER";
-      case OP_2ROT                  : return "OP_2ROT";
-      case OP_2SWAP                 : return "OP_2SWAP";
-      case OP_IFDUP                 : return "OP_IFDUP";
-      case OP_DEPTH                 : return "OP_DEPTH";
-      case OP_DROP                  : return "OP_DROP";
-      case OP_DUP                   : return "OP_DUP";
-      case OP_NIP                   : return "OP_NIP";
-      case OP_OVER                  : return "OP_OVER";
-      case OP_PICK                  : return "OP_PICK";
-      case OP_ROLL                  : return "OP_ROLL";
-      case OP_ROT                   : return "OP_ROT";
-      case OP_SWAP                  : return "OP_SWAP";
-      case OP_TUCK                  : return "OP_TUCK";
-
-      // splice ops
-      case OP_CAT                   : return "OP_CAT";
-      case OP_SUBSTR                : return "OP_SUBSTR";
-      case OP_LEFT                  : return "OP_LEFT";
-      case OP_RIGHT                 : return "OP_RIGHT";
-      case OP_SIZE                  : return "OP_SIZE";
-
-      // bit logic
-      case OP_INVERT                : return "OP_INVERT";
-      case OP_AND                   : return "OP_AND";
-      case OP_OR                    : return "OP_OR";
-      case OP_XOR                   : return "OP_XOR";
-      case OP_EQUAL                 : return "OP_EQUAL";
-      case OP_EQUALVERIFY           : return "OP_EQUALVERIFY";
-      case OP_RESERVED1             : return "OP_RESERVED1";
-      case OP_RESERVED2             : return "OP_RESERVED2";
-
-      // numeric
-      case OP_1ADD                  : return "OP_1ADD";
-      case OP_1SUB                  : return "OP_1SUB";
-      case OP_2MUL                  : return "OP_2MUL";
-      case OP_2DIV                  : return "OP_2DIV";
-      case OP_NEGATE                : return "OP_NEGATE";
-      case OP_ABS                   : return "OP_ABS";
-      case OP_NOT                   : return "OP_NOT";
-      case OP_0NOTEQUAL             : return "OP_0NOTEQUAL";
-      case OP_ADD                   : return "OP_ADD";
-      case OP_SUB                   : return "OP_SUB";
-      case OP_MUL                   : return "OP_MUL";
-      case OP_DIV                   : return "OP_DIV";
-      case OP_MOD                   : return "OP_MOD";
-      case OP_LSHIFT                : return "OP_LSHIFT";
-      case OP_RSHIFT                : return "OP_RSHIFT";
-      case OP_BOOLAND               : return "OP_BOOLAND";
-      case OP_BOOLOR                : return "OP_BOOLOR";
-      case OP_NUMEQUAL              : return "OP_NUMEQUAL";
-      case OP_NUMEQUALVERIFY        : return "OP_NUMEQUALVERIFY";
-      case OP_NUMNOTEQUAL           : return "OP_NUMNOTEQUAL";
-      case OP_LESSTHAN              : return "OP_LESSTHAN";
-      case OP_GREATERTHAN           : return "OP_GREATERTHAN";
-      case OP_LESSTHANOREQUAL       : return "OP_LESSTHANOREQUAL";
-      case OP_GREATERTHANOREQUAL    : return "OP_GREATERTHANOREQUAL";
-      case OP_MIN                   : return "OP_MIN";
-      case OP_MAX                   : return "OP_MAX";
-      case OP_WITHIN                : return "OP_WITHIN";
-
-      // crypto
-      case OP_RIPEMD160             : return "OP_RIPEMD160";
-      case OP_SHA1                  : return "OP_SHA1";
-      case OP_SHA256                : return "OP_SHA256";
-      case OP_HASH160               : return "OP_HASH160";
-      case OP_HASH256               : return "OP_HASH256";
-      case OP_CODESEPARATOR         : return "OP_CODESEPARATOR";
-      case OP_CHECKSIG              : return "OP_CHECKSIG";
-      case OP_CHECKSIGVERIFY        : return "OP_CHECKSIGVERIFY";
-      case OP_CHECKMULTISIG         : return "OP_CHECKMULTISIG";
-      case OP_CHECKMULTISIGVERIFY   : return "OP_CHECKMULTISIGVERIFY";
-   
-      // expanson
-      case OP_NOP1                  : return "OP_NOP1";
-      case OP_NOP2                  : return "OP_NOP2";
-      case OP_NOP3                  : return "OP_NOP3";
-      case OP_NOP4                  : return "OP_NOP4";
-      case OP_NOP5                  : return "OP_NOP5";
-      case OP_NOP6                  : return "OP_NOP6";
-      case OP_NOP7                  : return "OP_NOP7";
-      case OP_NOP8                  : return "OP_NOP8";
-      case OP_NOP9                  : return "OP_NOP9";
-      case OP_NOP10                 : return "OP_NOP10";
-
-      // template matching params
-      case OP_PUBKEYHASH            : return "OP_PUBKEYHASH";
-      case OP_PUBKEY                : return "OP_PUBKEY";
-
-      case OP_INVALIDOPCODE         : return "OP_INVALIDOPCODE";
-      default:
-         return "OP_UNKNOWN";
-   }
-}
-
-std::vector<std::string> BtcUtils::convertScriptToOpStrings(
-   const BinaryData& script)
-{
-   std::list<std::string> opList;
-
-   uint32_t i = 0;
-   size_t sz=script.getSize();
-   bool error=false;
-   while (i < sz) {
-      uint8_t nextOp = script[i];
-      if (nextOp == 0) {
-         opList.push_back("OP_0");
-         i++;
-      } else if (nextOp < 76) {
-         opList.push_back("[PUSHDATA -- " + std::to_string(nextOp) + " BYTES:]");
-         opList.push_back(script.getSliceCopy(i+1, nextOp).toHexStr());
-         i += nextOp+1;
-      } else if (nextOp == 76) {
-         uint8_t nb = READ_UINT8_LE(script.getPtr() + i+1);
-         if (i+1+1+nb > sz) {
-            error=true;
-            break;
-         }
-         BinaryData binObj = script.getSliceCopy(i+2, nb);
-         opList.push_back("[OP_PUSHDATA1 -- " + std::to_string(nb) + " BYTES:]");
-         opList.push_back(binObj.toHexStr());
-         i += nb+2;
-      } else if (nextOp == 77) {
-         uint16_t nb = READ_UINT16_LE(script.getPtr() + i+1);
-         if (i+1+2+nb > sz) {
-            error=true; break;
-         }
-         BinaryData binObj = script.getSliceCopy(i+3, std::min((int)nb,256));
-         opList.push_back("[OP_PUSHDATA2 -- " + std::to_string(nb) + " BYTES:]");
-         opList.push_back(binObj.toHexStr() + "...");
-         i += nb+3;
-      } else if (nextOp == 78) {
-         uint32_t nb = READ_UINT32_LE(script.getPtr() + i+1);
-         if (i+1+4+nb > sz) {
-            error=true;
-            break;
-         }
-         BinaryData binObj = script.getSliceCopy(i+5, std::min((int)nb,256));
-         opList.push_back("[OP_PUSHDATA4 -- " + std::to_string(nb) + " BYTES:]");
-         opList.push_back(binObj.toHexStr() + "...");
-         i += nb+5;
-      } else {
-         opList.push_back(getOpCodeName((OPCODETYPE)nextOp));
-         i++;
-      }
-   }
-
-   if (error) {
-      opList.clear();
-      opList.push_back("ERROR PROCESSING SCRIPT");
-   }
-
-   size_t nops = opList.size();
-   std::vector<std::string> vectOut(nops);
-   std::list<std::string>::iterator iter;
-   uint32_t op=0;
-   for (iter = opList.begin(); iter != opList.end(); iter++) {
-      vectOut[op] = *iter;
-      op++;
-   }
-   return vectOut;
 }
 
 void BtcUtils::pprintScript(const BinaryData& script)

@@ -5,112 +5,141 @@
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
 //                                                                            //
-//  Copyright (C) 2016-2024, goatpig                                          //
+//  Copyright (C) 2016-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 #include <algorithm>
+#include <cstring>
 
 #include "LedgerEntry.h"
+#include <Utils/DBUtils.h>
+#include <Utils/BtcUtils.h>
+#include <BlockchainDatabase/txio.h>
+#include <BlockchainDatabase/lmdb_wrapper.h>
+#include <ZeroConf/Utils.h>
+#include <ZeroConf/Parser.h>
 #include "BitcoinP2P.h"
 
-using namespace std;
-
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-//
-// LedgerEntry
-//
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
+using namespace Armory;
 
 LedgerEntry LedgerEntry::EmptyLedger_;
-map<BinaryData, LedgerEntry> LedgerEntry::EmptyLedgerMap_;
-BinaryData LedgerEntry::EmptyID_ = BinaryData(0);
+std::map<BinaryData, LedgerEntry> LedgerEntry::EmptyLedgerMap_;
+BinaryData LedgerEntry::EmptyID_ = BinaryData{};
 
 ////////////////////////////////////////////////////////////////////////////////
-string LedgerEntry::getWalletID(void) const
+// LedgerEntry
+LedgerEntry::LedgerEntry() :
+   value_(0), blockNum_(UINT32_MAX),
+   txHash_(BtcUtils::EmptyHash),
+   index_(UINT32_MAX), txTime_(0),
+   isCoinbase_(false), isSentToSelf_(false), isChangeBack_(false),
+   isOptInRBF_(false), usesWitness_(false), isChainedZC_(false)
+{}
+
+LedgerEntry::LedgerEntry(const std::string& ID,
+   int64_t val, uint32_t blkNum, const BinaryData& txHash,
+   uint32_t idx, uint32_t txtime,
+   bool isCoinbase, bool isToSelf, bool isChange,
+   bool isOptInRBF, bool usesWitness, bool isChainedZC) :
+   ID_(ID), value_(val), blockNum_(blkNum),
+   txHash_(txHash), index_(idx), txTime_(txtime),
+   isCoinbase_(isCoinbase), isSentToSelf_(isToSelf), isChangeBack_(isChange),
+   isOptInRBF_(isOptInRBF), usesWitness_(usesWitness), isChainedZC_(isChainedZC)
+{}
+
+////////////////////////////////////////////////////////////////////////////////
+std::string LedgerEntry::getWalletID() const
 {
    return ID_;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-void LedgerEntry::setWalletID(const string& str)
+void LedgerEntry::setWalletID(const std::string& str)
 {
    ID_ = str;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-bool LedgerEntry::operator<(LedgerEntry const & le2) const
-{  
-   if( blockNum_ != le2.blockNum_)
-      return blockNum_ < le2.blockNum_;
-   else if( index_ != le2.index_)
-      return index_ < le2.index_;
-   else
-      return false;
+void LedgerEntry::changeBlkNum(uint32_t newHgt)
+{
+   blockNum_ = newHgt;
 }
 
-//////////////////////////////////////////////////////////////////////////////
-bool LedgerEntry::operator==(LedgerEntry const & le2) const
+const std::set<BinaryData>& LedgerEntry::getScrAddrList() const
 {
-   //TODO
-   //return (blockNum_ == le2.blockNum_ && 
-           //index_    == le2.index_ && 
-           //txTime_   == le2.txTime_);
+   return scrAddrSet_;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+bool LedgerEntry::operator<(const LedgerEntry& le2) const
+{
+   if (blockNum_ != le2.blockNum_) {
+      return blockNum_ < le2.blockNum_;
+   } else if (index_ != le2.index_) {
+      return index_ < le2.index_;
+   } else {
+      return false;
+   }
+}
+
+bool LedgerEntry::operator==(const LedgerEntry& le2) const
+{
    return (blockNum_ == le2.blockNum_ && index_ == le2.index_);
 }
 
-//////////////////////////////////////////////////////////////////////////////
-void LedgerEntry::pprint(void)
+Armory::ScriptPrefix LedgerEntry::getScriptType() const
 {
-   cout << "LedgerEntry: " << endl;
-   cout << "   ID      : " << getWalletID() << endl;
-   cout << "   Value   : " << getValue()/1e8 << endl;
-   cout << "   BlkNum  : " << getBlockNum() << endl;
-   cout << "   TxHash  : " << getTxHash().copySwapEndian().toHexStr() << endl;
-   cout << "   TxIndex : " << getIndex() << endl;
-   cout << "   Coinbase: " << (isCoinbase() ? 1 : 0) << endl;
-   cout << "   sentSelf: " << (isSentToSelf() ? 1 : 0) << endl;
-   cout << "   isChange: " << (isChangeBack() ? 1 : 0) << endl;
-   cout << "   isOptInRBF: " << (isOptInRBF() ? 1 : 0) << endl;
-   for (auto& addr : scrAddrSet_)
-      cout << "   scrAddr: " << addr.toHexStr() << endl;
-   cout << endl;
+   return (Armory::ScriptPrefix)ID_[0];
 }
 
 //////////////////////////////////////////////////////////////////////////////
-void LedgerEntry::pprintOneLine(void) const
+void LedgerEntry::pprint()
 {
-   printf("   Addr:%s Tx:%s:%02d   BTC:%0.3f   Blk:%06d\n", 
-                           "   ",
-                           getTxHash().getSliceCopy(0,8).toHexStr().c_str(),
-                           getIndex(),
-                           getValue()/1e8,
-                           getBlockNum());
+   std::cout << "LedgerEntry: " << std::endl;
+   std::cout << "   ID      : " << getWalletID() << std::endl;
+   std::cout << "   Value   : " << getValue()/1e8 << std::endl;
+   std::cout << "   BlkNum  : " << getBlockNum() << std::endl;
+   std::cout << "   TxHash  : " <<
+      getTxHash().copySwapEndian().toHexStr() << std::endl;
+   std::cout << "   TxIndex : " << getIndex() << std::endl;
+   std::cout << "   Coinbase: " << (isCoinbase() ? 1 : 0) << std::endl;
+   std::cout << "   sentSelf: " << (isSentToSelf() ? 1 : 0) << std::endl;
+   std::cout << "   isChange: " << (isChangeBack() ? 1 : 0) << std::endl;
+   std::cout << "   isOptInRBF: " << (isOptInRBF() ? 1 : 0) << std::endl;
+   for (const auto& addr : scrAddrSet_) {
+      std::cout << "   scrAddr: " << addr.toHexStr() << std::endl;
+   }
+   std::cout << std::endl;
+}
+
+void LedgerEntry::pprintOneLine() const
+{
+   printf("   Addr:%s Tx:%s:%02d   BTC:%0.3f   Blk:%06d\n",
+      "   ",
+      getTxHash().getSliceCopy(0,8).toHexStr().c_str(),
+      getIndex(),
+      getValue()/1e8,
+      getBlockNum()
+   );
 }
 
 //////////////////////////////////////////////////////////////////////////////
-bool LedgerEntry::operator>(LedgerEntry const & le2) const
+bool LedgerEntry::operator>(const LedgerEntry& le2) const
 {
-   if (blockNum_ != le2.blockNum_)
+   if (blockNum_ != le2.blockNum_) {
       return blockNum_ > le2.blockNum_;
-   else if (index_ != le2.index_)
+   } else if (index_ != le2.index_) {
       return index_ > le2.index_;
-   else
+   } else {
       return false;
-
+   }
 }
 
 //////////////////////////////////////////////////////////////////////////////
 void LedgerEntry::purgeLedgerMapFromHeight(
-   map<BinaryData, LedgerEntry>& leMap, 
-   uint32_t purgeFrom)
+   std::map<BinaryData, LedgerEntry>& leMap, uint32_t purgeFrom)
 {
    //Remove all entries starting this height, included.
-   
-
    BinaryData cutOffHeight(6);
    auto heightPtr = cutOffHeight.getPtr();
 
@@ -126,32 +155,26 @@ void LedgerEntry::purgeLedgerMapFromHeight(
 
 //////////////////////////////////////////////////////////////////////////////
 void LedgerEntry::purgeLedgerVectorFromHeight(
-  vector<LedgerEntry>& leVec,
-  uint32_t purgeFrom)
+  std::vector<LedgerEntry>& leVec, uint32_t purgeFrom)
 {
    //Remove all entries starting this height, included.
    uint32_t i = 0;
-
-   sort(leVec.begin(), leVec.end());
-
-   for (const auto& le : leVec)
-   {
-      if (le.getBlockNum() >= purgeFrom)
+   std::sort(leVec.begin(), leVec.end());
+   for (const auto& le : leVec) {
+      if (le.getBlockNum() >= purgeFrom) {
          break;
-
+      }
       i++;
    }
-   
-   leVec.erase(leVec.begin() +i, leVec.end());
-
+   leVec.erase(leVec.begin() + i, leVec.end());
 }
 
 //////////////////////////////////////////////////////////////////////////////
-map<BinaryData, LedgerEntry> LedgerEntry::computeLedgerMap(
-   const map<BinaryData, TxIOPair>& txioMap,
-   uint32_t startBlock, uint32_t endBlock, const string& ID,
+std::map<BinaryData, LedgerEntry> LedgerEntry::computeLedgerMap(
+   const std::map<BinaryData, TxIOPair>& txioMap,
+   uint32_t startBlock, uint32_t endBlock, const std::string& ID,
    const LMDBBlockDatabase* db, const Blockchain* bc,
-   const ZeroConfContainer* zc)
+   const Armory::ZeroConf::ZeroConfContainer* zc)
 {
    std::map<BinaryData, LedgerEntry> leMap;
 
@@ -163,7 +186,6 @@ map<BinaryData, LedgerEntry> LedgerEntry::computeLedgerMap(
 
       auto& txioVec = txnTxIOMap[txOutDBKey];
       txioVec.emplace_back(&txio.second);
-
       if (txio.second.hasTxIn()) {
          auto txInDBKey = txio.second.getDBKeyOfInput().getSliceCopy(0, 6);
 
@@ -192,18 +214,16 @@ map<BinaryData, LedgerEntry> LedgerEntry::computeLedgerMap(
       auto txioIter = txioVec.second.cbegin();
 
       //get txhash, block, txIndex and txtime
-      bool isZc = txioVec.first.startsWith(DBUtils::ZeroConfHeader_);
+      bool isZc = txioVec.first.startsWith(DBUtils::ZCPrefix);
       if (!isZc) {
          blockNum = DBUtils::hgtxToHeight(txioVec.first.getSliceRef(0, 4));
          txIndex = READ_UINT16_BE(txioVec.first.getSliceRef(4, 2));
          txTime = bc->getHeaderByHeight(blockNum, 0xFF)->getTimestamp();
-
          txHash = db->getTxHashForLdbKey(txioVec.first);
       } else {
          blockNum = UINT32_MAX;
          txIndex = READ_UINT32_BE(txioVec.first.getSliceRef(2, 4));
          txTime = (*txioIter)->getTxTime();
-
          if (ss == nullptr) {
             LOGWARN << "zc txio without a snapshot!";
          } else {
@@ -257,7 +277,7 @@ map<BinaryData, LedgerEntry> LedgerEntry::computeLedgerMap(
 
       bool isSentToSelf = false;
       bool isChangeBack = false;
-      std::shared_ptr<const ParsedTx> ptx;
+      std::shared_ptr<const Armory::ZeroConf::ParsedTx> ptx;
       if (nTxInAreOurs * nTxOutAreOurs > 0) {
          //if some of the txins AND some of the txouts are ours, this could be an STS
          //pull the txn and compare the txin and txout counts
@@ -267,9 +287,9 @@ map<BinaryData, LedgerEntry> LedgerEntry::computeLedgerMap(
             nTxOutInTx = db->getStxoCountForTx(txioVec.first.getSliceRef(0, 6));
          } else if (ss!=nullptr) {
             //grab zc by key
-            ptx = ss->getTxByKey(txioVec.first);
+            auto ptx = ss->getTxByKey(txioVec.first);
             if (ptx != nullptr) {
-               nTxOutInTx = ptx->outputs_.size();
+               nTxOutInTx = ptx->outputs.size();
             }
          }
 
@@ -328,8 +348,8 @@ map<BinaryData, LedgerEntry> LedgerEntry::computeLedgerMap(
             if (ptx == nullptr) {
                LOGWARN << "failed to get zc for ledger parsing";
             } else {
-               for (auto& txout : ptx->outputs_) {
-                  le.scrAddrSet_.emplace(txout.scrAddr_);
+               for (const auto& txout : ptx->outputs) {
+                  le.scrAddrSet_.emplace(txout.scrAddr);
                }
             }
          } else {
@@ -340,6 +360,5 @@ map<BinaryData, LedgerEntry> LedgerEntry::computeLedgerMap(
       le.scrAddrSet_ = std::move(scrAddrSet);
       leMap.emplace(txioVec.first, std::move(le));
    }
-
    return leMap;
 }

@@ -13,8 +13,7 @@
 
 /*general config for all things client and server*/
 
-#ifndef BLOCKDATAMANAGERCONFIG_H
-#define BLOCKDATAMANAGERCONFIG_H
+#pragma once
 
 #include <exception>
 #include <thread>
@@ -116,7 +115,7 @@ namespace Armory
          static ARMORY_DB_TYPE armoryDbType_;
          static SOCKET_SERVICE service_;
 
-         static BDM_INIT_MODE initMode_;
+         static BdmInitMode initMode_;
 
          static unsigned ramUsage_;
          static unsigned threadCount_;
@@ -157,7 +156,7 @@ namespace Armory
          static unsigned rewindCount(void) { return rewindCount_; }
 
          static bool checkChain(void) { return checkChain_; }
-         static BDM_INIT_MODE initMode(void) { return initMode_; }
+         static BdmInitMode initMode(void) { return initMode_; }
          static bool clearMempool(void) { return clearMempool_; }
          static bool reportProgress(void) { return reportProgress_; }
          static bool checkTxHints(void) { return checkTxHints_; }
@@ -259,18 +258,5 @@ namespace Armory
          static std::vector<BinaryData> fleshOutArgs(
             const std::string& path, const std::vector<BinaryData>& argv);
       };
-   }; //namespace Config
-}; //namespace Armory
-
-////////////////////////////////////////////////////////////////////////////////
-struct BDV_Error_Struct
-{
-   std::string errorStr_;
-   BinaryData errData_;
-   int errCode_;
-
-   BinaryData serialize(void) const;
-   void deserialize(const BinaryData&);
-};
-#endif
-
+   } //namespace Config
+} //namespace Armory

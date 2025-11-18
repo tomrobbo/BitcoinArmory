@@ -45,12 +45,12 @@ namespace Armory
          {}
       };
 
-      enum AssetAccountTypeEnum
+      enum class AssetAccountType : int
       {
-         AssetAccountTypeEnum_Plain = 0,
-         AssetAccountTypeEnum_ECDH,
-         AssetAccountTypeEnum_Imports,
-         AssetAccountTypeEnum_ImportsWO
+         Plain = 0,
+         ECDH,
+         Imports,
+         ImportsWO
       };
 
       enum AccountTypeEnum
@@ -86,11 +86,11 @@ namespace Armory
          AccountTypeEnum_Imports
       };
 
-      enum MetaAccountType
+      enum class MetaAccountType : int
       {
-         MetaAccount_Unset = 0,
-         MetaAccount_Comments,
-         MetaAccount_AuthPeers
+         Unset = 0,
+         Comments,
+         AuthPeers
       };
 
       //////////////////////////////////////////////////////////////////////////

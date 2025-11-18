@@ -392,61 +392,61 @@ namespace Armory
             std::unique_lock<std::mutex> lock(mu_);
 
             auto iter = map_->find(id);
-            if (iter == map_->end())
+            if (iter == map_->end()) {
                return;
+            }
 
             auto newMap = std::make_shared<std::map<T, U>>();
             newMap->insert(map_->begin(), map_->end());
             newMap->erase(id);
 
             std::atomic_store(&map_, newMap);
-
             count_.store(map_->size(), std::memory_order_relaxed);
          }
 
          void erase(const std::vector<T>& idVec)
          {
-            if (idVec.size() == 0)
+            if (idVec.empty()) {
                return;
-
+            }
             auto newMap = std::make_shared<std::map<T, U>>();
 
             std::unique_lock<std::mutex> lock(mu_);
             newMap->insert(map_->begin(), map_->end());
 
             bool erased = false;
-            for (auto& id : idVec)
-            {
-               if (newMap->erase(id) != 0)
+            for (auto& id : idVec) {
+               if (newMap->erase(id) != 0) {
                   erased = true;
+               }
             }
 
-            if (erased)
+            if (erased) {
                std::atomic_store(&map_, newMap);
-
+            }
             count_.store(map_->size(), std::memory_order_relaxed);
          }
 
          void erase(const std::deque<T>& idVec)
          {
-            if (idVec.size() == 0)
+            if (idVec.empty()) {
                return;
-
+            }
             auto newMap = std::make_shared<std::map<T, U>>();
 
             std::unique_lock<std::mutex> lock(mu_);
             newMap->insert(map_->begin(), map_->end());
 
             bool erased = false;
-            for (auto& id : idVec)
-            {
-               if (newMap->erase(id) != 0)
+            for (auto& id : idVec) {
+               if (newMap->erase(id) != 0) {
                   erased = true;
+               }
             }
 
-            if (erased)
+            if (erased) {
                std::atomic_store(&map_, newMap);
-
+            }
             count_.store(map_->size(), std::memory_order_relaxed);
          }
 
@@ -465,8 +465,8 @@ namespace Armory
          std::shared_ptr<const std::map<T, U>> get(void) const
          {
             auto retMap = std::atomic_load(&map_);
-            auto retConstMap = 
-               std::static_pointer_cast<const std::map<T, U>>(retMap);
+            auto retConstMap = std::static_pointer_cast<const std::map<T, U>>(
+               retMap);
             return retConstMap;
          }
 
@@ -476,13 +476,17 @@ namespace Armory
             std::unique_lock<std::mutex> lock(mu_);
 
             std::atomic_store(&map_, newMap);
-
             count_.store(0, std::memory_order_relaxed);
          }
 
          size_t size(void) const
          {
             return count_.load(std::memory_order_relaxed);
+         }
+
+         bool empty(void) const
+         {
+            return size() == 0;
          }
       };
 

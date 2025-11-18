@@ -6,22 +6,25 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
+#include <cstring>
+
 #include "WalletIdTypes.h"
+#include <Utils/BtcUtils.h>
+#include <Utils/varint.h>
+#include <Utils/BitcoinSettings.h>
 #include "DerivationScheme.h"
 #include "Assets.h"
 #include "WalletHeader.h"
 #include "Seeds/Seeds.h"
-#include "../BtcUtils.h"
-#include "../BitcoinSettings.h"
 
+using namespace Armory;
 using namespace Armory::Wallets;
 
 namespace
 {
-   BinaryData computeID(const SecureBinaryData& pubkey)
+   BinaryData computeID(BinaryDataRef pubkey)
    {
-      BinaryDataRef bdr(pubkey);
-      auto h160 = BtcUtils::getHash160(bdr);
+      auto h160 = BtcUtils::getHash160(pubkey);
 
       BinaryWriter bw;
       bw.put_uint8_t(Armory::Config::BitcoinSettings::getPubkeyHashPrefix());
@@ -208,7 +211,7 @@ AddressAccountId AddressAccountId::deserializeValue(BinaryRefReader& brr)
    try {
       auto len = brr.get_var_int();
       return AddressAccountId(brr.get_BinaryData(len));
-   } catch (const VarIntException&) {
+   } catch (const BtcUtils::VarIntException&) {
       throw IdException("[AddressAccountId::deserializeValue] invalid varint");
    }
 }
@@ -742,7 +745,7 @@ EncryptionKeyId EncryptionKeyId::deserializeValue(BinaryRefReader& brr)
    try {
       auto len = brr.get_var_int();
       return EncryptionKeyId(brr.get_BinaryData(len));
-   } catch (const VarIntException&) {
+   } catch (const BtcUtils::VarIntException&) {
       throw IdException("EncryptionKeyId::deserializeValue");
    }
 }

@@ -7,7 +7,11 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "WebSocketClient.h"
-#include "BIP15x_Handshake.h"
+#include <Utils/BIP15x_Handshake.h>
+#include <Utils/ArmoryConfig.h>
+#include <Wallets/AuthorizedPeers.h>
+#include "DBClientClasses.h"
+#include "bdmenums.h"
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
@@ -55,6 +59,11 @@ WebSocketClient::~WebSocketClient()
    if (serviceThr_.joinable()) {
       serviceThr_.join();
    }
+}
+
+SocketType WebSocketClient::type() const
+{
+   return SocketType::WS;
 }
 
 ////
@@ -639,10 +648,9 @@ void WebSocketClient::promptUser(
       return;
    }
 
-   BinaryData key_copy(keyRef);
 
    //create lambda to handle user prompt
-   auto promptLbd = [this, key_copy, name](void)->void
+   auto promptLbd = [this, key_copy=SecureBinaryData{keyRef}, name](void)->void
    {
       if (this->userPromptLambda_(key_copy, name)) {
          //the lambda returns true, the user accepted the key, add it to peers

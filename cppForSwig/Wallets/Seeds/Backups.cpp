@@ -7,10 +7,10 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "Backups.h"
-#include "Cryptography.h"
-#include "BtcUtils.h"
-#include "../WalletIdTypes.h"
-#include "../KDF.h"
+#include <Utils/Cryptography.h>
+#include <Utils/BtcUtils.h>
+#include "WalletIdTypes.h"
+#include "KDF.h"
 #include "Seeds.h"
 #include "Wallets.h"
 #include "IOHeader.h"
@@ -27,9 +27,8 @@ extern "C" {
 
 #define WALLET_RESTORE_LOOKUP 1000
 
+using namespace Armory;
 using namespace Armory::Seeds;
-using namespace Armory::Assets;
-using namespace Armory::Wallets;
 using namespace std::string_view_literals;
 
 /***
@@ -705,7 +704,7 @@ std::pair<SecureBinaryData, SecureBinaryData> SecurePrint::encrypt(
    /*
    2. extend the passphrase
    */
-   Encryption::KdfRomix kdf{spKDFBytes, 1, salt_};
+   Wallets::Encryption::KdfRomix kdf{spKDFBytes, 1, salt_.getRef()};
    auto encryptionKey = kdf.DeriveKey(passphrase_);
 
    /*
@@ -789,7 +788,7 @@ SecureBinaryData SecurePrint::decrypt(
    }
 
    //kdf the passphrase
-   Encryption::KdfRomix kdf{spKDFBytes, 1, salt_};
+   Wallets::Encryption::KdfRomix kdf{spKDFBytes, 1, salt_.getRef()};
    auto encryptionKey = kdf.DeriveKey(passphrase);
 
    //
@@ -824,14 +823,10 @@ SecureBinaryData SecurePrint::decrypt(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-////
-//// Helpers
-////
-////////////////////////////////////////////////////////////////////////////////
-
-/////////////////////////////// -- backup strings -- ///////////////////////////
+// Helpers
 std::unique_ptr<WalletBackup> Helpers::getWalletBackup(
-   std::shared_ptr<AssetWallet_Single> wltPtr, bool isPriv, BackupType bType)
+   std::shared_ptr<Wallets::AssetWallet_Single> wltPtr, bool isPriv,
+   BackupType bType)
 {
    std::unique_ptr<ClearTextSeed> clearTextSeed;
 
@@ -845,7 +840,7 @@ std::unique_ptr<WalletBackup> Helpers::getWalletBackup(
       } else {
          //wallet has no seed, maybe it's a legacy Armory wallet, where
          //the seed and root are the same
-         auto root = std::dynamic_pointer_cast<AssetEntry_ArmoryLegacyRoot>(
+         auto root = std::dynamic_pointer_cast<Assets::AssetEntry_ArmoryLegacyRoot>(
             wltPtr->getRoot());
          if (root == nullptr) {
             return nullptr;
@@ -857,7 +852,7 @@ std::unique_ptr<WalletBackup> Helpers::getWalletBackup(
                root->getSeedType()));
       }
    } else {
-      auto root = std::dynamic_pointer_cast<AssetEntry_ArmoryLegacyRoot>(
+      auto root = std::dynamic_pointer_cast<Assets::AssetEntry_ArmoryLegacyRoot>(
          wltPtr->getRoot());
       if (root == nullptr) {
          LOGWARN << "public backups needs implemented for non legacy roots!";
@@ -1046,7 +1041,7 @@ std::unique_ptr<Backup_Base58> Helpers::getBase58BackupString(
 ////////////////////////////// -- restore methods -- ///////////////////////////
 RestoreResult Helpers::restoreFromBackup(
    std::unique_ptr<WalletBackup> backup, const UserPrompt& callback,
-   const IO::CreateWalletParams& params)
+   const Wallets::IO::CreateWalletParams& params)
 {
    std::unique_ptr<ClearTextSeed> seed = nullptr;
    auto bType = backup->type();
@@ -1095,7 +1090,8 @@ RestoreResult Helpers::restoreFromBackup(
    }
 
    //return wallet
-   auto wlt = AssetWallet_Single::createFromSeed(std::move(seed), params);
+   auto wlt = Wallets::AssetWallet_Single::createFromSeed(
+      std::move(seed), params);
    return {wlt, merge};
 }
 
@@ -1401,7 +1397,7 @@ std::string_view Backup_Easy16::getRoot(LineIndex li, bool encrypted) const
 
    //all e16 backup strings come with a padded null byte, capnp expects this
    //byte at buffer[size], so we do not cover it with the string_view
-   return std::string_view(iter->toCharPtr(), iter->getSize() - 1);
+   return {iter->getCharPtr(), iter->getSize() - 1};
 }
 
 std::string_view Backup_Easy16::getChaincode(LineIndex li, bool encrypted) const
@@ -1421,7 +1417,7 @@ std::string_view Backup_Easy16::getChaincode(LineIndex li, bool encrypted) const
             " missing encrypted line");
       }
    }
-   return std::string_view(iter->toCharPtr(), iter->getSize() - 1);
+   return {iter->getCharPtr(), iter->getSize() - 1};
 }
 
 std::string_view Backup_Easy16::getSpPass() const
@@ -1429,7 +1425,7 @@ std::string_view Backup_Easy16::getSpPass() const
    if (spPass_.empty()) {
       return {};
    }
-   return std::string_view(spPass_.toCharPtr(), spPass_.getSize());
+   return {spPass_.getCharPtr(), spPass_.getSize()};
 }
 
 ////
@@ -1484,7 +1480,7 @@ Backup_Easy16Public::Backup_Easy16Public(BackupType bType,
    }
 
    //prepare backupId for computation
-   auto walletId = generateWalletIdRaw(pubkeyUnc, chaincode,
+   auto walletId = Wallets::generateWalletIdRaw(pubkeyUnc, chaincode,
       SeedType::ArmoryLegacyPublic);
    uint8_t prefix = 1;
    if (pubkeyComp.getPtr()[0] == 0x03) {
@@ -1518,12 +1514,14 @@ Backup_Base58::~Backup_Base58()
 
 std::string_view Backup_Base58::getBase58String() const
 {
-   return std::string_view(b58String_.toCharPtr(), b58String_.getSize());
+   return {b58String_.getCharPtr(), b58String_.getSize()};
 }
 
-std::unique_ptr<Backup_Base58> Backup_Base58::fromString(const std::string_view& strV)
+std::unique_ptr<Backup_Base58> Backup_Base58::fromString(
+   const std::string_view& strV)
 {
-   return std::make_unique<Backup_Base58>(SecureBinaryData::fromStringView(strV));
+   return std::make_unique<Backup_Base58>(
+      SecureBinaryData::fromStringView(strV));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1550,7 +1548,7 @@ std::unique_ptr<Backup_BIP39> Backup_BIP39::fromMnemonicString(std::string_view 
 
 std::string_view Backup_BIP39::getMnemonicString() const
 {
-   return std::string_view(mnemonicString_.toCharPtr(), mnemonicString_.getSize());
+   return {mnemonicString_.getCharPtr(), mnemonicString_.getSize()};
 }
 
 ///////////////////////////////// RestorePrompt ////////////////////////////////

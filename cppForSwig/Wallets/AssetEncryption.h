@@ -9,8 +9,8 @@
 #ifndef _H_ASSET_ENCRYPTION
 #define _H_ASSET_ENCRYPTION
 
-#include "BinaryData.h"
-#include "SecureBinaryData.h"
+#include <map>
+#include <Utils/SecureBinaryData.h>
 #include "WalletIdTypes.h"
 
 #define CIPHER_BYTE              0xB2

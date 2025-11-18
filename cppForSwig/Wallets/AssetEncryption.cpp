@@ -6,11 +6,11 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
+#include "Utils/Cryptography.h"
+#include "Utils/DBUtils.h"
+#include "Utils/BtcUtils.h"
 #include "AssetEncryption.h"
-#include "Cryptography.h"
-#include "BtcUtils.h"
 #include "KDF.h"
-#include "DBUtils.h"
 #include "GetPassphrase.h"
 
 #define CIPHER_VERSION     0x00000001
@@ -244,7 +244,7 @@ unique_ptr<CipherData> CipherData::deserialize(BinaryRefReader& brr)
             throw CipherException("invalid ciphertext length");
          }
 
-         auto cipherText = brr.get_SecureBinaryData(len);
+         SecureBinaryData cipherText{brr.get_BinaryDataRef(len)};
          len = brr.get_var_int();
          if (len > brr.getSizeRemaining()) {
             throw CipherException("invalid cipher length");
@@ -470,7 +470,7 @@ EncryptionKeyId ClearTextEncryptionKey::computeId(
 {
    //treat value as scalar, get pubkey for it
    auto hashedKey = BtcUtils::getHash256(key);
-   auto pubkey = Cryptography::ECDSA::computePublicKey(hashedKey);
+   auto pubkey = Cryptography::ECDSA::computePublicKey(hashedKey.getRef());
 
    //HMAC the pubkey, get last 16 bytes as ID
    return EncryptionKeyId(

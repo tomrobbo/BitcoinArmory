@@ -10,13 +10,18 @@
 #include <string_view>
 
 #include "Manager.h"
-#include "Notifications.h"
+#include "Utils/BtcUtils.h"
+#include "Utils/DBUtils.h"
+
+#include "Wallets/Wallets.h"
+#include "Wallets/IOHeader.h"
+#include "Wallets/Accounts/AddressAccounts.h"
 #include "Wallets/Seeds/Backups.h"
+#include "Wallets/Seeds/Seeds.h"
+
+#include "Notifications.h"
 #include "../PassphrasePrompt.h"
-#include "../Wallets/Seeds/Seeds.h"
-#include "../Wallets/KDF.h"
-#include "../Wallets/IOHeader.h"
-#include "../AsyncClient.h"
+#include "AsyncClient.h"
 
 using namespace Armory;
 using namespace Armory::Bridge;

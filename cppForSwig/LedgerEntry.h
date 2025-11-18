@@ -5,21 +5,30 @@
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
 //                                                                            //
-//  Copyright (C) 2016-2021, goatpig                                          //
+//  Copyright (C) 2016-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
-#ifndef _LEDGER_ENTRY_H
-#define _LEDGER_ENTRY_H
 
-#include "BinaryData.h"
-#include "BtcUtils.h"
-#include "BlockchainDatabase/BlockObj.h"
-#include "BlockchainDatabase/Blockchain.h"
-#include "BlockchainDatabase/StoredBlockObj.h"
-#include "ZeroConf.h"
+#pragma once
 
+#include <set>
+#include <map>
+#include <vector>
+#include <functional>
+#include <Utils/BinaryData.h>
+
+namespace Armory
+{
+   namespace ZeroConf
+   {
+      class ZeroConfContainer;
+   }
+}
+
+class Blockchain;
+class TxIOPair;
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -61,8 +70,9 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-namespace capnp {
-   class MessageReader;
+namespace Armory
+{
+   enum class ScriptPrefix : uint8_t;
 }
 
 class LMDBBlockDatabase;
@@ -70,42 +80,11 @@ class LMDBBlockDatabase;
 class LedgerEntry
 {
 public:
-   LedgerEntry(void) :
-      value_(0),
-      blockNum_(UINT32_MAX),
-      txHash_(BtcUtils::EmptyHash),
-      index_(UINT32_MAX),
-      txTime_(0),
-      isCoinbase_(false),
-      isSentToSelf_(false),
-      isChangeBack_(false),
-      isOptInRBF_(false),
-      usesWitness_(false) {}
-
-   LedgerEntry(const std::string & ID,
-               int64_t val, 
-               uint32_t blkNum, 
-               BinaryData const & txhash, 
-               uint32_t idx,
-               uint32_t txtime,
-               bool isCoinbase,
-               bool isToSelf,
-               bool isChange,
-               bool isOptInRBF,
-               bool usesWitness,
-               bool isChainedZC) :
-      ID_(ID),
-      value_(val),
-      blockNum_(blkNum),
-      txHash_(txhash),
-      index_(idx),
-      txTime_(txtime),
-      isCoinbase_(isCoinbase),
-      isSentToSelf_(isToSelf),
-      isChangeBack_(isChange),
-      isOptInRBF_(isOptInRBF),
-      usesWitness_(usesWitness),
-      isChainedZC_(isChainedZC) {}
+   LedgerEntry(void);
+   LedgerEntry(const std::string&, int64_t, uint32_t,
+      const BinaryData&, uint32_t, uint32_t,
+      bool, bool, bool,
+      bool, bool, bool);
 
    std::string         getWalletID(void) const;
    int64_t             getValue(void) const     { return value_;         }
@@ -120,48 +99,42 @@ public:
    bool                usesWitness(void) const  { return usesWitness_;   }
    bool                isChainedZC(void) const  { return isChainedZC_;   }
 
-   SCRIPT_PREFIX getScriptType(void) const {return (SCRIPT_PREFIX)ID_[0];}
+   Armory::ScriptPrefix getScriptType(void) const;
 
-   void setWalletID(const std::string& bd);
-   void changeBlkNum(uint32_t newHgt) {blockNum_ = newHgt; }
-      
-   bool operator<(LedgerEntry const & le2) const;
-   bool operator>(LedgerEntry const & le2) const;
-   bool operator==(LedgerEntry const & le2) const;
+   void setWalletID(const std::string&);
+   void changeBlkNum(uint32_t);
+   const std::set<BinaryData>& getScrAddrList(void) const;
+
+   bool operator<(const LedgerEntry&) const;
+   bool operator>(const LedgerEntry&) const;
+   bool operator==(const LedgerEntry&) const;
 
    void pprint(void);
    void pprintOneLine(void) const;
 
-   static void purgeLedgerMapFromHeight(std::map<BinaryData, LedgerEntry>& leMap,
-                                        uint32_t purgeFrom);
-   static void purgeLedgerVectorFromHeight(std::vector<LedgerEntry>& leMap,
-      uint32_t purgeFrom);
-
+   static void purgeLedgerMapFromHeight(
+      std::map<BinaryData, LedgerEntry>&,
+      uint32_t);
+   static void purgeLedgerVectorFromHeight(
+      std::vector<LedgerEntry>&,
+      uint32_t);
    static std::map<BinaryData, LedgerEntry> computeLedgerMap(
-                                const std::map<BinaryData, TxIOPair>& txioMap,
-                                uint32_t startBlock, uint32_t endBlock,
-                                const std::string& ID,
-                                const LMDBBlockDatabase* db,
-                                const Blockchain* bc,
-                                const ZeroConfContainer* zc);
-   
-   const std::set<BinaryData>& getScrAddrList(void) const
-   { return scrAddrSet_; }
+      const std::map<BinaryData, TxIOPair>&,
+      uint32_t, uint32_t, const std::string&,
+      const LMDBBlockDatabase*, const Blockchain*,
+      const Armory::ZeroConf::ZeroConfContainer*);
 
 public:
-
    static LedgerEntry EmptyLedger_;
    static std::map<BinaryData, LedgerEntry> EmptyLedgerMap_;
    static BinaryData EmptyID_;
 
 private:
-   
-   //holds either a scrAddr or a walletId
-   std::string      ID_;
+   std::string      ID_; //holds either a scrAddr or a walletId
    int64_t          value_;
    uint32_t         blockNum_;
    BinaryData       txHash_;
-   uint32_t         index_;  // either a tx index, txout index or txin index
+   uint32_t         index_; // either a tx index, txout index or txin index
    uint32_t         txTime_ = 0;
    bool             isCoinbase_ = false;
    bool             isSentToSelf_ = false;
@@ -223,5 +196,3 @@ private:
    const std::function<uint32_t(uint32_t)>            getPageIdForBlockHeight_;
    const std::function<uint32_t(void)>                getPageCount_;
 };
-
-#endif

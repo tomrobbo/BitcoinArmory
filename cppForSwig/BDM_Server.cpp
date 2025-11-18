@@ -7,9 +7,18 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "BDM_Server.h"
-#include "ArmoryErrors.h"
+#include <Utils/ArmoryErrors.h>
+#include <Utils/ArmoryConfig.h>
+#include <BlockchainDatabase/BlockUtils.h>
+#include <BlockchainDatabase/lmdb_wrapper.h>
+#include <ZeroConf/Parser.h>
+#include <ZeroConf/Utils.h>
+#include <ZeroConf/Notifications.h>
+#include <btc/ecc.h>
+
 #include "SocketWritePayload.h"
-#include "BlockchainDatabase/BlockUtils.h"
+#include "Server.h"
+#include "WebSocketMessage.h"
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
@@ -218,11 +227,13 @@ namespace {
             results.reserve(txHashList.size());
             for (auto txHash : txHashList) {
                BinaryDataRef hashBd(txHash.begin(), txHash.end());
-               auto tx = bdv->getTxByHash(hashBd);
-               if (!tx.isInitialized()) {
+               try {
+                  auto tx = bdv->getTxByHash(hashBd);
+                  results.emplace_back(std::move(tx));
+               } catch (const std::exception&) {
+                  //could not get the tx, ignore
                   continue;
                }
-               results.emplace_back(std::move(tx));
             }
 
             auto builder = ReplyBuilder::getNew(bdv);
@@ -722,7 +733,7 @@ namespace {
    ////
    std::unique_ptr<capnp::MessageBuilder> parseStaticRequest(
       StaticRequest::Reader& request, unsigned msgId, Clients* clients,
-      BdvIdKey bdvId, const btc_pubkey& pubkey)
+      BdvIdKey bdvId, const btc_pubkey_& pubkey)
    {
       auto result = std::make_unique<capnp::MallocMessageBuilder>();
       auto reply = result->initRoot<Codec::BDV::Reply>();
@@ -914,7 +925,7 @@ namespace {
 ///////////////////////////////////////////////////////////////////////////////
 //BDV_Payload
 BDV_Payload::BDV_Payload(BinaryData packet, BdvPtr bdv,
-   BdvIdKey id, const btc_pubkey& key) :
+   BdvIdKey id, const btc_pubkey_& key) :
    packetData_(std::move(packet)), bdvPtr_(bdv), bdvID_(id), pubkey_(key)
 {}
 
@@ -943,7 +954,7 @@ uint64_t BDV_Payload::getBdvID() const
 }
 
 ////
-const btc_pubkey& BDV_Payload::getPubkey() const
+const btc_pubkey_& BDV_Payload::getPubkey() const
 {
    return pubkey_;
 }
@@ -1108,7 +1119,7 @@ void BDV_Server_Object::init()
    auto zcstruct = createZcNotification(addrSet);
    auto zcAction = dynamic_cast<BDV_Notification_ZC*>(zcstruct.get());
    if (zcAction != nullptr &&
-      !zcAction->packet.scrAddrToTxioKeys_.empty()) {
+      !zcAction->packet->scrAddrToTxioKeys.empty()) {
       scanWallets(std::move(zcstruct));
    }
 
@@ -1169,7 +1180,7 @@ void BDV_Server_Object::processNotification(
          //init notif builder
          bool haveZcs = false;
          if (payload->zcPurgePacket != nullptr &&
-            !payload->zcPurgePacket->invalidatedZcKeys_.empty()) {
+            !payload->zcPurgePacket->invalidatedZcKeys.empty()) {
             notifs.initNotifs(2);
             haveZcs = true;
          } else {
@@ -1181,20 +1192,20 @@ void BDV_Server_Object::processNotification(
          auto heightNotif = notifList[0];
          auto blockData = heightNotif.initNewBlock();
 
-         blockData.setHeight(payload->reorgState.newTop_->getBlockHeight());
-         if (!payload->reorgState.prevTopStillValid_) {
+         blockData.setHeight(payload->reorgState.newTop->getBlockHeight());
+         if (!payload->reorgState.prevTopStillValid) {
             blockData.setBranchHeight(
-               payload->reorgState.reorgBranchPoint_->getBlockHeight());
+               payload->reorgState.reorgBranchPoint->getBlockHeight());
          }
 
          //invalidated zc ids
          if (haveZcs) {
             auto zcNotif = notifList[1];
             auto zcIdList = zcNotif.initInvalidatedZc(
-               payload->zcPurgePacket->invalidatedZcKeys_.size());
+               payload->zcPurgePacket->invalidatedZcKeys.size());
 
             unsigned i=0;
-            for (const auto& zcId : payload->zcPurgePacket->invalidatedZcKeys_) {
+            for (const auto& zcId : payload->zcPurgePacket->invalidatedZcKeys) {
                zcIdList.set(i++, capnp::Data::Builder(
                   (uint8_t*)zcId.second.getPtr(), zcId.second.getSize()));
             }
@@ -1221,8 +1232,8 @@ void BDV_Server_Object::processNotification(
       {
          unsigned notifCount = 1;
          auto payload = std::dynamic_pointer_cast<BDV_Notification_ZC>(notifPtr);
-         if (payload->packet.purgePacket_ != nullptr &&
-            !payload->packet.purgePacket_->invalidatedZcKeys_.empty()) {
+         if (payload->packet->purgePacket != nullptr &&
+            !payload->packet->purgePacket->invalidatedZcKeys.empty()) {
             notifCount = 2;
          }
 
@@ -1235,7 +1246,7 @@ void BDV_Server_Object::processNotification(
          if (notifCount == 2) {
             //invalidated zc hashes
             const auto& invalidatedHashes =
-               payload->packet.purgePacket_->invalidatedZcKeys_;
+               payload->packet->purgePacket->invalidatedZcKeys;
             auto capnNotif = notifList[1];
             auto invalNotif = capnNotif.initInvalidatedZc(
                invalidatedHashes.size());
@@ -1542,7 +1553,7 @@ const std::string& BDV_Server_Object::getLedgerDelegate(
 std::unique_ptr<BDV_Notification_ZC> BDV_Server_Object::createZcNotification(
    const std::set<BinaryDataRef>& addrSet)
 {
-   ZcNotificationPacket packet(getID());
+   auto packet = std::make_shared<ZeroConf::ZcNotificationPacket>(getID());
 
    //grab zc map
    auto ss = zeroConfCont_->getSnapshot();
@@ -1550,10 +1561,10 @@ std::unique_ptr<BDV_Notification_ZC> BDV_Server_Object::createZcNotification(
       for (auto& addr : addrSet)
       try {
          const auto& keySet = ss->getTxioKeysForScrAddr(addr);
-         auto iter = packet.scrAddrToTxioKeys_.emplace(
-            addr, std::set<BinaryData>());
+         auto iter = packet->scrAddrToTxioKeys.emplace(
+            addr, std::set<BinaryData>{});
 
-         for (auto& key : keySet) {
+         for (const auto& key : keySet) {
             iter.first->second.emplace(key);
          }
       } catch (const std::range_error&) {
@@ -1561,9 +1572,8 @@ std::unique_ptr<BDV_Notification_ZC> BDV_Server_Object::createZcNotification(
       }
    }
 
-   packet.ssPtr_ = ss;
-   auto notifPtr = std::make_unique<BDV_Notification_ZC>(packet);
-   return notifPtr;
+   packet->ssPtr = ss;
+   return std::make_unique<BDV_Notification_ZC>(packet);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1613,8 +1623,8 @@ void Clients::init()
    unregThread_ = std::thread(unregistrationThread);
 
    unsigned innerThreadCount = 2;
-   if (Armory::Config::DBSettings::getDbType() == ARMORY_DB_SUPER &&
-      Armory::Config::DBSettings::getServiceType() != SERVICE_UNITTEST) {
+   if (Config::DBSettings::getDbType() == ARMORY_DB_TYPE::Super &&
+      Config::DBSettings::getServiceType() != SERVICE_UNITTEST) {
       innerThreadCount = std::thread::hardware_concurrency();
    }
    for (unsigned i = 0; i < innerThreadCount; i++) {
@@ -1622,7 +1632,7 @@ void Clients::init()
       controlThreads_.push_back(std::thread(parserThread));
    }
 
-   auto callbackPtr = std::make_unique<ZeroConfCallbacks_BDV>(this);
+   auto callbackPtr = std::make_unique<ZeroConf::ZeroConfCallbacks_BDV>(this);
    bdm_->registerZcCallbacks(std::move(callbackPtr));
 }
 
@@ -1757,7 +1767,7 @@ bool Clients::registerBDV(const std::string& magicWord, BdvIdKey bdvId)
       return false;
    }
    auto thisMagicWord =
-      Armory::Config::BitcoinSettings::getMagicBytes().toHexStr();
+      Config::BitcoinSettings::getMagicBytes().toHexStr();
    if (thisMagicWord != magicWord) {
       return false;
    }
@@ -2059,10 +2069,9 @@ void Clients::broadcastThroughRPC()
             //fulfill the batch to parse the tx
             try {
                //set the tx body and batch promise
-               auto txPtr = batchPtr->zcMap_.begin()->second;
-               txPtr->tx_.unserialize(*packet.rawTx_);
-               txPtr->tx_.setTxTime(time(0));
-               batchPtr->isReadyPromise_->set_value(ArmoryErrorCodes::Success);
+               auto txPtr = batchPtr->zcMap.begin()->second;
+               txPtr->setTx(*packet.rawTx_, time(0));
+               batchPtr->isReadyPromise->set_value(ArmoryErrorCodes::Success);
             } catch (const std::future_error&) {
                LOGWARN << "rpc broadcast promise was already set";
             }
@@ -2085,22 +2094,21 @@ void Clients::broadcastThroughRPC()
             //cleanup watcher map
             auto watcherEntry = zcPtr->eraseWatcherEntry(*hashes.begin());
             if (watcherEntry != nullptr) {
-               if (!watcherEntry->extraRequestors_.empty()) {
+               if (!watcherEntry->extraRequestors.empty()) {
                   std::unique_lock<std::mutex> lock(BDVs_.mu);
-                  for (auto& extraReq : watcherEntry->extraRequestors_) {
+                  for (auto& extraReq : watcherEntry->extraRequestors) {
                      auto bdvIter = BDVs_.bdvs.find(extraReq);
                      if (bdvIter == BDVs_.bdvs.end()) {
                         continue;
                      }
-
                      packet.extraRequestors_.emplace(bdvIter->second);
                   }
                }
             }
 
             //fail the batch promise
-            batchPtr->isReadyPromise_->set_exception(
-               std::make_exception_ptr(ZcBatchError()));
+            batchPtr->isReadyPromise->set_exception(
+               std::make_exception_ptr(ZeroConf::ZcBatchError{}));
 
             //notify the bdv of the error
             std::stringstream errMsg;
@@ -2226,13 +2234,13 @@ void Clients::p2pBroadcast(BdvIdKey bdvId, std::vector<BinaryDataRef>& rawZCs)
    }
 
    auto errorCallback = [this, bdvId](
-      std::vector<ZeroConfBatchFallbackStruct> zcVec)->void
+      std::vector<ZeroConf::ZeroConfBatchFallbackStruct> zcVec)->void
    {
       std::vector<RpcBroadcastPacket> rpcPackets;
       auto bdvPtr = BDVs_.get(bdvId);
       for (const auto& fallbackStruct : zcVec) {
          std::set<std::shared_ptr<BDV_Server_Object>> extraRequestors;
-         for (const auto& extraBdvId : fallbackStruct.extraRequestors_) {
+         for (const auto& extraBdvId : fallbackStruct.extraRequestors) {
             auto secondBdv = BDVs_.get(extraBdvId);
             if (secondBdv == nullptr) {
                continue;
@@ -2240,13 +2248,13 @@ void Clients::p2pBroadcast(BdvIdKey bdvId, std::vector<BinaryDataRef>& rawZCs)
             extraRequestors.emplace(secondBdv);
          }
 
-         if (fallbackStruct.err_ != ArmoryErrorCodes::ZcBatch_Timeout) {
+         if (fallbackStruct.err != ArmoryErrorCodes::ZcBatch_Timeout) {
             //signal error to caller
             auto notifPacket = std::make_shared<BDV_Notification_Packet>();
             notifPacket->bdvPtr = bdvPtr;
             notifPacket->notifPtr = std::make_shared<BDV_Notification_Error>(
                bdvId,
-               (int)fallbackStruct.err_, fallbackStruct.txHash_, std::string{}
+               (int)fallbackStruct.err, fallbackStruct.txHash, std::string{}
             );
             innerBDVNotifStack_.push_back(std::move(notifPacket));
 
@@ -2256,7 +2264,7 @@ void Clients::p2pBroadcast(BdvIdKey bdvId, std::vector<BinaryDataRef>& rawZCs)
                notifPacket->bdvPtr = extraBDV;
                notifPacket->notifPtr = std::make_shared<BDV_Notification_Error>(
                   extraBDV->getID(),
-                  (int)fallbackStruct.err_, fallbackStruct.txHash_, std::string{}
+                  (int)fallbackStruct.err, fallbackStruct.txHash, std::string{}
                );
                innerBDVNotifStack_.push_back(std::move(notifPacket));
             }
@@ -2267,7 +2275,7 @@ void Clients::p2pBroadcast(BdvIdKey bdvId, std::vector<BinaryDataRef>& rawZCs)
 
          //tally timed out zc
          RpcBroadcastPacket packet;
-         packet.rawTx_ = fallbackStruct.rawTxPtr_;
+         packet.rawTx_ = fallbackStruct.rawTxPtr;
          packet.bdvPtr_ = bdvPtr;
          packet.extraRequestors_ = std::move(extraRequestors);
          rpcPackets.emplace_back(std::move(packet));

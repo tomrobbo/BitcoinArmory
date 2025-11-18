@@ -1,28 +1,22 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2018-2024, goatpig.                                         //
+//  Copyright (C) 2018-2025, goatpig.                                         //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-/***
-Handle codec and socketing for armory client
-***/
-
-#ifndef _ASYNCCLIENT_H
-#define _ASYNCCLIENT_H
+#pragma once
 
 #include <thread>
+#include <list>
 
+#include "Utils/ReentrantLock.h"
 #include "StringSockets.h"
-#include "bdmenums.h"
-#include "log.h"
-#include "TxClasses.h"
-#include "ArmoryConfig.h"
 #include "WebSocketClient.h"
 #include "SocketWritePayload.h"
-#include "Wallets/GetPassphrase.h"
+#include "TxClasses.h"
+#include "DBClientClasses.h"
 
 namespace Armory
 {
@@ -98,11 +92,8 @@ public:
    }
 };
 
-
-///////////////////////////////////////////////////////////////////////////////
 namespace AsyncClient
 {
-   ////////////////////////////////////////////////////////////////////////////
    struct CombinedBalances
    {
       std::string walletId;
@@ -422,5 +413,4 @@ namespace AsyncClient
       void getTxsByHash(
          const std::set<BinaryData>&, const TxBatchCallback&);
    };
-};
-#endif
+} //namespace AsyncClient

@@ -11,7 +11,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "KDF.h"
-#include "Cryptography.h"
+#include "Utils/Cryptography.h"
 
 #define KDF_ROMIX_VERSION  0x00000001
 #define KDF_ROMIX_PREFIX   0xC100
@@ -336,7 +336,7 @@ BinaryData KeyDerivationFunction_Romix::initialize(
 SecureBinaryData KeyDerivationFunction_Romix::deriveKey(
    const SecureBinaryData& rawKey) const
 {
-   KdfRomix kdfObj{memTargetBytes_, iterations_, salt_};
+   KdfRomix kdfObj{memTargetBytes_, iterations_, salt_.getRef()};
    return kdfObj.DeriveKey(rawKey);
 }
 

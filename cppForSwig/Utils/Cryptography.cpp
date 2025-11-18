@@ -1,10 +1,16 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2019, goatpig                                               //
+//  Copyright (C) 2011-2015, Armory Technologies, Inc.                        //
+//  Distributed under the GNU Affero General Public License (AGPL v3)         //
+//  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
+//                                                                            //
+//                                                                            //
+//  Copyright (C) 2016-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
+
 #include "Cryptography.h"
 #include "log.h"
 #include <secp256k1.h>
@@ -351,7 +357,8 @@ SecureBinaryData ECDSA::computeChainedPrivateKey(
    }
 
    // Adding extra entropy to chaincode by xor'ing with hash256 of pubkey
-   BinaryData chainMod  = binPubKey.getHash256();
+   BinaryData chainMod(32);
+   Hash::getHash256(binPubKey.getRef(), chainMod.getPtr());
    BinaryData chainOrig = chainCode.getRawCopy();
    BinaryData chainXor(32);
 
@@ -386,7 +393,7 @@ SecureBinaryData ECDSA::privKeyScalarMultiply(
 /////////////////////////////////////////////////////////////////////////////
 // public keys
 SecureBinaryData ECDSA::computePublicKey(
-   const SecureBinaryData& cppPrivKey, bool compressed)
+   BinaryDataRef cppPrivKey, bool compressed)
 {
    if (cppPrivKey.getSize() != 32) {
       throw std::runtime_error("invalid priv key size");
@@ -418,7 +425,7 @@ SecureBinaryData ECDSA::computePublicKey(
    return result;
 }
 
-bool ECDSA::verifyPublicKeyValid(const SecureBinaryData& pubKey)
+bool ECDSA::verifyPublicKeyValid(BinaryDataRef pubKey)
 {
    if (CRYPTO_DEBUG) {
       std::cout << "BinPub: " << pubKey.toHexStr() << std::endl;
@@ -433,8 +440,7 @@ bool ECDSA::verifyPublicKeyValid(const SecureBinaryData& pubKey)
 
 // Deterministically generate new public key using a chaincode
 SecureBinaryData ECDSA::computeChainedPublicKey(
-   const SecureBinaryData& binPubKey,
-   const SecureBinaryData& chainCode)
+   BinaryDataRef binPubKey, BinaryDataRef chainCode)
 {
    secp256k1_pubkey pubkey;
    if (!secp256k1_ec_pubkey_parse(
@@ -449,15 +455,15 @@ SecureBinaryData ECDSA::computeChainedPublicKey(
    }
 
    // Added extra entropy to chaincode by xor'ing with hash256 of pubkey
-   BinaryData chainMod  = binPubKey.getHash256();
-   BinaryData chainOrig = chainCode.getRawCopy();
+   BinaryData chainMod(32);
+   Hash::getHash256(binPubKey, chainMod.getPtr());
    BinaryData chainXor(32);
 
    for (uint8_t i=0; i<8; i++) {
       uint8_t offset = 4*i;
       *(uint32_t*)(chainXor.getPtr()+offset) =
          *(uint32_t*)( chainMod.getPtr()+offset) ^
-         *(uint32_t*)(chainOrig.getPtr()+offset);
+         *(uint32_t*)(chainCode.getPtr()+offset);
    }
 
    if (!secp256k1_ec_pubkey_tweak_mul(
@@ -488,7 +494,7 @@ bool ECDSA::verifyPoint(const BinaryData& x, const BinaryData& y)
    return btc_ecc_verify_pubkey(ptr, false);
 }
 
-SecureBinaryData ECDSA::compressPoint(const SecureBinaryData& pubKey65)
+SecureBinaryData ECDSA::compressPoint(BinaryDataRef pubKey65)
 {
    if (pubKey65.getSize() != 65) {
       if (pubKey65.getSize() == 33) {
@@ -538,7 +544,7 @@ btc_pubkey ECDSA::compressPoint(const btc_pubkey& pubKey65)
    return pbCompressed;
 }
 
-SecureBinaryData ECDSA::uncompressPoint(const SecureBinaryData& pubKey33)
+SecureBinaryData ECDSA::uncompressPoint(BinaryDataRef pubKey33)
 {
    if (pubKey33.getSize() != 33) {
       if (pubKey33.getSize() == 65) {
@@ -564,8 +570,7 @@ SecureBinaryData ECDSA::uncompressPoint(const SecureBinaryData& pubKey33)
 }
 
 SecureBinaryData ECDSA::pubKeyScalarMultiply(
-   const SecureBinaryData& pubKeyIn,
-   const SecureBinaryData& scalar)
+   BinaryDataRef pubKeyIn, BinaryDataRef scalar)
 {
    if (scalar.getSize() != 32) {
       throw std::runtime_error("[PubKeyScalarMultiply]");

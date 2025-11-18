@@ -4,6 +4,11 @@
 //  Distributed under the GNU Affero General Public License (AGPL v3)         //
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
+//                                                                            //
+//  Copyright (C) 2016-2025, goatpig                                          //
+//  Distributed under the MIT license                                         //
+//  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
+//                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
 // This is used to attempt to keep keying material out of swap
@@ -31,10 +36,64 @@
       (((((size_t)(a)) + (b) - 1) | ((PAGESIZE) - 1)) + 1) - (((size_t)(a)) & (~((PAGESIZE) - 1))))
 #endif
 
+#include <cstring>
 #include "SecureBinaryData.h"
-#include "Cryptography.h"
 
 /////////////////////////////////////////////////////////////////////////////
+// SecureBinaryData
+SecureBinaryData::SecureBinaryData() :
+   BinaryData{}
+{}
+
+SecureBinaryData::SecureBinaryData(size_t sz) :
+   BinaryData{sz}
+{
+   lockData();
+}
+
+SecureBinaryData::SecureBinaryData(const uint8_t* inData, size_t sz) :
+   BinaryData{inData, sz}
+{
+   lockData();
+}
+
+SecureBinaryData::SecureBinaryData(const uint8_t* d0, const uint8_t* d1) :
+   BinaryData{d0, d1}
+{
+   lockData();
+}
+
+SecureBinaryData::SecureBinaryData(BinaryDataRef bdRef) :
+   BinaryData{bdRef}
+{
+   lockData();
+}
+
+SecureBinaryData::SecureBinaryData(SecureBinaryData&& mv) :
+   BinaryData{}
+{
+   data_ = std::move(mv.data_);
+}
+
+SecureBinaryData::SecureBinaryData(BinaryData&& mv) :
+   BinaryData{}
+{
+   data_ = std::move(mv.release());
+   lockData();
+}
+
+SecureBinaryData::SecureBinaryData(const SecureBinaryData& sbd2) :
+   BinaryData{sbd2.getPtr(), sbd2.getSize()}
+{
+   lockData();
+}
+
+SecureBinaryData::~SecureBinaryData()
+{
+   destroy();
+}
+
+////////
 void SecureBinaryData::lockData()
 {
    if (!empty()) {
@@ -42,7 +101,7 @@ void SecureBinaryData::lockData()
    }
 }
 
-////
+
 void SecureBinaryData::destroy()
 {
    if (!empty()) {
@@ -52,26 +111,63 @@ void SecureBinaryData::destroy()
    resize(0);
 }
 
-/////////////////////////////////////////////////////////////////////////////
-// We have to explicitly re-define some of these methods...
-SecureBinaryData & SecureBinaryData::append(const SecureBinaryData & sbd2)
+void SecureBinaryData::resize(size_t sz)
 {
-   if (sbd2.empty()) {
+   BinaryData::resize(sz);
+   lockData();
+}
+
+void SecureBinaryData::reserve(size_t sz)
+{
+   BinaryData::reserve(sz);
+   lockData();
+}
+
+////////
+SecureBinaryData SecureBinaryData::copy() const
+{
+   return SecureBinaryData{getPtr(), getSize()};
+}
+
+SecureBinaryData SecureBinaryData::getSliceCopy(
+   size_t start, size_t nchar) const
+{
+   if (start + nchar > getSize()) {
+      throw std::runtime_error("sbd slicecopy overflow");
+   }
+   return SecureBinaryData{getPtr() + start, nchar};
+}
+
+BinaryData SecureBinaryData::getRawCopy() const
+{
+   return BinaryData{getPtr(), getSize()};
+}
+
+SecureBinaryData& SecureBinaryData::append(BinaryDataRef ref)
+{
+   if (ref.empty()) {
       return (*this);
    }
 
    if (empty()) {
-      BinaryData::copyFrom(sbd2.getPtr(), sbd2.getSize());
+      BinaryData::copyFrom(ref.getPtr(), ref.getSize());
    } else {
-      BinaryData::append(sbd2.getRawRef());
+      BinaryData::append(ref);
    }
 
    lockData();
-   return (*this);
+   return *this;
 }
 
-/////////////////////////////////////////////////////////////////////////////
-SecureBinaryData SecureBinaryData::operator+(const SecureBinaryData & sbd2) const
+SecureBinaryData& SecureBinaryData::append(uint8_t c)
+{
+   BinaryData::append(c);
+   lockData();
+   return *this;
+}
+
+////////
+SecureBinaryData SecureBinaryData::operator+(const SecureBinaryData& sbd2) const
 {
    SecureBinaryData out(getSize() + sbd2.getSize());
    memcpy(out.getPtr(), getPtr(), getSize());
@@ -80,26 +176,34 @@ SecureBinaryData SecureBinaryData::operator+(const SecureBinaryData & sbd2) cons
    return out;
 }
 
-/////////////////////////////////////////////////////////////////////////////
-SecureBinaryData & SecureBinaryData::operator=(SecureBinaryData const & sbd2)
+SecureBinaryData& SecureBinaryData::operator=(const SecureBinaryData& sbd2)
 {
    copyFrom(sbd2.getPtr(), sbd2.getSize());
    lockData();
-   return (*this);
+   return *this;
 }
 
-/////////////////////////////////////////////////////////////////////////////
-bool SecureBinaryData::operator==(SecureBinaryData const & sbd2) const
+SecureBinaryData& SecureBinaryData::operator=(const BinaryDataRef& ref)
+{
+   copyFrom(ref.getPtr(), ref.getSize());
+   lockData();
+   return *this;
+}
+
+bool SecureBinaryData::operator==(const SecureBinaryData& sbd2) const
 {
    if (getSize() != sbd2.getSize()) {
       return false;
    }
-   for (unsigned int i = 0; i < getSize(); i++) {
-      if ((*this)[i] != sbd2[i]) {
-         return false;
-      }
+   return std::memcmp(getPtr(), sbd2.getPtr(), getSize()) == 0;
+}
+
+bool SecureBinaryData::operator==(const BinaryData& bd2) const
+{
+   if (getSize() != bd2.getSize()) {
+      return false;
    }
-   return true;
+   return std::memcmp(getPtr(), bd2.getPtr(), getSize()) == 0;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -109,18 +213,34 @@ SecureBinaryData SecureBinaryData::copySwapEndian(size_t pos1, size_t pos2) cons
    return SecureBinaryData(BinaryData::copySwapEndian(pos1, pos2));
 }
 
-/////////////////////////////////////////////////////////////////////////////
-SecureBinaryData SecureBinaryData::getHash256(void) const
+void SecureBinaryData::XOR(const BinaryDataRef& rhs)
 {
-   SecureBinaryData digest(32);
-   Cryptography::Hash::getHash256(getRef(), digest.getPtr());
-   return digest;
+   if (getSize() > rhs.getSize()) {
+      throw std::runtime_error("invalid rhs length");
+   }
+   for (unsigned i = 0; i < getSize(); i++) {
+       auto val = getPtr() + i;
+      *val ^= *(rhs.getPtr() + i);
+   }
 }
 
-/////////////////////////////////////////////////////////////////////////////
-SecureBinaryData SecureBinaryData::getHash160(void) const
+////////
+SecureBinaryData SecureBinaryData::fromString(const std::string& str)
 {
-   SecureBinaryData digest(20);
-   Cryptography::Hash::getHash160(getRef(), digest.getPtr());
-   return digest;
+   if (str.empty()) {
+      return {};
+   }
+   SecureBinaryData sbd(str.size());
+   memcpy(sbd.getPtr(), str.data(), str.size());
+   return sbd;
+}
+
+SecureBinaryData SecureBinaryData::fromStringView(const std::string_view& strv)
+{
+   if (strv.empty()) {
+      return {};
+   }
+   SecureBinaryData sbd(strv.size());
+   memcpy(sbd.getPtr(), strv.data(), strv.size());
+   return sbd;
 }

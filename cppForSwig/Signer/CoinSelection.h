@@ -1,23 +1,23 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2017, goatpig                                               //
+//  Copyright (C) 2017-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _H_COINSELECTION
-#define _H_COINSELECTION
+#pragma once
 
 #include <stdint.h>
 #include <memory>
 #include <functional>
+#include <stdexcept>
 #include <vector>
 #include <string>
 #include <set>
+#include <map>
 
 #include "TxClasses.h"
-#include "ScriptRecipient.h"
 
 #define DUST 10000
 #define RANDOM_ITER_COUNT 10
@@ -29,12 +29,20 @@
 #define WEIGHT_TXSIZE   100.0f
 #define WEIGHT_OUTANON  30.0f
 
+class BinaryData;
+class UTXO;
+
 namespace Armory
 {
    namespace Wallets
    {
       class AssetWallet;
    };
+
+   namespace Signing
+   {
+      class ScriptRecipient;
+   }
 
    namespace CoinSelection
    {
@@ -48,74 +56,17 @@ namespace Armory
       //////////////////////////////////////////////////////////////////////////
       struct RestrictedUtxoSet
       {
-         std::vector<UTXO> allUtxos_;
-         bool haveAll_ = false;
-         std::set<UTXO> selection_;
-         std::function<std::vector<UTXO>(uint64_t val)> getUtxoLbd_;
+         std::vector<UTXO> allUtxos;
+         bool haveAll = false;
+         std::set<UTXO> selection;
+         std::function<std::vector<UTXO>(uint64_t val)> getUtxoLbd;
 
-         RestrictedUtxoSet(std::function<std::vector<UTXO>(uint64_t val)> lbd) :
-            getUtxoLbd_(lbd)
-         {}
-
-         const std::vector<UTXO>& getAllUtxos(void)
-         {
-            if (!haveAll_)
-            {
-               allUtxos_ = getUtxoLbd_(UINT64_MAX);
-               haveAll_ = true;
-            }
-
-            return allUtxos_;
-         }
-
-         void filterUtxos(const BinaryData& txhash)
-         {
-            getAllUtxos();
-
-            for (auto& utxo : allUtxos_)
-            {
-               if (utxo.getTxHash() == txhash)
-                  selection_.insert(utxo);
-            }
-         }
-
-         uint64_t getBalance(void) const
-         {
-            uint64_t bal = 0;
-            for (auto& utxo : selection_)
-               bal += utxo.getValue();
-
-            return bal;
-         }
-
-         uint64_t getFeeSum(float fee_byte)
-         {
-            uint64_t fee = 0;
-            for (auto& utxo : selection_)
-            {
-               fee += uint64_t(utxo.getInputRedeemSize() * fee_byte);
-
-               try
-               {
-                  fee += uint64_t(utxo.getWitnessDataSize() * fee_byte);
-               }
-               catch (std::exception&)
-               {
-               }
-            }
-
-            return fee;
-         }
-
-         std::vector<UTXO> getUtxoSelection(void) const
-         {
-            std::vector<UTXO> utxoVec;
-
-            for (auto& utxo : selection_)
-               utxoVec.push_back(utxo);
-
-            return utxoVec;
-         }
+         RestrictedUtxoSet(std::function<std::vector<UTXO>(uint64_t val)>);
+         const std::vector<UTXO>& getAllUtxos(void);
+         void filterUtxos(const BinaryData&);
+         uint64_t getBalance(void) const;
+         uint64_t getFeeSum(float) const;
+         std::vector<UTXO> getUtxoSelection(void) const;
       };
 
       //////////////////////////////////////////////////////////////////////////
@@ -195,7 +146,7 @@ namespace Armory
          const uint64_t spendableValue_;
          unsigned topHeight_ = UINT32_MAX;
 
-         std::set<AddressBookEntry> addrBook_;
+         std::set<AddressBookEntry, AddressBookEntry::Comparator> addrBook_;
 
          std::exception_ptr except_ptr_ = nullptr;
 
@@ -442,7 +393,5 @@ namespace Armory
          static std::shared_ptr<Signing::ScriptRecipient>
             createRecipient(const std::string&, uint64_t);
       };
-   }; //namespace CoinSelection
-}; //namespace Armory
-
-#endif
+   } //namespace CoinSelection
+} //namespace Armory

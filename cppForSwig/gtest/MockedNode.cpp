@@ -6,13 +6,23 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "MockedNode.h"
-#include "../BitcoinP2P.h"
-#include "../Signer/Signer.h"
+#include <algorithm>
 
-using namespace Armory::Threading;
-using namespace Armory::Signing;
-using namespace Armory::Node;
+#include "MockedNode.h"
+#include <Utils/ArmoryErrors.h>
+#include <Utils/BtcUtils.h>
+#include <Utils/DBUtils.h>
+#include <Signer/Signer.h>
+#include <Signer/Script.h>
+
+#include <BlockchainDatabase/StoredBlockObj.h>
+#include <BlockchainDatabase/lmdb_wrapper.h>
+#include <BlockchainDatabase/Blockchain.h>
+#include <BlockchainDatabase/BlockDataMap.h>
+#include <BlockchainDatabase/BlockUtils.h>
+#include "BDV_Notification.h"
+
+using namespace Armory;
 using namespace std::chrono_literals;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -63,7 +73,7 @@ int verifyTxSigs(const BinaryData& rawTx, const LMDBBlockDatabase* iface,
       idMap.emplace(outpoint.getTxOutIndex(), utxo);
    }
 
-   auto evalState = Signer::verify(
+   auto evalState = Signing::Signer::verify(
       rawTx, utxoMap,
       unsigned(SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_SEGWIT | SCRIPT_VERIFY_P2SH_SHA256),
       true);
@@ -77,7 +87,7 @@ int verifyTxSigs(const BinaryData& rawTx, const LMDBBlockDatabase* iface,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-BlockingQueue<BinaryData> NodeUnitTest::watcherInvQueue_;
+Threading::BlockingQueue<BinaryData> NodeUnitTest::watcherInvQueue_;
 
 ////////////////////////////////////////////////////////////////////////////////
 NodeUnitTest::NodeUnitTest(uint32_t magic_word, bool watcher) :
@@ -121,10 +131,10 @@ void NodeUnitTest::connectToNode(bool)
 ////////////////////////////////////////////////////////////////////////////////
 void NodeUnitTest::notifyNewBlock(void)
 {
-   InvEntry ie;
-   ie.invtype = Inv_Msg_Block;
+   Node::InvEntry ie;
+   ie.invtype = Node::Inv_Msg_Block;
 
-   std::vector<InvEntry> vecIE;
+   std::vector<Node::InvEntry> vecIE;
    vecIE.push_back(ie);
 
    processInvBlock(std::move(vecIE));
@@ -135,14 +145,14 @@ std::map<unsigned, BinaryData> NodeUnitTest::mineNewBlock(
    std::shared_ptr<BlockDataManager> bdm,
    unsigned count, const BinaryData& h160, double diff)
 {
-   Recipient_P2PKH recipient(h160, 50 * COIN);
+   Signing::Recipient_P2PKH recipient(h160, 50 * COIN);
    return mineNewBlock(bdm, count, &recipient, diff);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 std::map<unsigned, BinaryData> NodeUnitTest::mineNewBlock(
    std::shared_ptr<BlockDataManager> bdm,
-   unsigned count, ScriptRecipient* recipient, double diff)
+   unsigned count, Signing::ScriptRecipient* recipient, double diff)
 {
    auto diffBits = BtcUtils::convertDoubleToDiffBits(diff);
    if (header_.prevHash_.empty()) {
@@ -194,9 +204,9 @@ std::map<unsigned, BinaryData> NodeUnitTest::mineNewBlock(
       coinbaseObj->rawTx_ = bwCoinbase.getData();
       coinbaseObj->hash_ = BtcUtils::getHash256(coinbaseObj->rawTx_);
       coinbaseObj->order_ = 0;
-      block.coinbase_ = Tx(coinbaseObj->rawTx_);
-      block.height_ = header_.blockHeight_++;
-      result.insert(std::make_pair(block.height_, coinbaseObj->hash_));
+      block.coinbase = std::make_shared<Tx>(coinbaseObj->rawTx_);
+      block.height = header_.blockHeight_++;
+      result.emplace(block.height, coinbaseObj->hash_);
 
       //grab all tx in the mempool, respect ordering
       std::vector<std::shared_ptr<MempoolObject>> mempoolV;
@@ -266,11 +276,10 @@ std::map<unsigned, BinaryData> NodeUnitTest::mineNewBlock(
          //update prev hash and timestamp for the next block
          header_.prevHash_ = BtcUtils::getHash256(bwBlock.getDataRef());
 
-         block.headerHash_ = header_.prevHash_;
-         block.rawHeader_ = bwBlock.getDataRef();
-         
-         block.diffBits_ = diffBits;
-         block.timestamp_ = header_.timestamp_;
+         block.headerHash = header_.prevHash_;
+         block.rawHeader = bwBlock.getDataRef();
+         block.diffBits = diffBits;
+         block.timestamp = header_.timestamp_;
          header_.timestamp_ += 600;
       }
 
@@ -281,9 +290,9 @@ std::map<unsigned, BinaryData> NodeUnitTest::mineNewBlock(
          bwBlock.put_var_int(mempoolV.size());
 
          //tx
-         for (auto& txObj : mempoolV) {
+         for (const auto& txObj : mempoolV) {
             bwBlock.put_BinaryData(txObj->rawTx_);
-            block.transactions_.push_back(Tx(txObj->rawTx_));
+            block.transactions.emplace_back(Tx{txObj->rawTx_});
          }
       }
 
@@ -349,11 +358,11 @@ std::map<unsigned, BinaryData> NodeUnitTest::mineNewBlock(
       }
 
       //push the staged transactions
-      std::vector<InvEntry> invVec;
+      std::vector<Node::InvEntry> invVec;
       std::map<BinaryData, BinaryData> rawTxMap;
       for (auto& tx : mempool_) {
-         InvEntry ie;
-         ie.invtype = Inv_Msg_Witness_Tx;
+         Node::InvEntry ie;
+         ie.invtype = Node::Inv_Msg_Witness_Tx;
          memcpy(ie.hash, tx.first.getPtr(), 32);
          invVec.emplace_back(ie);
          rawTxMap.emplace(tx.first, tx.second->rawTx_);
@@ -391,10 +400,11 @@ void NodeUnitTest::presentZcHash(const BinaryData& hash)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void NodeUnitTest::pushZC(const std::vector<std::pair<BinaryData, unsigned>>& txVec,
+void NodeUnitTest::pushZC(
+   const std::vector<std::pair<BinaryData, unsigned>>& txVec,
    bool stage)
 {
-   std::vector<InvEntry> invVec;
+   std::vector<Node::InvEntry> invVec;
    std::map<BinaryData, BinaryData> rawTxMap;
 
    //save tx to fake mempool
@@ -415,7 +425,7 @@ void NodeUnitTest::pushZC(const std::vector<std::pair<BinaryData, unsigned>>& tx
       ***/
 
       auto poolIter = mempool_.begin();
-      while(poolIter != mempool_.end()) {
+      while (poolIter != mempool_.end()) {
          Tx txMempool(poolIter->second->rawTx_);
          if (txNew.getThisHash() == txMempool.getThisHash()) {
             return;
@@ -462,8 +472,8 @@ void NodeUnitTest::pushZC(const std::vector<std::pair<BinaryData, unsigned>>& tx
       }
 
       //add to inv vector
-      InvEntry ie;
-      ie.invtype = Inv_Msg_Witness_Tx;
+      Node::InvEntry ie;
+      ie.invtype = Node::Inv_Msg_Witness_Tx;
       memcpy(ie.hash, insertIter.first->second->hash_.getPtr(), 32);
       invVec.emplace_back(ie);
 
@@ -472,7 +482,6 @@ void NodeUnitTest::pushZC(const std::vector<std::pair<BinaryData, unsigned>>& tx
          insertIter.first->second->hash_,
          insertIter.first->second->rawTx_);
    }
-
    rawTxMap_.update(rawTxMap);
 
    /*
@@ -480,10 +489,7 @@ void NodeUnitTest::pushZC(const std::vector<std::pair<BinaryData, unsigned>>& tx
    pushed after the next mining call. This is mostly useful for reorgs 
    (where you can't push zc that conflicts with the still valid branch)
    */
-   if (stage) {
-      return;
-   }
-   if (invVec.empty()) {
+   if (stage || invVec.empty()) {
       return;
    }
    processInvTx(invVec);
@@ -586,7 +592,7 @@ uint64_t NodeUnitTest::getFeeForTx(const Tx& tx) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void NodeUnitTest::sendMessage(std::unique_ptr<Payload> payload)
+void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
 {
    //need access to the db to check zc validity
    if (iface_ == nullptr) {
@@ -597,14 +603,14 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Payload> payload)
    //mock the bitcoin node response to these sendMessage payloads
    switch (payload->type())
    {
-      case PayloadType::Inv:
+      case Node::PayloadType::Inv:
       {
          /*
          Pushed inv payload from armorydb to bitcoin node
          */
 
-         std::shared_ptr<Payload> payloadSPtr(move(payload));
-         auto payloadInv = std::dynamic_pointer_cast<Payload_Inv>(payloadSPtr);
+         std::shared_ptr<Node::Payload> payloadSPtr(move(payload));
+         auto payloadInv = std::dynamic_pointer_cast<Node::Payload_Inv>(payloadSPtr);
          if (payloadInv == nullptr) {
             throw std::runtime_error("unexpected payload type");
          }
@@ -612,8 +618,8 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Payload> payload)
          for (auto& entry : payloadInv->invVector_) {
             switch (entry.invtype)
             {
-               case Inv_Msg_Tx:
-               case Inv_Msg_Witness_Tx:
+               case Node::Inv_Msg_Tx:
+               case Node::Inv_Msg_Witness_Tx:
                {
                   //bail if we have seen this hash before
                   BinaryData hashBd(&entry.hash[0], sizeof(entry.hash));
@@ -629,7 +635,7 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Payload> payload)
                      }
                   }
 
-                  std::shared_ptr<Payload_Tx> payloadTx;
+                  std::shared_ptr<Node::Payload_Tx> payloadTx;
                   {
                      //consume getDataMap entry
                      auto gdpMap = getDataPayloadMap_.get();
@@ -637,8 +643,10 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Payload> payload)
                      if (iter == gdpMap->end()) {
                         break;
                      }
-                     std::shared_ptr<Payload> payloadTxSPtr(std::move(iter->second->payload_));
-                     payloadTx = std::dynamic_pointer_cast<Payload_Tx>(payloadTxSPtr);
+                     std::shared_ptr<Node::Payload> payloadTxSPtr(
+                        std::move(iter->second->payload_));
+                     payloadTx = std::dynamic_pointer_cast<Node::Payload_Tx>(
+                        payloadTxSPtr);
 
                      //cleanup getdatapayload map
                      getDataPayloadMap_.erase(hashBd);
@@ -775,9 +783,9 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Payload> payload)
                      auto txFee = getFeeForTx(tx);
                      if (txFee < 100000000) {
                         //fee too low to replace, push reject packet
-                        auto rejectPayload = std::make_unique<Payload_Reject>();
+                        auto rejectPayload = std::make_unique<Node::Payload_Reject>();
 
-                        rejectPayload->rejectType_ = PayloadType::Tx;
+                        rejectPayload->rejectType_ = Node::PayloadType::Tx;
                         rejectPayload->code_ =
                            (char)ArmoryErrorCodes::P2PReject_InsufficientFee;
 
@@ -844,24 +852,24 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Payload> payload)
                   break;
                }
 
-            default:
-               throw std::runtime_error("inventry type support not implemented yet");
+               default:
+                  throw std::runtime_error(
+                     "inventry type support not implemented yet");
+            }
          }
+         break;
       }
 
-      break;
-   }
-
-      case PayloadType::GetData:
+      case Node::PayloadType::GetData:
       {
          /*
          Pushed getdata payload from armorydb to bitcoin node
          */
 
          //looking to get data for a previous inv tx message
-         auto payloadSPtr = std::shared_ptr<Payload>(std::move(payload));
+         auto payloadSPtr = std::shared_ptr<Node::Payload>(std::move(payload));
          auto payloadGetData =
-         std::dynamic_pointer_cast<Payload_GetData>(payloadSPtr);
+         std::dynamic_pointer_cast<Node::Payload_GetData>(payloadSPtr);
          if (payloadGetData == nullptr) {
             throw std::runtime_error("invalid payload type");
          }
@@ -875,7 +883,7 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Payload> payload)
                continue;
             }
             grabbedTxs.push_back(iter->first);
-            auto payloadTx = std::make_unique<Payload_Tx>();
+            auto payloadTx = std::make_unique<Node::Payload_Tx>();
 
             std::vector<uint8_t> rawTx(iter->second.getSize());
             memcpy(&rawTx[0], iter->second.getPtr(), iter->second.getSize());
@@ -898,13 +906,13 @@ void NodeUnitTest::watcherProcess()
       BinaryData hash;
       try {
          hash = std::move(watcherInvQueue_.pop_front());
-      } catch(const StopBlockingLoop&) {
+      } catch (const Threading::StopBlockingLoop&) {
          break;
       }
 
-      std::vector<InvEntry> invVec;
-      InvEntry inv;
-      inv.invtype = Inv_Msg_Witness_Tx;
+      std::vector<Node::InvEntry> invVec;
+      Node::InvEntry inv;
+      inv.invtype = Node::Inv_Msg_Witness_Tx;
       memcpy(inv.hash, hash.getPtr(), 32);
       invVec.push_back(std::move(inv));
       processInvTx(invVec);
@@ -994,11 +1002,10 @@ int NodeRPC_UnitTest::broadcastTx(const BinaryDataRef& rawTx, std::string&)
 
       /*
       A mined tx with no output in the utxo set fails rpc broadcast with a
-      -25 error (node only has a snapshot of the utxo set, it cannot resolve 
+      -25 error (node only has a snapshot of the utxo set, it cannot resolve
       "archived" outputs). Txs with unspent outputs will return already-in-chain
       errors.
       */
-
       if (spentCount == tx.getNumTxOut()) {
          return (int)ArmoryErrorCodes::ZcBroadcast_Error;
       } else {

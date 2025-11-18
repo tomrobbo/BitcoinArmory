@@ -6,13 +6,12 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _BDV_NOTIFICATION_H_
-#define _BDV_NOTIFICATION_H_
+#pragma once
 
 #include <memory>
+#include <BlockchainDatabase/Blockchain.h>
 #include "bdmenums.h"
-#include "BlockchainDatabase/Blockchain.h"
-#include "ZeroConfNotifications.h"
+#include "DBClientClasses.h"
 
 #define BDV_NOTIF_BROADCAST UINT64_MAX
 
@@ -21,11 +20,22 @@ namespace CoreRPC
    struct NodeStatus;
 }
 
+namespace Armory
+{
+   namespace ZeroConf
+   {
+      struct ZcPurgePacket;
+      struct ZcNotificationPacket;
+   }
+}
+
+class LedgerEntry;
+
 ///////////////////////////////////////////////////////////////////////////////
 struct BDV_Notification
 {
 private:
-   //notificaiton id set to BDV_NOTIF_BROADCAST means broadcast to all bdv
+   //notificaton id set to BDV_NOTIF_BROADCAST means broadcast to all bdv
    const BdvIdKey bdvID_;
 
 public:
@@ -48,22 +58,22 @@ struct BDV_Notification_Init : public BDV_Notification
 ///////////////////////////////////////////////////////////////////////////////
 struct BDV_Notification_NewBlock : public BDV_Notification
 {
-   Blockchain::ReorganizationState reorgState;
-   std::shared_ptr<ZcPurgePacket> zcPurgePacket;
+   ReorganizationState reorgState;
+   std::shared_ptr<Armory::ZeroConf::ZcPurgePacket> zcPurgePacket;
 
    BDV_Notification_NewBlock(
-      const Blockchain::ReorganizationState&,
-      std::shared_ptr<ZcPurgePacket>);
+      const ReorganizationState&,
+      std::shared_ptr<Armory::ZeroConf::ZcPurgePacket>);
    BDV_Action actionType(void) const override;
 };
 
 ///////////////////////////////////////////////////////////////////////////////
 struct BDV_Notification_ZC : public BDV_Notification
 {
-   const ZcNotificationPacket packet;
+   const std::shared_ptr<Armory::ZeroConf::ZcNotificationPacket> packet;
    std::vector<LedgerEntry> leVec;
 
-   BDV_Notification_ZC(ZcNotificationPacket&);
+   BDV_Notification_ZC(std::shared_ptr<Armory::ZeroConf::ZcNotificationPacket>);
    BDV_Action actionType(void) const override;
 };
 
@@ -72,7 +82,7 @@ struct BDV_Notification_Refresh : public BDV_Notification
 {
    const BDV_refresh refresh;
    const std::string refreshID;
-   ZcNotificationPacket zcPacket;
+   std::shared_ptr<Armory::ZeroConf::ZcNotificationPacket> zcPacket;
 
    BDV_Notification_Refresh(BdvIdKey, BDV_refresh, const std::string&);
    BDV_Action actionType(void) const override;
@@ -125,5 +135,3 @@ struct BDVNotificationHook
 {
    std::function<void(BDV_Notification*)> func;
 };
-
-#endif

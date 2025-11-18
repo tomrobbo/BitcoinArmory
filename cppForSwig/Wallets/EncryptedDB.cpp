@@ -6,9 +6,9 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
+#include "Utils/BtcUtils.h"
+#include "Utils/Cryptography.h"
 #include "EncryptedDB.h"
-#include "BtcUtils.h"
-#include "Cryptography.h"
 #include "AssetEncryption.h"
 
 using namespace std;
@@ -119,8 +119,8 @@ void DBInterface::loadAllEntries(const SecureBinaryData& rootKey)
 
       //first half is the encryption key, second half is the hmac key
       BinaryRefReader brr(hmacVal.getRef());
-      decrPrivKey = move(brr.get_SecureBinaryData(32));
-      macKey = move(brr.get_SecureBinaryData(32));
+      decrPrivKey = SecureBinaryData{brr.get_BinaryDataRef(32)};
+      macKey = SecureBinaryData{brr.get_BinaryDataRef(32)};
 
       //decryption private key sanity check
       if (!Cryptography::ECDSA::checkPrivKeyIsValid(decrPrivKey))
@@ -138,7 +138,7 @@ void DBInterface::loadAllEntries(const SecureBinaryData& rootKey)
       if (packet.getSize() > erasurePlaceHolder_.getSize())
       {
          BinaryRefReader brr(packet.getRef());
-         auto placeHolder = 
+         auto placeHolder =
             brr.get_BinaryDataRef(erasurePlaceHolder_.getSize());
 
          if (placeHolder == erasurePlaceHolder_)
@@ -338,7 +338,7 @@ BinaryData DBInterface::createDataPacket(const BinaryData& dbKey,
 
       //AES_CBC (hmac | payload)
       auto cipherText = Cryptography::Encryption::AES::encryptCBC(
-         bwData.getData(), encrKey, iv);
+         bwData.getDataRef(), {encrKey}, iv);
 
       //build IES packet
       encrPacket.put_BinaryData(localPubKey);
@@ -373,31 +373,31 @@ pair<BinaryData, BothBinaryDatas> DBInterface::readDataPacket(
       BinaryRefReader brrCipher(dataPacket.getRef());
 
       //public key
-      auto localPubKey = brrCipher.get_SecureBinaryData(33);
+      SecureBinaryData localPubKey{brrCipher.get_BinaryDataRef(33)};
 
       //ECDH with decryption private key
       auto ecdhPubKey = Cryptography::ECDSA::pubKeyScalarMultiply(
          localPubKey, decrPrivKey);
 
       //kdf
-      auto&& decrKey = BtcUtils::getHash256(ecdhPubKey);
+      auto decrKey = BtcUtils::getHash256(ecdhPubKey);
 
    /* decryption leg */
       //get iv
-      auto iv = brrCipher.get_SecureBinaryData(
-         Encryption::Cipher::getBlockSize(CipherType_AES));
+      SecureBinaryData iv{brrCipher.get_BinaryDataRef(
+         Encryption::Cipher::getBlockSize(CipherType_AES))};
 
       //get cipher text
-      auto cipherText = brrCipher.get_SecureBinaryData(
-         brrCipher.getSizeRemaining());
+      SecureBinaryData cipherText{brrCipher.get_BinaryDataRef(
+         brrCipher.getSizeRemaining())};
 
       //decrypt
       auto plainText = Cryptography::Encryption::AES::decryptCBC(
-         cipherText, decrKey, iv);
+         cipherText, {decrKey}, iv);
 
    /* authentication leg */
       BinaryRefReader brrPlain(plainText.getRef());
-      
+
       //grab hmac
       auto hmac = brrPlain.get_BinaryData(32);
 
@@ -407,7 +407,7 @@ pair<BinaryData, BothBinaryDatas> DBInterface::readDataPacket(
 
       //grab data val
       len = brrPlain.get_var_int();
-      dataVal = move(brrPlain.get_SecureBinaryData(len));
+      dataVal = SecureBinaryData{brrPlain.get_BinaryDataRef(len)};
 
       //mark the position
       auto pos = brrPlain.getPosition() - 32;

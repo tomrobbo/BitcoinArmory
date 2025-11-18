@@ -11,16 +11,18 @@
 #include <iostream>
 #include <sstream>
 
-#include "btc/ecc.h"
-#include "Cryptography.h"
-#include "AuthorizedPeers.h"
 #include "TerminalPassphrasePrompt.h"
-#include "Wallets/IOHeader.h"
+#include <Utils/ArmoryConfig.h>
+#include <Utils/DBUtils.h>
+#include <Utils/Cryptography.h>
+#include <Wallets/AuthorizedPeers.h>
+#include <Wallets/IOHeader.h>
+#include <btc/ecc.h>
 
 #define SERVER_FILE "server.peers"
 #define CLIENT_FILE "client.peers"
 
-using namespace Armory::Wallets;
+using namespace Armory;
 
 std::vector<std::string> names;
 
@@ -123,7 +125,7 @@ int processArgs(std::map<std::string, std::string> args)
    //is this a passphrase change operation?
    iter = args.find("change-pass");
    if (iter != args.end()) {
-      AuthorizedPeers::changeControlPassphrase(fullpath.string());
+      Wallets::AuthorizedPeers::changeControlPassphrase(fullpath.string());
       exit(0);
    }
 
@@ -140,15 +142,16 @@ int processArgs(std::map<std::string, std::string> args)
    }
 
    //passphrase lbd
-   Armory::Passphrase::UnlockFunc passLbd;
+   Passphrase::UnlockFunc passLbd;
    if (!noPass) {
       passLbd = TerminalPassphrasePrompt::getLambda("peers db");
    } else {
-      passLbd = [](const std::set<EncryptionKeyId>&)->Armory::Passphrase::Result
+      passLbd = [](const std::set<Wallets::EncryptionKeyId>&)->Passphrase::Result
       { return { {}, true }; };
    }
 
-   AuthorizedPeers authPeers(IO::ReadOnlyFileParams{fullpath, passLbd});
+   Wallets::AuthorizedPeers authPeers(
+      Wallets::IO::ReadOnlyFileParams{fullpath, passLbd});
 
    /*mutually exclusive args from here on*/
 
@@ -222,7 +225,7 @@ int processArgs(std::map<std::string, std::string> args)
          throw std::runtime_error("invalid public key");
       }
 
-      SecureBinaryData key_compressed = bd_key;
+      SecureBinaryData key_compressed{bd_key};
       if (bd_key.getSize() == 65) {
          key_compressed = Cryptography::ECDSA::compressPoint(bd_key);
       }

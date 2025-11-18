@@ -1,16 +1,24 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2011-2025, Armory Technologies, Inc.                        //
+//  Copyright (C) 2011-2015, Armory Technologies, Inc.                        //
 //  Distributed under the GNU Affero General Public License (AGPL v3)         //
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
+//                                                                            //
+//  Copyright (C) 2016-2025, goatpig                                          //
+//  Distributed under the MIT license                                         //
+//  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
+//                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
+#include <cstring>
 #include "BinaryData.h"
-#include "BtcUtils.h"
-#include "Cryptography.h"
+#include "varint.h"
+
+using namespace Armory;
 
 ////////////////////////////////////////////////////////////////////////////////
+// BinaryData
 BinaryData::BinaryData(BinaryDataRef const & bdRef)
 {
    copyFrom(bdRef.getPtr(), bdRef.getSize());
@@ -179,16 +187,6 @@ char* BinaryData::getCharPtr()
    } else {
       return reinterpret_cast<char*>(&data_[0]);
    }
-}
-
-char* BinaryData::toCharPtr() const
-{
-   return (char*)(&(data_[0]));
-}
-
-unsigned char* BinaryData::toUCharPtr() const
-{
-   return (unsigned char*)(&(data_[0]));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -644,7 +642,7 @@ void BinaryData::clear()
 
 std::vector<uint8_t> BinaryData::release()
 {
-   auto vec = move(data_);
+   auto vec = std::move(data_);
    clear();
    return vec;
 }
@@ -658,7 +656,7 @@ const std::vector<uint8_t>& BinaryData::getVector() const
 BinaryData& BinaryData::swapEndian(size_t pos1, size_t pos2)
 {
    if (empty()) {
-         return *this;
+      return *this;
    }
 
    if (pos2 <= pos1) {
@@ -682,10 +680,7 @@ BinaryData BinaryData::copySwapEndian(size_t pos1, size_t pos2) const
 }
 
 /////////////////////////////////////////////////////////////////////////////
-//
-////BinaryDataRef
-//
-/////////////////////////////////////////////////////////////////////////////
+// BinaryDataRef
 BinaryDataRef::BinaryDataRef() :
    ptr_(nullptr), nBytes_(0)
 {}
@@ -910,14 +905,9 @@ std::string BinaryDataRef::toBinStr(bool bigEndian) const
    }
 }
 
-char* BinaryDataRef::toCharPtr() const
+const char* BinaryDataRef::toCharPtr() const
 {
    return (char*)ptr_;
-}
-
-unsigned char* BinaryDataRef::toUCharPtr() const
-{
-   return (unsigned char*)ptr_;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -1098,10 +1088,7 @@ bool BinaryDataRef::isZero() const
 }
 
 /////////////////////////////////////////////////////////////////////////////
-//
-//// BinaryReader
-//
-/////////////////////////////////////////////////////////////////////////////
+// BinaryReader
 BinaryReader::BinaryReader(int sz) :
    bdStr_(sz), pos_(0)
 {}
@@ -1270,10 +1257,7 @@ void BinaryReader::resize(size_t nBytes)
 }
 
 /////////////////////////////////////////////////////////////////////////////
-//
-//// BinaryRefReader
-//
-/////////////////////////////////////////////////////////////////////////////
+// BinaryRefReader
 BinaryRefReader::BinaryRefReader(size_t sz) :
    bdRef_(), totalSize_(sz)
 {
@@ -1382,17 +1366,6 @@ void BinaryRefReader::get_BinaryData(uint8_t* targPtr, uint32_t nBytes)
 
    bdRef_.copyTo(targPtr, pos_, nBytes);
    pos_.fetch_add(nBytes, std::memory_order_relaxed);
-}
-
-SecureBinaryData BinaryRefReader::get_SecureBinaryData(uint32_t nBytes)
-{
-   if (getSizeRemaining() < nBytes) {
-      throw std::runtime_error("[get_SecureBinaryData] buffer overflow");
-   }
-   SecureBinaryData out(nBytes);
-   bdRef_.copyTo(out.getPtr(), pos_, nBytes);
-   pos_.fetch_add(nBytes, std::memory_order_relaxed);
-   return out;
 }
 
 BinaryDataRef BinaryRefReader::get_BinaryDataRef(uint32_t nBytes)
@@ -1582,10 +1555,7 @@ BinaryDataRef BinaryRefReader::getRawRef()
 }
 
 /////////////////////////////////////////////////////////////////////////////
-//
-////BinaryWriter
-//
-/////////////////////////////////////////////////////////////////////////////
+// BinaryWriter
 BinaryWriter::BinaryWriter(size_t reserveSize) :
    theString_(0)
 {

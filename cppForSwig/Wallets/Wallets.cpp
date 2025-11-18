@@ -6,9 +6,17 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "ArmoryConfig.h"
+#include "Utils/ArmoryConfig.h"
+#include "Utils/BtcUtils.h"
+#include "Utils/DBUtils.h"
+#include "Utils/Cryptography.h"
+
 #include "Wallets.h"
 #include "WalletFileInterface.h"
+#include "Accounts/AccountTypes.h"
+#include "Accounts/AddressAccounts.h"
+#include "Accounts/MetaAccounts.h"
+
 #include "Seeds/Seeds.h"
 #include "Seeds/Backups.h"
 #include "KDF.h"
@@ -969,7 +977,7 @@ void AssetWallet::eraseControlPassphrase(const Passphrase::UnlockFunc& passLbd)
 ////////////////////////////////////////////////////////////////////////////////
 void AssetWallet::setComment(const BinaryData& key, const std::string& comment)
 {
-   auto accPtr = getMetaAccount(MetaAccountType::MetaAccount_Comments);
+   auto accPtr = getMetaAccount(MetaAccountType::Comments);
    auto uniqueTx = iface_->beginWriteTransaction(dbName_);
    std::shared_ptr<IO::DBIfaceTransaction> sharedTx(move(uniqueTx));
    CommentAssetConversion::setAsset(accPtr.get(), key, comment, sharedTx);
@@ -978,7 +986,7 @@ void AssetWallet::setComment(const BinaryData& key, const std::string& comment)
 ////////////////////////////////////////////////////////////////////////////////
 const std::string& AssetWallet::getComment(const BinaryData& key) const
 {
-   auto accPtr = getMetaAccount(MetaAccountType::MetaAccount_Comments);
+   auto accPtr = getMetaAccount(MetaAccountType::Comments);
    auto assetPtr = CommentAssetConversion::getByKey(accPtr.get(), key);
 
    if (assetPtr == nullptr) {
@@ -990,7 +998,7 @@ const std::string& AssetWallet::getComment(const BinaryData& key) const
 ////////////////////////////////////////////////////////////////////////////////
 void AssetWallet::deleteComment(const BinaryData& key)
 {
-   auto accPtr = getMetaAccount(MetaAccountType::MetaAccount_Comments);
+   auto accPtr = getMetaAccount(MetaAccountType::Comments);
    auto uniqueTx = iface_->beginWriteTransaction(dbName_);
    std::shared_ptr<IO::DBIfaceTransaction> sharedTx(std::move(uniqueTx));
    CommentAssetConversion::deleteAsset(accPtr.get(), key, sharedTx);
@@ -999,7 +1007,7 @@ void AssetWallet::deleteComment(const BinaryData& key)
 ////////////////////////////////////////////////////////////////////////////////
 std::map<BinaryData, std::string> AssetWallet::getCommentMap() const
 {
-   auto accPtr = getMetaAccount(MetaAccountType::MetaAccount_Comments);
+   auto accPtr = getMetaAccount(MetaAccountType::Comments);
    return CommentAssetConversion::getCommentMap(accPtr.get());
 }
 
@@ -1246,9 +1254,9 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::createFromSeed(
 
       //address types
       legacyAcc->addAddressType(AddressEntryType(
-         AddressEntryType_P2PKH | AddressEntryType_Uncompressed));
-      legacyAcc->addAddressType(AddressEntryType_P2PKH);
-      legacyAcc->setDefaultAddressType(AddressEntryType_P2PKH);
+         AddressEntryType::P2PKH | AddressEntryType::Uncompressed));
+      legacyAcc->addAddressType(AddressEntryType::P2PKH);
+      legacyAcc->setDefaultAddressType(AddressEntryType::P2PKH);
 
       legacyAcc->setMain(true);
       accountTypes.emplace(legacyAcc);
@@ -1274,9 +1282,9 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::createFromSeed(
 
       //address types
       nestedAcc->addAddressType(
-         AddressEntryType(AddressEntryType_P2SH | AddressEntryType_P2WPKH));
+         AddressEntryType(AddressEntryType::P2SH | AddressEntryType::P2WPKH));
       nestedAcc->setDefaultAddressType(
-         AddressEntryType(AddressEntryType_P2SH | AddressEntryType_P2WPKH));
+         AddressEntryType(AddressEntryType::P2SH | AddressEntryType::P2WPKH));
       accountTypes.emplace(nestedAcc);
    }
 
@@ -1299,8 +1307,8 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::createFromSeed(
       segwitAcc->setAddressLookup(params.lookup);
 
       //address types
-      segwitAcc->addAddressType(AddressEntryType_P2WPKH);
-      segwitAcc->setDefaultAddressType(AddressEntryType_P2WPKH);
+      segwitAcc->addAddressType(AddressEntryType::P2WPKH);
+      segwitAcc->setDefaultAddressType(AddressEntryType::P2WPKH);
       accountTypes.emplace(segwitAcc);
    }
 
@@ -1516,7 +1524,7 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::initWalletDb(
          //seed
          BinaryWriter bw; //TODO: need SBD based bw
          seed->serialize(bw);
-         auto cipherData = encryptPrivateData(bw.getData());
+         auto cipherData = encryptPrivateData(bw.getDataRef());
          walletPtr->seed_ = std::make_unique<EncryptedSeed>(
             std::move(cipherData), seed->type());
 
@@ -1538,7 +1546,7 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::initWalletDb(
       {
          //comment account
          walletPtr->addMetaAccount(
-            MetaAccountType::MetaAccount_Comments);
+            MetaAccountType::Comments);
       }
 
       if (!params.label.empty()) {
@@ -1611,7 +1619,7 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::initWalletDbWithPubRoot(
       {
          //comment account
          walletPtr->addMetaAccount(
-            MetaAccountType::MetaAccount_Comments);
+            MetaAccountType::Comments);
       }
 
       if (!params.label.empty()) {

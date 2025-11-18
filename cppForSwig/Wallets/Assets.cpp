@@ -6,8 +6,9 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
+#include "Utils/BtcUtils.h"
+#include "Utils/Cryptography.h"
 #include "Assets.h"
-#include "BtcUtils.h"
 #include "ScriptRecipient.h"
 #include "BIP32_Node.h"
 #include "Seeds/Seeds.h"
@@ -260,7 +261,7 @@ std::shared_ptr<AssetEntry> AssetEntry::deserDBValue(
                auto leafid = brrVal.get_uint32_t();
                auto fingerprint = brrVal.get_uint32_t();
                auto cclen = brrVal.get_var_int();
-               auto&& chaincode = brrVal.get_BinaryData(cclen);
+               SecureBinaryData chaincode{brrVal.get_BinaryDataRef(cclen)};
                unsigned seedFingerprint = UINT32_MAX;
 
                std::vector<uint32_t> derPath;
@@ -309,7 +310,7 @@ std::shared_ptr<AssetEntry> AssetEntry::deserDBValue(
             case 0x00000001:
             {
                auto cclen = brrVal.get_var_int();
-               auto chaincode = brrVal.get_BinaryData(cclen);
+               auto chaincode = brrVal.get_BinaryDataRef(cclen);
 
                std::shared_ptr<Asset_PrivateKey> privKeyPtr;
                SecureBinaryData pubKeyCompressed;
@@ -331,7 +332,7 @@ std::shared_ptr<AssetEntry> AssetEntry::deserDBValue(
             {
                auto seedType = (Seeds::LegacyType)brrVal.get_uint8_t();
                auto cclen = brrVal.get_var_int();
-               auto chaincode = brrVal.get_BinaryData(cclen);
+               auto chaincode = brrVal.get_BinaryDataRef(cclen);
 
                std::shared_ptr<Asset_PrivateKey> privKeyPtr;
                SecureBinaryData pubKeyCompressed;
@@ -710,16 +711,15 @@ unsigned AssetEntry_BIP32Root::getSeedFingerprint(bool strongCheck) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::string AssetEntry_BIP32Root::getXPub(void) const
+std::string AssetEntry_BIP32Root::getXPub() const
 {
    auto pubkey = getPubKey();
    BIP32_Node node;
    node.initFromPublicKey(
       depth_, leafID_, parentFingerprint_,
       pubkey->getCompressedKey(), chaincode_);
-   
    auto base58 = node.getBase58();
-   return {base58.toCharPtr(), base58.getSize()};
+   return {base58.getCharPtr(), base58.getSize()};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1235,8 +1235,8 @@ void PeerPublicData::deserializeDBValue(const BinaryDataRef& data)
       case 0x00000001:
       {
          auto keyLen = brrData.get_var_int();
-         publicKey_ = brrData.get_BinaryData(keyLen);
-         
+         publicKey_ = SecureBinaryData{brrData.get_BinaryDataRef(keyLen)};
+
          //check pubkey is valid
          if (!Cryptography::ECDSA::verifyPublicKeyValid(publicKey_)) {
             throw AssetException("invalid pubkey in peer metadata");
@@ -1375,7 +1375,7 @@ void PeerRootKey::deserializeDBValue(const BinaryDataRef& data)
       case 0x00000001:
       {
          auto keyLen = brrData.get_var_int();
-         publicKey_ = brrData.get_BinaryData(keyLen);
+         publicKey_ = SecureBinaryData{brrData.get_BinaryDataRef(keyLen)};
 
          //check pubkey is valid
          if (!Cryptography::ECDSA::verifyPublicKeyValid(publicKey_))
@@ -1510,14 +1510,14 @@ void PeerRootSignature::deserializeDBValue(const BinaryDataRef& data)
       case 0x00000001:
       {
          auto keyLen = brrData.get_var_int();
-         publicKey_ = brrData.get_BinaryData(keyLen);
+         publicKey_ = SecureBinaryData{brrData.get_BinaryDataRef(keyLen)};
 
          //check pubkey is valid
          if (!Cryptography::ECDSA::verifyPublicKeyValid(publicKey_)) {
             throw AssetException("invalid pubkey in peer metadata");
          }
          len = brrData.get_var_int();
-         signature_ = brrData.get_BinaryDataRef(len);
+         signature_ = SecureBinaryData{brrData.get_BinaryDataRef(len)};
          break;
       }
 
@@ -1623,7 +1623,7 @@ void PeerMasterKey::deserializeDBValue(const BinaryDataRef& data)
       case 0x00000001:
       {
          auto keyLen = brrData.get_var_int();
-         key_ = brrData.get_BinaryData(keyLen);
+         key_ = SecureBinaryData{brrData.get_BinaryDataRef(keyLen)};
 
          //check pubkey is valid
          if (!Cryptography::ECDSA::verifyPublicKeyValid(key_)) {

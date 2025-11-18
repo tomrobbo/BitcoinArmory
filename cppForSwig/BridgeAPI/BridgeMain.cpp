@@ -7,10 +7,13 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <cstdlib>
-#include "BridgeSocket.h"
-#include "../AsyncClient.h"
+#include <memory>
+
 #include "CppBridge.h"
-#include "BIP150_151.h"
+#include "Utils/ArmoryConfig.h"
+#include "Utils/BIP150_151.h"
+#include "BridgeSocket.h"
+#include "AsyncClient.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 int main(int argc, char* argv[])

@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2019, goatpig.                                              //
+//  Copyright (C) 2019-2025, goatpig.                                         //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -13,28 +13,37 @@
 #include <vector>
 #include <map>
 
-#include "../BinaryData.h"
-#include "../BtcUtils.h"
+#include <Utils/BinaryData.h>
+#include "BitcoinP2P.h"
+#include "nodeRPC.h"
 
-#include "../BlockchainDatabase/BlockUtils.h"
-#include "../BitcoinP2P.h"
-#include "../BlockchainDatabase/Blockchain.h"
-#include "../Signer/ScriptRecipient.h"
-#include "../BlockchainDatabase/BlockDataMap.h"
-#include "../nodeRPC.h"
+class Blockchain;
+class BlockFiles;
+class LMDBBlockDatabase;
+class BlockDataManager;
+class BlockHeader;
+class Tx;
+
+namespace Armory
+{
+   namespace Signing
+   {
+      class ScriptRecipient;
+   }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 struct UnitTestBlock
 {
-   BinaryData rawHeader_;
-   BinaryData headerHash_;
+   BinaryData rawHeader;
+   BinaryData headerHash;
 
-   Tx coinbase_;
-   std::vector<Tx> transactions_;
+   std::shared_ptr<Tx> coinbase;
+   std::vector<Tx> transactions;
 
-   unsigned height_;
-   unsigned timestamp_;
-   BinaryData diffBits_;
+   unsigned height;
+   unsigned timestamp;
+   BinaryData diffBits;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -1,26 +1,39 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2016-2021, goatpig.                                         //
+//  Copyright (C) 2016-2025, goatpig.                                         //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _H_TXOUTSCRIPTREF
-#define _H_TXOUTSCRIPTREF
+#pragma once
 
-#include "BinaryData.h"
-#include "BitcoinSettings.h"
+#include "Utils/BinaryData.h"
 
-struct TxOutScriptRef
+namespace Armory
+{
+   enum class ScriptPrefix : uint8_t;
+}
+
+class TxOutScriptRef
 {
 public:
-   SCRIPT_PREFIX type_ = SCRIPT_PREFIX_NONSTD;
+   struct Comparator
+   {
+      using is_transparent = void;
+      bool operator()(const TxOutScriptRef&, const TxOutScriptRef&) const;
+   };
+
+private:
+   const Armory::ScriptPrefix type_;
    BinaryDataRef scriptRef_;
    BinaryData scriptCopy_;
 
+private:
+   TxOutScriptRef(Armory::ScriptPrefix, const BinaryDataRef&);
+
 public:
-   TxOutScriptRef(void);
+   TxOutScriptRef(Armory::ScriptPrefix, BinaryData&);
    TxOutScriptRef(const TxOutScriptRef&);
    TxOutScriptRef(TxOutScriptRef&&);
 
@@ -28,10 +41,10 @@ public:
    bool operator==(const TxOutScriptRef&) const;
    bool operator<(const TxOutScriptRef&) const;
 
-   void copyFrom(const TxOutScriptRef&);
-   void setRef(const BinaryDataRef& bd);
-
    BinaryData getScrAddr(void) const;
+   BinaryDataRef getScrRef(void) const;
+   static TxOutScriptRef fromRef(Armory::ScriptPrefix, const BinaryDataRef&);
+   static TxOutScriptRef fromScrAddr(BinaryDataRef);
 };
 
 namespace std
@@ -41,6 +54,3 @@ namespace std
       std::size_t operator()(const TxOutScriptRef&) const;
    };
 };
-
-
-#endif

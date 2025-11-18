@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2020-2021, goatpig                                          //
+//  Copyright (C) 2020-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -8,20 +8,33 @@
 
 #include <list>
 
-#include "ZeroConfNotifications.h"
-#include "ZeroConfUtils.h"
-#include "ZeroConf.h"
-#include "BDM_Server.h"
-#include "LedgerEntry.h"
-#include "BlockchainDatabase/txio.h"
+#include "Notifications.h"
+#include <BlockchainDatabase/txio.h>
+#include <WebSocketMessage.h>
+#include <BDM_Server.h>
 
-using namespace std;
+#include "Utils.h"
 
-///////////////////////////////////////////////////////////////////////////////
-//
+using namespace Armory::ZeroConf;
+
+////////////////////////////////////////////////////////////////////////////////
+// WatcherTxBody
+WatcherTxBody::WatcherTxBody(std::shared_ptr<BinaryData> rawTx) :
+   rawTxPtr(rawTx)
+{}
+
+////////////////////////////////////////////////////////////////////////////////
+// ZcNotificationPacket
+ZcNotificationPacket::ZcNotificationPacket(BdvIdKey id) :
+   bdvID(id)
+{}
+
+////////////////////////////////////////////////////////////////////////////////
 // ZeroConfCallbacks
-//
-///////////////////////////////////////////////////////////////////////////////
+ZeroConfCallbacks::~ZeroConfCallbacks()
+{}
+
+////////
 ZeroConfCallbacks_BDV::ZeroConfCallbacks_BDV(Clients* clientsPtr) :
    clientsPtr_(clientsPtr)
 {
@@ -29,11 +42,9 @@ ZeroConfCallbacks_BDV::ZeroConfCallbacks_BDV(Clients* clientsPtr) :
    {
       processNotifRequests();
    };
-
-   requestThread_ = thread(requestLambda);
+   requestThread_ = std::thread(requestLambda);
 }
 
-///////////////////////////////////////////////////////////////////////////////
 ZeroConfCallbacks_BDV::~ZeroConfCallbacks_BDV()
 {
    requestQueue_.terminate();
@@ -42,13 +53,12 @@ ZeroConfCallbacks_BDV::~ZeroConfCallbacks_BDV()
    }
 }
 
-///////////////////////////////////////////////////////////////////////////////
+////////
 std::set<BdvIdKey> ZeroConfCallbacks_BDV::hasScrAddr(
    const BinaryDataRef& addr) const
 {
    //this is slow, needs improved
    std::set<BdvIdKey> result;
-
    auto bdvMap = clientsPtr_->BDVs_.get();
    for (const auto& bdv_pair : bdvMap) {
       if (bdv_pair.second->hasScrAddress(addr)) {
@@ -58,15 +68,15 @@ std::set<BdvIdKey> ZeroConfCallbacks_BDV::hasScrAddr(
    return result;
 }
 
-///////////////////////////////////////////////////////////////////////////////
+////////
 void ZeroConfCallbacks_BDV::pushZcNotification(
    std::shared_ptr<MempoolSnapshot> ss,
    std::shared_ptr<KeyAddrMap> newZcKeys,
-   std::map<BdvIdKey, ParsedZCData> flaggedBDVs,
+   std::map<BdvIdKey, Armory::ZeroConf::ParsedZCData> flaggedBDVs,
    BdvIdKey bdvId,
    std::map<BinaryData, std::shared_ptr<WatcherTxBody>>& watcherMap)
 {
-   auto requestPtr = make_shared<
+   auto requestPtr = std::make_shared<
       ZeroConfCallbacks_BDV::ZcNotifRequest_Success>(
       bdvId,
       ss, newZcKeys, flaggedBDVs,
@@ -74,17 +84,16 @@ void ZeroConfCallbacks_BDV::pushZcNotification(
    requestQueue_.push_back(std::move(requestPtr));
 }
 
-///////////////////////////////////////////////////////////////////////////////
 void ZeroConfCallbacks_BDV::pushZcError(
    BdvIdKey bdvID, const BinaryData& hash,
-   ArmoryErrorCodes errCode, const string& verbose)
+   ArmoryErrorCodes errCode, const std::string& verbose)
 {
-   auto requestPtr = make_shared<ZeroConfCallbacks_BDV::ZcNotifRequest_Error>(
+   auto requestPtr = std::make_shared<ZcNotifRequest_Error>(
       bdvID, hash, errCode, verbose);
    requestQueue_.push_back(move(requestPtr));
 }
 
-///////////////////////////////////////////////////////////////////////////////
+////////
 void ZeroConfCallbacks_BDV::processNotifRequests()
 {
    while (true) {
@@ -95,11 +104,11 @@ void ZeroConfCallbacks_BDV::processNotifRequests()
          break;
       }
 
-      switch (notifReqPtr->type_)
+      switch (notifReqPtr->type)
       {
          case ZcNotifRequestType::Success:
          {
-            auto reqPtr = dynamic_pointer_cast<
+            auto reqPtr = std::dynamic_pointer_cast<
                ZeroConfCallbacks_BDV::ZcNotifRequest_Success>(notifReqPtr);
             if (reqPtr == nullptr) {
                LOGWARN << "zc notification request type mismatch";
@@ -107,7 +116,7 @@ void ZeroConfCallbacks_BDV::processNotifRequests()
             }
 
             //build notifications for each BDV
-            for (auto& bdvObj : reqPtr->flaggedBDVs_) {
+            for (auto& bdvObj : reqPtr->flaggedBDVs) {
                //get bdv object
                auto bdvPtr = clientsPtr_->BDVs_.get(bdvObj.first);
                if (bdvPtr == nullptr) {
@@ -116,76 +125,76 @@ void ZeroConfCallbacks_BDV::processNotifRequests()
                }
 
                //create notif packet
-               ZcNotificationPacket notificationPacket(bdvObj.first);
-               notificationPacket.ssPtr_ = reqPtr->ssPtr_;
+               auto notifPacket = std::make_shared<ZcNotificationPacket>(
+                  bdvObj.first);
+               notifPacket->ssPtr = reqPtr->ssPtr;
 
                //set txio map
-               for (auto& sa : bdvObj.second.scrAddrs_) {
-                  auto txioKeys = reqPtr->ssPtr_->getTxioKeysForScrAddr(sa);
+               for (const auto& sa : bdvObj.second.scrAddrs) {
+                  auto txioKeys = reqPtr->ssPtr->getTxioKeysForScrAddr(sa);
                   if (txioKeys.empty()) {
                      continue;
                   }
 
                   //copy the txiomap for this scrAddr over to the notification object
-                  notificationPacket.scrAddrToTxioKeys_.emplace(sa, txioKeys);
+                  notifPacket->scrAddrToTxioKeys.emplace(sa, txioKeys);
                }
 
                //set invalidated keys
-               if (!bdvObj.second.invalidatedKeys_.empty()) {
-                  notificationPacket.purgePacket_ = std::make_shared<ZcPurgePacket>();
-                  notificationPacket.purgePacket_->invalidatedZcKeys_ =
-                     std::move(bdvObj.second.invalidatedKeys_);
+               if (!bdvObj.second.invalidatedKeys.empty()) {
+                  notifPacket->purgePacket = std::make_shared<ZcPurgePacket>();
+                  notifPacket->purgePacket->invalidatedZcKeys = std::move(
+                     bdvObj.second.invalidatedKeys);
                }
 
                //set the primary requestor if this is the caller bdv
-               if (bdvObj.first == reqPtr->bdvId_) {
-                  notificationPacket.primaryRequestor_ = reqPtr->bdvId_;
+               if (bdvObj.first == reqPtr->bdvId) {
+                  notifPacket->primaryRequestor = reqPtr->bdvId;
                }
 
                //set new zc keys
-               notificationPacket.newKeysAndScrAddr_ = reqPtr->newZcKeys_;
+               notifPacket->newKeysAndScrAddr = reqPtr->newZcKeys;
 
                //create notif and push to bdv
-               auto notifPacket = std::make_shared<BDV_Notification_Packet>();
-               notifPacket->bdvPtr = bdvPtr;
-               notifPacket->notifPtr =
-                  std::make_shared<BDV_Notification_ZC>(notificationPacket);
-               clientsPtr_->innerBDVNotifStack_.push_back(std::move(notifPacket));
+               auto bdvPacket = std::make_shared<BDV_Notification_Packet>();
+               bdvPacket->bdvPtr = bdvPtr;
+               bdvPacket->notifPtr = std::make_shared<BDV_Notification_ZC>(
+                  notifPacket);
+               clientsPtr_->innerBDVNotifStack_.push_back(std::move(bdvPacket));
             }
 
             //process duplicate broadcast requests
-            for (auto& watcherObj : reqPtr->watcherMap_) {
-               if (watcherObj.second->extraRequestors_.empty()) {
+            for (auto& watcherObj : reqPtr->watcherMap) {
+               if (watcherObj.second->extraRequestors.empty()) {
                   continue;
                }
 
-               if (!reqPtr->ssPtr_->hasHash(watcherObj.first)) {
+               if (!reqPtr->ssPtr->hasHash(watcherObj.first)) {
                   //tx was not added to mempool, skip
                   continue;
                }
 
                //tx was added to mempool, report already-in-mempool error to
                //duplicate requestors
-               for (auto& extra : watcherObj.second->extraRequestors_) {
+               for (auto& extra : watcherObj.second->extraRequestors) {
                   pushZcError(extra, watcherObj.first,
                      ArmoryErrorCodes::ZcBroadcast_AlreadyInMempool,
                      "Extra requestor broadcast error: Already in mempool");
                }
             }
-
             break;
          }
 
          case ZcNotifRequestType::Error:
          {
-            auto reqPtr = dynamic_pointer_cast<
+            auto reqPtr = std::dynamic_pointer_cast<
                ZeroConfCallbacks_BDV::ZcNotifRequest_Error>(notifReqPtr);
             if (reqPtr == nullptr) {
                LOGWARN << "zc notification request type mismatch";
                break;
             }
 
-            auto bdvPtr = clientsPtr_->BDVs_.get(reqPtr->bdvId_);
+            auto bdvPtr = clientsPtr_->BDVs_.get(reqPtr->bdvId);
             if (bdvPtr == nullptr) {
                LOGWARN << "pushed zc error with invalid bdvid";
                return;
@@ -194,9 +203,9 @@ void ZeroConfCallbacks_BDV::processNotifRequests()
             auto notifPacket = std::make_shared<BDV_Notification_Packet>();
             notifPacket->bdvPtr = bdvPtr;
             notifPacket->notifPtr = std::make_shared<BDV_Notification_Error>(
-               reqPtr->bdvId_,
-               (int)reqPtr->errCode_, reqPtr->hash_, reqPtr->verbose_);
-            clientsPtr_->innerBDVNotifStack_.push_back(move(notifPacket));
+               reqPtr->bdvId, (int)reqPtr->errCode,
+               reqPtr->hash, reqPtr->verbose);
+            clientsPtr_->innerBDVNotifStack_.push_back(std::move(notifPacket));
 
             break;
          }
@@ -208,5 +217,33 @@ void ZeroConfCallbacks_BDV::processNotifRequests()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+// ZcNotifRequest
+ZeroConfCallbacks_BDV::ZcNotifRequest::ZcNotifRequest(
+   ZcNotifRequestType zcType, BdvIdKey id) :
+   type(zcType), bdvId(id)
+{}
+
 ZeroConfCallbacks_BDV::ZcNotifRequest::~ZcNotifRequest()
+{}
+
+////////
+ZeroConfCallbacks_BDV::ZcNotifRequest_Success::ZcNotifRequest_Success(
+   BdvIdKey bdvId,
+   std::shared_ptr<Armory::ZeroConf::MempoolSnapshot> mempoolSs,
+   std::shared_ptr<KeyAddrMap> newKeys,
+   std::map<BdvIdKey, Armory::ZeroConf::ParsedZCData> flagged,
+   std::map<BinaryData, std::shared_ptr<WatcherTxBody>>& watchers) :
+   ZcNotifRequest(ZcNotifRequestType::Success, bdvId),
+   ssPtr(mempoolSs), newZcKeys(newKeys),
+   flaggedBDVs(std::move(flagged)),
+   watcherMap(std::move(watchers))
+{}
+
+////////
+ZeroConfCallbacks_BDV::ZcNotifRequest_Error::ZcNotifRequest_Error(
+   BdvIdKey bdvId,
+   const BinaryData& h, ArmoryErrorCodes err,
+   const std::string& v) :
+   ZcNotifRequest(ZcNotifRequestType::Error, bdvId),
+   hash(h), errCode(err), verbose(v)
 {}

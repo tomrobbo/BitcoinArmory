@@ -6,15 +6,18 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "../AssetEncryption.h"
-#include "../DecryptedDataContainer.h"
-#include "../DerivationScheme.h"
-#include "../Assets.h"
-#include "../WalletIdTypes.h"
-#include "../BIP32_Node.h"
+#include "Utils/BtcUtils.h"
+#include "Utils/Cryptography.h"
+
+#include "AssetEncryption.h"
+#include "DecryptedDataContainer.h"
+#include "DerivationScheme.h"
+#include "Assets.h"
+#include "WalletIdTypes.h"
+#include "BIP32_Node.h"
 #include "Seeds.h"
 #include "Backups.h"
-#include "BtcUtils.h"
+
 extern "C" {
 #include <trezor-crypto/bip39.h>
 }
@@ -226,7 +229,7 @@ std::unique_ptr<EncryptedSeed> EncryptedSeed::fromClearTextSeed(
    seed->serialize(bw);
 
    //encrypt it
-   auto cipherText = decrCont->encryptData(cipherCopy.get(), bw.getData());
+   auto cipherText = decrCont->encryptData(cipherCopy.get(), bw.getDataRef());
    auto cipherData = std::make_unique<Encryption::CipherData>(
       cipherText, std::move(cipherCopy));
 

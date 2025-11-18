@@ -13,9 +13,9 @@
 #include <string>
 #include <memory>
 
-#include "../BinaryData.h"
-#include "../SecureBinaryData.h"
-#include "../Wallets/BIP32_Node.h"
+#include "Utils/BinaryData.h"
+#include "Utils/SecureBinaryData.h"
+#include "Wallets/BIP32_Node.h"
 
 ////
 class NoAssetException : public std::runtime_error

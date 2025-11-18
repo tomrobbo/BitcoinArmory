@@ -1,16 +1,17 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2017-2021, goatpig                                          //
+//  Copyright (C) 2017-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _H_TXEVALSTATE
-#define _H_TXEVALSTATE
+#pragma once
 
+#include <stdint.h>
 #include <map>
-#include "BinaryData.h"
+
+class BinaryData;
 
 namespace Armory
 {
@@ -72,7 +73,5 @@ namespace Armory
          bool isValid(void) const;
          const TxInEvalState& getSignedStateForInput(unsigned i) const;
       };
-   }; //namespace Signer
-}; //namespace Armory
-
-#endif
+   } //namespace Signing
+} //namespace Armory

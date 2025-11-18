@@ -11,21 +11,26 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _SCRADDRFILTER_H_
-#define _SCRADDRFILTER_H_
+#pragma once
 
 #include <vector>
 #include <atomic>
 #include <functional>
 #include <memory>
 
-#include "ThreadSafeClasses.h"
-#include "BinaryData.h"
-#include "ArmoryConfig.h"
-#include "BtcUtils.h"
-#include "StoredBlockObj.h"
-#include "lmdb_wrapper.h"
-#include "Blockchain.h"
+#include <Utils/ThreadSafeClasses.h>
+#include <Utils/BinaryData.h>
+
+namespace Armory
+{
+   namespace ZeroConf
+   {
+      class ZeroConfContainer;
+   }
+}
+class Blockchain;
+class LMDBBlockDatabase;
+struct StoredDBInfo;
 
 #define SIDESCAN_ID 0x100000ff
 
@@ -82,36 +87,18 @@ public:
    unsigned scannedHeight_ = 0;
 
 public:
-   AddrAndHash(BinaryDataRef addrRef) :
-      scrAddr_(addrRef)
-   {}
+   AddrAndHash(BinaryDataRef);
 
-   const BinaryData& getHash(void) const
-   {
-      if (addrHash_.empty()) {
-         addrHash_ = std::move(BtcUtils::getHash256(scrAddr_));
-      }
-      return addrHash_;
-   }
-
-   bool operator<(const AddrAndHash& rhs) const
-   {
-      return this->scrAddr_ < rhs.scrAddr_;
-   }
-
-   bool operator<(const BinaryDataRef& rhs) const
-   {
-      return this->scrAddr_.getRef() < rhs;
-   }
+   const BinaryData& getHash(void) const;
+   bool operator<(const AddrAndHash&) const;
+   bool operator<(const BinaryDataRef&) const;
 };
 
-struct TxOutScriptRef;
+class TxOutScriptRef;
 
 ////////////////////////////////////////////////////////////////////////////////
 class ScrAddrFilter
 {
-   friend class ZeroConfContainer;
-
    /***
    This class keeps track of all registered scrAddr to be scanned by the DB.
    If the DB isn't running in supernode, this class also acts as a helper to
@@ -148,6 +135,8 @@ class ScrAddrFilter
    4) Signal the wallet that the address is ready. Wallet object will take it
    up from there.
    ***/
+
+   friend class Armory::ZeroConf::ZeroConfContainer;
 
 private:
    const unsigned sdbiKey_;
@@ -243,12 +232,8 @@ public:
 //virtuals
 protected:
    virtual std::shared_ptr<ScrAddrFilter> getNew(unsigned) = 0;
-   virtual bool applyBlockRangeToDB(uint32_t startBlock,
-      const std::vector<std::string>& wltIDs,
-      bool reportProgress)=0;
+   virtual bool applyBlockRangeToDB(uint32_t,
+      const std::vector<std::string>&, bool)=0;
    virtual std::shared_ptr<Blockchain> blockchain(void) const = 0;
    virtual bool bdmIsRunning(void) const = 0;
 };
-
-#endif
-// kate: indent-width 3; replace-tabs on;

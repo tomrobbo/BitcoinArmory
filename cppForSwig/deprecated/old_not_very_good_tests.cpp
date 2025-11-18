@@ -1974,7 +1974,7 @@ void TestLDBScanBlockchain(string testdbpath)
    addr.createFromHex("fe3959db250f247ad724f2af5439ca32e8be3db1"); addrMap[addr] = 1;
    addr.createFromHex("b13dbee832ca3954aff224d77a240f25db5939fe"); addrMap[addr] = 1;
 
-   map<OutPoint, uint64_t> unspentOutPoints;
+   map<Outpoint, uint64_t> unspentOutPoints;
 
    leveldb::Iterator* it = ldb->NewIterator(leveldb::ReadOptions());
    uint32_t idx = 1;
@@ -1993,7 +1993,7 @@ void TestLDBScanBlockchain(string testdbpath)
 
       uint32_t txLen = BtcUtils::TxCalcLength(val.getPtr(), &offsetsIn, &offsetsOut);
       
-      OutPoint op;
+      Outpoint op;
 
       for(uint32_t iout=0; iout<offsetsOut.size()-1; iout++)
       {
@@ -2049,8 +2049,8 @@ void TestLDBScanBlockchain(string testdbpath)
 
       uint32_t txLen = BtcUtils::TxCalcLength(val.getPtr(), &offsetsIn, &offsetsOut);
       
-      OutPoint op;
-      map<OutPoint, uint64_t>::iterator iter;
+      Outpoint op;
+      map<Outpoint, uint64_t>::iterator iter;
       for(uint32_t iin=0; iin<offsetsIn.size()-1; iin++)
       {
          op.unserialize(val.getPtr() + offsetsIn[iin]);

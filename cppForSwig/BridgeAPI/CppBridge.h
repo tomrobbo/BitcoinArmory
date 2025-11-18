@@ -6,14 +6,18 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _CPPBRIDGE_H
-#define _CPPBRIDGE_H
+#pragma once
 
 #include <set>
+#include <map>
+#include <string>
+#include <mutex>
 #include <functional>
+#include <filesystem>
 
-#include "../ArmoryConfig.h"
-#include "btc/ecc.h"
+class BinaryData;
+class BinaryDataRef;
+class SecureBinaryData;
 
 namespace AsyncClient
 {
@@ -254,7 +258,5 @@ namespace Armory
             const std::function<void(std::unique_ptr<WritePayload_Bridge>)>&);
          SecureBinaryData generateRandom(size_t) const;
       };
-   }; //namespace Bridge
-}; //namespace Armory
-
-#endif
+   } //namespace Bridge
+} //namespace Armory

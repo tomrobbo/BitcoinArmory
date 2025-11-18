@@ -10,7 +10,7 @@
 #include "Assets.h"
 #include "AssetEncryption.h"
 #include "DecryptedDataContainer.h"
-#include "../BitcoinSettings.h"
+#include "Utils/BitcoinSettings.h"
 
 #define HEADER_VERSION                    0x00000001
 
@@ -99,17 +99,17 @@ void WalletHeader::unserializeEncryptionKey(BinaryRefReader& brr)
       case 0x00000001:
       {
          auto len = brr.get_var_int();
-         defaultEncryptionKeyId_ = std::move(brr.get_BinaryData(len));
+         defaultEncryptionKeyId_ = SecureBinaryData{brr.get_BinaryDataRef(len)};
 
          len = brr.get_var_int();
-         defaultEncryptionKey_ = std::move(brr.get_BinaryData(len));
+         defaultEncryptionKey_ = SecureBinaryData{brr.get_BinaryDataRef(len)};
 
          len = brr.get_var_int();
          auto kdfId = brr.get_BinaryData(len);
          defaultKdfId_ = KdfId::fromBinaryData(kdfId);
 
          len = brr.get_var_int();
-         masterEncryptionKeyId_ = std::move(brr.get_BinaryData(len));
+         masterEncryptionKeyId_ = SecureBinaryData{brr.get_BinaryDataRef(len)};
 
          break;
       }
@@ -137,7 +137,7 @@ void WalletHeader::unserializeControlSalt(BinaryRefReader& brr)
       case 0x00000001:
       {
          auto len = brr.get_var_int();
-         controlSalt_ = brr.get_SecureBinaryData(len);
+         controlSalt_ = SecureBinaryData{brr.get_BinaryDataRef(len)};
          break;
       }
 

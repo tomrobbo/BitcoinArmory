@@ -6,13 +6,14 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
+#include <cstring>
 #include <filesystem>
 
+#include <Utils/BtcUtils.h>
+#include <Utils/DBUtils.h>
+#include <Utils/Cryptography.h>
 #include "WalletFileInterface.h"
-#include "BtcUtils.h"
-#include "DBUtils.h"
 #include "WalletHeader.h"
-#include "Cryptography.h"
 #include "DecryptedDataContainer.h"
 #include "Seeds/Seeds.h"
 #include "KDF.h"

@@ -5,36 +5,38 @@
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
 //                                                                            //
-//  Copyright (C) 2016-2024, goatpig                                          //
+//  Copyright (C) 2016-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
-
-#include "DBUtils.h"
-
-namespace fs = std::filesystem;
 
 #if defined(__MINGW32__) || defined(_MSC_VER)
    #include <windows.h>
 #else
    #include <sys/mman.h>
 #endif
-
-#include <filesystem>
 #include <fcntl.h>
-
+#include <unistd.h>
+#include <filesystem>
 #include <string_view>
+#include <cstring>
+
+#include "DBUtils.h"
+
+
+namespace fs = std::filesystem;
 using namespace std::string_view_literals;
+using namespace Armory;
 
 namespace {
    auto blkFilePrefix = "blk"sv;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-const BinaryData DBUtils::ZeroConfHeader_ = BinaryData::CreateFromHex("FFFF");
+const BinaryData DBUtils::ZCPrefix = BinaryData::CreateFromHex("FFFF");
 
 ////////////////////////////////////////////////////////////////////////////////
+// DBUtils
 BLKDATA_TYPE DBUtils::readBlkDataKey(BinaryRefReader& brr,
    uint32_t& height, uint8_t& dupID)
 {
@@ -43,7 +45,6 @@ BLKDATA_TYPE DBUtils::readBlkDataKey(BinaryRefReader& brr,
    return readBlkDataKey(brr, height, dupID, tempTxIdx, tempTxOutIdx);
 }
 
-////////////////////////////////////////////////////////////////////////////////
 BLKDATA_TYPE DBUtils::readBlkDataKey(BinaryRefReader& brr,
    uint32_t& height, uint8_t& dupID, uint16_t& txIdx)
 {
@@ -51,23 +52,20 @@ BLKDATA_TYPE DBUtils::readBlkDataKey(BinaryRefReader& brr,
    return readBlkDataKey(brr, height, dupID, txIdx, tempTxOutIdx);
 }
 
-////////////////////////////////////////////////////////////////////////////////
 BLKDATA_TYPE DBUtils::readBlkDataKey(BinaryRefReader & brr,
    uint32_t& height, uint8_t& dupID, uint16_t& txIdx, uint16_t& txOutIdx)
 {
    uint8_t prefix = brr.get_uint8_t();
-   if (prefix != (uint8_t)DB_PREFIX_TXDATA) {
+   if (prefix != (uint8_t)DbPrefix::TXDATA) {
       height = 0xffffffff;
       dupID = 0xff;
       txIdx = 0xffff;
       txOutIdx = 0xffff;
-      return NOT_BLKDATA;
+      return BLKDATA_TYPE::Invalid;
    }
-
    return readBlkDataKeyNoPrefix(brr, height, dupID, txIdx, txOutIdx);
 }
 
-////////////////////////////////////////////////////////////////////////////////
 BLKDATA_TYPE DBUtils::readBlkDataKeyNoPrefix(BinaryRefReader& brr,
    uint32_t& height, uint8_t& dupID)
 {
@@ -76,7 +74,6 @@ BLKDATA_TYPE DBUtils::readBlkDataKeyNoPrefix(BinaryRefReader& brr,
    return readBlkDataKeyNoPrefix(brr, height, dupID, tempTxIdx, tempTxOutIdx);
 }
 
-////////////////////////////////////////////////////////////////////////////////
 BLKDATA_TYPE DBUtils::readBlkDataKeyNoPrefix(
    BinaryRefReader& brr, uint32_t& height, uint8_t& dupID, uint16_t& txIdx)
 {
@@ -84,7 +81,6 @@ BLKDATA_TYPE DBUtils::readBlkDataKeyNoPrefix(
    return readBlkDataKeyNoPrefix(brr, height, dupID, txIdx, tempTxOutIdx);
 }
 
-////////////////////////////////////////////////////////////////////////////////
 BLKDATA_TYPE DBUtils::readBlkDataKeyNoPrefix(BinaryRefReader & brr,
    uint32_t& height, uint8_t& dupID, uint16_t& txIdx, uint16_t& txOutIdx)
 {
@@ -95,51 +91,44 @@ BLKDATA_TYPE DBUtils::readBlkDataKeyNoPrefix(BinaryRefReader & brr,
    if (brr.getSizeRemaining() == 0) {
       txIdx = 0xffff;
       txOutIdx = 0xffff;
-      return BLKDATA_HEADER;
+      return BLKDATA_TYPE::Header;
    } else if (brr.getSizeRemaining() == 2) {
       txIdx = brr.get_uint16_t(BE);
       txOutIdx = 0xffff;
-      return BLKDATA_TX;
+      return BLKDATA_TYPE::Tx;
    } else if (brr.getSizeRemaining() == 4) {
       txIdx = brr.get_uint16_t(BE);
       txOutIdx = brr.get_uint16_t(BE);
-      return BLKDATA_TXOUT;
+      return BLKDATA_TYPE::TxOut;
    } else {
       LOGERR << "Unexpected bytes remaining: " << brr.getSizeRemaining();
-      return NOT_BLKDATA;
+      return BLKDATA_TYPE::Invalid;
    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::string DBUtils::getPrefixName(uint8_t prefixInt)
-{
-   return getPrefixName((DB_PREFIX)prefixInt);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-std::string DBUtils::getPrefixName(DB_PREFIX pref)
+std::string DBUtils::getPrefixName(DbPrefix pref)
 {
    switch (pref)
    {
-      case DB_PREFIX_DBINFO:    return std::string("DBINFO");
-      case DB_PREFIX_TXDATA:    return std::string("TXDATA");
-      case DB_PREFIX_SCRIPT:    return std::string("SCRIPT");
-      case DB_PREFIX_TXHINTS:   return std::string("TXHINTS");
-      case DB_PREFIX_TRIENODES: return std::string("TRIENODES");
-      case DB_PREFIX_HEADHASH:  return std::string("HEADHASH");
-      case DB_PREFIX_HEADHGT:   return std::string("HEADHGT");
-      case DB_PREFIX_UNDODATA:  return std::string("UNDODATA");
-      default:                  return std::string("<unknown>");
+      case DbPrefix::DBINFO:    return {"DBINFO"};
+      case DbPrefix::TXDATA:    return {"TXDATA"};
+      case DbPrefix::SCRIPT:    return {"SCRIPT"};
+      case DbPrefix::TXHINTS:   return {"TXHINTS"};
+      case DbPrefix::TRIENODES: return {"TRIENODES"};
+      case DbPrefix::HEADHASH:  return {"HEADHASH"};
+      case DbPrefix::HEADHGT:   return {"HEADHGT"};
+      case DbPrefix::UNDODATA:  return {"UNDODATA"};
+      default:                  return {"<unknown>"};
    }
 }
 
-/////////////////////////////////////////////////////////////////////////////
 bool DBUtils::checkPrefixByteWError(BinaryRefReader& brr,
-   DB_PREFIX prefix, bool rewindWhenDone)
+   DbPrefix prefix, bool rewindWhenDone)
 {
-   uint8_t oneByte = brr.get_uint8_t();
+   auto oneByte = (DbPrefix)brr.get_uint8_t();
    bool out;
-   if (oneByte == (uint8_t)prefix) {
+   if (oneByte == prefix) {
       out = true;
    } else {
       LOGERR << "Unexpected prefix byte: "
@@ -154,9 +143,8 @@ bool DBUtils::checkPrefixByteWError(BinaryRefReader& brr,
    return out;
 }
 
-/////////////////////////////////////////////////////////////////////////////
 bool DBUtils::checkPrefixByte(BinaryRefReader& brr,
-   DB_PREFIX prefix, bool rewindWhenDone)
+   DbPrefix prefix, bool rewindWhenDone)
 {
    uint8_t oneByte = brr.get_uint8_t();
    bool out = (oneByte == (uint8_t)prefix);
@@ -171,41 +159,37 @@ bool DBUtils::checkPrefixByte(BinaryRefReader& brr,
 BinaryData DBUtils::getBlkDataKey(uint32_t height, uint8_t dup)
 {
    BinaryWriter bw(5);
-   bw.put_uint8_t(DB_PREFIX_TXDATA);
+   bw.put_uint8_t((uint8_t)DbPrefix::TXDATA);
    bw.put_BinaryData(heightAndDupToHgtx(height, dup));
    return bw.getData();
 }
 
-/////////////////////////////////////////////////////////////////////////////
 BinaryData DBUtils::getBlkDataKey(uint32_t height,
    uint8_t dup, uint16_t txIdx)
 {
    BinaryWriter bw(7);
-   bw.put_uint8_t(DB_PREFIX_TXDATA);
+   bw.put_uint8_t((uint8_t)DbPrefix::TXDATA);
    bw.put_BinaryData(heightAndDupToHgtx(height, dup));
    bw.put_uint16_t(txIdx, BE);
    return bw.getData();
 }
 
-/////////////////////////////////////////////////////////////////////////////
 BinaryData DBUtils::getBlkDataKey(uint32_t height,
    uint8_t dup, uint16_t txIdx, uint16_t txOutIdx)
 {
    BinaryWriter bw(9);
-   bw.put_uint8_t(DB_PREFIX_TXDATA);
+   bw.put_uint8_t((uint8_t)DbPrefix::TXDATA);
    bw.put_BinaryData(heightAndDupToHgtx(height, dup));
    bw.put_uint16_t(txIdx, BE);
    bw.put_uint16_t(txOutIdx, BE);
    return bw.getData();
 }
 
-/////////////////////////////////////////////////////////////////////////////
 BinaryData DBUtils::getBlkDataKeyNoPrefix(uint32_t height, uint8_t dup)
 {
    return heightAndDupToHgtx(height, dup);
 }
 
-/////////////////////////////////////////////////////////////////////////////
 BinaryData DBUtils::getBlkDataKeyNoPrefix(uint32_t height,
    uint8_t dup, uint16_t txIdx)
 {
@@ -215,7 +199,6 @@ BinaryData DBUtils::getBlkDataKeyNoPrefix(uint32_t height,
    return bw.getData();
 }
 
-/////////////////////////////////////////////////////////////////////////////
 BinaryData DBUtils::getBlkDataKeyNoPrefix(uint32_t height,
    uint8_t dup, uint16_t txIdx, uint16_t txOutIdx)
 {
@@ -232,13 +215,11 @@ uint32_t DBUtils::hgtxToHeight(const BinaryData& hgtx)
    return (READ_UINT32_BE(hgtx) >> 8);
 }
 
-/////////////////////////////////////////////////////////////////////////////
 uint8_t DBUtils::hgtxToDupID(const BinaryData& hgtx)
 {
    return (READ_UINT32_BE(hgtx) & 0x7f);
 }
 
-/////////////////////////////////////////////////////////////////////////////
 BinaryData DBUtils::heightAndDupToHgtx(uint32_t hgt, uint8_t dup)
 {
    uint32_t hgtxInt = (hgt << 8) | (uint32_t)dup;
@@ -248,18 +229,17 @@ BinaryData DBUtils::heightAndDupToHgtx(uint32_t hgt, uint8_t dup)
 /////////////////////////////////////////////////////////////////////////////
 BinaryData DBUtils::getFilterPoolKey(uint32_t filenum)
 {
-   uint32_t bucketKey = (DB_PREFIX_POOL << 24) | (uint32_t)filenum;
+   uint32_t bucketKey = (uint32_t(DbPrefix::POOL) << 24) | (uint32_t)filenum;
    return WRITE_UINT32_BE(bucketKey);
 }
 
-/////////////////////////////////////////////////////////////////////////////
 BinaryData DBUtils::getMissingHashesKey(uint32_t id)
 {
    BinaryData bd;
    bd.resize(4);
 
    id &= 0x00FFFFFF; //24bit ids top
-   id |= DB_PREFIX_MISSING_HASHES << 24;
+   id |= uint32_t(DbPrefix::MISSING_HASHES) << 24;
 
    auto keyPtr = (uint32_t*)bd.getPtr();
    *keyPtr = id;
@@ -280,7 +260,6 @@ BinaryDataRef DBUtils::getDataRefForPacket(
 
 /////////////////////////////////////////////////////////////////////////////
 // FileMap
-/////////////////////////////////////////////////////////////////////////////
 FileUtils::FileMap::FileMap(const fs::path& path, bool write, size_t offset)
    : offset_(offset)
 {
@@ -430,7 +409,6 @@ uint8_t* FileUtils::FileMap::ptr() const
 
 /////////////////////////////////////////////////////////////////////////////
 // FileCopy
-/////////////////////////////////////////////////////////////////////////////
 FileUtils::FileCopy::FileCopy(const fs::path& path, size_t offset)
    : offset_(offset)
 {
@@ -509,7 +487,6 @@ const uint8_t* FileUtils::FileCopy::ptr() const
 
 /////////////////////////////////////////////////////////////////////////////
 // FileUtils
-/////////////////////////////////////////////////////////////////////////////
 bool FileUtils::fileExists(const fs::path& path, int mode)
 {
    try {
@@ -682,4 +659,29 @@ fs::path FileUtils::appendTagToPath(const fs::path& orig, const std::string& tag
    auto taggedName = fs::path{orig.stem().string() + tag + orig.extension().string()};
    auto origCopy = orig;
    return origCopy.replace_filename(taggedName);
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// BlockDataFileMap
+FileUtils::BlockDataFileMap::BlockDataFileMap(
+   const std::filesystem::path& path) :
+   fileMap_(path)
+{}
+
+FileUtils::BlockDataFileMap::~BlockDataFileMap()
+{}
+
+const uint8_t* FileUtils::BlockDataFileMap::data() const
+{
+   return fileMap_.ptr();
+}
+
+size_t FileUtils::BlockDataFileMap::size() const
+{
+   return fileMap_.size();
+}
+
+bool FileUtils::BlockDataFileMap::valid() const
+{
+   return fileMap_.isValid();
 }

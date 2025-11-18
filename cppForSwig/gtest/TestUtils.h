@@ -18,61 +18,38 @@
 #include <gtest/gtest.h>
 #include <btc/ecc.h>
 
-#include "../log.h"
-#include "../BinaryData.h"
-#include "../BtcUtils.h"
-#include "../BlockchainDatabase/BlockObj.h"
-#include "../BlockchainDatabase/lmdb_wrapper.h"
-#include "../BlockchainDatabase/BlockUtils.h"
-#include "../BlockchainDatabase/txio.h"
-#include "../BlockchainDatabase/StoredBlockObj.h"
-#include "../Cryptography.h"
-#include "../ScrAddrObj.h"
-#include "../BtcWallet.h"
-#include "../BlockDataViewer.h"
+#include "Utils/log.h"
+#include "Utils/ArmoryErrors.h"
+#include "Utils/BinaryData.h"
+#include "Utils/BtcUtils.h"
+#include "Utils/Cryptography.h"
+#include "Utils/BitcoinSettings.h"
 
-#include "../ArmoryErrors.h"
-#include "../Progress.h"
-#include "../reorgTest/blkdata.h"
-#include "../BDM_Server.h"
-#include "../TxClasses.h"
-#include "../bdmenums.h"
-#include "../Signer/Script.h"
-#include "../Signer/Signer.h"
-#include "../Signer/ResolverFeed_Wallets.h"
-#include "../Wallets/Wallets.h"
-#include "../AsyncClient.h"
-#include "../Wallets/BIP32_Node.h"
-#include "../BitcoinP2P.h"
-#include "btc/ecc.h"
+#include "Signer/Script.h"
+#include "Signer/Signer.h"
+#include "Signer/ResolverFeed_Wallets.h"
+
+#include "BlockchainDatabase/BlockObj.h"
+#include "BlockchainDatabase/lmdb_wrapper.h"
+#include "BlockchainDatabase/BlockUtils.h"
+#include "BlockchainDatabase/txio.h"
+#include "BlockchainDatabase/StoredBlockObj.h"
+#include "AsyncClient.h"
+#include "ScrAddrObj.h"
+#include "BtcWallet.h"
+#include "BlockDataViewer.h"
+#include "BitcoinP2P.h"
+
+#include "Progress.h"
+#include "BDM_Server.h"
+#include "TxClasses.h"
+#include "bdmenums.h"
+#include "Wallets/Wallets.h"
+#include "Wallets/BIP32_Node.h"
 
 #include "MockedNode.h"
 
-#ifdef _MSC_VER
-#ifdef mlock
-#undef mlock
-#undef munlock
-#endif
-#include "win32_posix.h"
-#undef close
-
-#ifdef _DEBUG
-//#define _CRTDBG_MAP_ALLOC
-#include <stdlib.h>
-#include <crtdbg.h>
-
-#ifndef DBG_NEW
-#define DBG_NEW new ( _NORMAL_BLOCK , __FILE__ , __LINE__ )
-#define new DBG_NEW
-#endif
-#endif
-#endif
-
-#define READHEX BinaryData::CreateFromHex
-
-#if ! defined(_MSC_VER) && ! defined(__MINGW32__)
-   void mkdir(std::string newdir);
-#endif
+#define HASH160PREFIX WRITE_UINT8_LE((uint8_t)Armory::ScriptPrefix::HASH160)
 
 namespace Armory
 {
@@ -81,6 +58,8 @@ namespace Armory
       class AssetEntry;
    };
 };
+
+class BlockDataManagerThread;
 
 namespace TestUtils
 {

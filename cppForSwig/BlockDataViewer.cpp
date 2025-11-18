@@ -13,9 +13,16 @@
 #include <algorithm>
 
 #include "BlockDataViewer.h"
-#include "BlockchainDatabase/BlockUtils.h"
+#include <BlockchainDatabase/BlockUtils.h>
+#include <BlockchainDatabase/lmdb_wrapper.h>
+#include <Utils/DBUtils.h>
+#include <ZeroConf/Parser.h>
+#include <ZeroConf/Utils.h>
+#include <ZeroConf/Notifications.h>
+#include "LedgerEntry.h"
 
 using namespace std;
+using namespace Armory;
 
 /////////////////////////////////////////////////////////////////////////////
 BlockDataViewer::BlockDataViewer(std::shared_ptr<BlockDataManager> bdm) :
@@ -122,48 +129,47 @@ void BlockDataViewer::scanWallets(shared_ptr<BDV_Notification> action)
             std::dynamic_pointer_cast<BDV_Notification_NewBlock>(action);
          auto& reorgState = reorgNotif->reorgState;
 
-         if (!reorgState.hasNewTop_) {
+         if (!reorgState.hasNewTop) {
             return;
          }
 
-         if (!reorgState.prevTopStillValid_) {
+         if (!reorgState.prevTopStillValid) {
             //reorg
             reorg = true;
-            startBlock = reorgState.reorgBranchPoint_->getBlockHeight();
+            startBlock = reorgState.reorgBranchPoint->getBlockHeight();
          } else {
-            startBlock = reorgState.prevTop_->getBlockHeight();
+            startBlock = reorgState.prevTop->getBlockHeight();
          }
-         endBlock = reorgState.newTop_->getBlockHeight();
+         endBlock = reorgState.newTop->getBlockHeight();
 
          //set invalidated keys
          if (reorgNotif->zcPurgePacket != nullptr) {
             scanData.saStruct_.invalidatedZcKeys_ =
-               &reorgNotif->zcPurgePacket->invalidatedZcKeys_;
+               &reorgNotif->zcPurgePacket->invalidatedZcKeys;
 
             //carry zc state
-            scanData.saStruct_.zcState_ = reorgNotif->zcPurgePacket->ssPtr_;
+            scanData.saStruct_.zcState_ = reorgNotif->zcPurgePacket->ssPtr;
             scanData.saStruct_.scrAddrToTxioKeys_ =
-               reorgNotif->zcPurgePacket->scrAddrToTxioKeys_;
+               reorgNotif->zcPurgePacket->scrAddrToTxioKeys;
          }
 
-         prevTopBlock = reorgState.prevTop_->getBlockHeight() + 1;
+         prevTopBlock = reorgState.prevTop->getBlockHeight() + 1;
          break;
       }
 
       case BDV_ZC:
       {
-         auto zcAction =
-            std::dynamic_pointer_cast<BDV_Notification_ZC>(action);
+         auto zcAction = std::dynamic_pointer_cast<BDV_Notification_ZC>(action);
          scanData.saStruct_.scrAddrToTxioKeys_ =
-            std::move(zcAction->packet.scrAddrToTxioKeys_);
+            std::move(zcAction->packet->scrAddrToTxioKeys);
 
-         scanData.saStruct_.zcState_ = zcAction->packet.ssPtr_;
+         scanData.saStruct_.zcState_ = zcAction->packet->ssPtr;
          scanData.saStruct_.newKeysAndScrAddr_ =
-            zcAction->packet.newKeysAndScrAddr_;
+            zcAction->packet->newKeysAndScrAddr;
 
-         if (zcAction->packet.purgePacket_ != nullptr) {
+         if (zcAction->packet->purgePacket != nullptr) {
             scanData.saStruct_.invalidatedZcKeys_ =
-               &zcAction->packet.purgePacket_->invalidatedZcKeys_;
+               &zcAction->packet->purgePacket->invalidatedZcKeys;
          }
 
          leVecPtr = &zcAction->leVec;
@@ -185,8 +191,8 @@ void BlockDataViewer::scanWallets(shared_ptr<BDV_Notification> action)
          }
 
          scanData.saStruct_.scrAddrToTxioKeys_ =
-            std::move(refreshNotif->zcPacket.scrAddrToTxioKeys_);
-         scanData.saStruct_.zcState_ = refreshNotif->zcPacket.ssPtr_;
+            std::move(refreshNotif->zcPacket->scrAddrToTxioKeys);
+         scanData.saStruct_.zcState_ = refreshNotif->zcPacket->ssPtr;
          refresh = true;
          break;
       }
@@ -253,14 +259,14 @@ void BlockDataViewer::registerAddresses(WalletRegistrationRequest& request)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-Tx BlockDataViewer::getTxByHash(BinaryData const & txhash) const
+Tx BlockDataViewer::getTxByHash(const BinaryData& txhash) const
 {
    StoredTx stx;
    if (db_->getStoredTx_byHash(txhash, &stx)) {
       auto tx = stx.getTxCopy();
       for (unsigned i=0; i<tx.getNumTxIn(); i++) {
-         auto&& txin = tx.getTxInCopy(i);
-         auto&& op = txin.getOutPoint();
+         auto txin = tx.getTxInCopy(i);
+         auto op = txin.getOutPoint();
          tx.pushBackOpId(db_->getHeightForTxHash(op.getTxHashRef()));
       }
       return tx;
@@ -270,7 +276,7 @@ Tx BlockDataViewer::getTxByHash(BinaryData const & txhash) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-tuple<uint32_t, uint32_t, vector<unsigned>> 
+std::tuple<uint32_t, uint32_t, std::vector<unsigned>>
 BlockDataViewer::getTxMetaData(
    const BinaryDataRef& txHash, bool withOpId) const
 {
@@ -288,7 +294,7 @@ BlockDataViewer::getTxMetaData(
       txIndex = brr.get_uint16_t(BE);
 
       auto hgtx = dbKey.getSliceRef(0, 4);
-      if (db_->getDbType() == ARMORY_DB_SUPER)
+      if (db_->getDbType() == ARMORY_DB_TYPE::Super)
       {
          auto block_id = DBUtils::hgtxToHeight(hgtx);
          auto header = bc_->getHeaderById(block_id);
@@ -312,7 +318,7 @@ BlockDataViewer::getTxMetaData(
             auto&& txin = tx.getTxInCopy(i);
             auto&& op = txin.getOutPoint();
             opIds.push_back(db_->getHeightForTxHash(op.getTxHashRef()));
-         }    
+         }
       }
 
       break;
@@ -339,76 +345,90 @@ BlockDataViewer::getTxMetaData(
    return make_tuple(txHeight, txIndex, move(opIds));
 }
 
-
-////////////////////////////////////////////////////////////////////////////////
-TxOut BlockDataViewer::getPrevTxOut(TxIn & txin) const
+////////
+TxOut BlockDataViewer::getPrevTxOut(const TxIn& txin) const
 {
-   if (txin.isCoinbase())
-      return TxOut();
+   if (txin.isCoinbase()) {
+      throw std::runtime_error("txin is coinbase");
+   }
 
-   OutPoint op = txin.getOutPoint();
+   Outpoint op = txin.getOutPoint();
    Tx theTx = getTxByHash(op.getTxHash());
-   if (!theTx.isInitialized())
-      throw runtime_error("couldn't find prev tx");
-
+   if (!theTx.isInitialized()) {
+      throw std::runtime_error("couldn't find prev tx");
+   }
    uint32_t idx = op.getTxOutIndex();
    return theTx.getTxOutCopy(idx);
 }
 
-////////////////////////////////////////////////////////////////////////////////
-Tx BlockDataViewer::getPrevTx(TxIn & txin) const
+Tx BlockDataViewer::getPrevTx(const TxIn& txin) const
 {
-   if (txin.isCoinbase())
-      return Tx();
-
-   OutPoint op = txin.getOutPoint();
+   if (txin.isCoinbase()) {
+      throw std::runtime_error("txin is coinbase");
+   }
+   Outpoint op = txin.getOutPoint();
    return getTxByHash(op.getTxHash());
 }
 
-////////////////////////////////////////////////////////////////////////////////
-HashString BlockDataViewer::getSenderScrAddr(TxIn & txin) const
+BinaryData BlockDataViewer::getSenderScrAddr(const TxIn& txin) const
 {
-   if (txin.isCoinbase())
-      return HashString(0);
-
+   if (txin.isCoinbase()) {
+      return {};
+   }
    return getPrevTxOut(txin).getScrAddressStr();
 }
 
-
-////////////////////////////////////////////////////////////////////////////////
-int64_t BlockDataViewer::getSentValue(TxIn & txin) const
+int64_t BlockDataViewer::getSentValue(const TxIn& txin) const
 {
-   if (txin.isCoinbase())
+   if (txin.isCoinbase()) {
       return -1;
-
+   }
    return getPrevTxOut(txin).getValue();
-
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-LMDBBlockDatabase* BlockDataViewer::getDB(void) const
+LMDBBlockDatabase* BlockDataViewer::getDB() const
 {
    return db_;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-uint32_t BlockDataViewer::getTopBlockHeight(void) const
+BinaryData BlockDataViewer::getTxHashForDbKey(const BinaryData& dbKey6) const
+{
+   return db_->getTxHashForLdbKey(dbKey6);
+}
+
+const Blockchain& BlockDataViewer::blockchain() const
+{
+   return *bc_;
+}
+
+const std::shared_ptr<BlockHeader> BlockDataViewer::getTopBlockHeader() const
+{
+   return bc_->top();
+}
+
+uint32_t BlockDataViewer::getTopBlockHeight() const
 {
    return bc_->top()->getBlockHeight();
+}
+
+ZeroConf::ZeroConfContainer* BlockDataViewer::zcContainer() const
+{
+   return zc_;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 void BlockDataViewer::reset()
 {
-   for (auto& group : groups_)
+   for (auto& group : groups_) {
       group.reset();
-
+   }
    rescanZC_   = false;
    lastScanned_ = 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-size_t BlockDataViewer::getWalletsPageCount(void) const
+size_t BlockDataViewer::getWalletsPageCount() const
 {
    return groups_[group_wallet].getPageCount();
 }
@@ -676,58 +696,48 @@ uint32_t BlockDataViewer::getClosestBlockHeightForTime(uint32_t timestamp)
 TxOut BlockDataViewer::getTxOutCopy(
    const BinaryData& txHash, uint16_t index) const
 {
-   TxOut txOut;
-   
    {
-      auto&& tx = db_->beginTransaction(STXO, LMDB::Mode::ReadOnly);
+      auto tx = db_->beginTransaction(DB_SELECT::STXO, LMDB::Mode::ReadOnly);
       BinaryData bdkey = db_->getDBKeyForHash(txHash);
-      if (bdkey.getSize() != 0)
-         txOut = db_->getTxOutCopy(bdkey, index);
+      if (!bdkey.empty()) {
+         return db_->getTxOutCopy(bdkey, index);
+      }
    }
 
-   if (!txOut.isInitialized())
-   {
-      auto ss = zeroConfCont_->getSnapshot();
-      auto&& zcKey = ss->getKeyForHash(txHash);
-      txOut = ss->getTxOutCopy(zcKey, index);
-   }
-
-   return txOut;
+   auto ss = zeroConfCont_->getSnapshot();
+   auto zcKey = ss->getKeyForHash(txHash);
+   return ss->getTxOutCopy(zcKey, index);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 TxOut BlockDataViewer::getTxOutCopy(const BinaryData& dbKey) const
 {
-   if (dbKey.getSize() != 8)
-      throw runtime_error("invalid txout key length");
-
-   auto&& tx = db_->beginTransaction(STXO, LMDB::Mode::ReadOnly);
-
-   auto&& bdkey = dbKey.getSliceRef(0, 6);
-   auto index = READ_UINT16_BE(dbKey.getSliceRef(6, 2));
-
-   auto&& txOut = db_->getTxOutCopy(bdkey, index);
-   if (!txOut.isInitialized())
-   {
-      auto ss = zeroConfCont_->getSnapshot();
-      txOut = ss->getTxOutCopy(bdkey, index);
+   if (dbKey.getSize() != 8) {
+      throw std::runtime_error("invalid txout key length");
    }
+   auto tx = db_->beginTransaction(DB_SELECT::STXO, LMDB::Mode::ReadOnly);
 
-   return txOut;
+   auto bdkey = dbKey.getSliceRef(0, 6);
+   auto index = READ_UINT16_BE(dbKey.getSliceRef(6, 2));
+   try {
+      return db_->getTxOutCopy(bdkey, index);
+   } catch (const std::runtime_error&) {
+      auto ss = zeroConfCont_->getSnapshot();
+      return ss->getTxOutCopy(bdkey, index);
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 StoredTxOut BlockDataViewer::getStoredTxOut(const BinaryData& dbKey) const
 {
-   if (dbKey.getSize() != 8)
-      throw runtime_error("invalid txout key length");
-
-   auto&& tx = db_->beginTransaction(STXO, LMDB::Mode::ReadOnly);
+   if (dbKey.getSize() != 8) {
+      throw std::runtime_error("invalid txout key length");
+   }
+   auto tx = db_->beginTransaction(DB_SELECT::STXO, LMDB::Mode::ReadOnly);
 
    StoredTxOut stxo;
    db_->getStoredTxOut(stxo, dbKey);
    stxo.parentHash_ = move(db_->getTxHashForLdbKey(dbKey.getSliceRef(0, 6)));
-   
    return stxo;
 }
 
@@ -738,9 +748,9 @@ Tx BlockDataViewer::getSpenderTxForTxOut(uint32_t height, uint32_t txindex,
    StoredTxOut stxo;
    db_->getStoredTxOut(stxo, height, txindex, txoutid);
 
-   if (!stxo.isSpent())
-      return Tx();
-
+   if (!stxo.isSpent()) {
+      throw std::runtime_error("output is not spent!");
+   }
    TxRef txref(stxo.spentByTxInKey_.getSliceCopy(0, 6));
    DBTxRef dbTxRef(txref, db_);
    return dbTxRef.getTxCopy();
@@ -749,29 +759,24 @@ Tx BlockDataViewer::getSpenderTxForTxOut(uint32_t height, uint32_t txindex,
 ////////////////////////////////////////////////////////////////////////////////
 bool BlockDataViewer::isRBF(const BinaryData& txHash) const
 {
-   auto&& zctx = zeroConfCont_->getTxByHash(txHash);
-   if (!zctx.isInitialized())
+   auto zctx = zeroConfCont_->getTxByHash(txHash);
+   if (!zctx.isInitialized()) {
       return false;
-
+   }
    return zctx.isRBF();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 bool BlockDataViewer::hasScrAddress(const BinaryDataRef& scrAddr) const
 {
-   //TODO: make sure this is thread safe
-
-   for (auto& group : groups_)
-   {
+   for (const auto& group : groups_) {
       ReadWriteLock::WriteLock wl(group.lock_);
-
-      for (auto& wlt : group.wallets_)
-      {
-         if (wlt.second->hasScrAddress(scrAddr))
+      for (const auto& wlt : group.wallets_) {
+         if (wlt.second->hasScrAddress(scrAddr)) {
             return true;
+         }
       }
    }
-
    return false;
 }
 
@@ -955,14 +960,14 @@ std::map<BinaryData, std::vector<Output>> BlockDataViewer::getAddressOutpoints(
 
                const auto& txHash = txFromSS->getTxHash();
                auto outputIndex = txiopair.second->getIndexOfOutput();
-               const auto& parsedTxOut = txFromSS->outputs_[outputIndex];
+               const auto& parsedTxOut = txFromSS->outputs[outputIndex];
 
                //zc outpoints override mined ones
-               firstPairIter->second.emplace_back(Output(
-                  parsedTxOut.value_, UINT32_MAX,
+               firstPairIter->second.emplace_back(Output{
+                  parsedTxOut.value, UINT32_MAX,
                   UINT32_MAX, outputIndex,
                   txHash, {}, spenderHash
-               ));
+               });
             }
          }
       }
@@ -1012,9 +1017,9 @@ std::vector<UTXO> BlockDataViewer::getUtxosForAddress(
    auto zcSnapshot = zc_->getSnapshot();
    auto txioMapFromSS = zcSnapshot->getTxioMapForScrAddr(scrAddr);
 
-   for (auto& txiopair : txioMapFromSS) {
+   for (const auto& txiopair : txioMapFromSS) {
       //grab txoutref, useful in all but 1 case
-      auto&& txOutRef = txiopair.second->getTxRefOfOutput();
+      auto txOutRef = txiopair.second->getTxRefOfOutput();
 
       //does this txio have a zc txin, txout or both?
       if (txiopair.second->hasTxInZC()) {
@@ -1027,17 +1032,17 @@ std::vector<UTXO> BlockDataViewer::getUtxosForAddress(
          throw std::runtime_error("can't find zc tx by txiopair output key");
       }
 
-      auto& txHash = txFromSS->getTxHash();
+      const auto& txHash = txFromSS->getTxHash();
       auto outputIndex = txiopair.second->getIndexOfOutput();
-      const auto& parsedTxOut = txFromSS->outputs_[outputIndex];
+      const auto& parsedTxOut = txFromSS->outputs[outputIndex];
 
       //some of these copies can be easily avoided
-      auto txOutCopy = txFromSS->tx_.getTxOutCopy(outputIndex);
-      UTXO utxo(parsedTxOut.value_, UINT32_MAX, UINT32_MAX,
-         outputIndex, txHash, txOutCopy.getScript());
-      result.emplace_back(utxo);
+      auto txOutCopy = txFromSS->getTxObj().getTxOutCopy(outputIndex);
+      result.emplace_back(UTXO{parsedTxOut.value,
+         UINT32_MAX, UINT32_MAX,
+         outputIndex, txHash, txOutCopy.getScript()
+      });
    }
-
    return result;
 }
 
@@ -1047,12 +1052,9 @@ BlockDataViewer::getOutputsForOutpoints(
    const std::map<BinaryDataRef, std::set<unsigned>>& outpoints, bool withZc) const
 {
    std::vector<std::pair<StoredTxOut, BinaryDataRef>> result;
-   shared_ptr<MempoolSnapshot> zcSS = nullptr;
-   if (withZc) {
-      zcSS = zc_->getSnapshot();
-   }
+   auto zcSS = !withZc ? nullptr : zc_->getSnapshot();
 
-   auto stxo_tx = db_->beginTransaction(STXO, LMDB::Mode::ReadOnly);
+   auto stxo_tx = db_->beginTransaction(DB_SELECT::STXO, LMDB::Mode::ReadOnly);
    for (auto& opSet : outpoints) {
       //get dbkey for this txhash
       auto dbkey = db_->getDBKeyForHash(opSet.first);
@@ -1101,14 +1103,15 @@ BlockDataViewer::getOutputsForOutpoints(
 
          auto& stxo = stxoPair.first;
          stxo.txOutIndex_ = op;
-         if (txFromSS->outputs_.size() <= op) {
+         if (txFromSS->outputs.size() <= op) {
             throw std::runtime_error("invalid outpoint");
          }
 
-         const auto& output = txFromSS->outputs_[op];
-         BinaryRefReader brr(txFromSS->tx_.getPtr(), txFromSS->tx_.getSize());
-         brr.advance(output.offset_);
-         auto txOutRef = brr.get_BinaryDataRef(output.len_);
+         const auto& output = txFromSS->outputs[op];
+         const auto& theTx = txFromSS->getTxObj();
+         BinaryRefReader brr{theTx.getPtr(), theTx.getSize()};
+         brr.advance(output.offset);
+         auto txOutRef = brr.get_BinaryDataRef(output.len);
 
          stxo.unserialize(txOutRef);
          stxo.blockHeight_ = UINT32_MAX;
@@ -1139,7 +1142,7 @@ BlockDataViewer::getOutputsForOutpoints(
    return result;
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 CombinedBalances BlockDataViewer::getCombinedBalances() const
 {
    auto height = getTopBlockHeight();
@@ -1182,9 +1185,153 @@ CombinedBalances BlockDataViewer::getCombinedBalances() const
    return result;
 }
 
+////////
+bool BlockDataViewer::isTxOutSpentByZC(const BinaryData& dbKey) const
+{
+   return zeroConfCont_->isTxOutSpentByZC(dbKey);
+}
+
+std::map<BinaryData, std::shared_ptr<const TxIOPair>>
+BlockDataViewer::getUnspentZCForScrAddr(
+   const BinaryData& scrAddr) const
+{
+   return zeroConfCont_->getUnspentZCforScrAddr(scrAddr);
+}
+
+std::map<BinaryData, std::shared_ptr<const TxIOPair>>
+BlockDataViewer::getRBFTxIOsforScrAddr(
+   const BinaryData& scrAddr) const
+{
+   return zeroConfCont_->getRBFTxIOsforScrAddr(scrAddr);
+}
+
+std::vector<TxOut> BlockDataViewer::getZcTxOutsForKeys(
+   const std::set<BinaryData>& keys) const
+{
+   return zeroConfCont_->getZcTxOutsForKey(keys);
+}
+
+std::vector<UTXO> BlockDataViewer::getZcUTXOsForKeys(
+   const std::set<BinaryData>& keys) const
+{
+   return zeroConfCont_->getZcUTXOsForKey(keys);
+}
+
+ScrAddrFilter* BlockDataViewer::getSAF()
+{
+   return saf_;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
-//// WalletGroup
+// ReadWriteLock
+void ReadWriteLock::lockRead()
+{
+   std::unique_lock<std::mutex> rl(all_lock);
+   std::thread::id this_thread_id = std::this_thread::get_id();
+   auto idIter = thread_ids_.find(this_thread_id);
+
+   if (idIter != thread_ids_.end()) {
+      idIter->second++;
+   }
+
+   if (idIter == thread_ids_.end()) {
+      while (has_writer) {
+         no_writers.wait(rl);
+      }
+      thread_ids_.emplace(this_thread_id, 1);
+   }
+
+   num_readers++;
+}
+
+void ReadWriteLock::unlockRead()
+{
+   std::unique_lock<std::mutex> rl(all_lock);
+   std::thread::id this_thread_id = std::this_thread::get_id();
+   auto idIter = thread_ids_.find(this_thread_id);
+
+   if (idIter == thread_ids_.end()) {
+      throw std::runtime_error("unregistered thread attempted to release a lock");
+   }
+
+   idIter->second--;
+   if (idIter->second == 0) {
+      thread_ids_.erase(idIter);
+   }
+   num_readers--;
+   if (num_readers == 0) {
+      no_readers.notify_all();
+   }
+}
+
+void ReadWriteLock::lockWrite()
+{
+   std::unique_lock<std::mutex> rl(all_lock);
+   std::thread::id this_thread_id = std::this_thread::get_id();
+
+   auto idIter = thread_ids_.find(this_thread_id);
+   if (idIter != thread_ids_.end()) {
+      throw std::runtime_error("ReadWriteLock deadlock: requested write lock"
+         "within a thread already holding a read lock");
+   }
+
+   has_writer = true;
+   while (num_readers > 0) {
+      no_readers.wait(rl);
+   }
+
+   rl.release();
+}
+
+void ReadWriteLock::unlockWrite()
+{
+   has_writer = false;
+   no_writers.notify_all();
+   all_lock.unlock();
+}
+
+////////
+ReadWriteLock::ReadLock::ReadLock(ReadWriteLock& rwl) :
+   l(&rwl)
+{
+   l->lockRead();
+}
+
+ReadWriteLock::ReadLock::~ReadLock()
+{
+   if (locked) {
+      l->unlockRead();
+   }
+}
+
+void ReadWriteLock::ReadLock::unlock()
+{
+   locked=false;
+   l->unlockRead();
+}
+
+////////
+ReadWriteLock::WriteLock::WriteLock(ReadWriteLock &rwl) :
+   l(&rwl)
+{
+   l->lockWrite();
+}
+
+ReadWriteLock::WriteLock::~WriteLock()
+{
+   if (locked) {
+      l->unlockWrite();
+   }
+}
+
+void ReadWriteLock::WriteLock::unlock()
+{
+   locked=false;
+   l->unlockRead();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
+// WalletGroup
 WalletGroup::~WalletGroup()
 {
    for (auto& wlt : wallets_) {
@@ -1306,47 +1453,46 @@ bool WalletGroup::hasID(const string& ID) const
 void WalletGroup::reset()
 {
    ReadWriteLock::ReadLock rl(lock_);
-   for (const auto& wlt : values(wallets_))
-      wlt->reset();
+   for (const auto& wltPair : wallets_) {
+      wltPair.second->reset();
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-map<uint32_t, uint32_t> WalletGroup::computeWalletsSSHSummary(
+std::map<uint32_t, uint32_t> WalletGroup::computeWalletsSSHSummary(
    bool forcePaging, bool pageAnyway)
 {
-   map<uint32_t, uint32_t> fullSummary;
-
    ReadWriteLock::ReadLock rl(lock_);
+   std::map<uint32_t, uint32_t> fullSummary;
 
    bool isAlreadyPaged = true;
-   for (auto& wlt : values(wallets_))
-   {
-      if(forcePaging)
-         wlt->mapPages();
+   for (auto& wltPair : wallets_) {
+      if (forcePaging) {
+         wltPair.second->mapPages();
+      }
 
-      if (wlt->isPaged())
+      if (wltPair.second->isPaged()) {
          isAlreadyPaged = false;
-      else
-         wlt->mapPages();
+      } else {
+         wltPair.second->mapPages();
+      }
    }
 
-   if (isAlreadyPaged)
-   {
-      if (!forcePaging && !pageAnyway)
+   if (isAlreadyPaged) {
+      if (!forcePaging && !pageAnyway) {
          throw AlreadyPagedException();
+      }
    }
 
-   for (auto& wlt : values(wallets_))
-   {
-      if (wlt->uiFilter_ == false)
+   for (const auto& wltPair : wallets_) {
+      if (wltPair.second->uiFilter_ == false) {
          continue;
-
-      const auto& wltSummary = wlt->getSSHSummary();
-
-      for (auto summary : wltSummary)
+      }
+      const auto& wltSummary = wltPair.second->getSSHSummary();
+      for (const auto& summary : wltSummary) {
          fullSummary[summary.first] += summary.second;
+      }
    }
-
    return fullSummary;
 }
 
@@ -1489,13 +1635,12 @@ void WalletGroup::updateLedgerFilter(const vector<string>& walletsList)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void WalletGroup::scanWallets(ScanWalletStruct& scanData, 
-   int32_t updateID)
+void WalletGroup::scanWallets(ScanWalletStruct& scanData, int32_t updateID)
 {
    ReadWriteLock::ReadLock rl(lock_);
-
-   for (auto& wlt : wallets_)
+   for (auto& wlt : wallets_) {
       wlt.second->scanWallet(scanData, updateID);
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

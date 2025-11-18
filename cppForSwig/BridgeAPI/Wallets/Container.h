@@ -5,10 +5,12 @@
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
+
 #pragma once
 
-#include "../Wallets/WalletIdTypes.h"
-#include "../Wallets/GetPassphrase.h"
+#include <map>
+#include <Wallets/WalletIdTypes.h>
+#include <Wallets/GetPassphrase.h>
 
 namespace AsyncClient
 {
@@ -49,7 +51,7 @@ namespace Armory
          friend class WalletManager;
 
       private:
-         const std::string wltId_;
+         const Wallets::WalletId wltId_;
          const Wallets::AddressAccountId accountId_;
          std::string dbId_;
          std::shared_ptr<Wallets::AssetWallet> wallet_;
@@ -72,7 +74,10 @@ namespace Armory
          std::map<BinaryData, std::shared_ptr<AddressEntry>> updatedAddressMap_;
 
       private:
-         WalletContainer(const std::string&, const Wallets::AddressAccountId&);
+         WalletContainer(
+            const Wallets::WalletId&,
+            const Wallets::AddressAccountId&);
+
          void resetCache(void);
          void setBdvPtr(std::shared_ptr<AsyncClient::BlockDataViewer>);
          void setWalletPtr(std::shared_ptr<Wallets::AssetWallet>,

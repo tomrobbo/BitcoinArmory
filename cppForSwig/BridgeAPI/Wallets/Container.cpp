@@ -6,11 +6,14 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "BtcUtils.h"
 #include "Container.h"
+#include "Utils/BtcUtils.h"
+#include "Utils/Cryptography.h"
+
 #include "Wallets/Wallets.h"
+#include "Wallets/Addresses.h"
+#include "Wallets/Accounts/AddressAccounts.h"
 #include "Wallets/Seeds/Backups.h"
-#include "Cryptography.h"
 #include "AsyncClient.h"
 
 using namespace Armory;
@@ -21,7 +24,7 @@ using namespace Armory::Bridge;
 //// WalletContainer
 ////
 ////////////////////////////////////////////////////////////////////////////////
-WalletContainer::WalletContainer(const std::string& wltId,
+WalletContainer::WalletContainer(const Wallets::WalletId& wltId,
    const Armory::Wallets::AddressAccountId& accId) :
    wltId_(wltId), accountId_(accId)
 {
@@ -279,7 +282,7 @@ void WalletContainer::updateAddressCountState(
          const auto& assetKey = idPair.first.getAssetKey();
          while (assetKey > currentTop + 1) {
             auto addrEntry = wallet_->getNewAddress(
-               accData.first, AddressEntryType_Default);
+               accData.first, AddressEntryType::Default);
             updatedAddressMap.emplace(
                addrEntry->getPrefixedHash(), addrEntry);
 
@@ -290,7 +293,6 @@ void WalletContainer::updateAddressCountState(
             accData.first, idPair.second);
          updatedAddressMap.emplace(
             addrEntry->getPrefixedHash(), addrEntry);
-         
          ++currentTop;
       }
    }

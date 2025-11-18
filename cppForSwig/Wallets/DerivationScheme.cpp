@@ -6,11 +6,11 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "ReentrantLock.h"
 #include "DerivationScheme.h"
+#include "Utils/ReentrantLock.h"
+#include "Utils/Cryptography.h"
 #include "EncryptedDB.h"
 #include "DecryptedDataContainer.h"
-#include "Cryptography.h"
 #include "BIP32_Node.h"
 
 #define DERSCHEME_LEGACY_VERSION 0x00000001
@@ -724,7 +724,7 @@ void DerivationScheme_ECDH::getAllSalts(
    auto dbIter = txPtr->getIterator();
    dbIter->seek(keyBdr);
    while (dbIter->isValid()) {
-      auto&& key = dbIter->key();
+      auto key = dbIter->key();
       if (!key.startsWith(keyBdr) || key.getSize() != keyBdr.getSize() + 4) {
          break;
       }
@@ -735,7 +735,7 @@ void DerivationScheme_ECDH::getAllSalts(
       auto value = dbIter->value();
       BinaryRefReader bdrData(value);
       auto len = bdrData.get_var_int();
-      auto salt = bdrData.get_SecureBinaryData(len);
+      SecureBinaryData salt{bdrData.get_BinaryDataRef(len)};
 
       saltMap_.emplace(std::move(salt), saltId);
       dbIter->advance();

@@ -8,11 +8,13 @@
 
 /*defines Bitcoin network mode config, has nothing to do with socketing*/
 
-#ifndef BITCOINSETTINGS_H_
-#define BITCOINSETTINGS_H_
+#pragma once
+
+#include <string>
+#include <map>
 
 #include "BinaryData.h"
-#include "btc/chainparams.h"
+//#include "btc/chainparams.h"
 
 #define TESTNET_MAGIC_BYTES "0b110907"
 #define TESTNET_GENESIS_HASH_HEX    "43497fd7f826957108f4a30fd9cec3aeba79972084e90ead01ea330900000000"
@@ -29,23 +31,25 @@
 #define SEGWIT_ADDRESS_MAINNET_HEADER "bc"
 #define SEGWIT_ADDRESS_TESTNET_HEADER "tb"
 
-typedef enum
-{
-   SCRIPT_PREFIX_HASH160 = 0x00,
-   SCRIPT_PREFIX_P2SH = 0x05,
-   SCRIPT_PREFIX_HASH160_TESTNET = 0x6f,
-   PRIVKEY_PREFIX = 0x80,
-   SCRIPT_PREFIX_P2WPKH = 0x90,
-   SCRIPT_PREFIX_P2WSH = 0x95,
-   SCRIPT_PREFIX_P2SH_TESTNET = 0xc4,
-   PRIVKEY_PREFIX_TESTNET = 0xef,
-   SCRIPT_PREFIX_MULTISIG = 0xfe,
-   SCRIPT_PREFIX_NONSTD = 0xff,
-   SCRIPT_PREFIX_OPRETURN = 0x6a
-} SCRIPT_PREFIX;
+struct btc_chainparams_;
 
 namespace Armory
 {
+   enum class ScriptPrefix : uint8_t
+   {
+      HASH160 = 0x00,
+      P2SH = 0x05,
+      HASH160_TESTNET = 0x6f,
+      PRIVKEY = 0x80,
+      P2WPKH = 0x90,
+      P2WSH = 0x95,
+      P2SH_TESTNET = 0xc4,
+      PRIVKEY_TESTNET = 0xef,
+      MULTISIG = 0xfe,
+      NONSTD = 0xff,
+      OPRETURN = 0x6a
+   };
+
    namespace Config
    {
       typedef enum
@@ -68,7 +72,7 @@ namespace Armory
          static uint8_t privKeyPrefix_;
 
          static NETWORK_MODE mode_;
-         static const btc_chainparams* chainParams_;
+         static const btc_chainparams_* chainParams_;
          static std::string bech32Prefix_;
          static uint32_t BIP32_CoinType_;
 
@@ -89,9 +93,8 @@ namespace Armory
 
          static NETWORK_MODE getMode(void);
          static bool isInitialized(void);
-         static const btc_chainparams* getChainParams(void);
+         static const btc_chainparams_* getChainParams(void);
          static uint32_t getCoinType(void);
       };
-   }; //namespace Config
-}; //namespace ArmoryConfig
-#endif
+   } //namespace Config
+} //namespace ArmoryConfig

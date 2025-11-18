@@ -14,11 +14,9 @@
 #include <string>
 #include <memory>
 
-#include "BinaryData.h"
-#include "Cryptography.h"
+#include "Utils/BinaryData.h"
 #include "WalletIdTypes.h"
 #include "AssetEncryption.h"
-
 
 #define ASSETENTRY_PREFIX           0x8A
 #define PUBKEY_UNCOMPRESSED_BYTE    0x80

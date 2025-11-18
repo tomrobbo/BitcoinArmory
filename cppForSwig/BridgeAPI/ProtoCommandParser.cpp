@@ -7,11 +7,18 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "ProtoCommandParser.h"
-#include "CppBridge.h"
-#include "Wallets/Seeds/Backups.h"
+
+#include "Utils/log.h"
+#include "Utils/BtcUtils.h"
+
 #include "Wallets/IOHeader.h"
-#include "../AsyncClient.h"
-#include "../CoinSelection.h"
+#include "Wallets/WalletIdTypes.h"
+#include "Wallets/Seeds/Backups.h"
+#include "Signer/Signer.h"
+
+#include "CppBridge.h"
+#include "AsyncClient.h"
+#include "CoinSelection.h"
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>

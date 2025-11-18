@@ -1,15 +1,15 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2016-2024, goatpig                                          //
+//  Copyright (C) 2016-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "ArmoryConfig.h"
+#include "ArmoryErrors.h"
 #include "BtcUtils.h"
 #include "DBUtils.h"
-#include "DbHeader.h"
 #include "Cryptography.h"
 #include "JSON_codec.h"
 #include "SocketObject.h"
@@ -461,8 +461,8 @@ void BaseSettings::reset()
 // DBSettings
 //
 ////////////////////////////////////////////////////////////////////////////////
-BDM_INIT_MODE DBSettings::initMode_ = INIT_RESUME;
-ARMORY_DB_TYPE DBSettings::armoryDbType_ = ARMORY_DB_FULL;
+BdmInitMode DBSettings::initMode_ = BdmInitMode::RESUME;
+ARMORY_DB_TYPE DBSettings::armoryDbType_ = ARMORY_DB_TYPE::Full;
 SOCKET_SERVICE DBSettings::service_ = SERVICE_WEBSOCKET;
 
 unsigned DBSettings::ramUsage_ = 4;
@@ -481,17 +481,17 @@ void DBSettings::processArgs(const std::map<std::string, std::string>& args)
    //db init options
    auto iter = args.find("rescanSSH");
    if (iter != args.end()) {
-      initMode_ = INIT_SSH;
+      initMode_ = BdmInitMode::SSH;
    }
 
    iter = args.find("rescan");
    if (iter != args.end()) {
-      initMode_ = INIT_RESCAN;
+      initMode_ = BdmInitMode::RESCAN;
    }
 
    iter = args.find("rebuild");
    if (iter != args.end()) {
-      initMode_ = INIT_REBUILD;
+      initMode_ = BdmInitMode::REBUILD;
    }
 
    iter = args.find("checkchain");
@@ -514,11 +514,11 @@ void DBSettings::processArgs(const std::map<std::string, std::string>& args)
    if (iter != args.end()) {
       if (iter->second == "DB_BARE") {
          throw std::runtime_error("deprecated");
-         armoryDbType_ = ARMORY_DB_BARE;
+         armoryDbType_ = ARMORY_DB_TYPE::Bare;
       } else if (iter->second == "DB_FULL") {
-         armoryDbType_ = ARMORY_DB_FULL;
+         armoryDbType_ = ARMORY_DB_TYPE::Full;
       } else if (iter->second == "DB_SUPER") {
-         armoryDbType_ = ARMORY_DB_SUPER;
+         armoryDbType_ = ARMORY_DB_TYPE::Super;
       } else {
          std::cout << "Error: unexpected DB type: " << iter->second << std::endl;
          printHelp();
@@ -592,13 +592,13 @@ std::string DBSettings::getDbModeStr()
 {
    switch(getDbType())
    {
-      case ARMORY_DB_BARE:
+      case ARMORY_DB_TYPE::Bare:
          return "DB_BARE";
 
-      case ARMORY_DB_FULL:
+      case ARMORY_DB_TYPE::Full:
          return "DB_FULL";
    
-      case ARMORY_DB_SUPER:
+      case ARMORY_DB_TYPE::Super:
          return "DB_SUPER";
 
       default:
@@ -609,8 +609,8 @@ std::string DBSettings::getDbModeStr()
 ////////////////////////////////////////////////////////////////////////////////
 void DBSettings::reset()
 {
-   initMode_ = INIT_RESUME;
-   armoryDbType_ = ARMORY_DB_FULL;
+   initMode_ = BdmInitMode::RESUME;
+   armoryDbType_ = ARMORY_DB_TYPE::Full;
    service_ = SERVICE_WEBSOCKET;
 
    ramUsage_ = 4;
@@ -1126,36 +1126,4 @@ std::vector<BinaryData> Config::File::fleshOutArgs(
       fleshedOutArgs.emplace_back(std::move(bdStr));
    }
    return fleshedOutArgs;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-//
-// BDV_Error_Struct
-//
-////////////////////////////////////////////////////////////////////////////////
-BinaryData BDV_Error_Struct::serialize(void) const
-{
-   BinaryWriter bw;
-   bw.put_int32_t(errCode_);
-
-   bw.put_var_int(errData_.getSize());
-   bw.put_BinaryData(errData_);
-
-   bw.put_var_int(errorStr_.size());
-   bw.put_String(errorStr_);
-
-   return bw.getData();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void BDV_Error_Struct::deserialize(const BinaryData& data)
-{
-   BinaryRefReader brr(data);
-   errCode_ = brr.get_int32_t();
-
-   auto len = brr.get_var_int();
-   errData_ = brr.get_BinaryData(len);
-
-   len = brr.get_var_int();
-   errorStr_ = brr.get_String(len);
 }

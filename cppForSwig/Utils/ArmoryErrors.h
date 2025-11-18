@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <string>
+
 enum class ArmoryErrorCodes : int
 {
    //bitcoin node rpc errors
@@ -32,7 +34,7 @@ enum class ArmoryErrorCodes : int
 
    //rpc error codes
    RPCFailure_Unknown  = 40000,
-   RPCFailure_JSON     = 40001, //bitcoin node return is not JSON 
+   RPCFailure_JSON     = 40001, //bitcoin node return is not JSON
    RPCFailure_Internal = 40002, //failed to setup the RPC connection
 
    //getTxBatchByHash

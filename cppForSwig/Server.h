@@ -9,27 +9,27 @@
 #ifndef _SERVER_H_
 #define _SERVER_H_
 
-#include <string.h>
 #include <string>
 #include <memory>
 #include <atomic>
 #include <vector>
+#include <list>
 
-#include "WebSocketMessage.h"
-#include "libwebsockets.h"
-
-#include "ThreadSafeClasses.h"
-#include "BDV_Notification.h"
-#include "BinaryData.h"
-#include "Cryptography.h"
-#include "ArmoryConfig.h"
+#include <Utils/ThreadSafeClasses.h>
+#include <Utils/BinaryData.h>
 #include "SocketService.h"
-#include "BIP150_151.h"
+#include "libwebsockets.h"
 
 #define SERVER_AUTH_PEER_FILENAME "server.peers"
 
+class SecureBinaryData;
 class Clients;
 class BlockDataManager;
+class SerializedMessage;
+class BIP151Connection;
+struct AuthPeersLambdas;
+struct Socket_WritePayload;
+struct btc_pubkey_;
 
 namespace Armory
 {
@@ -178,7 +178,7 @@ public:
    static void shutdown(void);
    static void waitOnShutdown(void);
    static SecureBinaryData getPublicKey(void);
-   static bool isMasterKey(const btc_pubkey&);
+   static bool isMasterKey(const btc_pubkey_&);
 
    static void write(const uint64_t&, const uint32_t&,
       std::unique_ptr<Socket_WritePayload>);

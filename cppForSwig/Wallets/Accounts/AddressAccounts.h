@@ -14,10 +14,8 @@
 #include <memory>
 
 
-#include "../../ReentrantLock.h"
-#include "../../BinaryData.h"
+#include "Utils/ReentrantLock.h"
 #include "../WalletIdTypes.h"
-#include "../../Cryptography.h"
 #include "../Assets.h"
 #include "../Addresses.h"
 #include "../DerivationScheme.h"
@@ -28,6 +26,8 @@
 #define BIP32_INNER_ACCOUNT_DERIVATIONID 0x00000001
 
 #define ADDRESS_ACCOUNT_PREFIX 0xD0
+
+class BinaryData;
 
 ////
 namespace Armory
@@ -51,9 +51,8 @@ namespace Armory
 
    namespace Accounts
    {
-      //////////////////////////////////////////////////////////////////////////
-      struct UnrequestedAddressException
-      {};
+      class AccountType;
+      struct UnrequestedAddressException {};
 
       //////////////////////////////////////////////////////////////////////////
       struct AddressAccountPublicData
@@ -63,7 +62,7 @@ namespace Armory
          const Wallets::AssetAccountId outerAccountId_;
          const Wallets::AssetAccountId innerAccountId_;
 
-         AddressEntryType defaultAddressEntryType_ = AddressEntryType_P2PKH;
+         AddressEntryType defaultAddressEntryType_ = AddressEntryType::P2PKH;
          std::set<AddressEntryType> addressTypes_;
 
          std::map<Wallets::AssetId,
@@ -96,7 +95,7 @@ namespace Armory
          Wallets::AssetAccountId outerAccountId_;
          Wallets::AssetAccountId innerAccountId_;
 
-         AddressEntryType defaultAddressEntryType_ = AddressEntryType_P2PKH;
+         AddressEntryType defaultAddressEntryType_ = AddressEntryType::P2PKH;
          std::set<AddressEntryType> addressTypes_;
 
          //<prefixed address hash, <assetID, address type>>
@@ -182,7 +181,7 @@ namespace Armory
 
          std::shared_ptr<AddressEntry> getNewAddress(
             std::shared_ptr<Wallets::IO::WalletDBInterface>,
-            AddressEntryType aeType=AddressEntryType_Default,
+            AddressEntryType aeType=AddressEntryType::Default,
             const ProgressFunc& progFunc=nullptr);
          std::shared_ptr<AddressEntry> getNewAddress(
             std::shared_ptr<Wallets::IO::WalletDBInterface>,
@@ -190,11 +189,11 @@ namespace Armory
             const ProgressFunc&);
          std::shared_ptr<AddressEntry> getNewChangeAddress(
             std::shared_ptr<Wallets::IO::WalletDBInterface>,
-            AddressEntryType aeType=AddressEntryType_Default,
+            AddressEntryType aeType=AddressEntryType::Default,
             const ProgressFunc& progFunc=nullptr);
          std::shared_ptr<AddressEntry> peekNextChangeAddress(
             std::shared_ptr<Wallets::IO::WalletDBInterface>,
-            AddressEntryType aeType=AddressEntryType_Default,
+            AddressEntryType aeType=AddressEntryType::Default,
             const ProgressFunc& progFunc=nullptr);
          bool isAssetChange(const Wallets::AssetId&) const;
          bool isAssetInUse(const Wallets::AssetId&) const;

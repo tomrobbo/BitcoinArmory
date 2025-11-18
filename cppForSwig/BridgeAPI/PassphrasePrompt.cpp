@@ -6,13 +6,14 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
+
+#include "PassphrasePrompt.h"
+#include "Utils/log.h"
+#include "Wallets/Seeds/Backups.h"
+
 #include <capnp/message.h>
 #include <capnp/serialize.h>
 #include "capnp/Bridge.capnp.h"
-
-#include "log.h"
-#include "PassphrasePrompt.h"
-#include "Wallets/Seeds/Backups.h"
 
 using namespace Armory;
 using namespace Armory::Bridge;

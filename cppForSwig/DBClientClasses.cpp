@@ -7,14 +7,17 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "DBClientClasses.h"
+#include <Utils/BtcUtils.h>
+#include <Utils/varint.h>
+#include <btc/ecc.h>
 #include "WebSocketClient.h"
-#include "btc/ecc.h"
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
 #include "capnp/BDV.capnp.h"
 
 using namespace DBClientClasses;
+using namespace Armory;
 
 namespace {
    std::vector<std::shared_ptr<LedgerEntry>> capnToLedgers(
@@ -98,7 +101,7 @@ void initLibrary()
 // BlockHeader
 //
 ///////////////////////////////////////////////////////////////////////////////
-DBClientClasses::BlockHeader::BlockHeader(
+BlockHeader::BlockHeader(
    const BinaryData& rawheader, unsigned height)
 {
    unserialize(rawheader.getRef());
@@ -106,10 +109,11 @@ DBClientClasses::BlockHeader::BlockHeader(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void DBClientClasses::BlockHeader::unserialize(uint8_t const * ptr, uint32_t size)
+void BlockHeader::unserialize(uint8_t const * ptr, uint32_t size)
 {
-   if (size < HEADER_SIZE)
-      throw BlockDeserializingException();
+   if (size < HEADER_SIZE) {
+      throw BtcUtils::BlockDeserializingException();
+   }
    dataCopy_.copyFrom(ptr, HEADER_SIZE);
    BtcUtils::getHash256(dataCopy_.getPtr(), HEADER_SIZE, thisHash_);
    difficultyDbl_ = BtcUtils::convertDiffBitsToDouble(
@@ -458,4 +462,33 @@ uint64_t NodeChainStatus::getETA() const
 unsigned NodeChainStatus::getBlocksLeft() const
 {
    return blocksLeft_;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// BDV_Error_Struct
+BinaryData BDV_Error_Struct::serialize(void) const
+{
+   BinaryWriter bw;
+   bw.put_int32_t(errCode_);
+
+   bw.put_var_int(errData_.getSize());
+   bw.put_BinaryData(errData_);
+
+   bw.put_var_int(errorStr_.size());
+   bw.put_String(errorStr_);
+
+   return bw.getData();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void BDV_Error_Struct::deserialize(const BinaryData& data)
+{
+   BinaryRefReader brr(data);
+   errCode_ = brr.get_int32_t();
+
+   auto len = brr.get_var_int();
+   errData_ = brr.get_BinaryData(len);
+
+   len = brr.get_var_int();
+   errorStr_ = brr.get_String(len);
 }

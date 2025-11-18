@@ -7,7 +7,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "TxEvalState.h"
-#include "Cryptography.h"
+#include "Utils/Cryptography.h"
 
 using namespace Armory;
 
@@ -20,8 +20,9 @@ bool Signing::TxInEvalState::isValid() const
 
    unsigned count = 0;
    for (const auto& state : pubKeyState_) {
-      if (state.second)
+      if (state.second == true) {
          ++count;
+      }
    }
    return count >= m_;
 }
@@ -31,7 +32,7 @@ unsigned Signing::TxInEvalState::getSigCount() const
 {
    unsigned count = 0;
    for (auto& state : pubKeyState_) {
-      if (state.second) {
+      if (state.second == true) {
          ++count;
       }
    }

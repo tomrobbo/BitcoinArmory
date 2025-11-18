@@ -171,18 +171,15 @@ namespace Cryptography
          const SecureBinaryData&, const SecureBinaryData&);
 
       //////////////////////////////////////////////////////////////////////////
-      SecureBinaryData computePublicKey(const SecureBinaryData&, bool=false);
-      bool verifyPublicKeyValid(const SecureBinaryData&);
-      SecureBinaryData computeChainedPublicKey(
-         const SecureBinaryData&, const SecureBinaryData&);
+      SecureBinaryData computePublicKey(BinaryDataRef, bool=false);
+      bool verifyPublicKeyValid(BinaryDataRef);
+      SecureBinaryData computeChainedPublicKey(BinaryDataRef, BinaryDataRef);
 
       bool verifyPoint(const BinaryData&, const BinaryData&);
-      SecureBinaryData compressPoint(const SecureBinaryData&);
+      SecureBinaryData compressPoint(BinaryDataRef);
       btc_pubkey_ compressPoint(const btc_pubkey_&);
-      SecureBinaryData uncompressPoint(const SecureBinaryData&);
-
-      SecureBinaryData pubKeyScalarMultiply(
-         const SecureBinaryData&, const SecureBinaryData&);
+      SecureBinaryData uncompressPoint(BinaryDataRef);
+      SecureBinaryData pubKeyScalarMultiply(BinaryDataRef, BinaryDataRef);
 
       //////////////////////////////////////////////////////////////////////////
       // For signing and verification, pass in original, UN-HASHED binary string.

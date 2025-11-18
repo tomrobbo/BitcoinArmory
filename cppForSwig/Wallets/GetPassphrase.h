@@ -12,7 +12,7 @@
 #include <set>
 #include <chrono>
 
-#include "../SecureBinaryData.h"
+#include "Utils/SecureBinaryData.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace Armory

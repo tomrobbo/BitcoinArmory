@@ -10,16 +10,16 @@
 #define _H_DECRYPTED_DATA_CONTAINER
 
 #include <functional>
+#include <map>
 
-#include "ReentrantLock.h"
-#include "BinaryData.h"
+#include <Utils/ReentrantLock.h>
+#include <Utils/BinaryData.h>
 #include "WalletIdTypes.h"
 #include "GetPassphrase.h"
 
 #define ENCRYPTIONKEY_PREFIX        0xC0
 #define ENCRYPTIONKEY_PREFIX_TEMP   0xCC
 
-////////////////////////////////////////////////////////////////////////////////
 namespace Armory
 {
    namespace Wallets

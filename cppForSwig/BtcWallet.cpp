@@ -5,7 +5,7 @@
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
 //                                                                            //
-//  Copyright (C) 2016-2021, goatpig                                          //
+//  Copyright (C) 2016-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -13,19 +13,29 @@
 #include <algorithm>
 
 #include "BtcWallet.h"
-#include "BlockchainDatabase/BlockUtils.h"
-#include "BlockchainDatabase/txio.h"
+#include <Utils/BtcUtils.h>
+#include <Utils/DBUtils.h>
+#include <Utils/TxOutScrRef.h>
+#include <Utils/ArmoryConfig.h>
+#include <BlockchainDatabase/lmdb_wrapper.h>
+#include <BlockchainDatabase/BlockUtils.h>
+#include <BlockchainDatabase/txio.h>
+
 #include "BlockDataViewer.h"
-#include "TxOutScrRef.h"
+#include "LedgerEntry.h"
 
 using namespace std;
+using namespace Armory;
 
 ////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-//
-// BtcWallet Methods
-//
-////////////////////////////////////////////////////////////////////////////////
+// BtcWallet
+BtcWallet::BtcWallet(BlockDataViewer* bdv, const std::string ID)
+   : bdvPtr_(bdv), walletID_(ID), confTarget_{MIN_CONFIRMATIONS}
+{}
+
+BtcWallet::~BtcWallet()
+{}
+
 void BtcWallet::removeAddressBulk(vector<BinaryDataRef> const & scrAddrBulk)
 {
    scrAddrMap_.erase(scrAddrBulk);
@@ -78,11 +88,10 @@ uint64_t BtcWallet::getSpendableBalance(uint32_t currBlk) const
 uint64_t BtcWallet::getUnconfirmedBalance(uint32_t currBlk) const
 {
    auto addrMap = scrAddrMap_.get();
-
    uint64_t balance = 0;
-   for (const auto& scrAddr : *addrMap)
+   for (const auto& scrAddr : *addrMap) {
       balance += scrAddr.second->getUnconfirmedBalance(currBlk, confTarget_);
-   
+   }
    return balance;
 }
 
@@ -96,12 +105,10 @@ uint64_t BtcWallet::getFullBalance() const
 uint64_t BtcWallet::getFullBalanceFromDB(unsigned updateID) const
 {
    uint64_t balance = 0;
-
    auto addrMap = scrAddrMap_.get();
-
-   for (auto& scrAddr : *addrMap)
+   for (auto& scrAddr : *addrMap) {
       balance += scrAddr.second->getFullBalance(updateID);
-
+   }
    return balance;
 }
 
@@ -111,26 +118,24 @@ map<BinaryData, uint32_t> BtcWallet::getAddrTxnCounts(int32_t updateID) const
    map<BinaryData, uint32_t> countMap;
 
    auto addrMap = scrAddrMap_.get();
-   for (const auto& sa : *addrMap)
-   {
-      if (sa.second->updateID_ <= lastPulledCountsID_)
+   for (const auto& sa : *addrMap) {
+      if (sa.second->updateID_ <= lastPulledCountsID_) {
          continue;
-
+      }
       auto count = sa.second->getTxioCount();
-      if (count == 0 || count == UINT32_MAX)
+      if (count == 0 || count == UINT32_MAX) {
          continue;
-
+      }
       countMap[sa.first] = count;
    }
 
    lastPulledCountsID_ = updateID;
-
    return countMap;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-map<BinaryData, tuple<uint64_t, uint64_t, uint64_t>> 
-   BtcWallet::getAddrBalances(int32_t updateID, unsigned blockHeight) const
+map<BinaryData, tuple<uint64_t, uint64_t, uint64_t>>
+BtcWallet::getAddrBalances(int32_t updateID, unsigned blockHeight) const
 {
    map<BinaryData, tuple<uint64_t, uint64_t, uint64_t>> balanceMap;
 
@@ -276,7 +281,7 @@ vector<UTXO> BtcWallet::getSpendableTxOutListForValue(uint64_t val)
    LMDBBlockDatabase *db = bdvPtr_->getDB();
 
    //start a RO txn to grab the txouts from DB
-   auto&& tx = db->beginTransaction(STXO, LMDB::Mode::ReadOnly);
+   auto&& tx = db->beginTransaction(DB_SELECT::STXO, LMDB::Mode::ReadOnly);
 
    vector<UTXO> utxoList;
    uint32_t blk = bdvPtr_->getTopBlockHeight();
@@ -286,7 +291,6 @@ vector<UTXO> BtcWallet::getSpendableTxOutListForValue(uint64_t val)
    for (const auto& scrAddr : *addrMap)
    {
       const auto& txioMap = scrAddr.second->getPreparedTxOutList();
-
       for (const auto& txioPair : txioMap)
       {
          if (!txioPair.second.isSpendable(db, blk))
@@ -298,8 +302,8 @@ vector<UTXO> BtcWallet::getSpendableTxOutListForValue(uint64_t val)
          auto hash = db->getTxHashForLdbKey(txout_key.getSliceRef(0, 6));
 
          UTXO utxo(
-            stxo.getValue(), stxo.getHeight(), 
-            stxo.txIndex_, stxo.txOutIndex_, 
+            stxo.getValue(), stxo.getHeight(),
+            stxo.txIndex_, stxo.txOutIndex_,
             hash, stxo.getScriptRef());
          utxoList.emplace_back(move(utxo));
       }
@@ -492,39 +496,32 @@ map<BinaryData, TxIOPair> BtcWallet::scanWalletZeroConf(
 ////////////////////////////////////////////////////////////////////////////////
 bool BtcWallet::scanWallet(ScanWalletStruct& scanInfo, int32_t updateID)
 {
-   if (scanInfo.action_ != BDV_ZC)
-   {
-      //new top block         
-      auto&& tx = bdvPtr_->getDB()->beginTransaction(SSH, LMDB::Mode::ReadOnly);
+   if (scanInfo.action_ != BDV_ZC) {
+      //new top block
+      auto tx = bdvPtr_->getDB()->beginTransaction(DB_SELECT::SSH, LMDB::Mode::ReadOnly);
       balance_ = getFullBalanceFromDB(updateID);
    }
-  
-   if (scanInfo.saStruct_.scrAddrToTxioKeys_.size() != 0 ||
-      (scanInfo.saStruct_.invalidatedZcKeys_ != nullptr && 
-       scanInfo.saStruct_.invalidatedZcKeys_->size() != 0))
-   {
+
+   if (!scanInfo.saStruct_.scrAddrToTxioKeys_.empty() ||
+      (scanInfo.saStruct_.invalidatedZcKeys_ != nullptr &&
+      !scanInfo.saStruct_.invalidatedZcKeys_->empty())) {
       //top block didnt change, only have to check for new ZC
-      if (bdvPtr_->isZcEnabled())
-      {
+      if (bdvPtr_->isZcEnabled()) {
          auto&& zcTxios = scanWalletZeroConf(scanInfo, updateID);
-         if (scanInfo.saStruct_.newKeysAndScrAddr_ != nullptr &&
-            zcTxios.size() > 0)
-         {
-            auto&& ledgerMap = updateWalletLedgersFromTxio(
+         if (scanInfo.saStruct_.newKeysAndScrAddr_ != nullptr && !zcTxios.empty()) {
+            auto ledgerMap = updateWalletLedgersFromTxio(
                zcTxios, scanInfo.endBlock_ + 1, UINT32_MAX);
 
-            for (auto& zckey : *scanInfo.saStruct_.newKeysAndScrAddr_)
-            {
+            for (const auto& zckey : *scanInfo.saStruct_.newKeysAndScrAddr_) {
                auto iter = ledgerMap.find(zckey.first);
-               if (iter == ledgerMap.end())
+               if (iter == ledgerMap.end()) {
                   continue;
-
+               }
                auto& walletZcLedgers =
                   scanInfo.saStruct_.zcLedgers_[walletID()];
                walletZcLedgers.insert(*iter);
             }
          }
-
          balance_ = getFullBalanceFromDB(updateID);
          updateID_ = updateID;
 
@@ -546,7 +543,7 @@ void BtcWallet::reset()
 ////////////////////////////////////////////////////////////////////////////////
 map<uint32_t, uint32_t> BtcWallet::computeScrAddrMapHistSummary()
 {
-   if (Armory::Config::DBSettings::getDbType() == ARMORY_DB_SUPER)
+   if (Armory::Config::DBSettings::getDbType() == ARMORY_DB_TYPE::Super)
       return computeScrAddrMapHistSummary_Super();
 
    struct PreHistory
@@ -561,8 +558,8 @@ map<uint32_t, uint32_t> BtcWallet::computeScrAddrMapHistSummary()
 
    auto addrMap = scrAddrMap_.get();
 
-   auto&& sshtx = bdvPtr_->getDB()->beginTransaction(SSH, LMDB::Mode::ReadOnly);
-   auto&& subtx = bdvPtr_->getDB()->beginTransaction(SUBSSH, LMDB::Mode::ReadOnly);
+   auto&& sshtx = bdvPtr_->getDB()->beginTransaction(DB_SELECT::SSH, LMDB::Mode::ReadOnly);
+   auto&& subtx = bdvPtr_->getDB()->beginTransaction(DB_SELECT::SUBSSH, LMDB::Mode::ReadOnly);
 
    
    for (auto& scrAddrPair : *addrMap)
@@ -588,7 +585,7 @@ map<uint32_t, uint32_t> BtcWallet::computeScrAddrMapHistSummary()
       {
          //get hgtX for height
          uint8_t dupID = bdvPtr_->getDB()->getValidDupIDForHeight(preHistAtHeight.first);
-         auto&& hgtX = DBUtils::heightAndDupToHgtx(preHistAtHeight.first, dupID);
+         auto hgtX = DBUtils::heightAndDupToHgtx(preHistAtHeight.first, dupID);
 
          set<BinaryData> txKeys;
 
@@ -622,7 +619,7 @@ map<uint32_t, uint32_t> BtcWallet::computeScrAddrMapHistSummary()
 map<uint32_t, uint32_t> BtcWallet::computeScrAddrMapHistSummary_Super()
 {
    auto addrMap = scrAddrMap_.get();
-   auto&& sshtx = bdvPtr_->getDB()->beginTransaction(SSH, LMDB::Mode::ReadOnly);
+   auto&& sshtx = bdvPtr_->getDB()->beginTransaction(DB_SELECT::SSH, LMDB::Mode::ReadOnly);
 
    map<uint32_t, uint32_t> result;
 
@@ -641,7 +638,6 @@ map<uint32_t, uint32_t> BtcWallet::computeScrAddrMapHistSummary_Super()
             result.insert(sum);
       }
    }
-
    return result;
 }
 

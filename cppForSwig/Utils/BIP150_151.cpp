@@ -7,23 +7,26 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <cassert>
-#include <fstream>
+#include <cstring>
+
 #if defined(__MINGW32__) || defined(_MSC_VER)
 #include <Ws2tcpip.h>
 #else
 #include <arpa/inet.h>
 #endif
 
-#include "hkdf.h"
-#include "btc/ecc.h"
-#include "btc/hash.h"
-#include "btc/sha2.h"
-#include "btc/ripemd160.h"
-#include "btc/base58.h"
-#include "BtcUtils.h"
-#include "log.h"
 #include "BIP150_151.h"
+#include <hkdf.h>
+#include <btc/ecc.h>
+#include <btc/hash.h>
+#include <btc/sha2.h>
+#include <btc/ripemd160.h>
+#include <btc/base58.h>
+#include "BtcUtils.h"
+#include "varint.h"
+#include "log.h"
 
+using namespace Armory;
 using namespace std::string_view_literals;
 
 // Because libbtc doesn't export its libsecp256k1 context, and we need one for

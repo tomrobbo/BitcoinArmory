@@ -6,10 +6,12 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "SocketObject.h"
-#include "SocketWritePayload.h"
 #include <cstring>
 #include <stdexcept>
+
+#include "SocketObject.h"
+#include "SocketWritePayload.h"
+#include "bdmenums.h"
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
@@ -795,7 +797,7 @@ SimpleSocket::~SimpleSocket()
 ////////
 SocketType SimpleSocket::type() const
 {
-   return SocketSimple;
+   return SocketType::Simple;
 }
 
 ////////

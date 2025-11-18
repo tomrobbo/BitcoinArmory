@@ -1,44 +1,153 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2016-2024, goatpig                                          //
+//  Copyright (C) 2016-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "Transactions.h"
+#include <cstring>
 
-using namespace Armory;
+#include "Transactions.h"
+#include <Utils/BtcUtils.h>
+#include <BlockchainDatabase/BlockObj.h>
+#include "Script.h"
+
+using namespace Armory::Signing;
 
 ////////////////////////////////////////////////////////////////////////////////
-Signing::TransactionStub::~TransactionStub(void)
+// exceptions
+UnsupportedSigHashTypeException::UnsupportedSigHashTypeException(
+   const std::string& what) :
+   std::runtime_error(what)
 {}
 
 ////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-//// TransactionVerifier
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-bool Signing::TransactionVerifier::verify(bool noCatch, bool strict) const
+// TransactionStub
+TransactionStub::TransactionStub()
+{}
+
+TransactionStub::TransactionStub(unsigned flags) :
+   flags_(flags)
+{}
+
+TransactionStub::~TransactionStub()
+{}
+
+unsigned TransactionStub::getFlags() const
 {
-   if (strict)
-   {
+   return flags_;
+}
+
+void TransactionStub::setFlags(unsigned flags)
+{
+   flags_ = flags;
+}
+
+void TransactionStub::setLastOpCodeSeparator(
+   unsigned index, size_t offset) const
+{
+   lastCodeSeparatorMap_[index] = offset;
+}
+
+unsigned TransactionStub::getLastCodeSeparatorOffset(unsigned index) const
+{
+   auto csIter = lastCodeSeparatorMap_.find(index);
+   if (csIter == lastCodeSeparatorMap_.end()) {
+      return 0;
+   }
+   return csIter->second;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// TransactionVerifier
+TransactionVerifier::TransactionVerifier(
+   const BCTX& theTx, const UtxoMap& utxos) :
+   utxos_(utxos), theTx_(theTx)
+{
+   if (theTx.usesWitness_) {
+      setFlags(SCRIPT_VERIFY_SEGWIT);
+   }
+}
+
+TransactionVerifier::TransactionVerifier(
+   const BCTX& theTx, const std::vector<UnspentTxOut>& unspentVec) :
+   theTx_(theTx)
+{
+   for (const auto& unspent : unspentVec) {
+      UTXO utxo(unspent.getValue(),
+         unspent.getTxHeight(), unspent.getTxtIndex(), unspent.getTxOutIndex(),
+         unspent.getTxHash(), unspent.getScript()
+      );
+
+      const auto& txHash = utxo.getTxHash();
+      auto mapIter = utxos_.find(txHash);
+      if (mapIter == utxos_.end()) {
+         mapIter = utxos_.emplace(txHash, std::map<unsigned, UTXO>{}).first;
+      }
+      mapIter->second.emplace(utxo.getTxOutIndex(), std::move(utxo));
+   }
+
+   if (theTx.usesWitness_) {
+      setFlags(SCRIPT_VERIFY_SEGWIT);
+   }
+}
+
+TransactionVerifier::TransactionVerifier(
+   const BCTX& theTx, const std::vector<UTXO>& utxoVec) :
+   theTx_(theTx)
+{
+   for (const auto& utxo : utxoVec) {
+      const auto& txHash = utxo.getTxHash();
+      auto mapIter = utxos_.find(txHash);
+      if (mapIter == utxos_.end()) {
+         mapIter = utxos_.emplace(txHash, std::map<unsigned, UTXO>{}).first;
+      }
+      mapIter->second.emplace(utxo.getTxOutIndex(), utxo);
+   }
+
+   if (theTx.usesWitness_) {
+      setFlags(SCRIPT_VERIFY_SEGWIT);
+   }
+}
+
+////////
+uint32_t TransactionVerifier::getVersion() const
+{
+   return theTx_.version_;
+}
+
+uint32_t TransactionVerifier::getTxOutCount() const
+{
+   return theTx_.txouts_.size();
+}
+
+uint32_t TransactionVerifier::getLockTime() const
+{
+   return theTx_.lockTime_;
+}
+
+////////
+bool TransactionVerifier::verify(bool noCatch, bool strict) const
+{
+   if (strict) {
       //check value in vs value out
-      if (checkOutputs() == UINT64_MAX)
+      if (checkOutputs() == UINT64_MAX) {
          return false;
+      }
    }
 
    //check signatures
-   if (!noCatch)
+   if (!noCatch) {
       checkSigs();
-   else
+   } else {
       checkSigs_NoCatch();
-
+   }
    return txEvalState_.isValid();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-Signing::TxEvalState Signing::TransactionVerifier::evaluateState(
+TxEvalState TransactionVerifier::evaluateState(
    bool strict) const
 {
    /*
@@ -50,14 +159,13 @@ Signing::TxEvalState Signing::TransactionVerifier::evaluateState(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-uint64_t Signing::TransactionVerifier::checkOutputs() const
+uint64_t TransactionVerifier::checkOutputs() const
 {
    /*check values and return fee, return UINT64_MAX on failure*/
-   
+
    //tally spendVal
    uint64_t spendVal = 0;
-   for (auto& txout : theTx_.txouts_)
-   {
+   for (const auto& txout : theTx_.txouts_) {
       //memcpy should TBAA optimized by compiler
       uint64_t val;
       memcpy(&val, theTx_.data_ + txout.first, sizeof(uint64_t));
@@ -66,15 +174,15 @@ uint64_t Signing::TransactionVerifier::checkOutputs() const
 
    //tally input val
    uint64_t inputVal = 0;
-   for (auto& txin : theTx_.txins_)
-   {
+   for (const auto& txin : theTx_.txins_) {
       //grab outpoint hash
-      BinaryDataRef opHashRef(theTx_.data_ + txin.first, 32);
+      BinaryDataRef opHashRef{theTx_.data_ + txin.first, 32};
 
       //look for the utxo's hash
       auto hashIter = utxos_.find(opHashRef);
-      if (hashIter == utxos_.end())
+      if (hashIter == utxos_.end()) {
          throw std::runtime_error("cannot verify tx cause a utxo is missing");
+      }
 
       //grab outpoint id, should be TBAA optimized
       uint32_t opId;
@@ -82,36 +190,34 @@ uint64_t Signing::TransactionVerifier::checkOutputs() const
 
       //look for this id amoung the utxos matching the tx hash
       auto idIter = hashIter->second.find(opId);
-      if (idIter == hashIter->second.end())
+      if (idIter == hashIter->second.end()) {
          throw std::runtime_error("cannot verify tx cause a utxo is missing");
-
+      }
       inputVal += idIter->second.getValue();
    }
 
-   if (inputVal < spendVal)
+   if (inputVal < spendVal) {
       return UINT64_MAX;
-
+   }
    return inputVal - spendVal;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void Signing::TransactionVerifier::checkSigs() const
+void TransactionVerifier::checkSigs() const
 {
    txEvalState_.reset();
-
    for (unsigned i = 0; i < theTx_.txins_.size(); i++) {
       auto stack_ptr = getStackInterpreter(i);
       try {
          checkSig(i, stack_ptr.get());
       } catch (const std::exception&)
       {}
-
       txEvalState_.updateState(i, stack_ptr->getTxInEvalState());
    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void Signing::TransactionVerifier::checkSigs_NoCatch() const
+void TransactionVerifier::checkSigs_NoCatch() const
 {
    txEvalState_.reset();
    for (unsigned i = 0; i < theTx_.txins_.size(); i++) {
@@ -121,10 +227,10 @@ void Signing::TransactionVerifier::checkSigs_NoCatch() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::unique_ptr<Signing::StackInterpreter>
-Signing::TransactionVerifier::getStackInterpreter(unsigned inputid) const
+std::unique_ptr<StackInterpreter>
+TransactionVerifier::getStackInterpreter(unsigned inputid) const
 {
-   auto sstack = std::make_unique<Signing::StackInterpreter>(this, inputid);
+   auto sstack = std::make_unique<StackInterpreter>(this, inputid);
    auto flags = sstack->getFlags();
    flags |= flags_;
    sstack->setFlags(flags);
@@ -132,7 +238,7 @@ Signing::TransactionVerifier::getStackInterpreter(unsigned inputid) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-Signing::TxInEvalState Signing::TransactionVerifier::checkSig(unsigned inputId,
+TxInEvalState TransactionVerifier::checkSig(unsigned inputId,
    StackInterpreter* sstack_ptr) const
 {
    //grab the uxto
@@ -143,7 +249,7 @@ Signing::TxInEvalState Signing::TransactionVerifier::checkSig(unsigned inputId,
 
    //grab input script
    BinaryRefReader inputBrr(input);
-   auto&& txHashRef = inputBrr.get_BinaryDataRef(32);
+   auto txHashRef = inputBrr.get_BinaryDataRef(32);
    auto outputId = inputBrr.get_uint32_t();
    auto scriptSize = inputBrr.get_var_int();
    auto inputScript = inputBrr.get_BinaryDataRef(scriptSize);
@@ -191,7 +297,7 @@ Signing::TxInEvalState Signing::TransactionVerifier::checkSig(unsigned inputId,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-BinaryDataRef Signing::TransactionVerifier::getSerializedOutputScripts() const
+BinaryDataRef TransactionVerifier::getSerializedOutputScripts() const
 {
    auto txOutCount = theTx_.txouts_.size();
    auto firstTxOutOffset = theTx_.txouts_[0].first;
@@ -199,38 +305,34 @@ BinaryDataRef Signing::TransactionVerifier::getSerializedOutputScripts() const
       theTx_.txouts_[txOutCount - 1].second;
    auto txOutsLen = lastTxOutOffset - firstTxOutOffset;
 
-   return BinaryDataRef(theTx_.data_ + firstTxOutOffset, txOutsLen);
+   return BinaryDataRef{theTx_.data_ + firstTxOutOffset, txOutsLen};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::vector<Signing::TxInData> Signing::TransactionVerifier::getTxInsData() const
+std::vector<TxInData> TransactionVerifier::getTxInsData() const
 {
    auto txInCount = theTx_.txins_.size();
    std::vector<TxInData> datavec;
    datavec.reserve(txInCount);
 
    for (unsigned i = 0; i < txInCount; i++) {
-      auto txinref = theTx_.getTxInRef(i);
-
       TxInData data;
-      data.outputHash_ = txinref.getSliceRef(0, 32);
+      auto txinref = theTx_.getTxInRef(i);
+      data.outputHash = txinref.getSliceRef(0, 32);
 
-      memcpy(&data.outputIndex_,
+      memcpy(&data.outputIndex,
          txinref.getPtr() + 32,
          sizeof(uint32_t));
-
-      memcpy(&data.sequence_,
+      memcpy(&data.sequence,
          txinref.getPtr() + txinref.getSize() - 4,
          sizeof(uint32_t));
-
-      datavec.push_back(std::move(data));
+      datavec.emplace_back(std::move(data));
    }
-
    return datavec;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-BinaryData Signing::TransactionVerifier::getSubScript(unsigned index) const
+BinaryData TransactionVerifier::getSubScript(unsigned index) const
 {
    auto txinref = theTx_.getTxInRef(index);
    auto outputHash = txinref.getSliceRef(0, 32);
@@ -251,13 +353,13 @@ BinaryData Signing::TransactionVerifier::getSubScript(unsigned index) const
       return indexIter->second.getScript();
    }
 
-   auto& pkScript = indexIter->second.getScript();
+   const auto& pkScript = indexIter->second.getScript();
    auto len = pkScript.getSize() - csOffset;
    return pkScript.getSliceRef(csOffset, len);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-BinaryDataRef Signing::TransactionVerifier::getWitnessData(unsigned inputId) const
+BinaryDataRef TransactionVerifier::getWitnessData(unsigned inputId) const
 {
    if (inputId >= theTx_.witnesses_.size()) {
       throw std::runtime_error("invalid witness data id");
@@ -269,7 +371,7 @@ BinaryDataRef Signing::TransactionVerifier::getWitnessData(unsigned inputId) con
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-BinaryData Signing::TransactionVerifier::serializeAllOutpoints() const
+BinaryData TransactionVerifier::serializeAllOutpoints() const
 {
    BinaryWriter bw;
    for (unsigned i = 0; i < theTx_.txins_.size(); i++) {
@@ -279,35 +381,32 @@ BinaryData Signing::TransactionVerifier::serializeAllOutpoints() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-BinaryData Signing::TransactionVerifier::serializeAllSequences() const
+BinaryData TransactionVerifier::serializeAllSequences() const
 {
    BinaryWriter bw;
    for (const auto& txinOnS : theTx_.txins_) {
       auto sequenceOffset = txinOnS.first + txinOnS.second - 4;
-      BinaryDataRef bdr(theTx_.data_ + sequenceOffset, 4);
+      BinaryDataRef bdr{theTx_.data_ + sequenceOffset, 4};
 
       bw.put_BinaryDataRef(bdr);
    }
-
    return bw.getData();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-BinaryDataRef Signing::TransactionVerifier::getOutpoint(unsigned inputID) const
+BinaryDataRef TransactionVerifier::getOutpoint(unsigned inputID) const
 {
    if (inputID >= theTx_.txins_.size()) {
       throw std::runtime_error("invalid txin index");
    }
-
-   auto& inputOnS = theTx_.txins_[inputID];
+   const auto& inputOnS = theTx_.txins_[inputID];
    return BinaryDataRef(theTx_.data_ + inputOnS.first, 36);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-uint64_t Signing::TransactionVerifier::getOutpointValue(unsigned inputID) const
+uint64_t TransactionVerifier::getOutpointValue(unsigned inputID) const
 {
    auto outpoint = getOutpoint(inputID);
-
    auto outputHash = outpoint.getSliceRef(0, 32);
    uint32_t outputIndex;
    memcpy(&outputIndex, outpoint.getPtr() + 32, sizeof(uint32_t));
@@ -321,12 +420,11 @@ uint64_t Signing::TransactionVerifier::getOutpointValue(unsigned inputID) const
    if (indexIter == utxoIter->second.end()) {
       throw std::runtime_error("unknown outpoint");
    }
-
    return indexIter->second.getValue();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-unsigned Signing::TransactionVerifier::getTxInSequence(unsigned inputID) const
+unsigned TransactionVerifier::getTxInSequence(unsigned inputID) const
 {
    if (inputID >= theTx_.txins_.size()) {
       throw ScriptException("invalid txin index");
@@ -341,26 +439,22 @@ unsigned Signing::TransactionVerifier::getTxInSequence(unsigned inputID) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-//// SigHashData
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-BinaryData Signing::SigHashData::getDataForSigHash(SIGHASH_TYPE hashType,
+// SigHashData
+BinaryData SigHashData::getDataForSigHash(SIGHASH_TYPE hashType,
    const TransactionStub& stub, BinaryDataRef subScript, unsigned inputIndex)
 {
    switch (hashType)
    {
-   case SIGHASH_ALL:
-      return getDataForSigHashAll(stub, subScript, inputIndex);
+      case SIGHASH_ALL:
+         return getDataForSigHashAll(stub, subScript, inputIndex);
 
-   default:
-      LOGERR << "unknown sighash type: " << (int)hashType;
-      throw UnsupportedSigHashTypeException("unhandled sighash type");
+      default:
+         LOGERR << "unknown sighash type: " << (int)hashType;
+         throw UnsupportedSigHashTypeException("unhandled sighash type");
    }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-std::vector<BinaryDataRef> Signing::SigHashData::tokenize(
+std::vector<BinaryDataRef> SigHashData::tokenize(
    const BinaryData& data, uint8_t token)
 {
    std::vector<BinaryDataRef> tokens;
@@ -383,7 +477,8 @@ std::vector<BinaryDataRef> Signing::SigHashData::tokenize(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-BinaryData Signing::SigHashDataLegacy::getDataForSigHashAll(
+// SigHashDataLegacy
+BinaryData SigHashDataLegacy::getDataForSigHashAll(
    const TransactionStub& stub,
    BinaryDataRef subScript, unsigned inputIndex)
 {
@@ -413,22 +508,22 @@ BinaryData Signing::SigHashDataLegacy::getDataForSigHashAll(
    BinaryWriter strippedTxins;
 
    for (unsigned i=0; i < txin_count; i++) {
-      strippedTxins.put_BinaryData(txinsData[i].outputHash_);
-      strippedTxins.put_uint32_t(txinsData[i].outputIndex_);
+      strippedTxins.put_BinaryData(txinsData[i].outputHash);
+      strippedTxins.put_uint32_t(txinsData[i].outputIndex);
 
       if (inputIndex != i) {
          //put empty varint
          strippedTxins.put_var_int(0);
 
          //and sequence
-         strippedTxins.put_uint32_t(txinsData[i].sequence_);
+         strippedTxins.put_uint32_t(txinsData[i].sequence);
       } else {
          //scriptsig
          strippedTxins.put_var_int(subscript.getSize());
          strippedTxins.put_BinaryData(subscript);
-         
+
          //sequence
-         strippedTxins.put_uint32_t(txinsData[i].sequence_);
+         strippedTxins.put_uint32_t(txinsData[i].sequence);
       }
    }
 
@@ -460,7 +555,8 @@ BinaryData Signing::SigHashDataLegacy::getDataForSigHashAll(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-BinaryData Signing::SigHashDataSegWit::getDataForSigHashAll(
+// SigHashDataSegWit
+BinaryData SigHashDataSegWit::getDataForSigHashAll(
    const TransactionStub& stub,
    BinaryDataRef subScript, unsigned inputIndex)
 {
@@ -509,8 +605,7 @@ BinaryData Signing::SigHashDataSegWit::getDataForSigHashAll(
    return hashdata.getData();
 }
 
-////////////////////////////////////////////////////////////////////////////////
-void Signing::SigHashDataSegWit::computePreState(const TransactionStub& txStub)
+void SigHashDataSegWit::computePreState(const TransactionStub& txStub)
 {
    if (initialized_)
       return;
@@ -529,4 +624,9 @@ void Signing::SigHashDataSegWit::computePreState(const TransactionStub& txStub)
 
    //flag
    initialized_ = true;
+}
+
+uint32_t SigHashDataSegWit::getSigHashAll_4Bytes() const
+{
+   return 1;
 }

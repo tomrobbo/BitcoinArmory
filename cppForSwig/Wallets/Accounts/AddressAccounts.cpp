@@ -6,6 +6,9 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
+#include <Utils/BinaryData.h>
+#include <Utils/SecureBinaryData.h>
+#include <Utils/Cryptography.h>
 #include "AccountTypes.h"
 #include "Assets.h"
 #include "AddressAccounts.h"
@@ -125,7 +128,7 @@ std::unique_ptr<AddressAccount> AddressAccount::make_new(
 
       //instantiate account
       return std::make_shared<AssetAccountData>(
-         AssetAccountTypeEnum_Plain,
+         AssetAccountType::Plain,
          rootAsset->getAccountID(),
          rootAsset, derScheme, dbName);
    };
@@ -178,7 +181,7 @@ std::unique_ptr<AddressAccount> AddressAccount::make_new(
 
          //instantiate account and set first entry
          auto asset_account = std::make_shared<AssetAccountData>(
-            AssetAccountTypeEnum_Plain, aaid,
+            AssetAccountType::Plain, aaid,
             //no root asset for legacy derivation scheme, using first entry instead
             nullptr, derScheme, dbName);
          asset_account->assets_.emplace(firstAssetKey, firstAsset);
@@ -286,7 +289,7 @@ std::unique_ptr<AddressAccount> AddressAccount::make_new(
 
          //account
          auto assetAccount = std::make_shared<AssetAccountData>(
-            AssetAccountTypeEnum_ECDH, aaID,
+            AssetAccountType::ECDH, aaID,
             rootAsset, derScheme, dbName);
          addressAccountPtr->addAccount(assetAccount);
          break;
@@ -296,12 +299,12 @@ std::unique_ptr<AddressAccount> AddressAccount::make_new(
       {
          if (accType->isWatchingOnly()) {
             auto assetAccount = std::make_shared<AssetAccountData>(
-               AssetAccountTypeEnum_ImportsWO, accType->getOuterAccountID(),
+               AssetAccountType::ImportsWO, accType->getOuterAccountID(),
                nullptr, nullptr, dbName);
             addressAccountPtr->addAccount(assetAccount);
          } else {
             auto assetAccount = std::make_shared<AssetAccountData>(
-               AssetAccountTypeEnum_Imports, accType->getOuterAccountID(),
+               AssetAccountType::Imports, accType->getOuterAccountID(),
                nullptr, nullptr, dbName);
             addressAccountPtr->addAccount(assetAccount);
          }
@@ -386,28 +389,28 @@ void AddressAccount::commit(std::shared_ptr<IO::WalletDBInterface> iface)
       std::shared_ptr<AssetAccount> aaPtr;
       switch (accDataPair.second->type_)
       {
-         case AssetAccountTypeEnum_Plain:
+         case AssetAccountType::Plain:
          {
             aaPtr = std::make_shared<AssetAccount>(
                accDataPair.second);
             break;
          }
 
-         case AssetAccountTypeEnum_ECDH:
+         case AssetAccountType::ECDH:
          {
             aaPtr = std::make_shared<AssetAccount_ECDH>(
                accDataPair.second);
             break;
          }
 
-         case AssetAccountTypeEnum_Imports:
+         case AssetAccountType::Imports:
          {
             aaPtr = std::make_shared<AssetAccount_Imports>(
                accDataPair.second);
             break;
          }
 
-         case AssetAccountTypeEnum_ImportsWO:
+         case AssetAccountType::ImportsWO:
          {
             aaPtr = std::make_shared<AssetAccount_ImportsWO>(
                accDataPair.second);
@@ -615,7 +618,7 @@ std::shared_ptr<AddressEntry> AddressAccount::getNewAddress(
    const AssetAccountId& accountId, AddressEntryType aeType,
    const ProgressFunc& progFunc)
 {
-   if (aeType == AddressEntryType_Default) {
+   if (aeType == AddressEntryType::Default) {
       aeType = defaultAddressEntryType_;
    }
 
@@ -655,7 +658,7 @@ std::shared_ptr<AddressEntry> AddressAccount::peekNextChangeAddress(
    std::shared_ptr<IO::WalletDBInterface> iface, AddressEntryType aeType,
    const ProgressFunc& progFunc)
 {
-   if (aeType == AddressEntryType_Default) {
+   if (aeType == AddressEntryType::Default) {
       aeType = defaultAddressEntryType_;
    }
 
@@ -712,7 +715,7 @@ const std::set<AddressEntryType>& AddressAccount::getAddressTypeSet() const
 
 bool AddressAccount::hasAddressType(AddressEntryType aeType)
 {
-   if (aeType == AddressEntryType_Default) {
+   if (aeType == AddressEntryType::Default) {
       return true;
    }
    auto iter = addressTypes_.find(aeType);
@@ -868,16 +871,16 @@ std::unique_ptr<AssetAccount> AddressAccount::getAccountForID(
    auto accData = getAccountDataForID(id);
    switch (accData->type_)
    {
-      case AssetAccountTypeEnum_Plain:
+      case AssetAccountType::Plain:
          return std::make_unique<AssetAccount>(accData);
 
-      case AssetAccountTypeEnum_ECDH:
+      case AssetAccountType::ECDH:
          return std::make_unique<AssetAccount_ECDH>(accData);
 
-      case AssetAccountTypeEnum_Imports:
+      case AssetAccountType::Imports:
          return std::make_unique<AssetAccount_Imports>(accData);
 
-      case AssetAccountTypeEnum_ImportsWO:
+      case AssetAccountType::ImportsWO:
          return std::make_unique<AssetAccount_ImportsWO>(accData);
 
       default:
@@ -944,13 +947,13 @@ AddressAccountPublicData AddressAccount::exportPublicData() const
 
       SecureBinaryData rootData;
       if (woRoot != nullptr) {
-         rootData = woRoot->serialize();
+         rootData = SecureBinaryData{woRoot->serialize()};
       }
 
       SecureBinaryData derData;
       std::shared_ptr<AssetAccountExtendedData> extended = nullptr;
       if (assetData->derScheme_ != nullptr) {
-         derData = assetData->derScheme_->serialize();
+         derData = SecureBinaryData{assetData->derScheme_->serialize()};
 
          //check for salts
          auto derEcdh = std::dynamic_pointer_cast<DerivationScheme_ECDH>(
@@ -993,7 +996,7 @@ void AddressAccount::importPublicData(const AddressAccountPublicData& aapd)
 
       switch (accPtr->type())
       {
-         case AssetAccountTypeEnum::AssetAccountTypeEnum_ECDH:
+         case AssetAccountType::ECDH:
          {
             //ecdh account, inject the existing salts
             auto accEcdh = dynamic_cast<AssetAccount_ECDH*>(accPtr.get());
@@ -1054,19 +1057,19 @@ void AddressAccount::updateInstantiatedAddressType(
    ***/
 
    //sanity check
-   if (addrPtr->getType() == AddressEntryType_Default) {
+   if (addrPtr->getType() == AddressEntryType::Default) {
       throw AccountException("invalid address entry type");
    }
    updateInstantiatedAddressType(iface, addrPtr->getID(), addrPtr->getType());
 }
-  
+
 ////////////////////////////////////////////////////////////////////////////////
 void AddressAccount::updateInstantiatedAddressType(
    std::shared_ptr<IO::WalletDBInterface> iface,
    const AssetId& id, AddressEntryType aeType)
 {
    //sanity check
-   if (aeType == AddressEntryType_Default) {
+   if (aeType == AddressEntryType::Default) {
       if (addressTypes_.empty()) {
          throw AccountException("no default address type for this account");
       }

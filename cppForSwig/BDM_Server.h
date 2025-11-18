@@ -6,8 +6,7 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _BDM_SERVER_H
-#define _BDM_SERVER_H
+#pragma once
 
 #include <vector>
 #include <map>
@@ -15,23 +14,29 @@
 #include <thread>
 #include <future>
 
+#include <Utils/ArmoryErrors.h>
 #include "BitcoinP2P.h"
 #include "BlockDataViewer.h"
-#include "Cryptography.h"
 #include "LedgerEntry.h"
-#include "DbHeader.h"
 #include "BDV_Notification.h"
-#include "ZeroConf.h"
-#include "Server.h"
-#include "BtcWallet.h"
-#include "ArmoryErrors.h"
-#include "ZeroConfNotifications.h"
+//#include "Server.h"
+//#include "BtcWallet.h"
 
 #define MAX_CONTENT_LENGTH 1024*1024*1024
 #define CALLBACK_EXPIRE_COUNT 5
 
 class BDV_Server_Object;
+class WebSocketMessagePartial;
 using BdvPtr = std::shared_ptr<BDV_Server_Object>;
+
+struct btc_pubkey_;
+namespace Armory
+{
+   namespace ZeroConf
+   {
+      class ZeroConfCallbacks_BDV;
+   }
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 struct RpcBroadcastPacket
@@ -48,17 +53,17 @@ private:
    BinaryData packetData_;
    BdvPtr bdvPtr_;
    const BdvIdKey bdvID_;
-   const btc_pubkey& pubkey_;
+   const btc_pubkey_& pubkey_;
    uint32_t messageID_ = UINT32_MAX;
 
 public:
-   BDV_Payload(BinaryData, BdvPtr, BdvIdKey, const btc_pubkey&);
+   BDV_Payload(BinaryData, BdvPtr, BdvIdKey, const btc_pubkey_&);
 
    uint32_t getMessageID(void) const;
    void setMessageID(uint32_t);
 
    uint64_t getBdvID(void) const;
-   const btc_pubkey& getPubkey(void) const;
+   const btc_pubkey_& getPubkey(void) const;
 
    const BinaryData& getData(void) const;
    BinaryData&& moveData(void);
@@ -189,7 +194,7 @@ struct BDVMap
 ////
 class Clients
 {
-   friend class ZeroConfCallbacks_BDV;
+   friend class Armory::ZeroConf::ZeroConfCallbacks_BDV;
 
 private:
    BDVMap BDVs_;
@@ -235,5 +240,3 @@ public:
    void rpcBroadcast(RpcBroadcastPacket&);
    void p2pBroadcast(BdvIdKey, std::vector<BinaryDataRef>&);
 };
-
-#endif

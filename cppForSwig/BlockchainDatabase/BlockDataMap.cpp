@@ -1,18 +1,24 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2016-2024, goatpig.                                         //
+//  Copyright (C) 2016-2025, goatpig.                                         //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "BlockDataMap.h"
-#include "BtcUtils.h"
-#include "TxHashFilters.h"
 #include <string_view>
+
+#include "BlockDataMap.h"
+#include <Utils/BtcUtils.h>
+#include <Utils/varint.h>
+#include <Utils/BCTX.h>
+#include <Utils/DBUtils.h>
+#include "TxHashFilters.h"
+#include "BlockObj.h"
 
 namespace fs = std::filesystem;
 using namespace std::string_view_literals;
+using namespace Armory;
 
 namespace {
    fs::path blkFileExt{".dat"sv};
@@ -30,7 +36,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 // BlockOffset
-////////////////////////////////////////////////////////////////////////////////
 BlockOffset::BlockOffset() :
    fileID(UINT16_MAX), offset(0)
 {}
@@ -79,7 +84,7 @@ std::shared_ptr<BlockData> BlockData::deserialize(
 {
    //deser header from raw block and run a quick sanity check
    if (size < HEADER_SIZE) {
-      throw BlockDeserializingException(
+      throw BtcUtils::BlockDeserializingException(
          "raw data is smaller than HEADER_SIZE");
    }
 
@@ -106,12 +111,12 @@ std::shared_ptr<BlockData> BlockData::deserialize(
          LOGERR << " file: " << blockHeader->getBlockFileNum() <<
             ", offset: " << blockHeader->getOffset();
 
-         throw BlockDeserializingException(
+         throw BtcUtils::BlockDeserializingException(
             "raw data does not match expected block hash");
       }
 
       if (numTx != blockHeader->getNumTx()) {
-         throw BlockDeserializingException(
+         throw BtcUtils::BlockDeserializingException(
             "tx count mismatch in deser header");
       }
    }
@@ -165,7 +170,7 @@ std::shared_ptr<BlockData> BlockData::deserialize(
       LOGERR << "merkle root mismatch!";
       LOGERR << "   header has: " << bh.getMerkleRoot().toHexStr();
       LOGERR << "   block yields: " << merkleroot.toHexStr();
-      throw BlockDeserializingException("invalid merkle root");
+      throw BtcUtils::BlockDeserializingException("invalid merkle root");
    }
 
    if (mode == CheckHashes::TxFilters) {
@@ -384,32 +389,3 @@ BlockDataLoader::BlockDataCopy::BlockDataCopy(const PathAndOffset& path) :
 ////
 BlockDataLoader::BlockDataCopy::BlockDataCopy()
 {}
-
-/////////////////////////////////////////////////////////////////////////////
-// BlockDataFileMap
-/////////////////////////////////////////////////////////////////////////////
-BlockDataFileMap::BlockDataFileMap(const std::filesystem::path& path) :
-   fileMap_(path)
-{}
-
-////
-BlockDataFileMap::~BlockDataFileMap()
-{}
-
-////
-const uint8_t* BlockDataFileMap::data() const
-{
-   return fileMap_.ptr();
-}
-
-////
-size_t BlockDataFileMap::size() const
-{
-   return fileMap_.size();
-}
-
-////
-bool BlockDataFileMap::valid() const
-{
-   return fileMap_.isValid();
-}

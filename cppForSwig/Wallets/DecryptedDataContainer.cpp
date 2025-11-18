@@ -6,6 +6,8 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
+#include <cstring>
+
 #include "DecryptedDataContainer.h"
 #include "EncryptedDB.h"
 #include "AssetEncryption.h"

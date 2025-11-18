@@ -6,15 +6,16 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "ArmoryErrors.h"
 #include "nodeRPC.h"
-#include "DBUtils.h"
-#include "ArmoryConfig.h"
+#include "Utils/ArmoryErrors.h"
+#include "Utils/BtcUtils.h"
+#include "Utils/DBUtils.h"
+#include "Utils/ArmoryConfig.h"
 #include "SocketWritePayload.h"
 
 using namespace std;
 using namespace CoreRPC;
-using namespace Armory::Config;
+using namespace Armory;
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -153,7 +154,7 @@ RpcState NodeRPC::testConnection()
 ////////////////////////////////////////////////////////////////////////////////
 std::filesystem::path NodeRPC::getDatadir()
 {
-   auto datadir = Pathing::blkFilePath();
+   auto datadir = Config::Pathing::blkFilePath();
    if (datadir.filename() == "blocks") {
       datadir = datadir.parent_path();
    }
@@ -169,12 +170,12 @@ string NodeRPC::getAuthString()
    auto getAuthStringFromCookieFile = [&datadir](void)->string
    {
       auto cookiePath = datadir / ".cookie";
-      auto lines = SettingsUtils::getLines(cookiePath);
+      auto lines = Config::SettingsUtils::getLines(cookiePath);
       if (lines.size() != 1) {
          throw std::runtime_error("unexpected cookie file content");
       }
 
-      auto keyVals = SettingsUtils::getKeyValsFromLines(lines, ':');
+      auto keyVals = Config::SettingsUtils::getKeyValsFromLines(lines, ':');
       auto keyIter = keyVals.find("__cookie__");
       if (keyIter == keyVals.end()) {
          throw std::runtime_error("unexpected cookie file content");
@@ -185,8 +186,8 @@ string NodeRPC::getAuthString()
 
    //open and parse .conf file
    try {
-      auto lines = SettingsUtils::getLines(confPath);
-      auto keyVals = SettingsUtils::getKeyValsFromLines(lines, '=');
+      auto lines = Config::SettingsUtils::getLines(confPath);
+      auto keyVals = Config::SettingsUtils::getKeyValsFromLines(lines, '=');
 
       //get rpcuser
       auto userIter = keyVals.find("rpcuser");
@@ -347,7 +348,7 @@ void NodeRPC::aggregateFeeEstimates()
    static vector<string> strategies = { 
       FEE_STRAT_CONSERVATIVE, FEE_STRAT_ECONOMICAL };
 
-   HttpSocket sock("127.0.0.1", NetworkSettings::rpcPort());
+   HttpSocket sock("127.0.0.1", Config::NetworkSettings::rpcPort());
    if (!setupConnection(sock))
       throw RpcError("aggregateFeeEstimates: failed to setup RPC socket");
 
@@ -576,7 +577,7 @@ void NodeRPC::shutdown()
 ////////////////////////////////////////////////////////////////////////////////
 string NodeRPC::queryRPC(JSON_object& request)
 {
-   HttpSocket sock("127.0.0.1", NetworkSettings::rpcPort());
+   HttpSocket sock("127.0.0.1", Config::NetworkSettings::rpcPort());
    if (!setupConnection(sock))
       throw RpcError("node_down");
 

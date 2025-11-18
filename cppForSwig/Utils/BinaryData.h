@@ -4,56 +4,23 @@
 //  Distributed under the GNU Affero General Public License (AGPL v3)         //
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
+//                                                                            //
+//  Copyright (C) 2016-2025, goatpig                                          //
+//  Distributed under the MIT license                                         //
+//  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
+//                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
-#ifndef _BINARYDATA_H_
-#define _BINARYDATA_H_
 
-#include <stdio.h>
-#include <cstring>
-#if defined(__MINGW32__) || defined(_MSC_VER)
-	#if _MSC_PLATFORM_TOOLSET < 110
-		#include <stdint.h>
-   #endif
+#pragma once
 
-   #ifndef ssize_t
-      #ifdef _MSC_VER
-         #define ssize_t SSIZE_T
-      #else
-         #define ssize_t long
-      #endif
-   #endif
-
-#else
-   #include <stdlib.h>
-   #include <inttypes.h>
-   #include <stdint.h>
-
-   #ifndef PAGESIZE
-      #include <unistd.h>
-      #define PAGESIZE sysconf(_SC_PAGESIZE)
-   #endif
-
-   #ifndef PAGEFLOOR
-      // "Round" a ptr down to the beginning of the memory page containing it
-      // PAGERANGE gives us a size to lock/map as a multiple of the PAGESIZE
-      #define PAGEFLOOR(ptr,sz) ((void*)(((size_t)(ptr)) & (~(PAGESIZE-1))  ))
-      #define PAGERANGE(ptr,sz) (  (((size_t)(ptr)+(sz)-1) | (PAGESIZE-1)) + 1 - PAGEFLOOR(ptr,sz)  )
-   #endif
-#endif
-
-
-#include <iostream>
+#include <atomic>
 #include <vector>
 #include <string>
 #include <stdexcept>
-#include <atomic>
 
-// We can remove these includes (Crypto++ ) if we remove the GenerateRandom()
 #include "log.h"
 
 #define DEFAULT_BUFFER_SIZE 32*1048576
-
-#include "UniversalTimer.h"
 
 #define READHEX        BinaryData::CreateFromHex
 
@@ -97,7 +64,6 @@ enum ENDIAN
 #define BE ENDIAN_BIG
 
 class BinaryDataRef;
-class SecureBinaryData;
 
 inline constexpr char hexLookupTable[16] = {
    '0','1','2','3',
@@ -125,7 +91,6 @@ inline constexpr uint8_t binLookupTable[256] = {
    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 
-////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 class BinaryData
 {
@@ -194,10 +159,10 @@ public:
    BinaryData& append(uint8_t);
 
    /////////////////////////////////////////////////////////////////////////////
-   int32_t find(const BinaryDataRef&, uint32_t startPos=0);
-   int32_t find(const BinaryData&, uint32_t startPos=0);
-   bool contains(const BinaryDataRef&, uint32_t startPos=0);
-   bool contains(const BinaryData&, uint32_t startPos=0);
+   int32_t find(const BinaryDataRef&, uint32_t=0);
+   int32_t find(const BinaryData&, uint32_t=0);
+   bool contains(const BinaryDataRef&, uint32_t=0);
+   bool contains(const BinaryData&, uint32_t=0);
 
    /////////////////////////////////////////////////////////////////////////////
    bool startsWith(const BinaryDataRef&) const;
@@ -210,20 +175,18 @@ public:
    BinaryData    getSliceCopy(ssize_t, size_t) const;
 
    /////////////////////////////////////////////////////////////////////////////
-   std::string toBinStr(bool bigEndian=false) const;
-   char* toCharPtr(void) const;
-   unsigned char* toUCharPtr(void) const;
+   std::string toBinStr(bool=false) const;
 
    void resize(size_t);
    void reserve(size_t);
 
    /////////////////////////////////////////////////////////////////////////////
    // Swap endianness of the bytes in the index range [pos1, pos2)
-   BinaryData& swapEndian(size_t pos1=0, size_t pos2=0);
+   BinaryData& swapEndian(size_t=0, size_t=0);
 
    /////////////////////////////////////////////////////////////////////////////
    // Swap endianness of the bytes in the index range [pos1, pos2)
-   BinaryData copySwapEndian(size_t pos1=0, size_t pos2=0) const;
+   BinaryData copySwapEndian(size_t=0, size_t=0) const;
 
    /////////////////////////////////////////////////////////////////////////////
    // This is an architecture-agnostic way to serialize integers to little- or
@@ -259,10 +222,7 @@ public:
          LOGERR << "StrToInt: strsz: " << binstr.getSize() << " intsz: " << SZ;
          return (INTTYPE)0;
       }
-
-      INTTYPE result;
-      memcpy(&result, binstr.getPtr(), sizeof(INTTYPE));
-      return result;
+      return *(INTTYPE*)binstr.getPtr();
    }
 
    template<typename INTTYPE>
@@ -284,9 +244,7 @@ public:
    template<typename INTTYPE>
    static INTTYPE StrToIntLE(const uint8_t* ptr)
    {
-      INTTYPE result;
-      memcpy(&result, ptr, sizeof(INTTYPE));
-      return result;
+      return *(INTTYPE*)ptr;
    }
 
    template<typename INTTYPE>
@@ -301,14 +259,14 @@ public:
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   static BinaryData fromString(const std::string&, size_t len=SIZE_MAX);
-   static BinaryData fromString(const std::string_view&, size_t len=SIZE_MAX);
+   static BinaryData fromString(const std::string&, size_t=SIZE_MAX);
+   static BinaryData fromString(const std::string_view&, size_t=SIZE_MAX);
 
    /////////////////////////////////////////////////////////////////////////////
    void createFromHex(const std::string&);
    void createFromHex(const BinaryDataRef&);
    static BinaryData CreateFromHex(const std::string&);
-   std::string toHexStr(bool bigEndian=false) const;
+   std::string toHexStr(bool=false) const;
 
    // For deallocating all the memory that is currently used by this BD
    void clear(void);
@@ -360,7 +318,7 @@ public:
    BinaryData copy(void) const;
 
    /////////////////////////////////////////////////////////////////////////////
-   uint8_t const & operator[](ssize_t) const;
+   const uint8_t& operator[](ssize_t) const;
    BinaryDataRef& operator=(const BinaryDataRef&);
    bool operator<(const BinaryDataRef&) const;
    bool operator==(const BinaryDataRef&) const;
@@ -370,18 +328,17 @@ public:
    bool operator>(const BinaryDataRef&) const;
 
    /////////////////////////////////////////////////////////////////////////////
-   std::string toBinStr(bool bigEndian=false) const;
-   char* toCharPtr(void) const;
-   unsigned char* toUCharPtr(void) const;
+   std::string toBinStr(bool=false) const;
+   const char* toCharPtr(void) const;
 
    /////////////////////////////////////////////////////////////////////////////
    bool isValid(void) const;
 
    /////////////////////////////////////////////////////////////////////////////
-   int32_t find(const BinaryDataRef&, uint32_t startPos=0);
-   int32_t find(const BinaryData&, uint32_t startPos=0);
-   bool contains(const BinaryDataRef&, uint32_t startPos=0);
-   bool contains(const BinaryData&, uint32_t startPos=0);
+   int32_t find(const BinaryDataRef&, uint32_t=0);
+   int32_t find(const BinaryData&, uint32_t=0);
+   bool contains(const BinaryDataRef&, uint32_t=0);
+   bool contains(const BinaryData&, uint32_t=0);
 
    /////////////////////////////////////////////////////////////////////////////
    bool startsWith(const BinaryDataRef&) const;
@@ -493,7 +450,6 @@ public:
    BinaryRefReader fork(void) const;
    void get_BinaryData(BinaryData&, uint32_t);
    BinaryData get_BinaryData(uint32_t);
-   SecureBinaryData get_SecureBinaryData(uint32_t);
    void get_BinaryData(uint8_t*, uint32_t);
    std::string get_String(uint32_t);
 
@@ -709,5 +665,3 @@ namespace std
       std::size_t operator()(const BinaryDataRef&) const;
    };
 };
-
-#endif

@@ -19,11 +19,8 @@
 
 #include "BlockchainDatabase/txio.h"
 #include "BDV_Notification.h"
-#include "ZeroConf.h"
-#include "util.h"
 #include "bdmenums.h"
 #include "BtcWallet.h"
-#include "ZeroConf.h"
 
 typedef enum
 {
@@ -38,19 +35,7 @@ typedef enum
    group_lockbox
 } LedgerGroups;
 
-namespace capnp {
-   class MessageReader;
-}
-
 class WalletGroup;
-
-class BDMnotReady : public std::exception
-{
-   virtual const char* what() const throw()
-   {
-      return "BDM is not ready!";
-   }
-};
 
 enum class WalletRegType : int
 {
@@ -88,18 +73,30 @@ struct CombinedBalances
 
    struct Wallet
    {
-      const BalanceAndCount                        bnc;
-      const std::map<BinaryData, BalanceAndCount>  addresses;
+      const BalanceAndCount bnc;
+      const std::map<BinaryData, BalanceAndCount> addresses;
    };
-
    std::map<std::string, Wallet> wallets;
 };
+
+class ScrAddrFilter;
+class Blockchain;
+class LedgerDelegate;
+
+namespace Armory
+{
+   namespace ZeroConf
+   {
+      class ZeroConfContainer;
+   }
+}
 
 class BlockDataViewer
 {
 public:
-   BlockDataViewer(std::shared_ptr<BlockDataManager> bdm);
+   BlockDataViewer(std::shared_ptr<BlockDataManager>);
    ~BlockDataViewer(void);
+   void reset(void);
 
    /////////////////////////////////////////////////////////////////////////////
    // If you register you wallet with the BDM, it will automatically maintain 
@@ -110,35 +107,27 @@ public:
    // it goes, and does a full [re-]scan of the blockchain only if necessary.
    void registerAWallet(WalletRegistrationRequest&);
    void registerAddresses(WalletRegistrationRequest&);
-   void unregisterWallet(const std::string& ID);
+   void unregisterWallet(const std::string&);
 
    void scanWallets(std::shared_ptr<BDV_Notification>);
-   bool hasWallet(const std::string &ID) const;
-
-   Tx getTxByHash(BinaryData const & txHash) const;
+   bool hasWallet(const std::string&) const;
+   Tx getTxByHash(const BinaryData&) const;
 
    std::tuple<uint32_t, uint32_t, std::vector<unsigned>>
    getTxMetaData(const BinaryDataRef&, bool) const;
 
-   TxOut getPrevTxOut(TxIn & txin) const;
-   Tx getPrevTx(TxIn & txin) const;
-
-   BinaryData getTxHashForDbKey(const BinaryData& dbKey6) const
-   { return db_->getTxHashForLdbKey(dbKey6); }
-
-   BinaryData getSenderScrAddr(TxIn & txin) const;
-   int64_t getSentValue(TxIn & txin) const;
+   TxOut getPrevTxOut(const TxIn&) const;
+   Tx getPrevTx(const TxIn&) const;
+   BinaryData getSenderScrAddr(const TxIn&) const;
+   int64_t getSentValue(const TxIn&) const;
 
    LMDBBlockDatabase* getDB(void) const;
-   const Blockchain& blockchain() const  { return *bc_; }
-   Blockchain& blockchain() { return *bc_; }
-   ZeroConfContainer* zcContainer() { return zc_; }
+   BinaryData getTxHashForDbKey(const BinaryData&) const;
+   Armory::ZeroConf::ZeroConfContainer* zcContainer(void) const;
+   const Blockchain& blockchain(void) const;
    uint32_t getTopBlockHeight(void) const;
-   const std::shared_ptr<BlockHeader> getTopBlockHeader(void) const
-   { return bc_->top(); }
-   std::shared_ptr<BlockHeader> getHeaderByHash(const BinaryData& blockHash) const;
-
-   void reset();
+   const std::shared_ptr<BlockHeader> getTopBlockHeader(void) const;
+   std::shared_ptr<BlockHeader> getHeaderByHash(const BinaryData&) const;
 
    size_t getWalletsPageCount(void) const;
    std::vector<LedgerEntry> getWalletsHistoryPage(uint32_t,
@@ -155,33 +144,17 @@ public:
    bool isBDMRunning(void) const;
    void blockUntilBDMisReady(void) const;
 
-   bool isTxOutSpentByZC(const BinaryData& dbKey) const
-   { return zeroConfCont_->isTxOutSpentByZC(dbKey); }
-
-   std::map<BinaryData, std::shared_ptr<const TxIOPair>> getUnspentZCForScrAddr(
-      const BinaryData& scrAddr) const
-   { return zeroConfCont_->getUnspentZCforScrAddr(scrAddr); }
-
-   std::map<BinaryData, std::shared_ptr<const TxIOPair>> getRBFTxIOsforScrAddr(
-      const BinaryData& scrAddr) const
-   {
-      return zeroConfCont_->getRBFTxIOsforScrAddr(scrAddr);
-   }
-
-   std::vector<TxOut> getZcTxOutsForKeys(const std::set<BinaryData>& keys) const
-   {
-      return zeroConfCont_->getZcTxOutsForKey(keys);
-   }
-
-   std::vector<UTXO> getZcUTXOsForKeys(const std::set<BinaryData>& keys) const
-   {
-      return zeroConfCont_->getZcUTXOsForKey(keys);
-   }
-
-   ScrAddrFilter* getSAF(void) { return saf_; }
+   bool isTxOutSpentByZC(const BinaryData&) const;
+   std::map<BinaryData, std::shared_ptr<const TxIOPair>>
+   getUnspentZCForScrAddr(const BinaryData&) const;
+   std::map<BinaryData, std::shared_ptr<const TxIOPair>>
+   getRBFTxIOsforScrAddr(const BinaryData&) const;
+   std::vector<TxOut> getZcTxOutsForKeys(const std::set<BinaryData>&) const;
+   std::vector<UTXO> getZcUTXOsForKeys(const std::set<BinaryData>&) const;
+   ScrAddrFilter* getSAF(void);
 
    WalletGroup getStandAloneWalletGroup(
-      const std::vector<std::string>& wltIDs, HistoryOrdering order);
+      const std::vector<std::string>&, HistoryOrdering);
 
    void updateWalletsLedgerFilter(const std::vector<std::string>& walletsList);
    void updateLockboxesLedgerFilter(const std::vector<std::string>& walletsList);
@@ -230,18 +203,82 @@ protected:
 protected:
    std::atomic<bool> rescanZC_;
 
-   std::shared_ptr<BlockDataManager>   bdm_;
-   LMDBBlockDatabase*                  db_;
-   std::shared_ptr<Blockchain>         bc_;
-   ZeroConfContainer*                  zc_;
-   ScrAddrFilter*                      saf_;
+   std::shared_ptr<BlockDataManager> bdm_;
+   LMDBBlockDatabase* db_;
+   std::shared_ptr<Blockchain> bc_;
+   Armory::ZeroConf::ZeroConfContainer* zc_;
+   ScrAddrFilter* saf_;
 
    std::vector<WalletGroup> groups_;
    uint32_t lastScanned_ = 0;
-   const std::shared_ptr<ZeroConfContainer> zeroConfCont_;
+   const std::shared_ptr<Armory::ZeroConf::ZeroConfContainer> zeroConfCont_;
    int32_t updateID_ = 0;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+class ReadWriteLock
+{
+   /***
+   You have to make sure a read lock request from a thread already holding
+   a read lock ignores write lock requests, otherwise you could end up in
+   a deadlock where a write lock is requested before a child read lock is.
+
+   Example:
+   T1 creates a read lock. T2 requests a write lock. At this point no new
+   read locks can be created, until the write lock is fulfilled. The
+   write lock can only be fulfilled if all current read locks are released.
+
+   Within T1's first read lock, a new read lock is requested. This new lock
+   will never be acquired, waiting forever on T2's write lock to be
+   fulfilled first.
+
+   T2's write lock will never be fulfilled, as it is waiting on T1's
+   currently held read lock to be released. T1's current lock won't be
+   released as it will never exist its scope, waiting for T1's second
+   lock to be acquired.
+
+   Incidentally, in the scope of a same thread, requesting a write lock
+   within a read lock will always deadlock. The condition should be tested
+   and thrown. Requesting a read lock within a write lock can and should
+   be accomodated.
+   ***/
+
+   std::mutex all_lock;
+   unsigned num_readers = 0;
+   bool has_writer=false;
+   std::condition_variable no_readers, no_writers;
+   std::map<std::thread::id, unsigned> thread_ids_;
+
+public:
+   void lockRead(void);
+   void unlockRead(void);
+   void lockWrite(void);
+   void unlockWrite(void);
+
+   class ReadLock
+   {
+      ReadWriteLock *const l;
+      bool locked=true;
+
+   public:
+      ReadLock(ReadWriteLock&);
+      ~ReadLock(void);
+
+      void unlock(void);
+   };
+
+   class WriteLock
+   {
+      ReadWriteLock *const l;
+      bool locked=true;
+
+   public:
+      WriteLock(ReadWriteLock&);
+      ~WriteLock(void);
+
+      void unlock(void);
+   };
+};
 
 class WalletGroup
 {

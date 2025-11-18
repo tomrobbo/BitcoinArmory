@@ -43,12 +43,12 @@ private:
       )>&
    );
 
-   Blockchain::ReorganizationState updateBlocksInDB(
+   ReorganizationState updateBlocksInDB(
       const ProgressCallback&,
-      std::shared_ptr<BlockDataLoader> bdl=nullptr);
-   BinaryData initTransactionHistory(int32_t startHeight);
-   BinaryData scanHistory(int32_t startHeight, bool reportprogress, bool init);
-   void undoHistory(Blockchain::ReorganizationState& reorgState);
+      std::shared_ptr<BlockDataLoader> = nullptr);
+   BinaryData initTransactionHistory(int32_t);
+   BinaryData scanHistory(int32_t, bool, bool);
+   void undoHistory(ReorganizationState&);
 
    void resetHistory(void);
    void verifyTransactions(void);
@@ -70,7 +70,7 @@ public:
       const ProgressCallback&, bool);
 
    bool init(void);
-   Blockchain::ReorganizationState update(void);
+   ReorganizationState update(void);
 
    void verifyChain(void);
    unsigned getCheckedTxCount(void) const { return checkedTransactions_; }

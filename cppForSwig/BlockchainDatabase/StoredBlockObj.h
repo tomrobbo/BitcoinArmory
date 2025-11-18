@@ -5,9 +5,9 @@
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
 //                                                                            //
-//  Copyright (C) 2016, goatpig                                               //            
+//  Copyright (C) 2016, goatpig                                               //
 //  Distributed under the MIT license                                         //
-//  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //                                   
+//  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -19,12 +19,10 @@
 #include <map>
 #include <atomic>
 
-#include "BinaryData.h"
-#include "DBUtils.h"
-#include "BtcUtils.h"
+#include "Utils/BinaryData.h"
 #include "BlockObj.h"
 #include "txio.h"
-#include "ArmoryConfig.h"
+#include "bdmenums.h"
 
 #define ARMORY_DB_VERSION   0x9701
 #define ARMORY_DB_DEFAULT   ARMORY_DB_FULL
@@ -32,12 +30,12 @@
 
 enum DB_TX_AVAIL
 {
-  DB_TX_EXISTS,
-  DB_TX_GETBLOCK,
-  DB_TX_UNKNOWN
+   DB_TX_EXISTS,
+   DB_TX_GETBLOCK,
+   DB_TX_UNKNOWN
 };
 
-enum DB_SELECT
+enum class DB_SELECT : int
 {
    HEADERS,
    BLKDATA,
@@ -55,29 +53,29 @@ enum DB_SELECT
 
 enum TX_SERIALIZE_TYPE
 {
-  TX_SER_FULL,
-  TX_SER_FRAGGED,
-  TX_SER_COUNTOUT
+   TX_SER_FULL,
+   TX_SER_FRAGGED,
+   TX_SER_COUNTOUT
 };
 
 enum TXOUT_SPENTNESS
 {
-  TXOUT_UNSPENT,
-  TXOUT_SPENT,
-  TXOUT_SPENTUNK,
+   TXOUT_UNSPENT,
+   TXOUT_SPENT,
+   TXOUT_SPENTUNK,
 };
 
 enum MERKLE_SER_TYPE
 {
-  MERKLE_SER_NONE,
-  MERKLE_SER_PARTIAL,
-  MERKLE_SER_FULL
+   MERKLE_SER_NONE,
+   MERKLE_SER_PARTIAL,
+   MERKLE_SER_FULL
 };
 
 enum SCRIPT_UTXO_TYPE
 {
-  SCRIPT_UTXO_VECTOR,
-  SCRIPT_UTXO_TREE
+   SCRIPT_UTXO_VECTOR,
+   SCRIPT_UTXO_TREE
 };
 
 class BlockHeader;
@@ -99,13 +97,15 @@ static BinaryData serializeDBValue(const T &o, const Args &...a)
    return wr.getData();
 }
 
-////////////////////////////////////////////////////////////////////////////////
-class StoredDBInfo
+namespace Armory
 {
-public:
-   StoredDBInfo(void) :
-      metaHash_{BtcUtils::EmptyHash}
-   {}
+   enum class ScriptPrefix : uint8_t;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+struct StoredDBInfo
+{
+   StoredDBInfo(void);
 
    bool isInitialized(void) const { return !magic_.empty(); }
    bool isNull(void) { return !isInitialized(); }
@@ -126,7 +126,7 @@ public:
    BinaryData      topScannedBlkHash_; //32 bytes
    uint32_t        appliedToHgt_=0;
    uint32_t        armoryVer_=ARMORY_DB_VERSION;
-   ARMORY_DB_TYPE  armoryType_=ARMORY_DB_FULL; //default db mode
+   ARMORY_DB_TYPE  armoryType_=ARMORY_DB_TYPE::Full; //default db mode
    uint64_t metaInt_ = UINT64_MAX;
 };
 
@@ -146,7 +146,7 @@ struct StoredTxOut
       spentByTxInKey_(0)
    {}
 
-   bool isInitialized(void) const { return dataCopy_.getSize() > 0; }
+   bool isInitialized(void) const { return !dataCopy_.empty(); }
    bool isNull(void) { return !isInitialized(); }
    void unserialize(BinaryData const & data);
    void unserialize(BinaryDataRef data);
@@ -170,9 +170,9 @@ struct StoredTxOut
    const BinaryData& getHgtX(void) const;
    unsigned getHeight(void) const;
 
-   StoredTxOut & createFromTxOut(TxOut & txout);
-   BinaryData    getSerializedTxOut(void) const;
-   TxOut         getTxOutCopy(void) const;
+   StoredTxOut& createFromTxOut(TxOut & txout);
+   const BinaryData& getSerializedTxOut(void) const;
+   TxOut getTxOutCopy(void) const;
 
    const BinaryData& getScrAddress(void) const;
    BinaryDataRef     getScriptRef(void) const;
@@ -450,7 +450,7 @@ public:
    void       getSummary(BinaryRefReader & brr);
 
    BinaryData    getDBKey(bool withPrefix=true) const;
-   SCRIPT_PREFIX getScriptType(void) const;
+   Armory::ScriptPrefix getScriptType(void) const;
 
    void markTxOutUnspent(const BinaryData& txOutKey8B,
                              uint64_t&  additionalSize,
@@ -529,9 +529,9 @@ public:
    
    void addSummary(const StoredScriptHistory&);
    void substractSummary(const StoredScriptHistory&);
-   
+
    BinaryData    getDBKey(bool withPrefix=true) const;
-   SCRIPT_PREFIX getScriptType(void) const;
+   Armory::ScriptPrefix getScriptType(void) const;
 
    uint64_t getScriptReceived(bool withMultisig=false);
    uint64_t getScriptBalance(bool withMultisig=false);
@@ -564,36 +564,6 @@ public:
    std::map<BinaryData, StoredSubHistory> subHistMap_;
 };
 
-
-////////////////////////////////////////////////////////////////////////////////
-// TODO:  it turns out that outPointsAddedByBlock_ is not "right."  If a Tx has
-//        20 txOuts, there's no reason to write 36 * 20 = 720 bytes when you 
-//        can just as easily write the header once, and the numTxOut and create
-//        the OutPoints yourself.  Will fix this later.
-class StoredUndoData
-{
-public:
-   StoredUndoData(void) {}
-
-   bool isInitialized(void) { return (outPointsAddedByBlock_.size() > 0);}
-   bool isNull(void) { return !isInitialized(); }
-
-   void       unserializeDBValue(BinaryRefReader & brr);
-   void         serializeDBValue(BinaryWriter    & bw) const;
-   void       unserializeDBValue(BinaryData const & bd);
-   void       unserializeDBValue(BinaryDataRef      bd);
-
-   BinaryData getDBKey(bool withPrefix=true) const;
-
-   BinaryData  blockHash_;
-   uint32_t    blockHeight_;
-   uint8_t     duplicateID_;
-
-   std::vector<StoredTxOut>  stxOutsRemovedByBlock_;
-   std::vector<OutPoint>     outPointsAddedByBlock_;
-};
-
-
 ////////////////////////////////////////////////////////////////////////////////
 class StoredTxHints
 {
@@ -606,8 +576,7 @@ public:
    size_t        getNumHints(void) const   { return dbKeyList_.size();      }
    BinaryDataRef getHint(uint32_t i) const { return dbKeyList_[i].getRef(); }
 
-   void setPreferredTx(uint32_t height, uint8_t dupID, uint16_t txIndex) 
-      { preferredDBKey_ = DBUtils::getBlkDataKeyNoPrefix(height,dupID,txIndex); }
+   void setPreferredTx(uint32_t, uint8_t, uint16_t);
    void setPreferredTx(BinaryData dbKey6B_) { preferredDBKey_ = dbKey6B_; }
 
    void       unserializeDBValue(BinaryRefReader & brr);

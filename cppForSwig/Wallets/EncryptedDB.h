@@ -17,9 +17,9 @@
 #include <functional>
 
 #include "lmdbpp.h"
-#include "BinaryData.h"
-#include "SecureBinaryData.h"
-#include "ReentrantLock.h"
+#include "Utils/BinaryData.h"
+#include "Utils/SecureBinaryData.h"
+#include "Utils/ReentrantLock.h"
 
 #define ERASURE_PLACE_HOLDER "erased"sv
 #define KEY_CYCLE_FLAG "cycle"sv

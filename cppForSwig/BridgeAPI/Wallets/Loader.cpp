@@ -8,10 +8,16 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "Loader.h"
-#include "../Wallets/Wallets.h"
-#include "../Wallets/IOHeader.h"
-#include "../Wallets/KDF.h"
-#include "../Wallets/Seeds/Seeds.h"
+#include <Utils/ArmoryConfig.h>
+#include <Utils/BtcUtils.h>
+#include <Utils/DBUtils.h>
+#include <Utils/Cryptography.h>
+
+#include <Wallets/Wallets.h>
+#include <Wallets/IOHeader.h>
+#include <Wallets/KDF.h>
+#include <Wallets/Accounts/AddressAccounts.h>
+#include <Wallets/Seeds/Seeds.h>
 
 using namespace Armory;
 using namespace Armory::Bridge;
@@ -302,12 +308,12 @@ void Armory135Header::parseFile()
       auto labelNameBd = brr.get_BinaryData(32);
       auto labelDescBd = brr.get_BinaryData(256);
 
-      auto labelNameLen = strnlen(labelNameBd.toCharPtr(), 32);
-      labelName_ = std::string{labelNameBd.toCharPtr(), labelNameLen};
+      auto labelNameLen = strnlen(labelNameBd.getCharPtr(), 32);
+      labelName_ = std::string{labelNameBd.getCharPtr(), labelNameLen};
 
-      auto labelDescriptionLen = strnlen(labelDescBd.toCharPtr(), 256);
+      auto labelDescriptionLen = strnlen(labelDescBd.getCharPtr(), 256);
       labelDescription_ = std::string{
-         labelDescBd.toCharPtr(), labelDescriptionLen};
+         labelDescBd.getCharPtr(), labelDescriptionLen};
 
       //highest used chain index
       highestUsedIndex_ = brr.get_int64_t();
@@ -592,7 +598,7 @@ void Armory135Address::parseFromRef(const BinaryDataRef& bdr)
    isEncrypted_   = addrFlags & 0x0000000000000004;
 
    //chaincode
-   chaincode_ = brrScrAddr.get_BinaryData(32);
+   chaincode_ = SecureBinaryData{brrScrAddr.get_BinaryDataRef(32)};
    auto chaincodeChecksum = brrScrAddr.get_BinaryDataRef(4);
    Armory135Header::verifyChecksum(chaincode_, chaincodeChecksum);
 
@@ -601,21 +607,21 @@ void Armory135Address::parseFromRef(const BinaryDataRef& bdr)
    depth_            = brrScrAddr.get_int64_t();
 
    //iv
-   iv_               = brrScrAddr.get_BinaryData(16);
+   iv_               = SecureBinaryData{brrScrAddr.get_BinaryDataRef(16)};
    auto ivChecksum   = brrScrAddr.get_BinaryDataRef(4);
    if (isEncrypted_) {
       Armory135Header::verifyChecksum(iv_, ivChecksum);
    }
 
    //private key
-   privKey_             = brrScrAddr.get_BinaryData(32);
+   privKey_             = SecureBinaryData{brrScrAddr.get_BinaryDataRef(32)};
    auto privKeyChecksum = brrScrAddr.get_BinaryDataRef(4);
    if (hasPrivKey_) {
       Armory135Header::verifyChecksum(privKey_, privKeyChecksum);
    }
 
    //pub key
-   pubKey_              = brrScrAddr.get_BinaryData(65);
+   pubKey_              = SecureBinaryData{brrScrAddr.get_BinaryDataRef(65)};
    auto pubKeyChecksum  = brrScrAddr.get_BinaryDataRef(4);
    Armory135Header::verifyChecksum(pubKey_, pubKeyChecksum);
 }

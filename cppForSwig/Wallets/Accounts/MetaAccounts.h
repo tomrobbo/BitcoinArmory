@@ -6,17 +6,14 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
+#pragma once
+
 #include <memory>
 #include <map>
 
-#include "../../BinaryData.h"
-#include "../../SecureBinaryData.h"
-#include "../../ReentrantLock.h"
-
+#include "Utils/ReentrantLock.h"
+#include "Utils/SecureBinaryData.h"
 #include "AccountTypes.h"
-
-#ifndef _H_META_ACCOUNTS
-#define _H_META_ACCOUNTS
 
 #define META_ACCOUNT_COMMENTS    0x000000C0
 #define META_ACCOUNT_AUTHPEER    0x000000C1
@@ -39,7 +36,7 @@ namespace Armory
       class MetaDataAccount : public Lockable
       {
       private:
-         MetaAccountType type_ = MetaAccount_Unset;
+         MetaAccountType type_ = MetaAccountType::Unset;
          BinaryData ID_;
          const std::string dbName_;
 
@@ -142,5 +139,3 @@ namespace Armory
       };
    }; //namespace Accounts
 }; //namespace Armory
-
-#endif

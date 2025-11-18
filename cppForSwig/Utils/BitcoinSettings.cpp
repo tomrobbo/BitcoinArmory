@@ -7,6 +7,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "BitcoinSettings.h"
+#include <btc/chainparams.h>
 
 using namespace Armory::Config;
 
@@ -33,9 +34,9 @@ void BitcoinSettings::selectNetwork(NETWORK_MODE mode)
          genesisBlockHash_ = READHEX(MAINNET_GENESIS_HASH_HEX);
          genesisTxHash_ = READHEX(MAINNET_GENESIS_TX_HASH_HEX);
          magicBytes_ = READHEX(MAINNET_MAGIC_BYTES);
-         pubkeyHashPrefix_ = SCRIPT_PREFIX_HASH160;
-         scriptHashPrefix_ = SCRIPT_PREFIX_P2SH;
-         privKeyPrefix_ = PRIVKEY_PREFIX;
+         pubkeyHashPrefix_ = (uint8_t)ScriptPrefix::HASH160;
+         scriptHashPrefix_ = (uint8_t)ScriptPrefix::P2SH;
+         privKeyPrefix_ = (uint8_t)ScriptPrefix::PRIVKEY;
          bech32Prefix_ = "bc";
 
          chainParams_ = &btc_chainparams_main;
@@ -48,9 +49,9 @@ void BitcoinSettings::selectNetwork(NETWORK_MODE mode)
          genesisBlockHash_ = READHEX(TESTNET_GENESIS_HASH_HEX);
          genesisTxHash_ = READHEX(TESTNET_GENESIS_TX_HASH_HEX);
          magicBytes_ = READHEX(TESTNET_MAGIC_BYTES);
-         pubkeyHashPrefix_ = SCRIPT_PREFIX_HASH160_TESTNET;
-         scriptHashPrefix_ = SCRIPT_PREFIX_P2SH_TESTNET;
-         privKeyPrefix_ = PRIVKEY_PREFIX_TESTNET;
+         pubkeyHashPrefix_ = (uint8_t)ScriptPrefix::HASH160_TESTNET;
+         scriptHashPrefix_ = (uint8_t)ScriptPrefix::P2SH_TESTNET;
+         privKeyPrefix_ = (uint8_t)ScriptPrefix::PRIVKEY_TESTNET;
          bech32Prefix_ = "tb";
 
          chainParams_ = &btc_chainparams_test;
@@ -63,9 +64,9 @@ void BitcoinSettings::selectNetwork(NETWORK_MODE mode)
          genesisBlockHash_ = READHEX(REGTEST_GENESIS_HASH_HEX);
          genesisTxHash_ = READHEX(REGTEST_GENESIS_TX_HASH_HEX);
          magicBytes_ = READHEX(REGTEST_MAGIC_BYTES);
-         pubkeyHashPrefix_ = SCRIPT_PREFIX_HASH160_TESTNET;
-         scriptHashPrefix_ = SCRIPT_PREFIX_P2SH_TESTNET;
-         privKeyPrefix_ = PRIVKEY_PREFIX_TESTNET;
+         pubkeyHashPrefix_ = (uint8_t)ScriptPrefix::HASH160_TESTNET;
+         scriptHashPrefix_ = (uint8_t)ScriptPrefix::P2SH_TESTNET;
+         privKeyPrefix_ = (uint8_t)ScriptPrefix::PRIVKEY_TESTNET;
          bech32Prefix_ = "tb";
 
          chainParams_ = &btc_chainparams_regtest;

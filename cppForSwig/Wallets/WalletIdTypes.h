@@ -10,9 +10,11 @@
 
 #include <string>
 #include <stdexcept>
-#include "BinaryData.h"
+#include "Utils/BinaryData.h"
 
 #define KDF_PREFIX 0xC1
+
+class SecureBinaryData;
 
 namespace Armory
 {

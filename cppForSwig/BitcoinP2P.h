@@ -15,9 +15,8 @@
 #include <stdint.h>
 
 /***TODO: replace the use of BinaryData with self written class***/
-#include "ThreadSafeClasses.h"
-#include "BinaryData.h"
-#include "Cryptography.h"
+#include "Utils/ThreadSafeClasses.h"
+#include "Utils/BinaryData.h"
 
 #include "TxClasses.h"
 #include "SocketObject.h"
@@ -308,6 +307,7 @@ namespace Armory
          void moveFrom(Payload_Tx&);
          void setRawTx(std::vector<uint8_t>);
          size_t getSize(void) const;
+         bool empty(void) const;
       };
 
       ////reject

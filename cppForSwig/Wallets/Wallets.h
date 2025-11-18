@@ -17,22 +17,16 @@
 #include <string>
 #include <filesystem>
 
-#include "ReentrantLock.h"
-#include "BinaryData.h"
-#include "Cryptography.h"
+#include "Utils/ReentrantLock.h"
+#include "Utils/BinaryData.h"
 #include "WalletIdTypes.h"
-#include "Script.h"
-#include "Signer.h"
 #include "Progress.h"
 
 #include "DecryptedDataContainer.h"
 #include "BIP32_Node.h"
 #include "ResolverFeed.h"
-
 #include "WalletHeader.h"
-#include "Accounts/AccountTypes.h"
-#include "Accounts/AddressAccounts.h"
-#include "Accounts/MetaAccounts.h"
+#include "Addresses.h"
 
 ////
 namespace Armory
@@ -50,11 +44,28 @@ namespace Armory
       class ClearTextSeed_BIP32;
    }
 
+   namespace Assets
+   {
+      class AssetEntry_Single;
+   }
+
+   namespace Accounts
+   {
+      struct AddressAccountPublicData;
+      class AddressAccount;
+      class AccountType_BIP32;
+
+      enum class MetaAccountType : int;
+      class MetaDataAccount;
+   }
+
    namespace Wallets
    {
+      using ProgressFunc = std::function<void(int)>;
       namespace IO
       {
          class WalletDBInterface;
+         class WalletIfaceTransaction;
          struct WalletHeader;
 
          struct ReadOnlyFileParams;
@@ -146,17 +157,17 @@ namespace Armory
 
          //local
          std::shared_ptr<AddressEntry> getNewAddress(
-            AddressEntryType aeType=AddressEntryType_Default);
+            AddressEntryType=AddressEntryType::Default);
          std::shared_ptr<AddressEntry> getNewAddress(
             const AddressAccountId&,
-            AddressEntryType aeType=AddressEntryType_Default);
+            AddressEntryType=AddressEntryType::Default);
          std::shared_ptr<AddressEntry> getNewAddress(
             const AssetAccountId&,
-            AddressEntryType aeType=AddressEntryType_Default);
+            AddressEntryType=AddressEntryType::Default);
          std::shared_ptr<AddressEntry> getNewChangeAddress(
-            AddressEntryType aeType=AddressEntryType_Default);
+            AddressEntryType=AddressEntryType::Default);
          std::shared_ptr<AddressEntry> peekNextChangeAddress(
-            AddressEntryType aeType=AddressEntryType_Default);
+            AddressEntryType=AddressEntryType::Default);
          void updateAddressEntryType(const AssetId&,
             AddressEntryType);
 
@@ -174,9 +185,9 @@ namespace Armory
 
          void extendPublicChain(int32_t);
          void extendPublicChain(const AddressAccountId&, int32_t,
-            const Accounts::ProgressFunc& progFunc=nullptr);
+            const ProgressFunc& progFunc=nullptr);
          void extendPublicChainToIndex(const AddressAccountId&, int32_t,
-            const Accounts::ProgressFunc& progFunc=nullptr);
+            const ProgressFunc& progFunc=nullptr);
          void extendPrivateChain(int32_t);
          void extendPrivateChainToIndex(int32_t);
          void extendPrivateChainToIndex(const AddressAccountId&, int32_t);

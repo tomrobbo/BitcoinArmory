@@ -8,17 +8,29 @@
 
 #include "CppBridge.h"
 #include "BridgeSocket.h"
-#include "Wallets/Manager.h"
+#include "./Wallets/Manager.h"
+
+#include <Utils/ArmoryConfig.h>
+#include <Utils/BtcUtils.h>
+#include <Utils/DBUtils.h>
+#include <Signer/Signer.h>
+#include <Signer/ResolverFeed_Wallets.h>
+
+#include <Wallets/Seeds/Backups.h>
+#include <Wallets/IOHeader.h>
+#include <Wallets/WalletIdTypes.h>
+#include <Wallets/KDF.h>
+#include <Wallets/Wallets.h>
+#include <Wallets/AuthorizedPeers.h>
+#include <Wallets/Addresses.h>
+#include <Wallets/Accounts/AccountTypes.h>
+#include <Wallets/Accounts/AddressAccounts.h>
+
 #include "BlockchainDbClient.h"
 #include "PassphrasePrompt.h"
-#include "../AsyncClient.h"
-#include "../Wallets/Seeds/Backups.h"
-#include "../Wallets/IOHeader.h"
-#include "../Signer/ResolverFeed_Wallets.h"
-#include "../Wallets/WalletIdTypes.h"
-#include "../Wallets/KDF.h"
-#include "../CoinSelection.h"
-#include "../TerminalPassphrasePrompt.h"
+#include "AsyncClient.h"
+#include "CoinSelection.h"
+#include "TerminalPassphrasePrompt.h"
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
@@ -2115,68 +2127,7 @@ BinaryData CppBridge::getAddrStrForScrAddr(
 ////////////////////////////////////////////////////////////////////////////////
 std::string CppBridge::getNameForAddrType(int addrTypeInt) const
 {
-   std::string result;
-
-   auto nestedFlag = addrTypeInt & ADDRESS_NESTED_MASK;
-   bool nested = false;
-   switch (nestedFlag)
-   {
-      case 0:
-         break;
-
-      case AddressEntryType_P2SH:
-         result += "P2SH";
-         nested = true;
-         break;
-
-      case AddressEntryType_P2WSH:
-         result += "P2WSH";
-         nested = true;
-         break;
-
-      default:
-         throw std::runtime_error("[getNameForAddrType] unknown nested flag");
-   }
-
-   auto addressType = addrTypeInt & ADDRESS_TYPE_MASK;
-   if (addressType == 0) {
-      return result;
-   }
-
-   if (nested) {
-      result += "-";
-   }
-
-   switch (addressType)
-   {
-      case AddressEntryType_P2PKH:
-         result += "P2PKH";
-         break;
-
-      case AddressEntryType_P2PK:
-         result += "P2PK";
-         break;
-
-      case AddressEntryType_P2WPKH:
-         result += "P2WPKH";
-         break;
-
-      case AddressEntryType_Multisig:
-         result += "Multisig";
-         break;
-
-      default:
-         throw std::runtime_error("[getNameForAddrType] unknown address type");
-   }
-
-   if (addrTypeInt & ADDRESS_COMPRESSED_MASK) {
-      result += " (Uncompressed)";
-   }
-
-   if (result.empty()) {
-      result = "N/A";
-   }
-   return result;
+   return Armory::getNameForAddrType(addrTypeInt);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

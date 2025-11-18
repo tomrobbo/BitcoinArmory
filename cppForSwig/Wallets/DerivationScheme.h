@@ -13,7 +13,7 @@
 #include <memory>
 #include <functional>
 
-#include "BinaryData.h"
+#include "Utils/SecureBinaryData.h"
 #include "Assets.h"
 
 #define DERIVATIONSCHEME_LEGACY        0xA0

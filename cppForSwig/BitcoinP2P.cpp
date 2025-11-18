@@ -9,10 +9,14 @@
 #include <thread>
 #include <chrono>
 #include <string.h>
+
 #include "BitcoinP2P.h"
+#include <Utils/BtcUtils.h>
+#include <Utils/varint.h>
+#include <Utils/Cryptography.h>
+#include <Utils/BitcoinSettings.h>
 #include "SocketWritePayload.h"
-#include "Cryptography.h"
-#include "BitcoinSettings.h"
+#include "bdmenums.h"
 
 using namespace Armory::Threading;
 using namespace Armory::Node;
@@ -926,6 +930,11 @@ size_t Payload_Tx::getSize() const
    return rawTx_.size();
 }
 
+bool Payload_Tx::empty() const
+{
+   return rawTx_.size() == 0;
+}
+
 ////////
 size_t Payload_Tx::serializeInner(uint8_t* dataptr) const
 {
@@ -1269,7 +1278,7 @@ void BitcoinNodeInterface::requestTx(InvVector invVec)
    reply will be processed in processGetTx
    */
 
-   for (auto& entry : invVec) {
+   for (const auto& entry : invVec) {
       if (entry.invtype != Inv_Msg_Tx && entry.invtype!= Inv_Msg_Witness_Tx) {
         throw GetDataException("entry type isnt Inv_Msg_Tx");
       }
@@ -1704,7 +1713,7 @@ BitcoinP2PSocket::BitcoinP2PSocket(
 
 SocketType BitcoinP2PSocket::type() const
 {
-   return SocketBitcoinP2P;
+   return SocketType::BitcoinP2P;
 }
 
 ////////

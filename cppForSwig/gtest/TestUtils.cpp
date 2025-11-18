@@ -6,32 +6,23 @@
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
+
 #include "TestUtils.h"
-#include "BIP15x_Handshake.h"
+#include <reorgTest/blkdata.h>
+#include <Utils/BIP15x_Handshake.h>
+#include <Utils/DBUtils.h>
+#include <Wallets/Accounts/AddressAccounts.h>
+#include <BDM_mainthread.h>
 
 using namespace std;
-
+using namespace Armory;
 using namespace Armory::Assets;
 using namespace Armory::Wallets;
-using namespace Armory;
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
 #include "capnp/BDV.capnp.h"
 #include "capnp/Types.capnp.h"
-
-#if ! defined(_MSC_VER) && ! defined(__MINGW32__)
-
-/////////////////////////////////////////////////////////////////////////////
-void mkdir(string newdir)
-{
-   char* syscmd = new char[4096];
-   sprintf(syscmd, "mkdir -p %s", newdir.c_str());
-   system(syscmd);
-   delete[] syscmd;
-}
-
-#endif
 
 namespace {
    BinaryData serializeCapnp(capnp::MallocMessageBuilder& builder)
@@ -652,31 +643,27 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   void pushNewZc(BlockDataManagerThread* bdmt, const ZcVector& zcVec, 
+   void pushNewZc(BlockDataManagerThread* bdmt, const ZcVector& zcVec,
       bool stage)
    {
       auto nodePtr = bdmt->bdm()->processNode_;
       auto nodeUnitTest = (NodeUnitTest*)nodePtr.get();
 
       unsigned delay = UINT32_MAX;
-      if (zcDelays_.size() != 0)
-      {
+      if (!zcDelays_.empty()) {
          delay = zcDelays_.front();
          zcDelays_.pop_front();
       }
 
       std::vector<pair<BinaryData, unsigned>> txVec;
-      for (auto& newzc : zcVec.zcVec_)
-      {
-         BinaryData bdTx(newzc.first.getPtr(), newzc.first.getSize());
-
+      for (auto& newzc : zcVec.zcVec_) {
+         BinaryData bdTx{newzc.first.getPtr(), newzc.first.getSize()};
          auto localDelay = newzc.second;
-         if (newzc.second == 0 && delay != UINT32_MAX)
+         if (newzc.second == 0 && delay != UINT32_MAX) {
             localDelay = delay;
-
-         txVec.push_back(make_pair(bdTx, localDelay));
+         }
+         txVec.emplace_back(std::make_pair(bdTx, localDelay));
       }
-
       nodeUnitTest->pushZC(txVec, stage);
    }
 

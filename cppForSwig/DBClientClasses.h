@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2018-2024, goatpig.                                          //
+//  Copyright (C) 2018-2024, goatpig.                                         //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -13,7 +13,8 @@
 #include <string>
 #include <functional>
 
-#include "BinaryData.h"
+#include <Utils/BinaryData.h>
+#include "bdmenums.h"
 #include "SocketObject.h"
 #include "nodeRPC.h"
 
@@ -27,7 +28,7 @@ namespace capnp {
    class MessageReader;
 }
 
-///////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 struct NoArmoryDBExcept : public std::runtime_error
 {
    NoArmoryDBExcept(void) : runtime_error("")
@@ -40,12 +41,12 @@ struct BDVAlreadyRegistered : public std::runtime_error
    {}
 };
 
-///////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 namespace DBClientClasses
 {
    void initLibrary(void);
 
-   ///////////////////////////////////////////////////////////////////////////////
+   /////////////////////////////////////////////////////////////////////////////
    struct FeeEstimateStruct
    {
       std::string error_;
@@ -60,7 +61,7 @@ namespace DBClientClasses
       {}
    };
 
-   ///////////////////////////////////////////////////////////////////////////////
+   /////////////////////////////////////////////////////////////////////////////
    class BlockHeader
    {
       friend class Blockchain;
@@ -209,6 +210,16 @@ namespace DBClientClasses
 }; //namespace DBClientClasses
 
 ///////////////////////////////////////////////////////////////////////////////
+struct BDV_Error_Struct
+{
+   std::string errorStr_;
+   BinaryData errData_;
+   int errCode_;
+
+   BinaryData serialize(void) const;
+   void deserialize(const BinaryData&);
+};
+
 struct BdmNotification
 {
    const BDMAction action;

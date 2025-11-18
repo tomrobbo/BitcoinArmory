@@ -10,20 +10,24 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/file.h>
+#include <random>
 
 #ifndef _WIN32
-#include <sys/wait.h>
-#include "spawn.h"
+   #include <sys/wait.h>
+   #include "spawn.h"
 #endif
 
 #include "BlockchainDbClient.h"
-#include "Wallets/Manager.h"
-#include "Wallets/Notifications.h"
-#include "Wallets/IOHeader.h"
-#include "Cryptography.h"
-#include "AsyncClient.h"
+#include "Utils/ArmoryConfig.h"
+#include "Utils/DBUtils.h"
+#include "Utils/Cryptography.h"
 
-#include <random>
+#include "Wallets/IOHeader.h"
+#include "Wallets/AuthorizedPeers.h"
+
+#include "./Wallets/Manager.h"
+#include "./Wallets/Notifications.h"
+#include "AsyncClient.h"
 
 using namespace Armory::Bridge;
 using namespace std::string_view_literals;

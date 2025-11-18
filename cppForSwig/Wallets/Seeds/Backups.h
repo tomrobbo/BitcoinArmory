@@ -6,14 +6,14 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _SECURE_PRINT_H
-#define _SECURE_PRINT_H
+#pragma once
 
 #include <vector>
 #include <string>
 #include <string_view>
-#include "SecureBinaryData.h"
-#include "Cryptography.h"
+#include <map>
+
+#include <Utils/SecureBinaryData.h>
 #include "../GetPassphrase.h"
 
 #define EASY16_INVALID_CHECKSUM_INDEX UINT8_MAX
@@ -323,4 +323,3 @@ namespace Armory
       };
    }; //namespace Backups
 }; //namespace Armory
-#endif
