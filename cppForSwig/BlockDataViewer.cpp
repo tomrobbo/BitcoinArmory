@@ -19,7 +19,7 @@
 #include <ZeroConf/Parser.h>
 #include <ZeroConf/Utils.h>
 #include <ZeroConf/Notifications.h>
-#include "LedgerEntry.h"
+#include <Ledgers/LedgerEntry.h>
 
 using namespace std;
 using namespace Armory;
@@ -1506,8 +1506,8 @@ bool WalletGroup::pageHistory(bool forcePaging, bool pageAnyway)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-vector<LedgerEntry> WalletGroup::getHistoryPage(
-   uint32_t pageId, unsigned updateID, 
+std::vector<LedgerEntry> WalletGroup::getHistoryPage(
+   uint32_t pageId, unsigned updateID,
    bool rebuildLedger, bool remapWallets)
 {
    unique_lock<mutex> mu(globalLedgerLock_);
@@ -1521,83 +1521,73 @@ vector<LedgerEntry> WalletGroup::getHistoryPage(
    if (rebuildLedger || remapWallets)
       pageHistory(remapWallets, false);
 
-   vector<LedgerEntry> vle;
-
-   if (rebuildLedger || remapWallets)
+   if (rebuildLedger || remapWallets) {
       updateID = UINT32_MAX;
+   }
 
+   std::vector<LedgerEntry> vle;
    {
       ReadWriteLock::ReadLock rl(lock_);
+      std::set<string> localFilterSet;
+      std::map<string, shared_ptr<BtcWallet>> localWalletMap;
 
-      set<string> localFilterSet;
-      map<string, shared_ptr<BtcWallet>> localWalletMap;
-      for (auto& wlt_pair : wallets_)
-      {
-         if (!wlt_pair.second->uiFilter_)
+      for (auto& wlt_pair : wallets_) {
+         if (!wlt_pair.second->uiFilter_) {
             continue;
-
-         localFilterSet.insert(wlt_pair.first);
-         localWalletMap.insert(wlt_pair);
+         }
+         localFilterSet.emplace(wlt_pair.first);
+         localWalletMap.emplace(wlt_pair);
       }
 
-      if (localFilterSet != wltFilterSet_)
-      {
+      if (localFilterSet != wltFilterSet_) {
          updateID = UINT32_MAX;
-         wltFilterSet_ = move(localFilterSet);
+         wltFilterSet_ = std::move(localFilterSet);
       }
 
       auto getTxio = [&localWalletMap](
-         uint32_t, uint32_t)->map<BinaryData, TxIOPair>
+         uint32_t, uint32_t)->std::map<BinaryData, TxIOPair>
       {
-         return map<BinaryData, TxIOPair>();
+         return {};
       };
 
       auto buildLedgers = [&localWalletMap](
          const map<BinaryData, TxIOPair>&,
-         uint32_t startBlock, uint32_t endBlock)->map<BinaryData, LedgerEntry>
+         uint32_t startBlock, uint32_t endBlock)
+      ->std::map<BinaryData, LedgerEntry>
       {
-         map<BinaryData, LedgerEntry> result;
+         std::map<BinaryData, LedgerEntry> result;
          unsigned i = 0;
-         for (auto& wlt_pair : localWalletMap)
-         {
-            auto&& txio_map = wlt_pair.second->getTxioForRange(
+         for (auto& wlt_pair : localWalletMap) {
+            auto txio_map = wlt_pair.second->getTxioForRange(
                startBlock, endBlock);
-            auto&& ledgerMap = wlt_pair.second->updateWalletLedgersFromTxio(
+            auto ledgerMap = wlt_pair.second->updateWalletLedgersFromTxio(
                txio_map, startBlock, endBlock);
 
-            for (auto& ledger : ledgerMap)
-            {
+            for (auto& ledger : ledgerMap) {
                BinaryWriter bw;
                bw.put_uint32_t(i++);
-
-               auto&& ledger_pair = make_pair(bw.getData(), move(ledger.second));
-               result.insert(move(ledger_pair));
+               result.emplace(bw.getData(), std::move(ledger.second));
             }
          }
-
          return result;
       };
 
       auto leMap = hist_.getPageLedgerMap(
          getTxio, buildLedgers, pageId, updateID, nullptr);
 
-      if (leMap != nullptr)
-      {
-         for (auto& le : *leMap)
-            vle.push_back(le.second);
+      if (leMap != nullptr) {
+         for (auto& le : *leMap) {
+            vle.emplace_back(le.second);
+         }
       }
    }
 
-   if (order_ == order_ascending)
-   {
-      sort(vle.begin(), vle.end());
-   }
-   else
-   {
+   if (order_ == order_ascending) {
+      std::sort(vle.begin(), vle.end());
+   } else {
       LedgerEntry_DescendingOrder desc;
-      sort(vle.begin(), vle.end(), desc);
+      std::sort(vle.begin(), vle.end(), desc);
    }
-
    return vle;
 }
 

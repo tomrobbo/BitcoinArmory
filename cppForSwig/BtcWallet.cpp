@@ -20,9 +20,8 @@
 #include <BlockchainDatabase/lmdb_wrapper.h>
 #include <BlockchainDatabase/BlockUtils.h>
 #include <BlockchainDatabase/txio.h>
-
+#include <Ledgers/LedgerEntry.h>
 #include "BlockDataViewer.h"
-#include "LedgerEntry.h"
 
 using namespace std;
 using namespace Armory;
@@ -692,13 +691,11 @@ map<BinaryData, TxIOPair> BtcWallet::getTxioForRange(
    map<BinaryData, TxIOPair> outMap;
    auto addrMap = scrAddrMap_.get();
 
-   for (const auto& scrAddrPair : *addrMap)
-   {
-      auto&& saTxioMap = 
+   for (const auto& scrAddrPair : *addrMap) {
+      auto saTxioMap =
          scrAddrPair.second->getHistoryForScrAddr(start, end, false);
       outMap.insert(saTxioMap.begin(), saTxioMap.end());
    }
-
    return outMap;
 }
 

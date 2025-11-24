@@ -814,13 +814,12 @@ namespace DBTestUtils
       auto ledgerMap = wlt->getHistoryPage(0);
 
       //grab ledger by hash
-      for (auto& ledger : *ledgerMap)
-      {
-         if (ledger.second.getTxHash() == txHash)
+      for (auto& ledger : *ledgerMap) {
+         if (ledger.second.getTxHash() == txHash) {
             return ledger.second;
+         }
       }
-
-      return LedgerEntry();
+      throw std::runtime_error("no ledger for txhash");
    }
 
    /////////////////////////////////////////////////////////////////////////////
@@ -828,16 +827,15 @@ namespace DBTestUtils
       ScrAddrObj* scrAddrObj, const BinaryData& txHash)
    {
       //get ledgermap from wallet
-      auto&& ledgerMap = scrAddrObj->getHistoryPageById(0);
+      auto ledgerMap = scrAddrObj->getHistoryPageById(0);
 
       //grab ledger by hash
-      for (auto& ledger : ledgerMap)
-      {
-         if (ledger.getTxHash() == txHash)
+      for (auto& ledger : ledgerMap) {
+         if (ledger.getTxHash() == txHash) {
             return ledger;
+         }
       }
-
-      return LedgerEntry();
+      throw std::runtime_error("no ledger for txhash");
    }
 
    /////////////////////////////////////////////////////////////////////////////

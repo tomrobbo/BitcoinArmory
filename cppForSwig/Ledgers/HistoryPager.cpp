@@ -15,7 +15,7 @@
 
 #include "HistoryPager.h"
 #include <BlockchainDatabase/txio.h>
-#include "BitcoinP2P.h"
+//#include "BitcoinP2P.h"
 #include "LedgerEntry.h"
 
 uint32_t HistoryPager::txnPerPage_ = 100;
@@ -153,7 +153,7 @@ HistoryPager::getPageLedgerMap(uint32_t pageId)
 
 ////////////////////////////////////////////////////////////////////////////////
 bool HistoryPager::mapHistory(
-   std::function<std::map<uint32_t, uint32_t>(void)> getSSHsummary)
+   std::function<std::map<uint32_t, uint32_t>()> getSSHsummary)
 {
    //grab the ssh summary for the pager. This is a map, referencing the amount
    //of txio per block for the given address.

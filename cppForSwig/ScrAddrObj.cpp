@@ -21,9 +21,8 @@
 #include <BlockchainDatabase/StoredBlockObj.h>
 #include <ZeroConf/Utils.h>
 #include <ZeroConf/Parser.h>
-
+#include <Ledgers/LedgerEntry.h>
 #include "BitcoinP2P.h"
-#include "LedgerEntry.h"
 
 using namespace Armory;
 

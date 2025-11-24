@@ -2320,8 +2320,12 @@ TEST_F(ZeroConfTests_FullNode, Load3Blocks_RBF)
    EXPECT_EQ(unconfirmedBalance, 135 * COIN);
 
    //verify replacement in ledgers
-   le = DBTestUtils::getLedgerEntryFromWallet(wlt, RBFhash);
-   EXPECT_EQ(le.getTxHash(), BtcUtils::EmptyHash);
+   try {
+      DBTestUtils::getLedgerEntryFromWallet(wlt, RBFhash);
+      ASSERT_TRUE(false);
+   } catch (const std::runtime_error& e) {
+      EXPECT_EQ(e.what(), std::string{"no ledger for txhash"});
+   }
 
    le = DBTestUtils::getLedgerEntryFromWallet(wlt, spendRBFhash);
    //EXPECT_EQ(le.getTxTime(), 1500000000);
@@ -2353,8 +2357,12 @@ TEST_F(ZeroConfTests_FullNode, Load3Blocks_RBF)
    EXPECT_EQ(unconfirmedBalance, 140 * COIN);
 
    //verify replacement ZC is invalid now
-   le = DBTestUtils::getLedgerEntryFromWallet(wlt, spendRBFhash);
-   EXPECT_EQ(le.getTxHash(), BtcUtils::EmptyHash);
+   try {
+      DBTestUtils::getLedgerEntryFromWallet(wlt, spendRBFhash);
+      ASSERT_TRUE(false);
+   } catch (const std::runtime_error& e) {
+      EXPECT_EQ(e.what(), std::string{"no ledger for txhash"});
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2740,8 +2748,12 @@ TEST_F(ZeroConfTests_FullNode, Replace_ZC_Test)
    //grab ledgers
 
    //first zc should be replaced, hence the ledger should be empty
-   auto zcledger2 = DBTestUtils::getLedgerEntryFromWallet(dbAssetWlt, ZCHash1);
-   EXPECT_EQ(zcledger2.getTxHash(), BtcUtils::EmptyHash);
+   try {
+      DBTestUtils::getLedgerEntryFromWallet(dbAssetWlt, ZCHash1);
+      ASSERT_TRUE(false);
+   } catch (const std::runtime_error& e) {
+      EXPECT_EQ(e.what(), std::string{"no ledger for txhash"});
+   }
 
    //second zc should be valid
    //grab ledger
@@ -2846,8 +2858,12 @@ TEST_F(ZeroConfTests_FullNode, Replace_ZC_Test)
    //grab ledgers
 
    //first zc should be replaced, hence the ledger should be empty
-   auto zcledger4 = DBTestUtils::getLedgerEntryFromWallet(dbAssetWlt, ZCHash1);
-   EXPECT_EQ(zcledger4.getTxHash(), BtcUtils::EmptyHash);
+   try {
+      DBTestUtils::getLedgerEntryFromWallet(dbAssetWlt, ZCHash1);
+      ASSERT_TRUE(false);
+   } catch (const std::runtime_error& e) {
+      EXPECT_EQ(e.what(), std::string{"no ledger for txhash"});
+   }
 
    //second zc should be valid
    //grab ledger
@@ -2966,16 +2982,28 @@ TEST_F(ZeroConfTests_FullNode, Replace_ZC_Test)
    //grab ledgers
 
    //first zc should be replaced, hence the ledger should be empty
-   auto zcledger7 = DBTestUtils::getLedgerEntryFromWallet(dbAssetWlt, ZCHash1);
-   EXPECT_EQ(zcledger7.getTxHash(), BtcUtils::EmptyHash);
+   try {
+      DBTestUtils::getLedgerEntryFromWallet(dbAssetWlt, ZCHash1);
+      ASSERT_TRUE(false);
+   } catch (const std::runtime_error& e) {
+      EXPECT_EQ(e.what(), std::string{"no ledger for txhash"});
+   }
 
    //second zc should be replaced
-   auto zcledger8 = DBTestUtils::getLedgerEntryFromWallet(dbAssetWlt, ZCHash2);
-   EXPECT_EQ(zcledger8.getTxHash(), BtcUtils::EmptyHash);
+   try {
+      DBTestUtils::getLedgerEntryFromWallet(dbAssetWlt, ZCHash2);
+      ASSERT_TRUE(false);
+   } catch (const std::runtime_error& e) {
+      EXPECT_EQ(e.what(), std::string{"no ledger for txhash"});
+   }
 
    //third zc should be replaced
-   auto zcledger9 = DBTestUtils::getLedgerEntryFromWallet(dbAssetWlt, ZCHash3);
-   EXPECT_EQ(zcledger9.getTxHash(), BtcUtils::EmptyHash);
+   try {
+      DBTestUtils::getLedgerEntryFromWallet(dbAssetWlt, ZCHash3);
+      ASSERT_TRUE(false);
+   } catch (const std::runtime_error& e) {
+      EXPECT_EQ(e.what(), std::string{"no ledger for txhash"});
+   }
 
    //fourth zc should be valid
    auto zcledger10 = DBTestUtils::getLedgerEntryFromWallet(dbAssetWlt, ZCHash4);
@@ -3575,10 +3603,14 @@ TEST_F(ZeroConfTests_FullNode, ChainZC_RBFchild_Test)
    EXPECT_EQ(scrObj->getFullBalance(), 15 * COIN);
    {
       scrObj = dbAssetWlt->getScrAddrObjByKey(addrVec[2]);
-      auto zcledger_sa = DBTestUtils::getLedgerEntryFromAddr(
-         (ScrAddrObj*)scrObj, ZCHash2);
-      EXPECT_EQ(zcledger_sa.getTxHash(), BtcUtils::EmptyHash);
       EXPECT_EQ(scrObj->getFullBalance(), 0 * COIN);
+      try {
+         DBTestUtils::getLedgerEntryFromAddr(
+            (ScrAddrObj*)scrObj, ZCHash2);
+         ASSERT_TRUE(false);
+      } catch (const std::runtime_error& e) {
+         EXPECT_EQ(e.what(), std::string{"no ledger for txhash"});
+      }
    }
    scrObj = dbAssetWlt->getScrAddrObjByKey(addrVec[3]);
    EXPECT_EQ(scrObj->getFullBalance(), 0 * COIN);
@@ -3594,8 +3626,12 @@ TEST_F(ZeroConfTests_FullNode, ChainZC_RBFchild_Test)
    EXPECT_TRUE(zcledger3.isOptInRBF());
 
    //second zc should be replaced
-   auto zcledger8 = DBTestUtils::getLedgerEntryFromWallet(dbAssetWlt, ZCHash2);
-   EXPECT_EQ(zcledger8.getTxHash(), BtcUtils::EmptyHash);
+   try {
+      DBTestUtils::getLedgerEntryFromWallet(dbAssetWlt, ZCHash2);
+      ASSERT_TRUE(false);
+   } catch (const std::runtime_error& e) {
+      EXPECT_EQ(e.what(), std::string{"no ledger for txhash"});
+   }
 
    //third zc should be valid
    auto zcledger9 = DBTestUtils::getLedgerEntryFromWallet(dbAssetWlt, ZCHash3);
@@ -4293,11 +4329,15 @@ TEST_F(ZeroConfTests_Supernode, UnrelatedZC_CheckLedgers)
    }
 
    //grab ledger for 1st ZC, should be empty
-   auto zcledger = DBTestUtils::getLedgerEntryFromWallet(wlt, ZChash1);
-   EXPECT_EQ(zcledger.getTxHash(), BtcUtils::EmptyHash);
+   try {
+      DBTestUtils::getLedgerEntryFromWallet(wlt, ZChash1);
+      ASSERT_TRUE(false);
+   } catch (const std::runtime_error& e) {
+      EXPECT_EQ(e.what(), std::string{"no ledger for txhash"});
+   }
 
    //grab ledger for 2nd ZC
-   zcledger = DBTestUtils::getLedgerEntryFromWallet(wlt, ZChash2);
+   auto zcledger = DBTestUtils::getLedgerEntryFromWallet(wlt, ZChash2);
    EXPECT_EQ(zcledger.getValue(), 30 * (int64_t)COIN);
    EXPECT_EQ(zcledger.getBlockNum(), UINT32_MAX);
    EXPECT_FALSE(zcledger.isOptInRBF());
@@ -4347,9 +4387,13 @@ TEST_F(ZeroConfTests_Supernode, UnrelatedZC_CheckLedgers)
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
 
    //try to get ledgers, ZCs should be all gone
-   zcledger = DBTestUtils::getLedgerEntryFromWallet(wlt, ZChash1);
-   EXPECT_EQ(zcledger.getTxHash(), BtcUtils::EmptyHash);
-   
+   try {
+      DBTestUtils::getLedgerEntryFromWallet(wlt, ZChash1);
+      ASSERT_TRUE(false);
+   } catch (const std::runtime_error& e) {
+      EXPECT_EQ(e.what(), std::string{"no ledger for txhash"});
+   }
+
    zcledger = DBTestUtils::getLedgerEntryFromWallet(wlt, ZChash2);
    EXPECT_EQ(zcledger.getTxTime(), 1231009513U);
    EXPECT_EQ(zcledger.getBlockNum(), 5U);
@@ -4977,8 +5021,12 @@ TEST_F(ZeroConfTests_Supernode, ChainZC_RBFchild_Test)
    EXPECT_TRUE(zcledger3.isOptInRBF());
 
    //second zc should be replaced
-   auto zcledger8 = DBTestUtils::getLedgerEntryFromWallet(dbAssetWlt, ZCHash2);
-   EXPECT_EQ(zcledger8.getTxHash(), BtcUtils::EmptyHash);
+   try {
+      DBTestUtils::getLedgerEntryFromWallet(dbAssetWlt, ZCHash2);
+      ASSERT_TRUE(false);
+   } catch (const std::runtime_error& e) {
+      EXPECT_EQ(e.what(), std::string{"no ledger for txhash"});
+   }
 
    //third zc should be valid
    auto zcledger9 = DBTestUtils::getLedgerEntryFromWallet(dbAssetWlt, ZCHash3);

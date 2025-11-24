@@ -80,29 +80,25 @@ class LMDBBlockDatabase;
 class LedgerEntry
 {
 public:
-   LedgerEntry(void);
    LedgerEntry(const std::string&, int64_t, uint32_t,
       const BinaryData&, uint32_t, uint32_t,
       bool, bool, bool,
       bool, bool, bool);
 
-   std::string         getWalletID(void) const;
-   int64_t             getValue(void) const     { return value_;         }
-   uint32_t            getBlockNum(void) const  { return blockNum_;      }
-   BinaryData const &  getTxHash(void) const    { return txHash_;        }
-   uint32_t            getIndex(void) const     { return index_;         }
-   uint32_t            getTxTime(void) const    { return txTime_;        }
-   bool                isCoinbase(void) const   { return isCoinbase_;    }
-   bool                isSentToSelf(void) const { return isSentToSelf_;  }
-   bool                isChangeBack(void) const { return isChangeBack_;  }
-   bool                isOptInRBF(void) const   { return isOptInRBF_;    }
-   bool                usesWitness(void) const  { return usesWitness_;   }
-   bool                isChainedZC(void) const  { return isChainedZC_;   }
+   std::string       getWalletID(void) const;
+   int64_t           getValue(void) const;
+   uint32_t          getBlockNum(void) const;
+   const BinaryData& getTxHash(void) const;
+   uint32_t          getIndex(void) const;
+   uint32_t          getTxTime(void) const;
+   bool              isCoinbase(void) const;
+   bool              isSentToSelf(void) const;
+   bool              isChangeBack(void) const;
+   bool              isOptInRBF(void) const;
+   bool              usesWitness(void) const;
+   bool              isChainedZC(void) const;
 
    Armory::ScriptPrefix getScriptType(void) const;
-
-   void setWalletID(const std::string&);
-   void changeBlkNum(uint32_t);
    const std::set<BinaryData>& getScrAddrList(void) const;
 
    bool operator<(const LedgerEntry&) const;
@@ -124,24 +120,19 @@ public:
       const LMDBBlockDatabase*, const Blockchain*,
       const Armory::ZeroConf::ZeroConfContainer*);
 
-public:
-   static LedgerEntry EmptyLedger_;
-   static std::map<BinaryData, LedgerEntry> EmptyLedgerMap_;
-   static BinaryData EmptyID_;
-
 private:
-   std::string      ID_; //holds either a scrAddr or a walletId
-   int64_t          value_;
-   uint32_t         blockNum_;
-   BinaryData       txHash_;
-   uint32_t         index_; // either a tx index, txout index or txin index
-   uint32_t         txTime_ = 0;
-   bool             isCoinbase_ = false;
-   bool             isSentToSelf_ = false;
-   bool             isChangeBack_ = false;
-   bool             isOptInRBF_ = false;
-   bool             usesWitness_ = false;
-   bool             isChainedZC_ = false;
+   std::string ID_; //holds either a scrAddr or a walletId
+   int64_t     value_;
+   uint32_t    blockNum_;
+   BinaryData  txHash_;
+   uint32_t    index_; // either a tx index, txout index or txin index
+   uint32_t    txTime_ = 0;
+   bool        isCoinbase_ = false;
+   bool        isSentToSelf_ = false;
+   bool        isChangeBack_ = false;
+   bool        isOptInRBF_ = false;
+   bool        usesWitness_ = false;
+   bool        isChainedZC_ = false;
 
    //for matching scrAddr comments to LedgerEntries on the Python side
    std::set<BinaryData> scrAddrSet_;
@@ -149,50 +140,26 @@ private:
 
 struct LedgerEntry_DescendingOrder
 {
-   bool operator() (const LedgerEntry& a, const LedgerEntry& b)
-   { return a > b; }
+   bool operator()(const LedgerEntry&, const LedgerEntry&) const;
 };
 
 class LedgerDelegate
 {
-   friend class BlockDataViewer;
-
-public:
-   std::vector<LedgerEntry> getHistoryPage(uint32_t id)
-   {
-      return getHistoryPage_(id);
-   }
-
-   uint32_t getBlockInVicinity(uint32_t blk)
-   {
-      return getBlockInVicinity_(blk);
-   }
-
-   uint32_t getPageIdForBlockHeight(uint32_t blk)
-   {
-      return getPageIdForBlockHeight_(blk);
-   }
-
-   uint32_t getPageCount(void)
-   {
-      return getPageCount_();
-   }
-
-private:
-   LedgerDelegate(
-      std::function<std::vector<LedgerEntry>(uint32_t)> getHist,
-      std::function<uint32_t(uint32_t)> getBlock,
-      std::function<uint32_t(uint32_t)> getPageId,
-      std::function<uint32_t(void)> getPageCount) :
-      getHistoryPage_(getHist),
-      getBlockInVicinity_(getBlock),
-      getPageIdForBlockHeight_(getPageId),
-      getPageCount_(getPageCount)
-   {}
-
 private:
    const std::function<std::vector<LedgerEntry>(uint32_t)> getHistoryPage_;
-   const std::function<uint32_t(uint32_t)>            getBlockInVicinity_;
-   const std::function<uint32_t(uint32_t)>            getPageIdForBlockHeight_;
-   const std::function<uint32_t(void)>                getPageCount_;
+   const std::function<uint32_t(uint32_t)> getBlockInVicinity_;
+   const std::function<uint32_t(uint32_t)> getPageIdForBlockHeight_;
+   const std::function<uint32_t(void)> getPageCount_;
+
+public:
+   LedgerDelegate(
+      std::function<std::vector<LedgerEntry>(uint32_t)>,
+      std::function<uint32_t(uint32_t)>,
+      std::function<uint32_t(uint32_t)>,
+      std::function<uint32_t(void)>);
+
+   std::vector<LedgerEntry> getHistoryPage(uint32_t);
+   uint32_t getBlockInVicinity(uint32_t);
+   uint32_t getPageIdForBlockHeight(uint32_t);
+   uint32_t getPageCount(void);
 };

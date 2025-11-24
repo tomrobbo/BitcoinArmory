@@ -14,7 +14,7 @@
 #pragma once
 
 #include <Utils/BinaryData.h>
-#include "HistoryPager.h"
+#include <Ledgers/HistoryPager.h>
 
 namespace Armory
 {

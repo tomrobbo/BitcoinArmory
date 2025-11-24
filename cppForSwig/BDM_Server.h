@@ -15,9 +15,9 @@
 #include <future>
 
 #include <Utils/ArmoryErrors.h>
+#include <Ledgers/LedgerEntry.h>
 #include "BitcoinP2P.h"
 #include "BlockDataViewer.h"
-#include "LedgerEntry.h"
 #include "BDV_Notification.h"
 //#include "Server.h"
 //#include "BtcWallet.h"

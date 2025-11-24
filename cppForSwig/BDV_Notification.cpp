@@ -10,8 +10,8 @@
 #include <Utils/log.h>
 #include <ZeroConf/Utils.h>
 #include <ZeroConf/Notifications.h>
+#include <Ledgers/LedgerEntry.h>
 #include "BitcoinP2P.h"
-#include "LedgerEntry.h"
 #include "nodeRPC.h"
 
 ///////////////////////////////////////////////////////////////////////////////
