@@ -2552,109 +2552,6 @@ void Signer::matchAssetPathsWithRoots()
 }
 
 ////////
-BinaryData Signer::signMessage(
-   const BinaryData& message, const BinaryData& scrAddr,
-   std::shared_ptr<ResolverFeed> walletFeed)
-{
-   //get pubkey for scrAddr. Resolver takes unprefixed hashes
-   if (scrAddr.getSize() < 21) {
-      throw std::runtime_error("invalid scrAddr");
-   }
-
-   auto pubkey = walletFeed->getByVal(
-      scrAddr.getSliceRef(1, scrAddr.getSize() - 1));
-   bool compressed = true;
-   if (pubkey.getSize() == 65) {
-      compressed = false;
-   }
-
-   //get private key for pubkey
-   const auto& privkey = walletFeed->getPrivKeyForPubkey(pubkey);
-
-   //sign
-   return Cryptography::ECDSA::signBitcoinMessage(
-      message.getRef(), privkey, compressed);
-}
-
-bool Signer::verifyMessageSignature(
-   const BinaryData& message, const BinaryData& scrAddr, const BinaryData& sig)
-{
-   BinaryData pubkey;
-   try {
-      pubkey = Cryptography::ECDSA::verifyBitcoinMessage(message, sig);
-   } catch (const std::exception& e) {
-      LOGWARN << "failed to verify bitcoin message "
-         "signature with the following error: ";
-      LOGWARN << "   " << e.what();
-      return false;
-   }
-
-   /*
-   The sig carries a pubkey. VerifyBitcoinMessage generates that pubkey.
-   We need to convert it to an address hash to check it against the expected 
-   scrAddr
-   */
-
-   //create asset from pubkey
-   SecureBinaryData sbdPubkey(pubkey);
-   auto assetPubkey = std::make_shared<Assets::Asset_PublicKey>(sbdPubkey);
-   auto assetPtr = std::make_shared<Assets::AssetEntry_Single>(
-      Wallets::AssetId(-1, -1, -1), assetPubkey, nullptr);
-
-   //check scrAddr type, try to generate equivalent address hash
-   auto scrType = BtcUtils::getScriptTypeForScrAddr(scrAddr.getRef());
-   switch (scrType)
-   {
-      case TxOutScriptType::P2WPKH:
-      {
-         auto addrPtr = std::make_shared<AddressEntry_P2WPKH>(assetPtr);
-         if (addrPtr->getPrefixedHash() == scrAddr) {
-            return true;
-         }
-         break;
-      }
-
-      case TxOutScriptType::STDHASH160:
-      {
-         auto addrPtr = std::make_shared<AddressEntry_P2PKH>(
-            assetPtr, (pubkey.getSize() == 33) ? true : false);
-         if (addrPtr->getPrefixedHash() == scrAddr) {
-            return true;
-         }
-         break;
-      }
-
-      case TxOutScriptType::P2SH:
-      {
-         /*
-         This is a complicated case, the scrAddr provides no information as
-         to what script type preceeds the p2sh hash. We'll try p2wpkh and p2pk
-         since these are common in armory.
-         */
-
-         auto addrPtr1 = std::make_shared<AddressEntry_P2WPKH>(assetPtr);
-         auto p2shAddr = std::make_shared<AddressEntry_P2SH>(addrPtr1);
-         if (p2shAddr->getPrefixedHash() == scrAddr) {
-            return true;
-         }
-         auto addrPtr2 = std::make_shared<AddressEntry_P2PK>(assetPtr, true);
-         p2shAddr = std::make_shared<AddressEntry_P2SH>(addrPtr2);
-         if (p2shAddr->getPrefixedHash() == scrAddr) {
-            return true;
-         }
-         break;
-      }
-
-      default:
-         LOGWARN << "could not generate scrAddr from pubkey";
-         return false;
-   }
-
-   LOGWARN << "failed to match sig's pubkey to scrAddr";
-   return false;
-}
-
-////////
 void Signer::prettyPrint() const
 {
    /* NOTE: WIP */
@@ -2731,4 +2628,108 @@ void ResolverFeed_SpenderResolutionChecks::setBip32PathForPubkey(
    const BinaryData&, const BIP32_AssetPath&)
 {
    throw std::runtime_error("implement me?");
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// namespace functions
+BinaryData Signing::signMessage(
+   const BinaryData& message, const BinaryData& scrAddr,
+   std::shared_ptr<ResolverFeed> walletFeed)
+{
+   //get pubkey for scrAddr. Resolver takes unprefixed hashes
+   if (scrAddr.getSize() < 21) {
+      throw std::runtime_error("invalid scrAddr");
+   }
+
+   auto pubkey = walletFeed->getByVal(
+      scrAddr.getSliceRef(1, scrAddr.getSize() - 1));
+   bool compressed = true;
+   if (pubkey.getSize() == 65) {
+      compressed = false;
+   }
+
+   //get private key for pubkey
+   const auto& privkey = walletFeed->getPrivKeyForPubkey(pubkey);
+
+   //sign
+   return Cryptography::ECDSA::signBitcoinMessage(
+      message.getRef(), privkey, compressed);
+}
+
+bool Signing::verifyMessageSignature(
+   const BinaryData& message, const BinaryData& scrAddr, const BinaryData& sig)
+{
+   BinaryData pubkey;
+   try {
+      pubkey = Cryptography::ECDSA::verifyBitcoinMessage(message, sig);
+   } catch (const std::exception& e) {
+      LOGWARN << "failed to verify bitcoin message "
+         "signature with the following error: ";
+      LOGWARN << "   " << e.what();
+      return false;
+   }
+
+   /*
+   The sig carries a pubkey. VerifyBitcoinMessage generates that pubkey.
+   We need to convert it to an address hash to check it against the expected 
+   scrAddr
+   */
+
+   //create asset from pubkey
+   SecureBinaryData sbdPubkey(pubkey);
+   auto assetPubkey = std::make_shared<Assets::Asset_PublicKey>(sbdPubkey);
+   auto assetPtr = std::make_shared<Assets::AssetEntry_Single>(
+      Wallets::AssetId(-1, -1, -1), assetPubkey, nullptr);
+
+   //check scrAddr type, try to generate equivalent address hash
+   auto scrType = BtcUtils::getScriptTypeForScrAddr(scrAddr.getRef());
+   switch (scrType)
+   {
+      case TxOutScriptType::P2WPKH:
+      {
+         auto addrPtr = std::make_shared<AddressEntry_P2WPKH>(assetPtr);
+         if (addrPtr->getPrefixedHash() == scrAddr) {
+            return true;
+         }
+         break;
+      }
+
+      case TxOutScriptType::STDHASH160:
+      {
+         auto addrPtr = std::make_shared<AddressEntry_P2PKH>(
+            assetPtr, (pubkey.getSize() == 33) ? true : false);
+         if (addrPtr->getPrefixedHash() == scrAddr) {
+            return true;
+         }
+         break;
+      }
+
+      case TxOutScriptType::P2SH:
+      {
+         /*
+         This is a complicated case, the scrAddr provides no information as
+         to what script type preceeds the p2sh hash. We'll try p2wpkh and p2pk
+         since these are common in armory.
+         */
+
+         auto addrPtr1 = std::make_shared<AddressEntry_P2WPKH>(assetPtr);
+         auto p2shAddr = std::make_shared<AddressEntry_P2SH>(addrPtr1);
+         if (p2shAddr->getPrefixedHash() == scrAddr) {
+            return true;
+         }
+         auto addrPtr2 = std::make_shared<AddressEntry_P2PK>(assetPtr, true);
+         p2shAddr = std::make_shared<AddressEntry_P2SH>(addrPtr2);
+         if (p2shAddr->getPrefixedHash() == scrAddr) {
+            return true;
+         }
+         break;
+      }
+
+      default:
+         LOGWARN << "could not generate scrAddr from pubkey";
+         return false;
+   }
+
+   LOGWARN << "failed to match sig's pubkey to scrAddr";
+   return false;
 }

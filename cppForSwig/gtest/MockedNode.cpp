@@ -25,71 +25,77 @@
 using namespace Armory;
 using namespace std::chrono_literals;
 
-////////////////////////////////////////////////////////////////////////////////
-int verifyTxSigs(const BinaryData& rawTx, const LMDBBlockDatabase* iface, 
-   const std::map<BinaryDataRef, std::shared_ptr<MempoolObject>>& mempool)
+namespace
 {
-   Tx tx(rawTx);
+   int verifyTxSigs(const BinaryData& rawTx, const LMDBBlockDatabase* iface,
+      const std::map<BinaryDataRef, std::shared_ptr<MempoolObject>>& mempool)
+   {
+      Tx tx(rawTx);
+      std::map<BinaryData, std::map<unsigned, UTXO>> utxoMap;
+      for (unsigned i=0; i<tx.getNumTxIn(); i++) {
+         //grab all utxos
+         auto txin = tx.getTxInCopy(i);
+         auto outpoint = txin.getOutPoint();
 
-   std::map<BinaryData, std::map<unsigned, UTXO>> utxoMap;
-   for (unsigned i=0; i<tx.getNumTxIn(); i++) {
-      //grab all utxos
-      auto txin = tx.getTxInCopy(i);
-      auto outpoint = txin.getOutPoint();
+         StoredTxOut stxo;
+         if (iface->getStoredTxOut(
+            stxo, outpoint.getTxHash(), outpoint.getTxOutIndex())) {
+            UTXO utxo(
+               stxo.getValue(), stxo.getHeight(), 
+               stxo.txIndex_, outpoint.getTxOutIndex(), 
+               outpoint.getTxHash(), stxo.getScriptRef());
 
-      StoredTxOut stxo;
-      if (iface->getStoredTxOut(
-         stxo, outpoint.getTxHash(), outpoint.getTxOutIndex())) {
-         UTXO utxo(
-            stxo.getValue(), stxo.getHeight(), 
-            stxo.txIndex_, outpoint.getTxOutIndex(), 
-            outpoint.getTxHash(), stxo.getScriptRef());
+            auto& idMap = utxoMap[outpoint.getTxHash()];
+            idMap.emplace(outpoint.getTxOutIndex(), utxo);
+            continue; //got the output, on to the next outpoint
+         }
+
+         //see if this is a zc outpoint instead
+         auto mempoolIter = mempool.find(outpoint.getTxHash());
+         if (mempoolIter == mempool.end()) {
+            //couldn't find utxo
+            return (int)ArmoryErrorCodes::ZcBroadcast_Error;
+         }
+
+         Tx zcTx(mempoolIter->second->rawTx);
+         if (outpoint.getTxOutIndex() >= zcTx.getNumTxOut()) {
+            //couldn't find utxo
+            return (int)ArmoryErrorCodes::ZcBroadcast_Error;
+         }
+
+         //grab output from tx, convert to utxo
+         auto txOutCopy = zcTx.getTxOutCopy(outpoint.getTxOutIndex());
+         UTXO utxo;
+         utxo.unserializeRaw(txOutCopy.serializeRef());
+         utxo.txOutIndex_ = outpoint.getTxOutIndex();
 
          auto& idMap = utxoMap[outpoint.getTxHash()];
          idMap.emplace(outpoint.getTxOutIndex(), utxo);
-         continue; //got the output, on to the next outpoint
       }
 
-      //see if this is a zc outpoint instead
-      auto mempoolIter = mempool.find(outpoint.getTxHash());
-      if (mempoolIter == mempool.end()) {
-         //couldn't find utxo
-         return (int)ArmoryErrorCodes::ZcBroadcast_Error;
+      auto evalState = Signing::Signer::verify(
+         rawTx, utxoMap,
+         unsigned(SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_SEGWIT | SCRIPT_VERIFY_P2SH_SHA256),
+         true);
+      if (!evalState.isValid()) {
+         //invalid sig
+         return (int)ArmoryErrorCodes::ZcBroadcast_VerifyRejected;
       }
-
-      Tx zcTx(mempoolIter->second->rawTx_);
-      if (outpoint.getTxOutIndex() >= zcTx.getNumTxOut()) {
-         //couldn't find utxo
-         return (int)ArmoryErrorCodes::ZcBroadcast_Error;
-      }
-
-      //grab output from tx, convert to utxo
-      auto txOutCopy = zcTx.getTxOutCopy(outpoint.getTxOutIndex());
-      UTXO utxo;
-      utxo.unserializeRaw(txOutCopy.serializeRef());
-      utxo.txOutIndex_ = outpoint.getTxOutIndex();
-
-      auto& idMap = utxoMap[outpoint.getTxHash()];
-      idMap.emplace(outpoint.getTxOutIndex(), utxo);
+      return (int)ArmoryErrorCodes::Success;
    }
-
-   auto evalState = Signing::Signer::verify(
-      rawTx, utxoMap,
-      unsigned(SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_SEGWIT | SCRIPT_VERIFY_P2SH_SHA256),
-      true);
-
-
-   if (!evalState.isValid()) {
-      //invalid sig
-      return (int)ArmoryErrorCodes::ZcBroadcast_VerifyRejected;
-   }
-   return (int)ArmoryErrorCodes::Success;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-Threading::BlockingQueue<BinaryData> NodeUnitTest::watcherInvQueue_;
+// MempoolObject
+bool MempoolObject::operator<(const MempoolObject& rhs) const
+{
+   return order < rhs.order;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
+// NodeUnitTest
+Threading::BlockingQueue<BinaryData> NodeUnitTest::watcherInvQueue_;
+
 NodeUnitTest::NodeUnitTest(uint32_t magic_word, bool watcher) :
    BitcoinNodeInterface(magic_word, watcher)
 {
@@ -106,13 +112,11 @@ NodeUnitTest::NodeUnitTest(uint32_t magic_word, bool watcher) :
    watcherThread_ = std::thread(watcherLbd);
 }
 
-////////////////////////////////////////////////////////////////////////////////
 NodeUnitTest::~NodeUnitTest()
 {
    shutdown();
 }
 
-////////////////////////////////////////////////////////////////////////////////
 void NodeUnitTest::shutdown()
 {
    if (watcherThread_.joinable()) {
@@ -122,13 +126,23 @@ void NodeUnitTest::shutdown()
    BitcoinNodeInterface::shutdown();
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 void NodeUnitTest::connectToNode(bool)
 {
    run_.store(true, std::memory_order_relaxed);
 }
 
-////////////////////////////////////////////////////////////////////////////////
+bool NodeUnitTest::connected() const
+{
+   return run_.load(std::memory_order_relaxed);
+}
+
+////////
+std::vector<UnitTestBlock> NodeUnitTest::getMinedBlocks() const
+{
+   return blocks_;
+}
+
 void NodeUnitTest::notifyNewBlock(void)
 {
    Node::InvEntry ie;
@@ -140,7 +154,6 @@ void NodeUnitTest::notifyNewBlock(void)
    processInvBlock(std::move(vecIE));
 }
 
-////////////////////////////////////////////////////////////////////////////////
 std::map<unsigned, BinaryData> NodeUnitTest::mineNewBlock(
    std::shared_ptr<BlockDataManager> bdm,
    unsigned count, const BinaryData& h160, double diff)
@@ -149,7 +162,6 @@ std::map<unsigned, BinaryData> NodeUnitTest::mineNewBlock(
    return mineNewBlock(bdm, count, &recipient, diff);
 }
 
-////////////////////////////////////////////////////////////////////////////////
 std::map<unsigned, BinaryData> NodeUnitTest::mineNewBlock(
    std::shared_ptr<BlockDataManager> bdm,
    unsigned count, Signing::ScriptRecipient* recipient, double diff)
@@ -201,26 +213,26 @@ std::map<unsigned, BinaryData> NodeUnitTest::mineNewBlock(
       }
 
       auto coinbaseObj = std::make_shared<MempoolObject>();
-      coinbaseObj->rawTx_ = bwCoinbase.getData();
-      coinbaseObj->hash_ = BtcUtils::getHash256(coinbaseObj->rawTx_);
-      coinbaseObj->order_ = 0;
-      block.coinbase = std::make_shared<Tx>(coinbaseObj->rawTx_);
+      coinbaseObj->rawTx = bwCoinbase.getData();
+      coinbaseObj->hash = BtcUtils::getHash256(coinbaseObj->rawTx);
+      coinbaseObj->order = 0;
+      block.coinbase = std::make_shared<Tx>(coinbaseObj->rawTx);
       block.height = header_.blockHeight_++;
-      result.emplace(block.height, coinbaseObj->hash_);
+      result.emplace(block.height, coinbaseObj->hash);
 
       //grab all tx in the mempool, respect ordering
       std::vector<std::shared_ptr<MempoolObject>> mempoolV;
       std::map<BinaryDataRef, std::shared_ptr<MempoolObject>> purgedMempool;
       mempoolV.push_back(coinbaseObj);
       for (auto& obj : mempool_) {
-         if (obj.second->staged_) {
+         if (obj.second->staged) {
             stagedZc = true;
          }
-         if (obj.second->blocksUntilMined_ == 0) {
+         if (obj.second->blocksUntilMined == 0) {
             mempoolV.push_back(obj.second);
          } else {
-            --obj.second->blocksUntilMined_;
-            purgedMempool.emplace(obj.second->hash_.getRef(), std::move(obj.second));
+            --obj.second->blocksUntilMined;
+            purgedMempool.emplace(obj.second->hash.getRef(), std::move(obj.second));
          }
       }
 
@@ -238,10 +250,10 @@ std::map<unsigned, BinaryData> NodeUnitTest::mineNewBlock(
       //compute merkle
       std::vector<BinaryData> txHashes;
       for (auto& obj : mempoolV) {
-         txHashes.push_back(obj->hash_);
+         txHashes.emplace_back(obj->hash);
 
          //purge spender set of this zc
-         purgeSpender(obj->rawTx_);
+         purgeSpender(obj->rawTx);
       }
       auto merkleRoot = BtcUtils::calculateMerkleRoot(txHashes);
 
@@ -291,12 +303,12 @@ std::map<unsigned, BinaryData> NodeUnitTest::mineNewBlock(
 
          //tx
          for (const auto& txObj : mempoolV) {
-            bwBlock.put_BinaryData(txObj->rawTx_);
-            block.transactions.emplace_back(Tx{txObj->rawTx_});
+            bwBlock.put_BinaryData(txObj->rawTx);
+            block.transactions.emplace_back(Tx{txObj->rawTx});
          }
       }
 
-      blocks_.push_back(block);
+      blocks_.emplace_back(block);
 
       {
          /* append to blocks data file */
@@ -323,7 +335,7 @@ std::map<unsigned, BinaryData> NodeUnitTest::mineNewBlock(
       }
    }
 
-   if (stagedZc && mempool_.size() > 0) {
+   if (stagedZc && !mempool_.empty()) {
       /*
       We have staged zc, need to push them. Have to wait for the mining to 
       complete first however, or the staged zc will most likely be rejected
@@ -365,7 +377,7 @@ std::map<unsigned, BinaryData> NodeUnitTest::mineNewBlock(
          ie.invtype = Node::Inv_Msg_Witness_Tx;
          memcpy(ie.hash, tx.first.getPtr(), 32);
          invVec.emplace_back(ie);
-         rawTxMap.emplace(tx.first, tx.second->rawTx_);
+         rawTxMap.emplace(tx.first, tx.second->rawTx);
       }
       rawTxMap_.update(rawTxMap);
       processInvTx(invVec);
@@ -377,7 +389,6 @@ std::map<unsigned, BinaryData> NodeUnitTest::mineNewBlock(
    return result;
 }
 
-////////////////////////////////////////////////////////////////////////////////
 void NodeUnitTest::setReorgBranchPoint(std::shared_ptr<BlockHeader> header)
 {
    if (header == nullptr) {
@@ -393,13 +404,17 @@ void NodeUnitTest::setReorgBranchPoint(std::shared_ptr<BlockHeader> header)
    mempool_.clear();
 }
 
-////////////////////////////////////////////////////////////////////////////////
-void NodeUnitTest::presentZcHash(const BinaryData& hash)
+////////
+void NodeUnitTest::checkSigs(bool check)
 {
-   seenHashes_.insert(hash);
+   checkSigs_ = check;
 }
 
-////////////////////////////////////////////////////////////////////////////////
+void NodeUnitTest::presentZcHash(const BinaryData& hash)
+{
+   seenHashes_.emplace(hash);
+}
+
 void NodeUnitTest::pushZC(
    const std::vector<std::pair<BinaryData, unsigned>>& txVec,
    bool stage)
@@ -413,11 +428,11 @@ void NodeUnitTest::pushZC(
       Tx txNew(tx.first);
 
       //skip if we've seen this hash before
-      obj->rawTx_ = tx.first;
-      obj->hash_ = txNew.getThisHash();
-      obj->order_ = counter_.fetch_add(1, std::memory_order_relaxed);
-      obj->blocksUntilMined_ = tx.second;
-      obj->staged_ = stage;
+      obj->rawTx = tx.first;
+      obj->hash = txNew.getThisHash();
+      obj->order = counter_.fetch_add(1, std::memory_order_relaxed);
+      obj->blocksUntilMined = tx.second;
+      obj->staged = stage;
 
       /***
       cheap zc replacement code: check for outpoint reuse, assume unit
@@ -426,7 +441,7 @@ void NodeUnitTest::pushZC(
 
       auto poolIter = mempool_.begin();
       while (poolIter != mempool_.end()) {
-         Tx txMempool(poolIter->second->rawTx_);
+         Tx txMempool(poolIter->second->rawTx);
          if (txNew.getThisHash() == txMempool.getThisHash()) {
             return;
          }
@@ -455,8 +470,7 @@ void NodeUnitTest::pushZC(
       }
 
       //add to mempool
-      auto objPair = std::make_pair(obj->hash_.getRef(), std::move(obj));
-      auto insertIter = mempool_.insert(std::move(objPair));
+      auto insertIter = mempool_.emplace(obj->hash.getRef(), std::move(obj));
 
       //populate spender set
       for (unsigned i=0; i<txNew.getNumTxIn(); i++) {
@@ -474,13 +488,13 @@ void NodeUnitTest::pushZC(
       //add to inv vector
       Node::InvEntry ie;
       ie.invtype = Node::Inv_Msg_Witness_Tx;
-      memcpy(ie.hash, insertIter.first->second->hash_.getPtr(), 32);
+      memcpy(ie.hash, insertIter.first->second->hash.getPtr(), 32);
       invVec.emplace_back(ie);
 
       //save tx to reply to getdata request
       rawTxMap.emplace(
-         insertIter.first->second->hash_,
-         insertIter.first->second->rawTx_);
+         insertIter.first->second->hash,
+         insertIter.first->second->rawTx);
    }
    rawTxMap_.update(rawTxMap);
 
@@ -495,7 +509,6 @@ void NodeUnitTest::pushZC(
    processInvTx(invVec);
 }
 
-////////////////////////////////////////////////////////////////////////////////
 void NodeUnitTest::purgeSpender(const BinaryData& rawTx)
 {
    Tx tx(rawTx);
@@ -515,7 +528,6 @@ void NodeUnitTest::purgeSpender(const BinaryData& rawTx)
    }
 }
 
-////////////////////////////////////////////////////////////////////////////////
 void NodeUnitTest::evictZC(const BinaryData& txHash)
 {
    /*remove a zc from the mempool*/
@@ -526,25 +538,29 @@ void NodeUnitTest::evictZC(const BinaryData& txHash)
       return;
    }
    //remove from spender set
-   purgeSpender(iter->second->rawTx_);
+   purgeSpender(iter->second->rawTx);
 
    //remove from mempool
    mempool_.erase(iter);
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 void NodeUnitTest::setBlockchain(std::shared_ptr<Blockchain> bcPtr)
 {
    blockchain_ = bcPtr;
 }
 
-////////////////////////////////////////////////////////////////////////////////
 void NodeUnitTest::setBlockFiles(std::shared_ptr<BlockFiles> filesPtr)
 {
    filesPtr_ = filesPtr;
 }
 
-////////////////////////////////////////////////////////////////////////////////
+void NodeUnitTest::setIface(LMDBBlockDatabase* iface)
+{
+   iface_ = iface;
+}
+
+////////
 uint64_t NodeUnitTest::getFeeForTx(const Tx& tx) const
 {
    if (iface_ == nullptr) {
@@ -572,7 +588,7 @@ uint64_t NodeUnitTest::getFeeForTx(const Tx& tx) const
          throw std::runtime_error("can't resolve outpoint");
       }
 
-      Tx mempoolTx(iter->second->rawTx_);
+      Tx mempoolTx(iter->second->rawTx);
       auto txout = mempoolTx.getTxOutCopy(outpoint.getTxOutIndex());
       inputsVal += txout.getValue();
    }
@@ -591,7 +607,7 @@ uint64_t NodeUnitTest::getFeeForTx(const Tx& tx) const
    return inputsVal - outputsVal;
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
 {
    //need access to the db to check zc validity
@@ -661,9 +677,9 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
 
                   auto obj = std::make_shared<MempoolObject>();
                   auto rawTx = payloadTx->getRawTx();
-                  obj->rawTx_ = BinaryData(&rawTx[0], rawTx.size());
-                  obj->hash_ = hashBd;
-                  obj->order_ = counter_.fetch_add(1, std::memory_order_relaxed);
+                  obj->rawTx = BinaryData(&rawTx[0], rawTx.size());
+                  obj->hash = hashBd;
+                  obj->order = counter_.fetch_add(1, std::memory_order_relaxed);
 
                   unsigned delay = 0;
                   if (!zcDelays_.empty()) {
@@ -677,18 +693,18 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
                      std::this_thread::sleep_for(std::chrono::seconds(stall));
                   }
 
-                  obj->blocksUntilMined_ = delay;
-                  obj->staged_ = false;
+                  obj->blocksUntilMined = delay;
+                  obj->staged = false;
 
                   //check sigs
                   if (checkSigs_) {
-                     if (verifyTxSigs(obj->rawTx_, iface_, mempool_) !=
+                     if (verifyTxSigs(obj->rawTx, iface_, mempool_) !=
                         (int)ArmoryErrorCodes::Success) {
                         break;
                      }
                   }
 
-                  Tx tx(obj->rawTx_);
+                  Tx tx{obj->rawTx};
 
                   //check outpoints are valid & spendable
                   bool opFailure = false;
@@ -766,7 +782,7 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
                      auto mempoolObj = replaceIter->second;
 
                      //check the rbf flag
-                     Tx replaceTx(mempoolObj->rawTx_);
+                     Tx replaceTx(mempoolObj->rawTx);
                      if (!replaceTx.isRBF()) {
                         //replaced tx isn't RBF
                         replaceFailure = true;
@@ -815,7 +831,7 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
                         continue;
                      }
                      auto& mempoolObj = txIter->second;
-                     Tx purgeTx(mempoolObj->rawTx_);
+                     Tx purgeTx(mempoolObj->rawTx);
 
                      //cleanup spender set
                      for (unsigned i=0; i<purgeTx.getNumTxIn(); i++) {
@@ -845,7 +861,7 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
                   }
 
                   //add to mempool
-                  mempool_.emplace(obj->hash_.getRef(), obj);
+                  mempool_.emplace(obj->hash.getRef(), obj);
 
                   //send out the inventory payload through the watcher
                   watcherInvQueue_.push_back(std::move(hashBd));
@@ -877,12 +893,12 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
          std::vector<BinaryData> grabbedTxs;
          for (auto& inv : payloadGetData->getInvVector()) {
             auto txMap = rawTxMap_.get();
-            BinaryData hash(&inv.hash[0], sizeof(inv.hash));
+            BinaryDataRef hash(&inv.hash[0], sizeof(inv.hash));
             auto iter = txMap->find(hash);
             if (iter == txMap->end()) {
                continue;
             }
-            grabbedTxs.push_back(iter->first);
+            grabbedTxs.emplace_back(iter->first);
             auto payloadTx = std::make_unique<Node::Payload_Tx>();
 
             std::vector<uint8_t> rawTx(iter->second.getSize());
@@ -899,10 +915,10 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
    }
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 void NodeUnitTest::watcherProcess()
 {
-   while(true) {
+   while (true) {
       BinaryData hash;
       try {
          hash = std::move(watcherInvQueue_.pop_front());
@@ -920,14 +936,13 @@ void NodeUnitTest::watcherProcess()
    watcherInvQueue_.clear();
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 void NodeUnitTest::skipZc(unsigned count)
 {
    //the next [count] inv_tx sendMessage payloads will be skipped
    skipZc_.fetch_add(count, std::memory_order_relaxed);
 }
 
-////////////////////////////////////////////////////////////////////////////////
 void NodeUnitTest::delayNextZc(unsigned count)
 {
    //next p2p inved zc will skip [count] blocks before it mines
@@ -935,7 +950,6 @@ void NodeUnitTest::delayNextZc(unsigned count)
    zcDelays_.push_back(count);
 }
 
-////////////////////////////////////////////////////////////////////////////////
 void NodeUnitTest::stallNextZc(unsigned seconds)
 {
    //next p2p inved zc will take [seconds] before replying with the 
@@ -945,10 +959,31 @@ void NodeUnitTest::stallNextZc(unsigned seconds)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-//
 // NodeRPC_UnitTest
-//
-////////////////////////////////////////////////////////////////////////////////
+NodeRPC_UnitTest::NodeRPC_UnitTest(
+   std::shared_ptr<NodeUnitTest> primaryNode,
+   std::shared_ptr<NodeUnitTest> watcherNode) :
+   CoreRPC::NodeRPCInterface(),
+   primaryNode_(primaryNode), watcherNode_(watcherNode)
+{}
+
+void NodeRPC_UnitTest::shutdown()
+{}
+
+CoreRPC::RpcState NodeRPC_UnitTest::testConnection()
+{
+   return CoreRPC::RpcState_Online;
+}
+
+bool NodeRPC_UnitTest::canPoll() const
+{
+   return false;
+}
+
+void NodeRPC_UnitTest::waitOnChainSync(std::function<void(void)>)
+{}
+
+////////
 void NodeRPC_UnitTest::stallNextZc(unsigned seconds)
 {
    //next RPC broadcast will take [seconds] before replying with the 
@@ -957,7 +992,6 @@ void NodeRPC_UnitTest::stallNextZc(unsigned seconds)
    zcStalls_.push_back(seconds);
 }
 
-////////////////////////////////////////////////////////////////////////////////
 int NodeRPC_UnitTest::broadcastTx(const BinaryDataRef& rawTx, std::string&)
 {
    auto iface = primaryNode_->iface_;
@@ -1078,4 +1112,10 @@ int NodeRPC_UnitTest::broadcastTx(const BinaryDataRef& rawTx, std::string&)
    primaryNode_->pushZC(pushVec, false);
    watcherNode_->pushZC(pushVec, false);
    return (int)ArmoryErrorCodes::Success;
+}
+
+CoreRPC::FeeEstimateResult NodeRPC_UnitTest::getFeeByte(
+   unsigned, const std::string&)
+{
+   return CoreRPC::FeeEstimateResult();
 }

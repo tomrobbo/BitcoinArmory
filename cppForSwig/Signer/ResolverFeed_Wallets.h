@@ -12,7 +12,6 @@
 #include <map>
 
 #include "ResolverFeed.h"
-#include "Wallets/WalletIdTypes.h"
 
 class BinaryData;
 class BinaryDataRef;
@@ -30,6 +29,7 @@ namespace Armory
    {
       class AssetWallet;
       class AssetWallet_Single;
+      class AssetId;
    };
 
    namespace Signing
@@ -40,9 +40,9 @@ namespace Armory
          std::shared_ptr<Wallets::AssetWallet_Single> wltPtr_;
 
       protected:
-         std::map<BinaryData, BinaryData> hash_to_preimage_;
+         std::map<BinaryData, BinaryData> hashToPreimage_;
          std::map<BinaryData,
-            std::shared_ptr<Assets::AssetEntry_Single>> pubkey_to_asset_;
+            std::shared_ptr<Assets::AssetEntry_Single>> pubkeyToAsset_;
          std::map<BinaryData,
             std::pair<BIP32_AssetPath, Wallets::AssetId>> bip32Paths_;
 
@@ -84,7 +84,7 @@ namespace Armory
 
       protected:
          std::map<BinaryDataRef,
-            std::shared_ptr<Assets::AssetEntry_Single>> pubkey_to_asset_;
+            std::shared_ptr<Assets::AssetEntry_Single>> pubkeyToAsset_;
 
       private:
          void addToMap(std::shared_ptr<Assets::AssetEntry>);

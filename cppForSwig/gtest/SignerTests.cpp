@@ -9553,8 +9553,9 @@ TEST_F(ExtrasTest, BitcoinMessage)
       resolver->pubKeyToPrivKey.emplace(pubkey, privkey);
 
       auto msgBD = BinaryData::fromString(message);
-      auto sig = Signer::signMessage(msgBD, addr->getPrefixedHash(), resolver);
-      EXPECT_TRUE(Signer::verifyMessageSignature(
+      auto sig = Signing::signMessage(
+         msgBD, addr->getPrefixedHash(), resolver);
+      EXPECT_TRUE(Signing::verifyMessageSignature(
          msgBD, addr->getPrefixedHash(), sig));
    }
 
@@ -9580,12 +9581,13 @@ TEST_F(ExtrasTest, BitcoinMessage)
       resolver->pubKeyToPrivKey.emplace(pubkey, privKeyDecode);
 
       auto msgBD = BinaryData::fromString(message);
-      auto sigCompute = Signer::signMessage(msgBD, addr->getPrefixedHash(), resolver);
+      auto sigCompute = Signing::signMessage(
+         msgBD, addr->getPrefixedHash(), resolver);
       auto sigDecode = BtcUtils::base64_decode(sig);
       auto sigDecodeBD = BinaryData::fromString(BtcUtils::base64_decode(sig));
 
       EXPECT_EQ(sigCompute, sigDecodeBD);
-      EXPECT_TRUE(Signer::verifyMessageSignature(
+      EXPECT_TRUE(Signing::verifyMessageSignature(
          msgBD, addr->getPrefixedHash(), sigDecodeBD));
    }
 }

@@ -29,7 +29,6 @@ namespace Armory
    {
       class StackResolver;
       class StackItem;
-      class SignerProxy;
       using SignerFunc = std::function<SecureBinaryData(
          BinaryDataRef, const BinaryData&, bool)>;
 
@@ -203,7 +202,7 @@ namespace Armory
             std::shared_ptr<std::map<BinaryData, Tx>>);
 
          void setTxMap(std::shared_ptr<std::map<BinaryData, Tx>>);
-         bool setSupportingTx(BinaryDataRef rawTx);
+         bool setSupportingTx(BinaryDataRef);
          bool setSupportingTx(Tx);
 
          const Tx& getSupportingTx(void) const;

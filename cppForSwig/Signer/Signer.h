@@ -66,10 +66,10 @@ namespace Armory
       protected:
          virtual std::shared_ptr<SigHashData> getSigHashDataForSpender(bool) const;
          SecureBinaryData signScript(
-            BinaryDataRef script,
-            const SecureBinaryData& privKey,
+            BinaryDataRef,
+            const SecureBinaryData&,
             std::shared_ptr<SigHashData>,
-            unsigned index);
+            unsigned);
 
          static std::unique_ptr<TransactionVerifier> getVerifier(
             std::shared_ptr<BCTX>,
@@ -219,21 +219,23 @@ namespace Armory
 
          //debug
          void prettyPrint(void) const;
-
-         /*
-         Message signing: get resolver for wallet holding the private key
-         and lock it before calling signMessage. verifyMessageSignature
-         can be called anytime.
-         */
-         static BinaryData signMessage(
-            const BinaryData&,
-            const BinaryData&,
-            std::shared_ptr<ResolverFeed>);
-
-         static bool verifyMessageSignature(
-            const BinaryData&,
-            const BinaryData&,
-            const BinaryData&);
       };
-   } //namespace Signer
+
+      /*
+      Message signing: get resolver for wallet holding the private key
+      and lock it before calling signMessage. verifyMessageSignature
+      can be called anytime.
+      */
+      BinaryData signMessage(
+         const BinaryData&,
+         const BinaryData&,
+         std::shared_ptr<ResolverFeed>
+      );
+
+      bool verifyMessageSignature(
+         const BinaryData&,
+         const BinaryData&,
+         const BinaryData&
+      );
+   } //namespace Signing
 } //namespace Armory
