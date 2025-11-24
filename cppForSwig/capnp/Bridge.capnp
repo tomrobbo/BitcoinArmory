@@ -76,6 +76,27 @@ struct WalletData {
    comments             @13: List(Comment);
 }
 
+struct WalletImportPreview {
+   walletId             @0 : Text;
+   label                @1 : Text;
+   description          @2 : Text;
+   watchingOnly         @3 : Bool;
+   encrypted            @4 : Bool;
+   timestamp            @5 : UInt64;
+   highestUsedIndex     @6 : Int64;
+   addressCount         @7 : UInt32;
+   seedVersion          @8 : Text;
+   kdfMem               @9 : UInt32;
+
+   union {
+      unset             @10: Void;
+
+      legacy            @11: Void;
+      locked            @12: Void;
+      ready             @13: Void;
+   }
+}
+
 ###############################
 # Notifications
 ###############################
@@ -284,18 +305,9 @@ struct WalletManagerReply {
       encrypted   @2;
       ready       @3;
 
-      #Internal state, marks wallets that have been loaded via
-      #loadWallets. A loaded wallet will never appear in listWallets
+      #Internal state, marks wallets that have been loaded via loadWallets
+      #A loaded wallet will not appear in listWallets again.
       loaded      @4;
-   }
-
-   struct ExtendedLegacyData
-   {
-      label         @0 : Text;
-      description   @1 : Text;
-      highestIndex  @2 : Int64;
-      addressCount  @3 : UInt32;
-      timestamp     @4 : UInt64;
    }
 
    struct WalletFileData {
@@ -307,7 +319,7 @@ struct WalletManagerReply {
 
       union {
          undefined   @5 : Void;
-         legacy      @6 : ExtendedLegacyData;
+         legacy      @6 : WalletImportPreview;
       }
    }
 
@@ -637,27 +649,6 @@ struct UtilsRequest {
 }
 
 struct UtilsReply {
-   struct ImportedWalletHeader {
-      walletId             @0 : Text;
-      label                @1 : Text;
-      description          @2 : Text;
-      watchingOnly         @3 : Bool;
-      encrypted            @4 : Bool;
-      timestamp            @5 : UInt64;
-      highestUsedIndex     @6 : Int64;
-      addressCount         @7 : UInt32;
-      seedVersion          @8 : Text;
-      kdfMem               @9 : UInt32;
-
-      union {
-         unset             @10: Void;
-
-         legacy            @11: Void;
-         locked            @12: Void;
-         ready             @13: Void;
-      }
-   }
-
    union {
       unset                @0 : Void;
 
@@ -665,7 +656,7 @@ struct UtilsReply {
       getHash160           @2 : Types.Hash;
       getNameForAddrType   @3 : Text;
       createWallet         @4 : Types.WalletId;
-      importWallet         @5 : ImportedWalletHeader;
+      importWallet         @5 : WalletImportPreview;
    }
 }
 

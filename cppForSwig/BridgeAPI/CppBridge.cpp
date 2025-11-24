@@ -582,11 +582,17 @@ BinaryData CppBridge::listWallets(MessageId msgId)
       if (wltObj.second->state() == WalletLoadState::Legacy) {
          auto a135Info = std::dynamic_pointer_cast<A135FileInfo>(wltObj.second);
          auto extendedData = capnWltObj.initLegacy();
+         extendedData.setWalletId(a135Info->walletId());
          extendedData.setLabel(a135Info->name());
          extendedData.setDescription(a135Info->description());
-         extendedData.setHighestIndex(a135Info->highestUsedIndex());
+         extendedData.setHighestUsedIndex(a135Info->highestUsedIndex());
          extendedData.setAddressCount(a135Info->addressCount());
          extendedData.setTimestamp(a135Info->timestamp());
+         extendedData.setWatchingOnly(a135Info->isWatchingOnly());
+         extendedData.setEncrypted(a135Info->isEncrypted());
+         extendedData.setSeedVersion(a135Info->version());
+         extendedData.setKdfMem(a135Info->kdfMem());
+         extendedData.setLegacy();
       }
    }
 
