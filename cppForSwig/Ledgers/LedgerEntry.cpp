@@ -47,6 +47,11 @@ const std::set<BinaryData>& LedgerEntry::getScrAddrList() const
    return scrAddrSet_;
 }
 
+void LedgerEntry::setScrAddrList(std::set<BinaryData>& addrList)
+{
+   scrAddrSet_ = std::move(addrList);
+}
+
 int64_t LedgerEntry::getValue() const
 {
    return value_;
@@ -372,7 +377,7 @@ std::map<BinaryData, LedgerEntry> LedgerEntry::computeLedgerMap(
                //get scrAddr for each txout
                for (unsigned i=0; i < payout_tx.getNumTxOut(); i++) {
                   auto txout = payout_tx.getTxOutCopy(i);
-                  le.scrAddrSet_.emplace(txout.getScrAddressStr());
+                  scrAddrSet.emplace(txout.getScrAddressStr());
                }
             } catch (const std::exception&) {
                LOGWARN << "no tx on record for txio " << txioVec.first.toHexStr();
@@ -386,7 +391,7 @@ std::map<BinaryData, LedgerEntry> LedgerEntry::computeLedgerMap(
                LOGWARN << "failed to get zc for ledger parsing";
             } else {
                for (const auto& txout : ptx->outputs) {
-                  le.scrAddrSet_.emplace(txout.scrAddr);
+                  scrAddrSet.emplace(txout.scrAddr);
                }
             }
          } else {
@@ -394,7 +399,7 @@ std::map<BinaryData, LedgerEntry> LedgerEntry::computeLedgerMap(
          }
       }
 
-      le.scrAddrSet_ = std::move(scrAddrSet);
+      le.setScrAddrList(scrAddrSet);
       leMap.emplace(txioVec.first, std::move(le));
    }
    return leMap;

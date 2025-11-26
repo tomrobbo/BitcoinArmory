@@ -96,6 +96,7 @@ namespace {
          capnLe.setBalance(le.getValue());
          capnLe.setTxHeight(le.getBlockNum());
          capnLe.setTxOutIndex(le.getIndex());
+         capnLe.setTxTime(le.getTxTime());
 
          capnLe.setIsCoinbase(le.isCoinbase());
          capnLe.setIsChangeBack(le.isChangeBack());

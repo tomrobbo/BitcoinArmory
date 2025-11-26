@@ -32,6 +32,7 @@
 #include <capnp/message.h>
 #include <capnp/serialize.h>
 #include "capnp/Bridge.capnp.h"
+#include "capnp/Types.capnp.h"
 
 using namespace Armory;
 
@@ -117,6 +118,39 @@ namespace {
          std::move(addresses), capnWlt.getLookupCount(), capnWlt.getUseCount(),
          std::filesystem::path(std::string{capnWlt.getPath()}), capnWlt.getKdfMemReq()
       };
+   }
+
+   std::vector<std::vector<LedgerEntry>> capnToLedgers(
+      const capnp::List<Codec::Types::TxLedger, capnp::Kind::STRUCT>::Reader& capnLedgers)
+   {
+      std::vector<std::vector<LedgerEntry>> result(capnLedgers.size());
+
+      unsigned i=0;
+      for (auto txLedgers : capnLedgers) {
+         auto& ledgerVec = result[i++];
+         for (auto capnLedger : txLedgers.getLedgers()) {
+            auto capnHash = capnLedger.getTxHash();
+            BinaryData txHash{capnHash.begin(), capnHash.end()};
+
+            LedgerEntry le{std::string{capnLedger.getWalletId()},
+               capnLedger.getBalance(), capnLedger.getTxHeight(), txHash,
+               capnLedger.getTxOutIndex(), capnLedger.getTxTime(),
+               capnLedger.getIsCoinbase(), capnLedger.getIsSTS(), capnLedger.getIsChangeBack(),
+               capnLedger.getIsOptInRBF(), capnLedger.getIsWitness(), capnLedger.getIsChainedZC()
+            };
+
+            auto capnAddrList = capnLedger.getScrAddrs();
+            std::set<BinaryData> addrSet;
+            for (auto capnAddr : capnAddrList) {
+               addrSet.emplace(BinaryData{capnAddr.begin(), capnAddr.end()});
+            }
+            if (!addrSet.empty()) {
+               le.setScrAddrList(addrSet);
+            }
+            ledgerVec.emplace_back(std::move(le));
+         }
+      }
+      return result;
    }
 
    struct NotifQueue
@@ -823,7 +857,7 @@ namespace {
       auto rawReq = serializeCapnp(message);
       pushRequest(bridge, rawReq);
 
-      //expecting setup done notif
+      //process reply
       auto resp = waitOnReply();
       kj::ArrayPtr<const capnp::word> words(
          reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
@@ -861,6 +895,142 @@ namespace {
          iter->second.emplace_back(balCapn.getUnconfirmed());
       }
       return result;
+   }
+
+   /////////////////////////////////////////////////////////////////////////////
+   // ledger stuff
+   struct LedgerEntryValues
+   {
+      const int64_t balance;
+      const uint32_t height;
+      const uint32_t txTime;
+   };
+   std::vector<LedgerEntryValues> ledgersAt5Blocks{
+      { 5 * COIN           , 5, 1231009513},
+      { 30 * COIN          , 5, 1231009513},
+      { 50 * COIN          , 5, 1231009513},
+      { -45 * (int64_t)COIN, 4, 1231008909},
+      { 5 * COIN           , 4, 1231008909},
+      { 50 * COIN          , 4, 1231008909},
+      { 55 * COIN          , 3, 1231008309},
+      { 5 * COIN           , 3, 1231008309},
+      { 5 * COIN           , 3, 1231008309},
+      { 5 * COIN           , 3, 1231008309},
+      { 50 * COIN          , 3, 1231008309},
+      { -20 * (int64_t)COIN, 2, 1231007708},
+      { -25 * (int64_t)COIN, 2, 1231007708},
+      { 50 * COIN          , 2, 1231007708},
+      { 50 * COIN          , 1, 1231007105},
+   };
+
+   std::string getLedgerDelegateId(std::shared_ptr<Bridge::CppBridge> bridge)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initService();
+      req.setGetLedgerDelegateId();
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //process reply
+      auto resp = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+         resp->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return {};
+      }
+      auto reply = fromBridge.getReply();
+      if (!reply.getSuccess()) {
+         return {};
+      }
+      if (reply.which() != Codec::Bridge::RpcReply::SERVICE) {
+         return {};
+      }
+      auto serviceReply = reply.getService();
+      return serviceReply.getGetLedgerDelegateId();
+   }
+
+   size_t getLedgersPageCount(std::shared_ptr<Bridge::CppBridge> bridge,
+      const std::string& delegateId)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initDelegate();
+      req.setId(delegateId);
+      req.setGetPageCount();
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //process reply
+      auto resp = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+         resp->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return SIZE_MAX;
+      }
+      auto reply = fromBridge.getReply();
+      if (!reply.getSuccess()) {
+         return SIZE_MAX;
+      }
+      if (reply.which() != Codec::Bridge::RpcReply::DELEGATE) {
+         return SIZE_MAX;
+      }
+      auto delegateReply = reply.getDelegate();
+      return delegateReply.getGetPageCount();
+   }
+
+   std::vector<LedgerEntry> getLedgersPage(std::shared_ptr<Bridge::CppBridge> bridge,
+      const std::string& delegateId, uint32_t pageId)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initDelegate();
+      req.setId(delegateId);
+      auto pageReq = req.initGetPages();
+      pageReq.setFirst(pageId);
+      pageReq.setLast(pageId);
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //process reply
+      auto resp = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+         resp->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return {};
+      }
+      auto reply = fromBridge.getReply();
+      if (!reply.getSuccess()) {
+         return {};
+      }
+      if (reply.which() != Codec::Bridge::RpcReply::DELEGATE) {
+         return {};
+      }
+
+      auto delegateReply = reply.getDelegate();
+      auto result = capnToLedgers(delegateReply.getGetPages());
+      if (result.size() != 1) {
+         throw std::runtime_error("unexpected ledger size");
+      }
+      return result[0];
    }
 
    /////////////////////////////////////////////////////////////////////////////
@@ -3871,6 +4041,24 @@ TEST_F(BridgeWebsocketsTests, Connect)
       }
    } catch (const std::exception&) {
       ASSERT_TRUE(false);
+   }
+
+   //check ledgers
+   auto delegateId = getLedgerDelegateId(bridge_);
+   ASSERT_FALSE(delegateId.empty());
+
+   auto pageCount = getLedgersPageCount(bridge_, delegateId);
+   ASSERT_EQ(pageCount, 1);
+
+   auto ledgers = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgers.size(), 15);
+
+   auto leAt5BlocksIter = ledgersAt5Blocks.begin();
+   for (const auto& le : ledgers) {
+      EXPECT_EQ(le.getValue(), leAt5BlocksIter->balance);
+      EXPECT_EQ(le.getBlockNum(), leAt5BlocksIter->height);
+      EXPECT_EQ(le.getTxTime(), leAt5BlocksIter->txTime);
+      ++leAt5BlocksIter;
    }
 }
 

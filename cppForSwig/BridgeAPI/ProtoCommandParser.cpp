@@ -1276,7 +1276,7 @@ namespace
 
          case LedgerDelegateRequest::GET_PAGE_COUNT:
          {
-            LOGWARN << "[GET_PAGE_COUNT] implement me!";
+            bridge->getPageCountForDelegate(delegateId, referenceId);
             break;
          }
       }

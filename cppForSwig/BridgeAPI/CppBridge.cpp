@@ -1593,6 +1593,38 @@ void CppBridge::getHistoryPageForDelegate(const std::string& id,
    iter->second.getHistoryPages(from, to, lbd);
 }
 
+void CppBridge::getPageCountForDelegate(const std::string& id, MessageId msgId)
+{
+   auto iter = delegateMap_.find(id);
+   if (iter == delegateMap_.end()) {
+      capnp::MallocMessageBuilder message;
+      auto fromBridge = message.initRoot<FromBridge>();
+      auto reply = fromBridge.initReply();
+      reply.setReferenceId(msgId);
+      reply.setSuccess(false);
+      reply.setError(std::string{"unknown delegate id: "} + id);
+
+      auto payload = serializeCapnp(message);
+      this->writeToClient(payload);
+      return;
+   }
+
+   auto lbd = [this, msgId](ReturnMessage<uint64_t> result)->void
+   {
+      capnp::MallocMessageBuilder message;
+      auto fromBridge = message.initRoot<FromBridge>();
+      auto reply = fromBridge.initReply();
+      reply.setReferenceId(msgId);
+      auto delegate = reply.initDelegate();
+      delegate.setGetPageCount(result.get());
+      reply.setSuccess(true);
+
+      auto payload = serializeCapnp(message);
+      this->writeToClient(payload);
+   };
+   iter->second.getPageCount(lbd);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 BinaryData CppBridge::getNodeStatus(MessageId msgId)
 {

@@ -99,6 +99,7 @@ public:
    bool              isChainedZC(void) const;
 
    Armory::ScriptPrefix getScriptType(void) const;
+   void setScrAddrList(std::set<BinaryData>&);
    const std::set<BinaryData>& getScrAddrList(void) const;
 
    bool operator<(const LedgerEntry&) const;

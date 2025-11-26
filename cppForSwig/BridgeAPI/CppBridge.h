@@ -187,6 +187,7 @@ namespace Armory
          const std::string& getLedgerDelegateIdForScrAddr(
             const Wallets::WalletId&, const Wallets::AddressAccountId&,
             const BinaryDataRef&);
+         void getPageCountForDelegate(const std::string&, MessageId);
          void getHistoryPageForDelegate(const std::string&,
             unsigned, unsigned, MessageId);
          void createAddressBook(const Wallets::WalletId&,
