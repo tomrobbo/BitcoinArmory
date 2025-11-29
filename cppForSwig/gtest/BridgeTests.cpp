@@ -3481,7 +3481,7 @@ TEST_F(BridgeTests, ImportWallet_Legacy)
 
    //type
    EXPECT_EQ(wltReply.which(),
-      Bridge::WalletImportPreview::LEGACY);
+      Codec::Bridge::WalletImportPreview::LEGACY);
 
    //id
    std::string capnWltId(wltReply.getWalletId());
