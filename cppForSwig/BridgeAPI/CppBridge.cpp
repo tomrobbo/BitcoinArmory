@@ -1021,59 +1021,77 @@ void CppBridge::createBackupStringForWallet(const Wallets::WalletId& wltId,
          return;
       }
 
-      auto backupE16 = dynamic_cast<Armory::Seeds::Backup_Easy16*>(
-         backupData.get());
-      if (backupE16 == nullptr) {
-         throw std::runtime_error("[createBackupStringForWallet]"
-            " invalid backup type");
-      }
       auto walletReply = reply.initWallet();
       auto backupStringCapnp = walletReply.initCreateBackupString();
+      auto backupE16 = dynamic_cast<Seeds::Backup_Easy16*>(
+         backupData.get());
+      if (backupE16 != nullptr) {
+         //secure print passphrase
+         auto spPass = backupE16->getSpPass();
+         backupStringCapnp.setSpPass(
+            capnp::Text::Reader(spPass.data(), spPass.size()));
 
-      //cleartext root
-      {
-         auto line1 = backupE16->getRoot(
-            Armory::Seeds::LineIndex::One, false);
-         auto line2 = backupE16->getRoot(
-            Armory::Seeds::LineIndex::Two, false);
-         auto clearLines = backupStringCapnp.initRootClear(2);
-         clearLines.set(0, capnp::Text::Reader(line1.data(), line1.size()));
-         clearLines.set(1, capnp::Text::Reader(line2.data(), line2.size()));
+         {
+            //cleartext root
+            auto line1 = backupE16->getRoot(Seeds::LineIndex::One, false);
+            auto line2 = backupE16->getRoot(Seeds::LineIndex::Two, false);
+            auto clearLines = backupStringCapnp.initRootClear(2);
+            clearLines.set(0, capnp::Text::Reader(line1.data(), line1.size()));
+            clearLines.set(1, capnp::Text::Reader(line2.data(), line2.size()));
 
-         //encrypted root
-         auto line3 = backupE16->getRoot(
-            Armory::Seeds::LineIndex::One, true);
-         auto line4 = backupE16->getRoot(
-            Armory::Seeds::LineIndex::Two, true);
-         auto encrLines = backupStringCapnp.initRootEncr(2);
-         encrLines.set(0, capnp::Text::Reader(line3.data(), line3.size()));
-         encrLines.set(1, capnp::Text::Reader(line4.data(), line4.size()));
+            //encrypted root
+            auto line3 = backupE16->getRoot(Seeds::LineIndex::One, true);
+            auto line4 = backupE16->getRoot(Seeds::LineIndex::Two, true);
+            auto encrLines = backupStringCapnp.initRootEncr(2);
+            encrLines.set(0, capnp::Text::Reader(line3.data(), line3.size()));
+            encrLines.set(1, capnp::Text::Reader(line4.data(), line4.size()));
+         }
+
+         if (backupE16->hasChaincode()) {
+            //cleartext chaincode
+            auto line1 = backupE16->getChaincode(Seeds::LineIndex::One, false);
+            auto line2 = backupE16->getChaincode(Seeds::LineIndex::Two, false);
+            auto clearLines = backupStringCapnp.initChainClear(2);
+            clearLines.set(0, capnp::Text::Reader(line1.data(), line1.size()));
+            clearLines.set(1, capnp::Text::Reader(line2.data(), line2.size()));
+
+            //encrypted chaincode
+            auto line3 = backupE16->getChaincode(Seeds::LineIndex::One, true);
+            auto line4 = backupE16->getChaincode(Seeds::LineIndex::Two, true);
+            auto encrLines = backupStringCapnp.initChainEncr(2);
+            encrLines.set(0, capnp::Text::Reader(line3.data(), line3.size()));
+            encrLines.set(1, capnp::Text::Reader(line4.data(), line4.size()));
+         }
+      } else {
+         auto backupE16Public = dynamic_cast<Seeds::Backup_Easy16Public*>(
+            backupData.get());
+         if (backupE16Public == nullptr) {
+            reply.setSuccess(false);
+            reply.setError("invalid backup type!");
+            auto payload = serializeCapnp(message);
+            writeToClient(payload);
+            return;
+         }
+
+         //pubroot
+         auto line1 = backupE16Public->getPublicRoot(Seeds::LineIndex::One);
+         auto line2 = backupE16Public->getPublicRoot(Seeds::LineIndex::Two);
+         auto rootLines = backupStringCapnp.initRootClear(2);
+         rootLines.set(0, capnp::Text::Reader(line1.data(), line1.size()));
+         rootLines.set(1, capnp::Text::Reader(line2.data(), line2.size()));
+
+         //chaincode
+         auto line3 = backupE16Public->getChaincode(Seeds::LineIndex::One);
+         auto line4 = backupE16Public->getChaincode(Seeds::LineIndex::Two);
+         auto ccLines = backupStringCapnp.initChainClear(2);
+         ccLines.set(0, capnp::Text::Reader(line3.data(), line3.size()));
+         ccLines.set(1, capnp::Text::Reader(line4.data(), line4.size()));
+
+         //backupId
+         auto backupId = backupE16Public->getBackupId();
+         backupStringCapnp.setBackupId(capnp::Text::Reader(
+            backupId.data(), backupId.size()));
       }
-
-      if (backupE16->hasChaincode()) {
-         //cleartext chaincode
-         auto line1 = backupE16->getChaincode(
-            Armory::Seeds::LineIndex::One, false);
-         auto line2 = backupE16->getChaincode(
-            Armory::Seeds::LineIndex::Two, false);
-         auto clearLines = backupStringCapnp.initChainClear(2);
-         clearLines.set(0, capnp::Text::Reader(line1.data(), line1.size()));
-         clearLines.set(1, capnp::Text::Reader(line2.data(), line2.size()));
-
-         //encrypted chaincode
-         auto line3 = backupE16->getChaincode(
-            Armory::Seeds::LineIndex::One, true);
-         auto line4 = backupE16->getChaincode(
-            Armory::Seeds::LineIndex::Two, true);
-         auto encrLines = backupStringCapnp.initChainEncr(2);
-         encrLines.set(0, capnp::Text::Reader(line3.data(), line3.size()));
-         encrLines.set(1, capnp::Text::Reader(line4.data(), line4.size()));
-      }
-
-      //secure print passphrase
-      auto spPass = backupE16->getSpPass();
-      backupStringCapnp.setSpPass(
-         capnp::Text::Reader(spPass.data(), spPass.size()));
 
       //backup type
       backupStringCapnp.setBackupType(toCapnBackupType(backupData->type()));
@@ -1142,12 +1160,18 @@ void CppBridge::restoreWallet(
    requests). It has to run in its own thread.
    */
 
-   auto backup = Seeds::Backup_Easy16::fromLines(lines_sv, spPass_sv);
+   std::unique_ptr<Seeds::WalletBackup> backup;
+   bool isWO = lines_sv.size() == 5;
+   if (isWO) {
+      backup = Seeds::Backup_Easy16Public::fromLines(lines_sv);
+   } else {
+      backup = Seeds::Backup_Easy16::fromLines(lines_sv, spPass_sv);
+   }
 
    //
    auto restoreLbd = [
-      this, refId, callbackId=std::string{callbackId}](
-      std::unique_ptr<Seeds::Backup_Easy16> backup)
+      this, refId, callbackId=std::string{callbackId}, isWO](
+      std::unique_ptr<Seeds::WalletBackup> backup)
    {
       auto createCallbackMessage = [callbackId](
          const Seeds::RestorePrompt& prompt, uint32_t notifCounter)->BinaryData
@@ -1345,10 +1369,14 @@ void CppBridge::restoreWallet(
          } else {
             //we didnt have an old wallet merge into the new one, extend
             //the address chain for some baseline count
-            restoreResult.wltPtr->setPassphrasePromptLambda(
-               params.setPrivPassObj.getUnlockFunc());
             progFunc(std::make_unique<Wallets::Progress::ExtendChain>(500));
-            restoreResult.wltPtr->extendPrivateChainToIndex(499);
+            if (isWO) {
+               restoreResult.wltPtr->extendPublicChain(499);
+            } else {
+               restoreResult.wltPtr->setPassphrasePromptLambda(
+                  params.setPrivPassObj.getUnlockFunc());
+               restoreResult.wltPtr->extendPrivateChainToIndex(499);
+            }
             restoreResult.wltPtr.reset();
          }
 

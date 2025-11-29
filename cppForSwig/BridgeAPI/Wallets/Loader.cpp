@@ -482,11 +482,12 @@ std::shared_ptr<Wallets::AssetWallet_Single> Armory135Header::migrate(
    }
 
    //create wallet
-   std::shared_ptr<Wallets::AssetWallet_Single> wallet;
+   std::unique_ptr<Seeds::ClearTextSeed> seed;
    if (decryptedRoot.empty()) {
-      auto pubKeyCopy = rootAddrObj.pubKey();
-      wallet = Wallets::AssetWallet_Single::createFromPublicRoot_Armory135(
-         pubKeyCopy, chaincodeCopy, newParams);
+      seed = std::make_unique<Seeds::ClearTextSeed_ArmoryPublic>(
+         rootAddrObj.pubKey().getRef(), rootAddrObj.chaincode().getRef(),
+         Seeds::LegacyType::Armory135
+      );
    } else {
       /*
       Derive chaincode from the clear text root. If it matches the
@@ -497,15 +498,14 @@ std::shared_ptr<Wallets::AssetWallet_Single> Armory135Header::migrate(
          //deterministic chaincode, clear it
          chaincodeCopy.clear();
       }
-
-      std::unique_ptr<Seeds::ClearTextSeed> seed(
-         new Seeds::ClearTextSeed_Armory(
-            decryptedRoot, chaincodeCopy,
-            Seeds::LegacyType::Armory135
-      ));
-      wallet = Wallets::AssetWallet_Single::createFromSeed(
-         std::move(seed), newParams);
+      seed = std::make_unique<Seeds::ClearTextSeed_Armory>(
+         decryptedRoot, chaincodeCopy,
+         Seeds::LegacyType::Armory135
+      );
    }
+
+   auto wallet = Wallets::AssetWallet_Single::createFromSeed(
+      std::move(seed), newParams);
 
    //main account id, check it matches armory wallet id
    if (wallet->getID() != walletID_) {

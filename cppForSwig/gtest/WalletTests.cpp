@@ -4191,8 +4191,13 @@ TEST_F(WalletsTest, CreateWOCopy_Test)
 
    std::unique_ptr<Seeds::ClearTextSeed> seed(
       new Seeds::ClearTextSeed_Armory());
+   Seeds::LegacyType legacyType;
+   {
+      auto legacySeed = dynamic_cast<Seeds::ClearTextSeed_Armory*>(seed.get());
+      legacyType = legacySeed->getLegacyType();
+   }
    auto assetWlt = AssetWallet_Single::createFromSeed(
-      move(seed), params);
+      std::move(seed), params);
    auto filename = assetWlt->getDbFilename();
 
    //check wlt has private root
@@ -4205,7 +4210,6 @@ TEST_F(WalletsTest, CreateWOCopy_Test)
       ASSERT_NE(root, nullptr);
       ASSERT_NE(root->getPrivKey(), nullptr);
    }
-
 
    //get AddrVec
    auto hashSet = assetWlt->getAddrHashSet();
@@ -4222,14 +4226,18 @@ TEST_F(WalletsTest, CreateWOCopy_Test)
    //close wallet
    assetWlt.reset();
 
-   auto woWallet = AssetWallet_Single::createFromPublicRoot_Armory135(
-      pubRoot, chainCode,
+   auto publicSeed = std::make_unique<Seeds::ClearTextSeed_ArmoryPublic>(
+      pubRoot, chainCode, legacyType
+   );
+   auto woWallet = AssetWallet_Single::createFromSeed(
+      std::move(publicSeed),
       IO::CreateWalletParams{
          homedir_,
          Passphrase::SetNew{1ms, 0, {}},
          Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("control")},
          nullptr, 4
       });
+
    EXPECT_EQ(mainAccId, woWallet->getMainAccountID());
    {
       auto accPtr = woWallet->getAccountForID(mainAccId);
@@ -9696,35 +9704,44 @@ public:
       assetWlt->setPassphrasePromptLambda(oldPassLbd);
       loadedWlt->setPassphrasePromptLambda(newPassLbd);
 
-      //compare some priv keys to test passphrase
+      //compare a few assets, check priv keys if available to test passphrase
+      bool hasPrivKeys = false;
       for (unsigned i=0; i<10; i++) {
          auto address = assetWlt->getNewAddress();
          auto assetID = assetWlt->getAssetIDForScrAddr(
             address->getPrefixedHash());
-         auto asset = assetWlt->getAssetForID(assetID.first);
-         auto assetSingle = std::dynamic_pointer_cast<Assets::AssetEntry_Single>(asset);
-
-         auto lock = assetWlt->lockDecryptedContainer();
-         auto privKey = assetWlt->getDecryptedPrivateKeyForAsset(assetSingle);
 
          //
          auto newAddr = loadedWlt->getNewAddress();
          auto newID = loadedWlt->getAssetIDForScrAddr(
             newAddr->getPrefixedHash());
-         auto newAsset = loadedWlt->getAssetForID(newID.first);
-         auto newAssetSingle = std::dynamic_pointer_cast<Assets::AssetEntry_Single>(newAsset);
-
-         auto newLock = loadedWlt->lockDecryptedContainer();
-         auto singleWlt = std::dynamic_pointer_cast<AssetWallet_Single>(loadedWlt);
-         auto newKey = singleWlt->getDecryptedPrivateKeyForAsset(newAssetSingle);
 
          //
          EXPECT_EQ(address->getPrefixedHash(), newAddr->getPrefixedHash());
-         EXPECT_EQ(privKey, newKey);
          EXPECT_EQ(assetID.first, newID.first);
+
+         auto newAsset = loadedWlt->getAssetForID(newID.first);
+         auto newAssetSingle = std::dynamic_pointer_cast<Assets::AssetEntry_Single>(newAsset);
+         if (newAssetSingle->hasPrivateKey()) {
+            hasPrivKeys = true;
+            auto newLock = loadedWlt->lockDecryptedContainer();
+            auto singleWlt = std::dynamic_pointer_cast<AssetWallet_Single>(loadedWlt);
+            auto newKey = singleWlt->getDecryptedPrivateKeyForAsset(newAssetSingle);
+
+            auto asset = assetWlt->getAssetForID(assetID.first);
+            auto assetSingle = std::dynamic_pointer_cast<Assets::AssetEntry_Single>(asset);
+            auto lock = assetWlt->lockDecryptedContainer();
+            auto privKey = assetWlt->getDecryptedPrivateKeyForAsset(assetSingle);
+
+            EXPECT_EQ(privKey, newKey);
+         }
       }
 
-      METHOD_ASSERT_EQ(keyPassCount, 10U);
+      if (hasPrivKeys) {
+         METHOD_ASSERT_EQ(keyPassCount, 10U);
+      } else {
+         METHOD_ASSERT_EQ(keyPassCount, 0U);
+      }
       return true;
    }
 };
@@ -9740,10 +9757,10 @@ TEST_F(BackupTests, Easy16)
       ASSERT_EQ(encoded.size(), 2ULL);
 
       auto decoded = Seeds::Easy16Codec::decode(encoded);
-      ASSERT_EQ(decoded.checksumIndexes_.size(), 2ULL);
-      EXPECT_EQ(decoded.checksumIndexes_[0], (uint8_t)index);
-      EXPECT_EQ(decoded.checksumIndexes_[1], (uint8_t)index);
-      EXPECT_EQ(decoded.data_, root);
+      ASSERT_EQ(decoded.checksumIndexes.size(), 2ULL);
+      EXPECT_EQ(decoded.checksumIndexes[0], (uint8_t)index);
+      EXPECT_EQ(decoded.checksumIndexes[1], (uint8_t)index);
+      EXPECT_EQ(decoded.data, root);
    }
 }
 
@@ -9797,24 +9814,24 @@ TEST_F(BackupTests, Easy16_Repair)
 
       //decode the corrupted data, should yield an incorrect value
       auto decoded = Seeds::Easy16Codec::decode(corrupted);
-      ASSERT_EQ(decoded.checksumIndexes_.size(), 2ULL);
+      ASSERT_EQ(decoded.checksumIndexes.size(), 2ULL);
       if (lineSelect == 0) {
-         EXPECT_NE(decoded.checksumIndexes_[0], 0);
-         EXPECT_EQ(decoded.checksumIndexes_[1], 0);
+         EXPECT_NE(decoded.checksumIndexes[0], 0);
+         EXPECT_EQ(decoded.checksumIndexes[1], 0);
       } else {
-         EXPECT_EQ(decoded.checksumIndexes_[0], 0);
-         EXPECT_NE(decoded.checksumIndexes_[1], 0);
+         EXPECT_EQ(decoded.checksumIndexes[0], 0);
+         EXPECT_NE(decoded.checksumIndexes[1], 0);
       }
-      EXPECT_NE(root, decoded.data_);
+      EXPECT_NE(root, decoded.data);
 
       //attempt to repair, may fail because of collisions (no unique solution)
       try {
          auto result = Seeds::Easy16Codec::repair(decoded);
          if (result) {
-            ASSERT_EQ(decoded.repairedIndexes_.size(), 2ULL);
-            EXPECT_EQ(decoded.repairedIndexes_[0], 0);
-            EXPECT_EQ(decoded.repairedIndexes_[1], 0);
-            EXPECT_EQ(root, decoded.data_);
+            ASSERT_EQ(decoded.repairedIndexes.size(), 2ULL);
+            EXPECT_EQ(decoded.repairedIndexes[0], 0);
+            EXPECT_EQ(decoded.repairedIndexes[1], 0);
+            EXPECT_EQ(root, decoded.data);
             ++succesfulRepairs;
          }
       } catch (const Seeds::Easy16RepairError&) {}
@@ -9851,20 +9868,20 @@ TEST_F(BackupTests, Easy16_Repair)
 
       //decode, should yield an incorrect value
       auto decoded = Seeds::Easy16Codec::decode(corrupted);
-      ASSERT_EQ(decoded.checksumIndexes_.size(), 2ULL);
+      ASSERT_EQ(decoded.checksumIndexes.size(), 2ULL);
       if (lineSelect == 0) {
-         EXPECT_EQ(decoded.checksumIndexes_[0], EASY16_INVALID_CHECKSUM_INDEX);
-         EXPECT_EQ(decoded.checksumIndexes_[1], 0);
+         EXPECT_EQ(decoded.checksumIndexes[0], EASY16_INVALID_CHECKSUM_INDEX);
+         EXPECT_EQ(decoded.checksumIndexes[1], 0);
       } else {
-         EXPECT_EQ(decoded.checksumIndexes_[0], 0);
-         EXPECT_EQ(decoded.checksumIndexes_[1], EASY16_INVALID_CHECKSUM_INDEX);
+         EXPECT_EQ(decoded.checksumIndexes[0], 0);
+         EXPECT_EQ(decoded.checksumIndexes[1], EASY16_INVALID_CHECKSUM_INDEX);
       }
-      EXPECT_NE(root, decoded.data_);
+      EXPECT_NE(root, decoded.data);
 
       //attempt to repair, should fail
       auto result = Seeds::Easy16Codec::repair(decoded);
       if (result) {
-         EXPECT_NE(decoded.data_, root);
+         EXPECT_NE(decoded.data, root);
       }
    }
 
@@ -9894,20 +9911,20 @@ TEST_F(BackupTests, Easy16_Repair)
 
       //decode, should yield an incorrect value
       auto decoded = Seeds::Easy16Codec::decode(corrupted);
-      ASSERT_EQ(decoded.checksumIndexes_.size(), 2ULL);
-      EXPECT_NE(decoded.checksumIndexes_[0], 0);
-      EXPECT_NE(decoded.checksumIndexes_[1], 0);
+      ASSERT_EQ(decoded.checksumIndexes.size(), 2ULL);
+      EXPECT_NE(decoded.checksumIndexes[0], 0);
+      EXPECT_NE(decoded.checksumIndexes[1], 0);
 
       //attempt to repair, may fail because of collisions (no evident solution)
       try {
          auto result = Seeds::Easy16Codec::repair(decoded);
          if (result) {
-            ASSERT_EQ(decoded.repairedIndexes_.size(), 2ULL);
-            if (decoded.repairedIndexes_[0] != decoded.repairedIndexes_[1] ||
-               decoded.repairedIndexes_[0] != 0) {
+            ASSERT_EQ(decoded.repairedIndexes.size(), 2ULL);
+            if (decoded.repairedIndexes[0] != decoded.repairedIndexes[1] ||
+               decoded.repairedIndexes[0] != 0) {
                continue;
             }
-            EXPECT_EQ(root, decoded.data_);
+            EXPECT_EQ(root, decoded.data);
             ++succesfulRepairs;
          }
       }
@@ -10180,6 +10197,7 @@ TEST_F(BackupTests, BackupStrings_Legacy_Armory200a)
       filename = restoreResult.wltPtr->getDbFilename();
    }
 
+   ASSERT_FALSE(filename.empty());
    EXPECT_TRUE(compareWalletWithBackup(assetWlt, filename, newPass, newCtrl));
    FileUtils::removeDirectory(newHomeDir);
 }
@@ -10384,16 +10402,16 @@ TEST_F(BackupTests, Easy16_AutoRepair)
 
       //decode the corrupted data, should yield an incorrect value
       auto decoded = Seeds::Easy16Codec::decode(corrupted);
-      ASSERT_EQ(decoded.checksumIndexes_.size(), 2ULL);
+      ASSERT_EQ(decoded.checksumIndexes.size(), 2ULL);
       if (lineSelect == 0) {
-         EXPECT_NE(decoded.checksumIndexes_[0], 0);
-         EXPECT_EQ(decoded.checksumIndexes_[1], 0);
+         EXPECT_NE(decoded.checksumIndexes[0], 0);
+         EXPECT_EQ(decoded.checksumIndexes[1], 0);
       } else {
-         EXPECT_EQ(decoded.checksumIndexes_[0], 0);
-         EXPECT_NE(decoded.checksumIndexes_[1], 0);
+         EXPECT_EQ(decoded.checksumIndexes[0], 0);
+         EXPECT_NE(decoded.checksumIndexes[1], 0);
       }
 
-      EXPECT_NE(root, decoded.data_);
+      EXPECT_NE(root, decoded.data);
 
       //attempt to restore wallet from corrupted backup
       try {
@@ -10404,8 +10422,8 @@ TEST_F(BackupTests, Easy16_AutoRepair)
             {
                case Seeds::RestorePromptType::ChecksumError:
                {
-                  EXPECT_EQ(prompt.checksumResult.at(0), decoded.checksumIndexes_[0]);
-                  EXPECT_EQ(prompt.checksumResult.at(1), decoded.checksumIndexes_[1]);
+                  EXPECT_EQ(prompt.checksumResult.at(0), decoded.checksumIndexes[0]);
+                  EXPECT_EQ(prompt.checksumResult.at(1), decoded.checksumIndexes[1]);
                   return Seeds::PromptReply{false};
                }
 
@@ -10778,7 +10796,184 @@ TEST_F(BackupTests, BackupString_LegacyWO)
    assetWlt->setPassphrasePromptLambda(passLbd);
    auto backupData = Seeds::Helpers::getWalletBackup(
       assetWlt, false);
-   auto backupEasy16 = dynamic_cast<Seeds::Backup_Easy16*>(backupData.get());
+   auto originalWalletId = assetWlt->getID();
+   ASSERT_FALSE(originalWalletId.empty());
+   auto backupEasy16 = dynamic_cast<Seeds::Backup_Easy16Public*>(backupData.get());
+   ASSERT_NE(backupEasy16, nullptr);
+
+   //cleanup the original wallet
+   std::filesystem::path newHomeDir("./newhomedir");
+   FileUtils::removeDirectory(newHomeDir);
+   std::filesystem::create_directory(newHomeDir);
+
+   std::filesystem::path filename;
+   {
+      auto backupCopy = Seeds::Backup_Easy16Public::fromLines({
+         backupEasy16->getBackupId(),
+         backupEasy16->getPublicRoot(Seeds::LineIndex::One),
+         backupEasy16->getPublicRoot(Seeds::LineIndex::Two),
+         backupEasy16->getChaincode(Seeds::LineIndex::One),
+         backupEasy16->getChaincode(Seeds::LineIndex::Two)
+      });
+
+      auto callback = [&originalWalletId](
+         const Seeds::RestorePrompt& prompt)->Seeds::PromptReply
+      {
+         switch (prompt.promptType)
+         {
+            case Seeds::RestorePromptType::ControlPassphrase:
+               throw std::runtime_error("restore should not callback for a ctrl pass");
+
+            case Seeds::RestorePromptType::PrivatePassphrase:
+               throw std::runtime_error("restore should not callback for a priv pass");
+
+            case Seeds::RestorePromptType::Id:
+            {
+               EXPECT_EQ(prompt.walletId, originalWalletId);
+               EXPECT_EQ(prompt.backupType, Seeds::BackupType::Armory200a);
+               return Seeds::PromptReply{true};
+            }
+
+            default:
+               return Seeds::PromptReply{false};
+         }
+      };
+
+      auto restoreResult = Seeds::Helpers::restoreFromBackup(
+         std::move(backupCopy), callback, IO::CreateWalletParams{
+            newHomeDir,
+            Passphrase::SetNew{},
+            Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("ctrl")},
+            nullptr, 10
+         });
+      EXPECT_NE(restoreResult.wltPtr, nullptr);
+      EXPECT_EQ(restoreResult.wltPtr->getID(), originalWalletId);
+      filename = restoreResult.wltPtr->getDbFilename();
+
+      auto newWalletSingle = std::dynamic_pointer_cast<AssetWallet_Single>(restoreResult.wltPtr);
+      auto backupData2 = Seeds::Helpers::getWalletBackup(newWalletSingle, false);
+      auto backupEasy16_2 = dynamic_cast<Seeds::Backup_Easy16Public*>(backupData2.get());
+      ASSERT_NE(backupEasy16_2, nullptr);
+
+      EXPECT_EQ(backupEasy16->getBackupId(), backupEasy16_2->getBackupId());
+      EXPECT_EQ(backupEasy16->getPublicRoot(Seeds::LineIndex::One),
+         backupEasy16_2->getPublicRoot(Seeds::LineIndex::One));
+      EXPECT_EQ(backupEasy16->getPublicRoot(Seeds::LineIndex::Two),
+         backupEasy16_2->getPublicRoot(Seeds::LineIndex::Two));
+      EXPECT_EQ(backupEasy16->getChaincode(Seeds::LineIndex::One),
+         backupEasy16_2->getChaincode(Seeds::LineIndex::One));
+      EXPECT_EQ(backupEasy16->getChaincode(Seeds::LineIndex::Two),
+         backupEasy16_2->getChaincode(Seeds::LineIndex::Two));
+   }
+
+   ASSERT_FALSE(filename.empty());
+   EXPECT_TRUE(compareWalletWithBackup(assetWlt, filename, {}, "ctrl"));
+   FileUtils::removeDirectory(newHomeDir);
+}
+
+TEST_F(BackupTests, BackupString_LegacyStatic)
+{
+   const std::string walletId{"292AxMDBC"};
+   std::vector<std::string_view> fullBackup{
+      "oiow rfta wueg hewo  wuaj jawj rddi uufu  tusi"sv,
+      "idnt enrd sjgo tgfi  esni eutw ktna ustg  arfe"sv,
+      "jdtf fink jshs ewda  kkor daet kgtr eiha  ejgd"sv,
+      "uaew ggod ngjk ejuu  rugf kufg awnn ofas  rhtf"sv
+   };
+
+   std::vector<std::string_view> woBackup{
+      "wswg egsh oghk jnng so"sv,
+      "kdrk ouid agee jttn tfaa ruun twsu jfgu nasj"sv,
+      "otrr egjh farw dfuo gddh ugki fhrt dgeh geth"sv,
+      "jdtf fink jshs ewda kkor daet kgtr eiha ejgd"sv,
+      "uaew ggod ngjk ejuu rugf kufg awnn ofas rhtf"sv
+   };
+
+   auto backupFull = Seeds::Backup_Easy16::fromLines(fullBackup);
+   auto backupWO = Seeds::Backup_Easy16Public::fromLines(woBackup);
+
+   auto callback = [&walletId](
+      const Seeds::RestorePrompt& prompt)->Seeds::PromptReply
+   {
+      switch (prompt.promptType)
+      {
+         case Seeds::RestorePromptType::ControlPassphrase:
+            throw std::runtime_error("restore should not callback for a ctrl pass");
+
+         case Seeds::RestorePromptType::PrivatePassphrase:
+            throw std::runtime_error("restore should not callback for a priv pass");
+
+         case Seeds::RestorePromptType::Id:
+         {
+            EXPECT_EQ(prompt.walletId, walletId);
+            EXPECT_EQ(prompt.backupType, Seeds::BackupType::Armory135a);
+            return Seeds::PromptReply{true};
+         }
+
+         default:
+            return Seeds::PromptReply{false};
+      }
+   };
+
+   std::filesystem::path newHomeDir("./newhomedir");
+   FileUtils::removeDirectory(newHomeDir);
+   std::filesystem::create_directory(newHomeDir);
+   auto fullRestore = Seeds::Helpers::restoreFromBackup(
+      std::move(backupFull), callback, IO::CreateWalletParams{
+         newHomeDir,
+         Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("priv")},
+         Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("ctrl")},
+         nullptr, 10
+      });
+
+   auto woRestore = Seeds::Helpers::restoreFromBackup(
+      std::move(backupWO), callback, IO::CreateWalletParams{
+         newHomeDir,
+         Passphrase::SetNew{},
+         Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("woctrl")},
+         nullptr, 10
+      });
+   auto filename = woRestore.wltPtr->getDbFilename();
+   auto wltSingle = std::dynamic_pointer_cast<AssetWallet_Single>(
+      fullRestore.wltPtr);
+   auto passLbd = [](const std::set<EncryptionKeyId>&)
+   ->Passphrase::Result
+   {
+      return { SecureBinaryData::fromString("priv"), true };
+   };
+   wltSingle->setPassphrasePromptLambda(passLbd);
+
+   auto newFullBackup = Seeds::Helpers::getWalletBackup(wltSingle, true);
+   auto newFullBackE16 = dynamic_cast<Seeds::Backup_Easy16*>(
+      newFullBackup.get());
+   ASSERT_NE(newFullBackE16, nullptr);
+   EXPECT_EQ(newFullBackE16->getRoot(Seeds::LineIndex::One, false), fullBackup[0]);
+   EXPECT_EQ(newFullBackE16->getRoot(Seeds::LineIndex::Two, false), fullBackup[1]);
+   EXPECT_EQ(newFullBackE16->getChaincode(Seeds::LineIndex::One, false), fullBackup[2]);
+   EXPECT_EQ(newFullBackE16->getChaincode(Seeds::LineIndex::Two, false), fullBackup[3]);
+   EXPECT_TRUE(compareWalletWithBackup(wltSingle, filename, {}, "woctrl"));
+
+   auto woWltSingle = std::dynamic_pointer_cast<AssetWallet_Single>(
+      woRestore.wltPtr);
+   auto newBackupWO = Seeds::Helpers::getWalletBackup(woWltSingle, false);
+   auto newBackupPublic = dynamic_cast<Seeds::Backup_Easy16Public*>(
+      newBackupWO.get());
+   ASSERT_NE(newBackupPublic, nullptr);
+   EXPECT_EQ(newBackupPublic->getBackupId(), woBackup[0]);
+   EXPECT_EQ(newBackupPublic->getPublicRoot(Seeds::LineIndex::One), woBackup[1]);
+   EXPECT_EQ(newBackupPublic->getPublicRoot(Seeds::LineIndex::Two), woBackup[2]);
+   EXPECT_EQ(newBackupPublic->getChaincode(Seeds::LineIndex::One), woBackup[3]);
+   EXPECT_EQ(newBackupPublic->getChaincode(Seeds::LineIndex::Two), woBackup[4]);
+
+   auto fullWltWOBackup = Seeds::Helpers::getWalletBackup(wltSingle, false);
+   auto fullBackupPublic = dynamic_cast<Seeds::Backup_Easy16Public*>(
+      newBackupWO.get());
+   ASSERT_NE(fullBackupPublic, nullptr);
+   EXPECT_EQ(fullBackupPublic->getBackupId(), woBackup[0]);
+   EXPECT_EQ(fullBackupPublic->getPublicRoot(Seeds::LineIndex::One), woBackup[1]);
+   EXPECT_EQ(fullBackupPublic->getPublicRoot(Seeds::LineIndex::Two), woBackup[2]);
+   EXPECT_EQ(fullBackupPublic->getChaincode(Seeds::LineIndex::One), woBackup[3]);
+   EXPECT_EQ(fullBackupPublic->getChaincode(Seeds::LineIndex::Two), woBackup[4]);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

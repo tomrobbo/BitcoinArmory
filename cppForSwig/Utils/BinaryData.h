@@ -303,7 +303,8 @@ public:
    void setRef(const std::string&);
    void setRef(const BinaryData&);
 
-   static BinaryDataRef fromString(const std::string&, size_t len=SIZE_MAX);
+   static BinaryDataRef fromString(const std::string&, size_t=SIZE_MAX);
+   static BinaryDataRef fromStringView(const std::string_view&, size_t=SIZE_MAX);
 
    /////////////////////////////////////////////////////////////////////////////
    // UNSAFE -- you don't know if outData holds enough space for this
@@ -352,7 +353,7 @@ public:
 
    /////////////////////////////////////////////////////////////////////////////
    bool isSameRefAs(const BinaryDataRef&) const;
-   std::string toHexStr(bool bigEndian=false) const;
+   std::string toHexStr(bool=false) const;
    bool isZero(void) const;
 
 private:

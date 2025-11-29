@@ -48,7 +48,7 @@ namespace
       if (sType == Armory::Seeds::SeedType::ArmoryLegacyPublic) {
          /*
          Legacy wallets root and seeds are essentially the same.
-         A public (wathcing-only) legacy wallet is a root pubkey + chaincode.
+         A public (watching-only) legacy wallet is a root pubkey + chaincode.
          Legacy wallets may or may not have a deterministic chaincode, but you
          cannot tell with WO root, so we distinguish on disk between full roots
          (with a private key) and WO roots (pubkey + cc), by using different

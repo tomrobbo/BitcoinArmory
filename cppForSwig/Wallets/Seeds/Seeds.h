@@ -205,6 +205,7 @@ namespace Armory
 
       public:
          //pub root asset + chaincode
+         ClearTextSeed_ArmoryPublic(BinaryDataRef, BinaryDataRef, LegacyType);
          ClearTextSeed_ArmoryPublic(std::shared_ptr<Assets::Asset_PublicKey>,
             const SecureBinaryData&, LegacyType);
 
@@ -217,6 +218,8 @@ namespace Armory
          //local
          const SecureBinaryData& getPublicRoot(void) const;
          const SecureBinaryData& getChaincode(void) const;
+         BinaryData getRawId(void) const;
+         LegacyType getLegacyType(void) const;
       };
 
       ////////

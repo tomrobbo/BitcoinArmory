@@ -2043,7 +2043,7 @@ protected:
 
    WalletData progressWalletCreation(const std::string& callbackId,
       const std::string& passphrase, std::chrono::milliseconds targetMs,
-      uint32_t targetMB, int lookup)
+      uint32_t targetMB, int lookup, bool WO=false)
    {
       std::string masterId;
       std::filesystem::path path;
@@ -2137,6 +2137,9 @@ protected:
                   {
                      if (notifCount++ != 2) {
                         throw std::runtime_error("count != 2");
+                     }
+                     if (WO) {
+                        ++notifCount;
                      }
 
                      auto fullPath = std::filesystem::path{"./fakehomedir"} / path;
@@ -2353,14 +2356,19 @@ protected:
 
          restoreWltReq.setCallbackId(callbackId);
 
-         auto rootLines = restoreWltReq.initRoot(2);
-         rootLines.set(0, lines[0]);
-         rootLines.set(1, lines[1]);
+         size_t lineIndex = 0;
+         if (lines.size() == 5) {
+            restoreWltReq.setBackupId(lines[lineIndex++]);
+         }
 
-         if (lines.size() == 4) {
+         auto rootLines = restoreWltReq.initRoot(2);
+         rootLines.set(0, lines[lineIndex++]);
+         rootLines.set(1, lines[lineIndex++]);
+
+         if (lineIndex < lines.size()) {
             auto ccLines = restoreWltReq.initChaincode(2);
-            ccLines.set(0, lines[2]);
-            ccLines.set(1, lines[3]);
+            ccLines.set(0, lines[lineIndex++]);
+            ccLines.set(1, lines[lineIndex++]);
          }
 
          auto rawReq = serializeCapnp(message);
@@ -2436,7 +2444,7 @@ protected:
       //create wallet notifs
       auto wltData = progressWalletCreation(callbackId,
          passphrase, targetMs, targetMB,
-         expectedLookup);
+         expectedLookup, lines.size() == 5);
 
       //validate reply
       auto result = waitOnReply();
@@ -3101,6 +3109,84 @@ TEST_F(BridgeTests, RestoreWallet_Legacy)
       }
    } catch (const std::exception& e) {
       ASSERT_TRUE(false) << e.what();
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(BridgeTests, RestoreWallet_LegacyWO)
+{
+   const std::string walletId{"292AxMD9H"};
+   const std::vector<std::string> lines {
+      "wswg egsh oghk aaaj eu",
+      "kdrk ouid agee jttn tfaa ruun twsu jfgu nasj",
+      "otrr egjh farw dfuo gddh ugki fhrt dgeh geth",
+      "jdtf fink jshs ewda kkor daet kgtr eiha ejgd",
+      "uaew ggod ngjk ejuu rugf kufg awnn ofas rhtf",
+   };
+   const std::string passphrase{"privPassTest"};
+
+   //restore the wallet
+   auto restoreData = restoreWallet(lines, walletId,
+      Codec::Bridge::WalletBackup::Type::LEGACY135_A,
+      passphrase, 300ms, 32, false, 500);
+
+   //get the wallet data & validate it
+   auto wltData = getWalletData(bridge_, walletId);
+   EXPECT_EQ(wltData.walletId, walletId);
+   EXPECT_FALSE(wltData.accountId.empty());
+   EXPECT_EQ(wltData.path.filename(), restoreData.path);
+   EXPECT_EQ(wltData.masterId, restoreData.masterId);
+
+   EXPECT_FALSE(wltData.encrypted);
+   EXPECT_TRUE(wltData.watchingOnly);
+   EXPECT_EQ(wltData.addresses.size(), 1);
+   EXPECT_EQ(wltData.lookup, 500);
+   EXPECT_EQ(wltData.kdfMemReq, 0);
+
+   //grab backup strings
+   {
+      auto refId = rand();
+
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto request = toBridge.initWallet();
+      request.setWalletId(walletId);
+      auto reqBackup = request.initCreateBackupString();
+      reqBackup.setPublic();
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge_, rawReq);
+
+      //check the backup
+      auto backup = waitOnReply();
+      auto words = kj::ArrayPtr<const capnp::word>(
+         reinterpret_cast<const capnp::word*>(backup->data.getPtr()),
+         backup->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader replyReader(words);
+      auto fromBridge = replyReader.getRoot<Codec::Bridge::FromBridge>();
+      ASSERT_EQ(fromBridge.which(), Codec::Bridge::FromBridge::REPLY);
+      auto reply = fromBridge.getReply();
+      ASSERT_TRUE(reply.getSuccess());
+      ASSERT_EQ(reply.getReferenceId(), refId);
+
+      ASSERT_EQ(reply.which(), Codec::Bridge::RpcReply::WALLET);
+      auto walletReply = reply.getWallet();
+      ASSERT_EQ(walletReply.which(), Codec::Bridge::WalletReply::CREATE_BACKUP_STRING);
+
+      auto capnBackup = walletReply.getCreateBackupString();
+      auto rootLines = capnBackup.getRootClear();
+      ASSERT_EQ(rootLines.size(), 2);
+      ASSERT_EQ(rootLines[0], lines[1]);
+      ASSERT_EQ(rootLines[1], lines[2]);
+
+      auto chainLines = capnBackup.getChainClear();
+      ASSERT_EQ(chainLines.size(), 2);
+      ASSERT_EQ(chainLines[0], lines[3]);
+      ASSERT_EQ(chainLines[1], lines[4]);
+
+      //backupid
+      auto backupId = capnBackup.getBackupId();
+      ASSERT_EQ(backupId, lines[0]);
    }
 }
 

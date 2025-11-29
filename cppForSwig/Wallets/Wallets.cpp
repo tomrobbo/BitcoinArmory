@@ -1136,6 +1136,13 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::createFromSeed(
          break;
       }
 
+      case Seeds::SeedType::ArmoryLegacyPublic:
+      {
+         auto seedLegacy = dynamic_cast<ClearTextSeed_ArmoryPublic*>(seed.get());
+         result = createFromPublicSeed(seedLegacy, params);
+         break;
+      }
+
       case Seeds::SeedType::BIP32_Structured:
       case Seeds::SeedType::BIP32_Virgin:
       case Seeds::SeedType::BIP32_base58Root:
@@ -1192,7 +1199,7 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::createFromSeed(
       }
 
       //legacy derivation bootstraps the accounts with asset 0,
-      //lookup should be - 1
+      //lookup should be reduced by 1
       accountPtr->extendPrivateChain(
          iface, walletPtr->decryptedData_, params.lookup - 1);
    }
@@ -1337,23 +1344,24 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::createFromSeed(
 
 ////////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<AssetWallet_Single>
-AssetWallet_Single::createFromPublicRoot_Armory135(
-   SecureBinaryData& pubRoot, SecureBinaryData& chainCode,
+AssetWallet_Single::createFromPublicSeed(
+   Seeds::ClearTextSeed_ArmoryPublic* seed,
    const IO::CreateWalletParams& params)
 {
    //create wallet file and dbenv
-   auto masterID = generateMasterId(pubRoot, chainCode);
+   auto masterID = seed->getMasterId();
    auto iface = createIface(
       params.getCreateFileParams(masterID, "WatchingOnly"),
       params.progressFunc
    );
 
-   auto walletID = generateWalletId(pubRoot, chainCode, SeedType::ArmoryLegacy);
+   SecureBinaryData pubRoot = seed->getPublicRoot();
    auto rootPtr = std::make_shared<AssetEntry_ArmoryLegacyRoot>(
-      AssetId::getRootAssetId(), pubRoot, nullptr, chainCode,
-      LegacyType::Undefined);
+      AssetId::getRootAssetId(), pubRoot, nullptr, seed->getChaincode(),
+      seed->getLegacyType());
 
    //create wallet
+   auto walletID = seed->getWalletId();
    auto walletPtr = initWalletDbWithPubRoot(
       iface, masterID, walletID,
       rootPtr, params);
@@ -1366,14 +1374,15 @@ AssetWallet_Single::createFromPublicRoot_Armory135(
    account135->setMain(true);
 
    auto accountPtr = walletPtr->createAccount(account135, params.progressFunc);
-   if (params.progressFunc) {
-      auto prg = std::make_unique<Progress::ExtendChain>(params.lookup);
-      params.progressFunc(std::move(prg));
+   if (params.lookup > 0) {
+      if (params.progressFunc) {
+         auto prg = std::make_unique<Progress::ExtendChain>(params.lookup);
+         params.progressFunc(std::move(prg));
+      }
+      //legacy derivation bootstraps the accounts with asset 0,
+      //lookup should be reduce by 1
+      accountPtr->extendPublicChain(iface, params.lookup - 1);
    }
-
-   //legacy derivation bootstraps the accounts with asset 0,
-   //lookup should be -1
-   accountPtr->extendPublicChain(iface, params.lookup - 1);
    return walletPtr;
 }
 

@@ -30,6 +30,7 @@ struct WalletBackup {
 
    spPass      @4 : Text;
    backupType  @5 : Type;
+   backupId    @6 : Text; #for WO backups only
 }
 
 struct WalletData {
@@ -620,8 +621,9 @@ struct UtilsRequest {
    struct RestoreWalletStruct {
       root              @0 : List(Text);
       chaincode         @1 : List(Text);
-      spPass            @2 : Text;
-      callbackId        @3 : Text;
+      backupId          @2 : Text;
+      spPass            @3 : Text;
+      callbackId        @4 : Text;
    }
 
    union {

@@ -1108,15 +1108,21 @@ namespace
 
             auto roots = walletRequest.getRoot();
             auto chaincodes = walletRequest.getChaincode();
+            auto backupId = walletRequest.getBackupId();
             std::vector<std::string_view> lines;
-            lines.reserve(roots.size() + chaincodes.size());
+            lines.reserve(roots.size() + chaincodes.size() + 1);
+
+            if (backupId.size() != 0) {
+               lines.emplace_back(std::string_view{
+                  backupId.begin(), backupId.size()});
+            }
             for (const auto& root : roots) {
-               lines.emplace_back(
-                  std::string_view{root.begin(), root.size()});
+               lines.emplace_back(std::string_view{
+                  root.begin(), root.size()});
             }
             for (const auto& chaincode : chaincodes) {
-               lines.emplace_back(
-                  std::string_view{chaincode.begin(), chaincode.size()});
+               lines.emplace_back(std::string_view{
+                  chaincode.begin(), chaincode.size()});
             }
 
             auto spPassCapnp = walletRequest.getSpPass();

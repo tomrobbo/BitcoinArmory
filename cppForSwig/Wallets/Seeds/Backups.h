@@ -93,10 +93,10 @@ namespace Armory
       ////
       struct BackupEasy16DecodeResult
       {
-         std::vector<int> checksumIndexes_;
-         std::vector<int> repairedIndexes_;
-         std::vector<BinaryData> checksums_;
-         SecureBinaryData data_;
+         std::vector<int> checksumIndexes;
+         std::vector<int> repairedIndexes;
+         std::vector<BinaryData> checksums;
+         SecureBinaryData data;
 
          bool isInitialized(void) const;
          bool isValid(void) const;
@@ -108,8 +108,10 @@ namespace Armory
       {
          extern const std::set<BackupType> eligibleIndexes;
          extern const char characters[];
+         extern const std::map<char, uint8_t> easy16Vals;
 
-         std::vector<SecureBinaryData> encode(const BinaryDataRef, BackupType);
+         std::vector<SecureBinaryData> encode(const BinaryDataRef,
+            BackupType, bool=true);
          BackupEasy16DecodeResult decode(const std::vector<SecureBinaryData>&);
          BackupEasy16DecodeResult decode(const std::vector<BinaryDataRef>&);
          bool repair(BackupEasy16DecodeResult&);
@@ -182,16 +184,19 @@ namespace Armory
 
          static std::unique_ptr<Backup_Easy16> fromLines(
             const std::vector<std::string_view>&,
-            std::string_view spPass = {});
+            std::string_view = {});
       };
 
       ////
       class Backup_Easy16Public : public WalletBackup
       {
       private:
-         std::string backupId_;
+         SecureBinaryData backupId_;
          std::vector<SecureBinaryData> publicRoot_;
          std::vector<SecureBinaryData> chaincode_;
+
+      private:
+         Backup_Easy16Public(BackupType);
 
       public:
          Backup_Easy16Public(BackupType,
@@ -200,8 +205,12 @@ namespace Armory
          );
          ~Backup_Easy16Public(void) override;
 
+         std::string_view getBackupId(void) const;
          std::string_view getPublicRoot(LineIndex) const;
          std::string_view getChaincode(LineIndex) const;
+
+         static std::unique_ptr<Backup_Easy16Public> fromLines(
+            const std::vector<std::string_view>&);
       };
 
       ////
@@ -249,6 +258,7 @@ namespace Armory
 
          //mismatch between expected backup type and resolved type
          ChecksumMismatch = 4,
+         PubkeyChecksumMismatch = 44,
 
          //failed to decrypt secure print string
          DecryptError = 5,
@@ -321,5 +331,5 @@ namespace Armory
          static std::unique_ptr<ClearTextSeed> restoreFromBIP39(
             std::unique_ptr<WalletBackup>);
       };
-   }; //namespace Backups
-}; //namespace Armory
+   } //namespace Backups
+} //namespace Armory

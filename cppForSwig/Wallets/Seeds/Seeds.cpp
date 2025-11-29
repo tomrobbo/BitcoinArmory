@@ -507,6 +507,13 @@ LegacyType ClearTextSeed_Armory::getLegacyType() const
 ////////////////////////////////////////////////////////////////////////////////
 // ClearTextSeed_ArmoryPublic
 ClearTextSeed_ArmoryPublic::ClearTextSeed_ArmoryPublic(
+   BinaryDataRef pubkey, BinaryDataRef chaincode, LegacyType lType) :
+   ClearTextSeed{SeedType::ArmoryLegacyPublic},
+   pubRoot_{pubkey}, chaincode_{chaincode},
+   legacyType_{lType}
+{}
+
+ClearTextSeed_ArmoryPublic::ClearTextSeed_ArmoryPublic(
    std::shared_ptr<Assets::Asset_PublicKey> pubkey,
    const SecureBinaryData& chaincode, LegacyType lType) :
    ClearTextSeed{SeedType::ArmoryLegacyPublic},
@@ -528,6 +535,11 @@ const SecureBinaryData& ClearTextSeed_ArmoryPublic::getChaincode() const
    return chaincode_;
 }
 
+LegacyType ClearTextSeed_ArmoryPublic::getLegacyType() const
+{
+   return legacyType_;
+}
+
 ////
 WalletId ClearTextSeed_ArmoryPublic::computeWalletId() const
 {
@@ -542,6 +554,19 @@ WalletId ClearTextSeed_ArmoryPublic::computeMasterId() const
       return generateMasterId(rootUnc, chaincode_);
    } else {
       return generateMasterId(pubRoot_, chaincode_);
+   }
+}
+
+BinaryData ClearTextSeed_ArmoryPublic::getRawId() const
+{
+   //uncompressed pubkey
+   if (pubRoot_.getSize() != 65) {
+      auto rootUnc = Cryptography::ECDSA::uncompressPoint(pubRoot_);
+      return Wallets::generateWalletIdRaw(
+         rootUnc, chaincode_, SeedType::ArmoryLegacyPublic);
+   } else {
+      return Wallets::generateWalletIdRaw(
+         pubRoot_, chaincode_, SeedType::ArmoryLegacyPublic);
    }
 }
 

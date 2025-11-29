@@ -773,6 +773,18 @@ BinaryDataRef BinaryDataRef::fromString(const std::string& str, size_t len)
    return data;
 }
 
+BinaryDataRef BinaryDataRef::fromStringView(
+   const std::string_view& sv, size_t len)
+{
+   if (len == SIZE_MAX) {
+      len = sv.size();
+   }
+
+   BinaryDataRef data;
+   data.setRef((const uint8_t*)sv.data(), len);
+   return data;
+}
+
 /////////////////////////////////////////////////////////////////////////////
 void BinaryDataRef::copyTo(uint8_t* outData) const
 {

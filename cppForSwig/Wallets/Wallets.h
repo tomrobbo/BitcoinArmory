@@ -41,6 +41,7 @@ namespace Armory
       class EncryptedSeed;
       class ClearTextSeed;
       class ClearTextSeed_Armory;
+      class ClearTextSeed_ArmoryPublic;
       class ClearTextSeed_BIP32;
    }
 
@@ -361,13 +362,12 @@ namespace Armory
 
          //static
          static std::shared_ptr<AssetWallet_Single> createFromSeed(
-            std::unique_ptr<Armory::Seeds::ClearTextSeed>,
+            std::unique_ptr<Seeds::ClearTextSeed>,
             const IO::CreateWalletParams&);
 
          static std::shared_ptr<AssetWallet_Single>
-         createFromPublicRoot_Armory135(
-            SecureBinaryData&, //pub root
-            SecureBinaryData&, //chaincode
+         createFromPublicSeed(
+            Seeds::ClearTextSeed_ArmoryPublic*,
             const IO::CreateWalletParams&);
 
          static std::shared_ptr<AssetWallet_Single> createBlank(
