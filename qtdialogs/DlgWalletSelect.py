@@ -1,14 +1,14 @@
-##############################################################################
-#                                                                            #
-# Copyright (C) 2011-2015, Armory Technologies, Inc.                         #
-# Distributed under the GNU Affero General Public License (AGPL v3)          #
-# See LICENSE or http://www.gnu.org/licenses/agpl.html                       #
-#                                                                            #
-# Copyright (C) 2016-2022, goatpig                                           #
-#  Distributed under the MIT license                                         #
-#  See LICENSE-MIT or https://opensource.org/licenses/MIT                    #
-#                                                                            #
-##############################################################################
+################################################################################
+#                                                                              #
+# Copyright (C) 2011-2015, Armory Technologies, Inc.                           #
+# Distributed under the GNU Affero General Public License (AGPL v3)            #
+# See LICENSE or http://www.gnu.org/licenses/agpl.html                         #
+#                                                                              #
+# Copyright (C) 2016-2025, goatpig                                             #
+#  Distributed under the MIT license                                           #
+#  See LICENSE-MIT or https://opensource.org/licenses/MIT                      #
+#                                                                              #
+################################################################################
 
 from qtpy import QtWidgets
 
@@ -20,21 +20,16 @@ from ui.WalletFrames import SelectWalletFrame
 class DlgWalletSelect(ArmoryDialog):
    def __init__(self, parent=None, main=None, title='Select Wallet:', descr='',
       firstSelect=None, onlyMyWallets=False, wltIDList=None, atLeast=0):
-      super(DlgWalletSelect, self).__init__(parent, main)
-
+      super().__init__(parent, main)
 
       self.balAtLeast = atLeast
-
-      if self.main and len(self.main.walletMap) == 0:
+      if self.main and self.main.wallets.empty():
          QtWidgets.QMessageBox.critical(self, self.tr('No Wallets!'),
             self.tr('There are no wallets to select from. '
             'Please create or import a wallet first.'),
             QtWidgets.QMessageBox.Ok)
-         self.accept()
+         self.reject()
          return
-
-      if wltIDList == None:
-         wltIDList = list(self.main.walletIDList)
 
       # Start the layout
       layout = QtWidgets.QVBoxLayout()
@@ -60,6 +55,6 @@ class DlgWalletSelect(ArmoryDialog):
       self.setWindowTitle(self.tr('Select Wallet'))
 
    def selectWallet(self, wlt, isDoubleClick=False):
-      self.selectedID = wlt.uniqueIDB58
+      self.selectedID = wlt.dbId
       if isDoubleClick:
          self.accept()

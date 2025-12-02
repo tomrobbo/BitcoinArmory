@@ -737,7 +737,7 @@ void DatabaseBuilder::commitAllTxHints(
    //txhints at a time. This is relevant, as hints are first pulled from
    //disk then updated. In case 2 different blocks commit to the same
    //hint, one will likely overwrite the other.
-   auto hintdbtx = db_->beginTransaction(TXHINTS, LMDB::ReadWrite);
+   auto hintdbtx = db_->beginTransaction(TXHINTS, LMDB::Mode::ReadWrite);
 
    {
       auto addTxHintMap =
@@ -833,7 +833,7 @@ void DatabaseBuilder::commitAllStxos(
       }
    }
 
-   auto tx = db_->beginTransaction(STXO, LMDB::ReadWrite);
+   auto tx = db_->beginTransaction(STXO, LMDB::Mode::ReadWrite);
    for (auto& bwPair : serializedStxos) {
       if (bwPair.first.getSize() == 6) {
          auto key = db_->getValueNoCopy(STXO, bwPair.first.getRef());
@@ -981,7 +981,7 @@ void DatabaseBuilder::verifyTransactions()
       unsigned thisHeight = 0;
       unsigned failedVerifications = 0;
 
-      auto&& hintdbtx = db_->beginTransaction(TXHINTS, LMDB::ReadOnly);
+      auto&& hintdbtx = db_->beginTransaction(TXHINTS, LMDB::Mode::ReadOnly);
 
       while (thisHeight < blockchain_->top()->getBlockHeight())
       {
@@ -1113,7 +1113,7 @@ void DatabaseBuilder::verifyTxFilters()
 
    auto checkThr = [&](void)->void
    {
-      auto&& tx = db_->beginTransaction(TXFILTERS, LMDB::ReadOnly);
+      auto&& tx = db_->beginTransaction(TXFILTERS, LMDB::Mode::ReadOnly);
 
       set<unsigned> mismatchedFilters;
 
@@ -1198,7 +1198,7 @@ void DatabaseBuilder::repairTxFilters(const set<unsigned>& badFilters)
    {
       LOGINFO << "clearing damaged filters";
 
-      auto&& tx = db_->beginTransaction(TXFILTERS, LMDB::ReadWrite);
+      auto&& tx = db_->beginTransaction(TXFILTERS, LMDB::Mode::ReadWrite);
 
       for (auto& filter : badFilters)
       {
@@ -1298,7 +1298,7 @@ void DatabaseBuilder::reprocessTxFilter(
 
    {
       //delete existing txfilter
-      auto tx = db_->beginTransaction(TXFILTERS, LMDB::ReadWrite);
+      auto tx = db_->beginTransaction(TXFILTERS, LMDB::Mode::ReadWrite);
       auto dbkey = DBUtils::getFilterPoolKey(fileID);
       db_->deleteValue(TXFILTERS, dbkey);
 
@@ -1363,7 +1363,7 @@ void DatabaseBuilder::checkTxHintsIntegrity()
 
          //check hashes can be resolved via tx hints db
          int missedCount = 0;
-         auto dbtx = db_->beginTransaction(TXHINTS, LMDB::ReadOnly);
+         auto dbtx = db_->beginTransaction(TXHINTS, LMDB::Mode::ReadOnly);
          for (const auto& blockData : bdList) {
             //skip blocks not in the main chain
             auto headerPtr = blockchain_->getHeaderByHash(blockData->getHash());

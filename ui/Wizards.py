@@ -84,7 +84,7 @@ class CreateWalletNotifHandler(ServerPush):
 
    def replyWithPassphrase(self, targetMs, targetMB, passphrase):
       packet = self.getNewPacket()
-      reply = packet.init('walletCreation')
+      reply = packet.init('setPassphrase')
       reply.passphrase = passphrase
       reply.kdfTargetMs = targetMs
       reply.kdfTargetMB = targetMB
@@ -97,11 +97,11 @@ class CreateWalletNotifHandler(ServerPush):
          self.frame.setDone()
          return
 
-      elif payload.which() == 'walletCreation':
-         notif = payload.walletCreation
-         if notif.which() == 'setCtrlPass':
+      elif payload.which() == 'setPassphrase':
+         notif = payload.setPassphrase
+         if notif.which() == 'controlPass':
             self.wizard.setControlPassphrase(self.replyWithPassphrase)
-         elif notif.which() == 'setPrivPass':
+         elif notif.which() == 'privatePass':
             self.wizard.setPrivatePassphrase(self.replyWithPassphrase)
          else:
             return

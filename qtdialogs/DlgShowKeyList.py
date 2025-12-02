@@ -236,7 +236,7 @@ class DlgShowKeyList(ArmoryDialog):
          binChain0Chk, binChain1Chk = None, None
 
       self.havePriv = False
-      topChain = self.wlt.highestUsedChainIndex
+      topChain = self.wlt.getHighestUsedIndex()
       extraLbl = ''
 
       for addr in self.addrCopies:

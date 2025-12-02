@@ -22,22 +22,35 @@
 #define WALLETHEADER_CONTROL_VERSION      0x00000001
 #define WALLETHEADER_CUSTOM_VERSION       0x00000001
 
+using namespace Armory;
 using namespace Armory::Wallets::IO;
 
 ////////////////////////////////////////////////////////////////////////////////
-Armory::Wallets::WalletException::WalletException(const std::string& msg) :
+//// WalletException
+Wallets::WalletException::WalletException(const std::string& msg) :
    std::runtime_error(msg)
 {}
 
 ////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
 //// WalletHeader
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
+WalletHeader::WalletHeader(WalletHeaderType type, const BinaryData& mb) :
+   type_(type), magicBytes_(mb)
+{}
+
 WalletHeader::~WalletHeader()
 {}
 
 ////////////////////////////////////////////////////////////////////////////////
+const Wallets::WalletId& WalletHeader::getWalletID() const
+{
+   return walletID_;
+}
+
+std::string WalletHeader::getDbName() const
+{
+   return walletID_;
+}
+
 BinaryData WalletHeader::getDbKey()
 {
    if (walletID_.empty()) {
@@ -51,39 +64,16 @@ BinaryData WalletHeader::getDbKey()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-BinaryData WalletHeader_Control::serializeVersion() const
+const SecureBinaryData& WalletHeader::getDefaultEncryptionKey() const
 {
-   BinaryWriter bw;
-   bw.put_uint32_t(HEADER_VERSION);
-   bw.put_uint8_t(versionMajor_);
-   bw.put_uint16_t(versionMinor_);
-   bw.put_uint16_t(revision_);
-   bw.put_uint32_t(ENCRYPTION_TOPLAYER_VERSION);
-
-   return bw.getData();
+   return defaultEncryptionKey_;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-void WalletHeader_Control::unseralizeVersion(BinaryRefReader& brr)
+const Wallets::EncryptionKeyId& WalletHeader::getDefaultEncryptionKeyId() const
 {
-   auto version = brr.get_uint32_t();
-   switch (version)
-   {
-      case 0x00000001:
-      {
-         versionMajor_ = brr.get_uint8_t();
-         versionMinor_ = brr.get_uint16_t();
-         revision_ = brr.get_uint16_t();
-         encryptionVersion_ = brr.get_uint32_t();
-         break;
-      }
-
-      default:
-         throw WalletException("unsupported version packet");
-   }
+   return defaultEncryptionKeyId_;
 }
 
-////////////////////////////////////////////////////////////////////////////////
 BinaryData WalletHeader::serializeEncryptionKey() const
 {
    BinaryWriter bw;
@@ -100,7 +90,6 @@ BinaryData WalletHeader::serializeEncryptionKey() const
    return bw.getData();
 }
 
-////////////////////////////////////////////////////////////////////////////////
 void WalletHeader::unserializeEncryptionKey(BinaryRefReader& brr)
 {
    auto version = brr.get_uint32_t();
@@ -139,7 +128,6 @@ BinaryData WalletHeader::serializeControlSalt() const
    return bw.getData();
 }
 
-////////////////////////////////////////////////////////////////////////////////
 void WalletHeader::unserializeControlSalt(BinaryRefReader& brr)
 {
    auto version = brr.get_uint32_t();
@@ -155,107 +143,6 @@ void WalletHeader::unserializeControlSalt(BinaryRefReader& brr)
       default:
          throw WalletException("unsupported header salt version");
    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-BinaryData WalletHeader_Single::serialize() const
-{
-   BinaryWriter bw;
-   bw.put_uint32_t(WALLETHEADER_SINGLE_VERSION);
-   bw.put_uint32_t(type_);
-   bw.put_BinaryData(magicBytes_);
-   bw.put_BinaryData(serializeEncryptionKey());
-   bw.put_BinaryData(serializeControlSalt());
-
-   BinaryWriter final_bw;
-   final_bw.put_var_int(bw.getSize());
-   final_bw.put_BinaryDataRef(bw.getDataRef());
-   return final_bw.getData();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-bool WalletHeader_Single::shouldLoad() const
-{
-   return true;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-BinaryData WalletHeader_Multisig::serialize() const
-{
-   BinaryWriter bw;
-   bw.put_uint32_t(WALLETHEADER_MULTISIG_VERSION);
-   bw.put_uint32_t(type_);
-   bw.put_BinaryData(magicBytes_);
-   bw.put_BinaryData(serializeEncryptionKey());
-   bw.put_BinaryData(serializeControlSalt());
-
-   BinaryWriter final_bw;
-   final_bw.put_var_int(bw.getSize());
-   final_bw.put_BinaryDataRef(bw.getDataRef());
-   return final_bw.getData();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-bool WalletHeader_Multisig::shouldLoad() const
-{
-   return true;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-BinaryData WalletHeader_Subwallet::serialize() const
-{
-   BinaryWriter bw;
-   bw.put_uint32_t(WALLETHEADER_SUBWALLET_VERSION);
-   bw.put_var_int(4);
-   bw.put_uint32_t(type_);
-   return bw.getData();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-bool WalletHeader_Subwallet::shouldLoad() const
-{
-   return false;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-BinaryData WalletHeader_Control::serialize() const
-{
-   BinaryWriter bw;
-   bw.put_uint32_t(WALLETHEADER_CONTROL_VERSION);
-   bw.put_uint32_t(type_);
-   bw.put_BinaryData(serializeVersion());
-   bw.put_BinaryData(serializeEncryptionKey());
-   bw.put_BinaryData(serializeControlSalt());
-
-   BinaryWriter final_bw;
-   final_bw.put_var_int(bw.getSize());
-   final_bw.put_BinaryDataRef(bw.getDataRef());
-   return final_bw.getData();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-bool WalletHeader_Control::shouldLoad() const
-{
-   return true;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-BinaryData WalletHeader_Custom::serialize() const
-{
-   BinaryWriter bw;
-   bw.put_uint32_t(WALLETHEADER_CUSTOM_VERSION);
-   bw.put_uint32_t(type_);
-
-   BinaryWriter final_bw;
-   final_bw.put_var_int(bw.getSize());
-   final_bw.put_BinaryDataRef(bw.getDataRef());
-   return final_bw.getData();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-bool WalletHeader_Custom::shouldLoad() const
-{
-   return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -393,6 +280,170 @@ std::shared_ptr<WalletHeader> WalletHeader::deserialize(
          throw WalletException("invalid wallet type");
    }
 
-   wltHeaderPtr->walletID_ = brrKey.get_String(brrKey.getSizeRemaining());
+   wltHeaderPtr->walletID_ = brrKey.get_BinaryDataRef(
+      brrKey.getSizeRemaining());
    return wltHeaderPtr;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//// WalletHeader_Control
+WalletHeader_Control::WalletHeader_Control() :
+   WalletHeader(WalletHeaderType_Control, {})
+{
+   versionMajor_ = VERSION_MAJOR;
+   versionMinor_ = VERSION_MINOR;
+   revision_ = VERSION_REVISION;
+   encryptionVersion_ = ENCRYPTION_TOPLAYER_VERSION;
+}
+
+bool WalletHeader_Control::shouldLoad() const
+{
+   return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+BinaryData WalletHeader_Control::serializeVersion() const
+{
+   BinaryWriter bw;
+   bw.put_uint32_t(HEADER_VERSION);
+   bw.put_uint8_t(versionMajor_);
+   bw.put_uint16_t(versionMinor_);
+   bw.put_uint16_t(revision_);
+   bw.put_uint32_t(ENCRYPTION_TOPLAYER_VERSION);
+   return bw.getData();
+}
+
+void WalletHeader_Control::unseralizeVersion(BinaryRefReader& brr)
+{
+   auto version = brr.get_uint32_t();
+   switch (version)
+   {
+      case 0x00000001:
+      {
+         versionMajor_ = brr.get_uint8_t();
+         versionMinor_ = brr.get_uint16_t();
+         revision_ = brr.get_uint16_t();
+         encryptionVersion_ = brr.get_uint32_t();
+         break;
+      }
+
+      default:
+         throw WalletException("unsupported version packet");
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+BinaryData WalletHeader_Control::serialize() const
+{
+   BinaryWriter bw;
+   bw.put_uint32_t(WALLETHEADER_CONTROL_VERSION);
+   bw.put_uint32_t(type_);
+   bw.put_BinaryData(serializeVersion());
+   bw.put_BinaryData(serializeEncryptionKey());
+   bw.put_BinaryData(serializeControlSalt());
+
+   BinaryWriter final_bw;
+   final_bw.put_var_int(bw.getSize());
+   final_bw.put_BinaryDataRef(bw.getDataRef());
+   return final_bw.getData();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//// WalletHeader_Single
+WalletHeader_Single::WalletHeader_Single(const BinaryData& mb) :
+   WalletHeader(WalletHeaderType_Single, mb)
+{}
+
+bool WalletHeader_Single::shouldLoad() const
+{
+   return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+BinaryData WalletHeader_Single::serialize() const
+{
+   BinaryWriter bw;
+   bw.put_uint32_t(WALLETHEADER_SINGLE_VERSION);
+   bw.put_uint32_t(type_);
+   bw.put_BinaryData(magicBytes_);
+   bw.put_BinaryData(serializeEncryptionKey());
+   bw.put_BinaryData(serializeControlSalt());
+
+   BinaryWriter final_bw;
+   final_bw.put_var_int(bw.getSize());
+   final_bw.put_BinaryDataRef(bw.getDataRef());
+   return final_bw.getData();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//// WalletHeader_Multisig
+WalletHeader_Multisig::WalletHeader_Multisig(const BinaryData& mb) :
+   WalletHeader(WalletHeaderType_Multisig, mb)
+{}
+
+bool WalletHeader_Multisig::shouldLoad() const
+{
+   return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+BinaryData WalletHeader_Multisig::serialize() const
+{
+   BinaryWriter bw;
+   bw.put_uint32_t(WALLETHEADER_MULTISIG_VERSION);
+   bw.put_uint32_t(type_);
+   bw.put_BinaryData(magicBytes_);
+   bw.put_BinaryData(serializeEncryptionKey());
+   bw.put_BinaryData(serializeControlSalt());
+
+   BinaryWriter final_bw;
+   final_bw.put_var_int(bw.getSize());
+   final_bw.put_BinaryDataRef(bw.getDataRef());
+   return final_bw.getData();
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//// WalletHeader_Subwallet
+WalletHeader_Subwallet::WalletHeader_Subwallet() :
+   WalletHeader(WalletHeaderType_Subwallet, {})
+{}
+
+bool WalletHeader_Subwallet::shouldLoad() const
+{
+   return false;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+BinaryData WalletHeader_Subwallet::serialize() const
+{
+   BinaryWriter bw;
+   bw.put_uint32_t(WALLETHEADER_SUBWALLET_VERSION);
+   bw.put_var_int(4);
+   bw.put_uint32_t(type_);
+   return bw.getData();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//// WalletHeader_Custom
+WalletHeader_Custom::WalletHeader_Custom() :
+   WalletHeader(WalletHeaderType_Custom, {})
+{}
+
+bool WalletHeader_Custom::shouldLoad() const
+{
+   return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+BinaryData WalletHeader_Custom::serialize() const
+{
+   BinaryWriter bw;
+   bw.put_uint32_t(WALLETHEADER_CUSTOM_VERSION);
+   bw.put_uint32_t(type_);
+
+   BinaryWriter final_bw;
+   final_bw.put_var_int(bw.getSize());
+   final_bw.put_BinaryDataRef(bw.getDataRef());
+   return final_bw.getData();
 }

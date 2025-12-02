@@ -41,6 +41,9 @@ namespace Armory
 
    namespace Bridge
    {
+      struct OfflineException
+      {};
+
       class WalletContainer
       {
          friend class WalletManager;
@@ -87,16 +90,14 @@ namespace Armory
             getAddressAccount(void) const;
          const Wallets::AddressAccountId& getAccountId(void) const;
 
-         void updateBalancesAndCount(uint32_t topBlockHeight);
+         void updateBalancesAndCount(uint32_t);
          void updateWalletBalanceState(const AsyncClient::CombinedBalances&);
          void updateAddressCountState(const AsyncClient::CombinedBalances&);
 
-         void extendAddressChain(unsigned);
-         void extendAddressChainToIndex(
-            const Wallets::AddressAccountId& id,
-            unsigned count);
-         bool hasAddress(const BinaryData& addr);
-         bool hasAddress(const std::string& addr);
+         void extendAddressChain(unsigned, const std::function<void(int)>&);
+         void extendAddressChainToIndex(unsigned);
+         bool hasAddress(const BinaryData&);
+         bool hasAddress(const std::string&);
 
          void createAddressBook(
             const std::function<void(ReturnMessage<std::vector<AddressBookEntry>>)>&);
@@ -104,10 +105,10 @@ namespace Armory
          void getUTXOs(uint64_t, bool, bool,
             const std::function<void(ReturnMessage<std::vector<UTXO>>)>& lbd);
 
-         uint64_t getFullBalance(void) const { return totalBalance_; }
-         uint64_t getSpendableBalance(void) const { return spendableBalance_; }
-         uint64_t getUnconfirmedBalance(void) const { return unconfirmedBalance_; }
-         uint64_t getTxIOCount(void) const { return txioCount_; }
+         uint64_t getFullBalance(void) const;
+         uint64_t getSpendableBalance(void) const;
+         uint64_t getUnconfirmedBalance(void) const;
+         uint64_t getTxIOCount(void) const;
 
          std::map<BinaryData, std::vector<uint64_t>> getAddrBalanceMap(void) const;
          Wallets::AssetKeyType getHighestUsedIndex(void) const;
@@ -115,11 +116,14 @@ namespace Armory
 
          std::unique_ptr<Seeds::WalletBackup> getBackupStrings(
             const Passphrase::UnlockFunc&) const;
+         void changePassphrase(const Passphrase::UnlockFunc&,
+            Passphrase::SetNew&, bool);
 
          void setComment(const std::string&, const std::string&);
          void setLabels(const std::string&, const std::string&);
 
          const Wallets::EncryptionKeyId& getDefaultEncryptionKeyId() const;
+         std::filesystem::path forkWatchingOnly(const Passphrase::SetNew&);
       };
    } //namespace Bridge
 } //namespace Armory

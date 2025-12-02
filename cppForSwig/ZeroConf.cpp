@@ -896,7 +896,7 @@ void ZeroConfContainer::updateZCinDB()
       if (!batch.hasData())
          continue;
 
-      auto&& tx = db_->beginTransaction(ZERO_CONF, LMDB::ReadWrite);
+      auto&& tx = db_->beginTransaction(ZERO_CONF, LMDB::Mode::ReadWrite);
       for (auto& zc_pair : batch.zcToWrite_)
       {
          /*TODO: speed this up*/
@@ -961,7 +961,7 @@ unsigned ZeroConfContainer::loadZeroConfMempool(bool clearMempool)
    std::map<BinaryData, std::shared_ptr<ParsedTx>> zcMap;
 
    {
-      auto tx = db_->beginTransaction(ZERO_CONF, LMDB::ReadOnly);
+      auto tx = db_->beginTransaction(ZERO_CONF, LMDB::Mode::ReadOnly);
       auto dbIter = db_->getIterator(ZERO_CONF);
 
       if (!dbIter->seekToStartsWith(DB_PREFIX_ZCDATA)) {

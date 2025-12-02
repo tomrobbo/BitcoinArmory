@@ -22,7 +22,7 @@ from ui.QtExecuteSignal import TheSignalExecution
 
 from qtdialogs.ArmoryDialog import ArmoryDialog
 from qtdialogs.DlgChangePassphrase import DlgChangePassphrase
-from qtdialogs.DlgReplaceWallet import DlgReplaceWallet
+from qtdialogs import DlgReplaceWallet as ReplaceWallet
 from qtdialogs.MsgBoxCustom import MsgBoxCustom
 from qtdialogs.qtdefines import HLINE, QRichLabel, STRETCH, STYLE_RAISED, \
    makeHorizFrame, makeVertFrame, MSGBOX, GETFONT, tightSizeStr, \
@@ -236,7 +236,7 @@ class DlgRestoreSingle(ArmoryDialog, ServerPush):
    #############################################################################
    def setPassphrase(self, isPriv):
       packet = self.getNewPacket()
-      passPacket = packet.init("walletCreation")
+      passPacket = packet.init("setPassphrase")
       if isPriv:
          if self.chkEncrypt.isChecked():
             dlgPasswd = DlgChangePassphrase(self, self.main)
@@ -265,10 +265,7 @@ class DlgRestoreSingle(ArmoryDialog, ServerPush):
                packet.success = False
                self.reject()
       else:
-         packet.success = True
-         passPacket.passphrase = ""
-         passPacket.kdfTargetMs = 250
-         passPacket.kdfTargetMB = 0
+         packet.success = False
       self.reply()
 
    ########
@@ -277,12 +274,12 @@ class DlgRestoreSingle(ArmoryDialog, ServerPush):
          TheBDM.unregisterPrompt(self.callbackId)
          return
 
-      elif payload.which() == 'walletCreation':
-         notif = payload.walletCreation
-         if notif.which() == 'setCtrlPass':
-            self.setPassphrase(False)
-         elif notif.which() == 'setPrivPass':
+      elif payload.which() == 'setPassphrase':
+         notif = payload.setPassphrase
+         if notif.which() == 'privatePass':
             self.setPassphrase(True)
+         elif notif.which() == 'controlPass':
+            self.setPassphrase(False)
          return
 
       elif payload.which() == 'walletProgress':
@@ -299,7 +296,15 @@ class DlgRestoreSingle(ArmoryDialog, ServerPush):
       which = restorePayload.which()
       if which == 'checkWalletId':
          newWltID = restorePayload.checkWalletId.walletId
-         print (f" .. btype: {restorePayload.checkWalletId.backupType}")
+         if self.thisIsATest:
+            #stop here if this was just a test
+            verifyRecoveryTestID(self, newWltID, self.testWltID)
+            replyToBridge = self.getNewPacket()
+            replyToBridge.success = False
+            self.reply()
+            self.reject()
+            return
+
          wltType = getBackupTypeString(restorePayload.checkWalletId.backupType)
          if not newWltID:
             LOGWARN("empty wallet id in backup restore process")
@@ -316,30 +321,27 @@ class DlgRestoreSingle(ArmoryDialog, ServerPush):
             QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
 
          if userAccept == QtWidgets.QMessageBox.Yes:
-            if self.thisIsATest:
-               #stop here if this was just a test
-               verifyRecoveryTestID(self, newWltID, self.testWltID)
-            else:
-               self.newWltID = newWltID
-               replyToBridge.success = True
+            self.newWltID = newWltID
+            replyToBridge.success = True
 
-               #check if this wallet is already loaded
-               dlgOwnWlt = None
-               if self.main.wallets.hasWallet(newWltID):
-                  dlgOwnWlt = DlgReplaceWallet(newWltID, self.parent, self.main)
-                  if (dlgOwnWlt.exec_()):
-                     #unload existing wallet
-                     self.main.removeWalletFromApplication(newWltID)
-                     if dlgOwnWlt.output == 2:
-                        replyToBridge.restore = 'merge'
-                     else:
-                        replyToBridge.restore = 'overwrite'
-                  else:
-                     replyToBridge.success = False
+            #check if this wallet is already loaded
+            dlgOwnWlt = None
+            if self.main.wallets.hasWallet(newWltID):
+               dlgOwnWlt = ReplaceWallet.DlgReplaceWallet(
+                  newWltID, self.parent, self.main)
+               if dlgOwnWlt.exec_():
+                  if dlgOwnWlt.output == ReplaceWallet.REPLACE_MERGE:
+                     replyToBridge.restore = 'merge'
+                  elif dlgOwnWlt.output == ReplaceWallet.REPLACE_OVERWRITE:
+                     replyToBridge.restore = 'overwrite'
+                  self.main.removeWalletFromApplication(newWltID)
+               else:
+                  replyToBridge.success = False
 
          if replyToBridge.success == False:
             self.reject()
-         self.reply()
+         else:
+            self.reply()
 
       elif which == 'checksumError':
          checksums = restorePayload.checksumError
@@ -1495,7 +1497,6 @@ class DlgRestoreWOData(ArmoryDialog):
 
 ################################################################################
 class DlgEnterSecurePrintCode(ArmoryDialog):
-
    def __init__(self, parent, main):
       super(DlgEnterSecurePrintCode, self).__init__(parent, main)
 
@@ -1531,60 +1532,6 @@ class DlgEnterSecurePrintCode(ArmoryDialog):
       if not checkSecurePrintCode(self, SECPRINT, securePrintCode):
          return
       self.accept()
-
-################################################################################
-def OpenPaperBackupDialog(backupType, parent, main, wlt, passphrase: str=None):
-   if passphrase:
-      #cleanup passphrase after 20sec
-      def cleanupPassphrase():
-         passphrase = None
-      TheSignalExecution.callLater(20, cleanupPassphrase)
-
-   result = True
-   verifyText = ''
-   if backupType == 'Single':
-      from qtdialogs.DlgBackupCenter import DlgPrintBackup
-      result = DlgPrintBackup(parent, main, wlt, passphrase=passphrase).exec_()
-      verifyText = parent.tr(
-         u'If the backup was printed with SecurePrint\u200b\u2122, please '
-         u'make sure you wrote the SecurePrint\u200b\u2122 code on the '
-         'printed sheet of paper. Note that the code <b><u>is</u></b> '
-         'case-sensitive!')
-   elif backupType == 'Frag':
-      result = DlgFragBackup(parent, main, wlt).exec_()
-      verifyText = parent.tr(
-         u'If the backup was created with SecurePrint\u200b\u2122, please '
-         u'make sure you wrote the SecurePrint\u200b\u2122 code on each '
-         'fragment (or stored with each file fragment). The code is the '
-         'same for all fragments.')
-
-   doTest = MsgBoxCustom(MSGBOX.Warning, parent.tr('Verify Your Backup!'),
-      parent.tr(
-         '<b><u>Verify your backup!</u></b> '
-         '<br><br>'
-         'If you just made a backup, make sure that it is correct! '
-         'The following steps are recommended to verify its integrity: '
-         '<br>'
-         '<ul>'
-         '<li>Verify each line of the backup data contains <b>9 columns</b> '
-         'of <b>4 letters each</b> (excluding any "ID" lines).</li> '
-         '<li>%s</li>'
-         '<li>Use Armory\'s backup tester to test the backup before you '
-         'physiclly secure it.</li> '
-         '</ul>'
-         '<br>'
-         'Armory has a backup tester that uses the exact same '
-         'process as restoring your wallet, but stops before it writes any '
-         'data to disk.  Would you like to test your backup now? '
-         % verifyText),
-      yesStr="Test Backup", noStr="Cancel")
-
-   if doTest:
-      if backupType == 'Single':
-         DlgRestoreSingle(parent, main, True, wlt.walletId).exec_()
-      elif backupType == 'Frag':
-         DlgRestoreFragged(parent, main, True, wlt.walletId).exec_()
-   return result
 
 ################################################################################
 def verifyRecoveryTestID(parent, computedWltID, expectedWltID=None):

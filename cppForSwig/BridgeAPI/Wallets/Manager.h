@@ -34,6 +34,7 @@ namespace Armory
 
    namespace Wallets
    {
+      class WalletId;
       class AddressAccountId;
       class AssetWallet;
       class EncryptionKeyId;
@@ -56,7 +57,7 @@ namespace Armory
          const std::filesystem::path path_;
          std::map<std::string, std::shared_ptr<WalletFileInfo>> walletFiles_;
 
-         std::map<std::string, std::map<
+         std::map<Wallets::WalletId, std::map<
             Wallets::AddressAccountId,
             std::shared_ptr<WalletContainer>>> wallets_;
          std::map<std::string, std::shared_ptr<WalletContainer>> walletsByDbId_;
@@ -79,20 +80,21 @@ namespace Armory
          /* pre wallets loading calls */
          std::map<std::string, std::shared_ptr<WalletFileInfo>> listWallets(void);
          void unlockControlHeader(const std::string&, const Passphrase::UnlockFunc&);
-         const std::string& migrateWallet(const std::string&,
+         const Wallets::WalletId& migrateWallet(const std::filesystem::path&,
             const Passphrase::UnlockFunc&,
             const Wallets::IO::CreateWalletParams&
          );
-         bool stageWallet(const std::string&, bool);
+         bool stageWallet(const Wallets::WalletId&, bool);
          void loadWallets(void);
          std::shared_ptr<WalletFileInfo> importFile(const std::filesystem::path&);
 
          /* db setup */
          void registerWallets(void);
-         void registerWallet(const std::string&,
+         void registerWallet(const Wallets::WalletId&,
             const Wallets::AddressAccountId&, bool);
-         std::shared_ptr<Callback> setupBdvCallback(
+         void setupBdvCallback(
             const std::function<void(BinaryData&)>&);
+         std::shared_ptr<Callback> getBdvCallback(void) const;
          void setBdvPtr(std::shared_ptr<AsyncClient::BlockDataViewer>);
 
          /* utils */
@@ -100,12 +102,12 @@ namespace Armory
          void updateStateFromDB(const std::function<void(void)>&);
 
          /* loaded wallet getters */
-         bool hasWallet(const std::string&);
+         bool hasWallet(const Wallets::WalletId&);
          std::shared_ptr<WalletContainer> getWalletContainer(
-            const std::string&) const;
+            const Wallets::WalletId&) const;
          std::shared_ptr<WalletContainer> getWalletContainer(
-            const std::string&, const Wallets::AddressAccountId&) const;
-         std::map<std::string, std::set<Wallets::AddressAccountId>>
+            const Wallets::WalletId&, const Wallets::AddressAccountId&) const;
+         std::map<Wallets::WalletId, std::set<Wallets::AddressAccountId>>
             getAccountIdMap(void) const;
 
          /* wallet add/create/delete */
@@ -114,8 +116,19 @@ namespace Armory
             const SecureBinaryData&, //extra entropy
             const Wallets::IO::CreateWalletParams&);
 
-         std::filesystem::path unloadWallet(const std::string&);
-         void deleteWallet(const std::string&);
+         std::filesystem::path unloadWallet(const Wallets::WalletId&);
+         void deleteWallet(const Wallets::WalletId&);
+
+         /* address creation */
+         void extendAddressChain(const Wallets::WalletId&,
+            const Wallets::AddressAccountId&,
+            unsigned, bool,
+            std::function<void(int)>
+         );
+         std::shared_ptr<AddressEntry> getNewAddress(
+            const Wallets::WalletId&,
+            const Wallets::AddressAccountId&,
+            uint32_t, uint32_t);
       };
    } //namespace Bridge
 } //namespace Armory

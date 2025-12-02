@@ -111,6 +111,12 @@ void Callback::registerRefreshCallback(const std::string& id,
    idCallbacks_.emplace(id, callback);
 }
 
+void Callback::unregisterCallback(const std::string& id)
+{
+   std::unique_lock<std::mutex> lock(idMutex_);
+   idCallbacks_.erase(id);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 void Callback::processRefreshCallbacks(std::set<std::string>& ids)
 {

@@ -76,15 +76,30 @@ struct WalletData {
    comments             @13: List(Comment);
 }
 
+struct WalletImportPreview {
+   walletId             @0 : Text;
+   label                @1 : Text;
+   description          @2 : Text;
+   watchingOnly         @3 : Bool;
+   encrypted            @4 : Bool;
+   timestamp            @5 : UInt64;
+   highestUsedIndex     @6 : Int64;
+   addressCount         @7 : UInt32;
+   seedVersion          @8 : Text;
+   kdfMem               @9 : UInt32;
+
+   union {
+      unset             @10: Void;
+
+      legacy            @11: Void;
+      locked            @12: Void;
+      ready             @13: Void;
+   }
+}
+
 ###############################
 # Notifications
 ###############################
-
-struct SetPassphraseStruct {
-   passphrase  @0 : Text;
-   kdfTargetMs @1 : UInt32;
-   kdfTargetMB @2 : UInt32;
-}
 
 struct Notification {
    ## Wallet creation progress notifs
@@ -105,11 +120,11 @@ struct Notification {
    }
 
    ## Wallet creation prompts
-   struct WalletCreation {
+   struct SetPassphraseRequest {
       union {
          unset       @0 : Void;
-         setCtrlPass @1 : Void;
-         setPrivPass @2 : Void;
+         privatePass @1 : Void;
+         controlPass @2 : Void;
       }
    }
 
@@ -156,7 +171,7 @@ struct Notification {
       cleanup        @13: Void;
       unlockRequest  @14: List(Text);
       walletProgress @15: WalletProgress;
-      walletCreation @16: WalletCreation;
+      setPassphrase  @16: SetPassphraseRequest;
       restore        @17: RestorePrompt;
    }
 }
@@ -167,13 +182,20 @@ struct NotificationReply {
       merge          @1;
    }
 
+   struct SetPassphraseReply {
+      passphrase     @0 : Text;
+      kdfTargetMs    @1 : UInt32;
+      kdfTargetMB    @2 : UInt32;
+      reuseKdf       @3 : Bool = false;
+   }
+
    success           @0 : Bool;
    counter           @1 : UInt32;
 
    union {
       unlockRequest  @2 : Text;
       restore        @3 : RestoreMode;
-      walletCreation @4 : SetPassphraseStruct;
+      setPassphrase  @4 : SetPassphraseReply;
    }
 }
 
@@ -270,6 +292,9 @@ struct WalletManagerRequest {
 
       #load staged wallets
       loadWallets             @5 : Void;
+
+      unloadWallet            @6 : Types.WalletId;
+      deleteWallet            @7 : Types.WalletId;
    }
 }
 
@@ -277,24 +302,32 @@ struct WalletManagerReply {
    enum WalletLoadState {
       unknown     @0;
       legacy      @1;
-      migrated    @2;
-      encrypted   @3;
-      ready       @4;
-      loaded      @5;
+      encrypted   @2;
+      ready       @3;
+
+      #Internal state, marks wallets that have been loaded via loadWallets
+      #A loaded wallet will not appear in listWallets again.
+      loaded      @4;
    }
 
    struct WalletFileData {
-      state    @0 : WalletLoadState;
-      path     @1 : Text;
-      walletId @2 : Text;
-      staged   @3 : Bool;
+      state          @0 : WalletLoadState;
+      path           @1 : Text;
+      walletId       @2 : Text;
+      staged         @3 : Bool;
+      watchingOnly   @4 : Bool;
+
+      union {
+         undefined   @5 : Void;
+         legacy      @6 : WalletImportPreview;
+      }
    }
 
    union {
-      unset                @0 : Void;
-      listWallets          @1 : List(WalletFileData);
-      migrateWallet        @2 : Types.WalletId;
-      loadWallets          @3 : List(WalletData);
+      unset          @0 : Void;
+      listWallets    @1 : List(WalletFileData);
+      migrateWallet  @2 : Types.WalletId;
+      loadWallets    @3 : List(WalletData);
    }
 }
 
@@ -312,38 +345,47 @@ struct WalletRequest {
    }
 
    struct ExtendAddressPool {
-      count       @0 : UInt32;
-      callbackId  @1 : Types.CallbackId;
+      count          @0 : UInt32;
+      callbackId     @1 : Types.CallbackId;
+      isNew          @2 : Bool;
    }
 
    struct BackupStringStruct {
       union {
-         callbackId @0 : Types.CallbackId;
-         passphrase @1 : Text;
+         callbackId  @0 : Types.CallbackId;
+         passphrase  @1 : Text;
+      }
+   }
+
+   struct ChangePassphraseRequest {
+      callbackId     @0 : Types.CallbackId;
+      union {
+         private     @1 : Void;
+         control     @2 : Void;
       }
    }
 
    struct SetAddressTypeFor {
-      assetId       @0 : Data;
-      addressType   @1 : UInt32;
+      assetId        @0 : Data;
+      addressType    @1 : UInt32;
    }
 
    struct OutputRequest {
       union {
-         value @0 : Types.CoinAmount;
-         zc    @1 : Void;
-         rbf   @2 : Void;
+         value       @0 : Types.CoinAmount;
+         zc          @1 : Void;
+         rbf         @2 : Void;
       }
    }
 
    struct SetComment {
-      key      @0 : Text;
-      comment  @1 : Text;
+      key            @0 : Text;
+      comment        @1 : Text;
    }
 
    struct SetLabels {
-      title        @0 : Text;
-      description  @1 : Text;
+      title          @0 : Text;
+      description    @1 : Text;
    }
 
    walletId                         @0 : Types.WalletId;
@@ -356,7 +398,7 @@ struct WalletRequest {
       extendAddressPool             @5 : ExtendAddressPool;
 
       createBackupString            @6 : BackupStringStruct;
-      deleteWallet                  @7 : Void;
+      changePassphrase              @7 : ChangePassphraseRequest;
       getData                       @8 : Void;
 
       getAddrCombinedList           @9 : Void;
@@ -374,6 +416,7 @@ struct WalletRequest {
       setLabels                     @18: SetLabels;
 
       getUnlockTime                 @19: Void;
+      forkWatchingOnly              @20: Types.CallbackId;
    }
 }
 
@@ -401,18 +444,23 @@ struct WalletReply {
 
       getAddress                    @1 : WalletData.AddressData;
       getHighestUsedIndex           @2 : Int32;
-      extendAddressPool             @3 : WalletData;
-      createBackupString            @4 : WalletBackup;
-      getData                       @5 : WalletData;
-      getAddrCombinedList           @6 : AddressAndBalanceData;
-      setAddressTypeFor             @7 : WalletData.AddressData;
-      getLedgerDelegateId           @8 : Types.DelegateId;
-      getLedgerDelegateIdForScrAddr @9 : Types.DelegateId;
-      getBalanceAndCount            @10: Types.BalanceAndCount;
-      setupNewCoinSelectionInstance @11: Text;
-      getUtxos                      @12: List(UTXO);
-      createAddressBook             @13: Types.AddressBook;
-      getUnlockTime                 @14: UInt32; #unlock time in ms
+
+      createBackupString            @3 : WalletBackup;
+      getData                       @4 : WalletData;
+
+      getAddrCombinedList           @5 : AddressAndBalanceData;
+      setAddressTypeFor             @6 : WalletData.AddressData;
+
+      getLedgerDelegateId           @7 : Types.DelegateId;
+      getLedgerDelegateIdForScrAddr @8 : Types.DelegateId;
+      getBalanceAndCount            @9 : Types.BalanceAndCount;
+
+      setupNewCoinSelectionInstance @10: Text;
+      getUtxos                      @11: List(UTXO);
+
+      createAddressBook             @12: Types.AddressBook;
+      getUnlockTime                 @13: UInt32; #unlock time in ms
+      forkWatchingOnly              @14: Text; #path to new WO wallet
    }
 }
 
@@ -601,27 +649,6 @@ struct UtilsRequest {
 }
 
 struct UtilsReply {
-   struct ImportedWalletHeader {
-      walletId             @0 : Text;
-      label                @1 : Text;
-      description          @2 : Text;
-      watchingOnly         @3 : Bool;
-      encrypted            @4 : Bool;
-      timestamp            @5 : UInt64;
-      highestUsedIndex     @6 : Int64;
-      addressCount         @7 : UInt32;
-      seedVersion          @8 : Text;
-      kdfMem               @9 : UInt32;
-
-      union {
-         unset             @10: Void;
-
-         legacy            @11: Void;
-         locked            @12: Void;
-         ready             @13: Void;
-      }
-   }
-
    union {
       unset                @0 : Void;
 
@@ -629,7 +656,7 @@ struct UtilsReply {
       getHash160           @2 : Types.Hash;
       getNameForAddrType   @3 : Text;
       createWallet         @4 : Types.WalletId;
-      importWallet         @5 : ImportedWalletHeader;
+      importWallet         @5 : WalletImportPreview;
    }
 }
 

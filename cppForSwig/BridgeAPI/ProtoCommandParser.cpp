@@ -121,7 +121,8 @@ namespace
          case BlockchainServiceRequest::REGISTER_WALLET:
          {
             auto regWallet = request.getRegisterWallet();
-            auto wltId = regWallet.getWalletId();
+            auto capnId = regWallet.getWalletId();
+            Wallets::WalletId wltId{capnId.begin(), capnId.size()};
             auto accIdCapn = regWallet.getAccountId();
             auto accId = Wallets::AddressAccountId::fromHex(accIdCapn);
             bridge->registerWallet(wltId, accId, regWallet.getIsNew());
@@ -240,8 +241,9 @@ namespace
          case WalletManagerRequest::STAGE_WALLET:
          {
             auto stageRequest = request.getStageWallet();
-            auto success = bridge->stageWallet(
-               stageRequest.getWalletId(), stageRequest.getStage());
+            auto capnId = stageRequest.getWalletId();
+            const Wallets::WalletId wltId{capnId.begin(), capnId.size()};
+            auto success = bridge->stageWallet(wltId, stageRequest.getStage());
 
             capnp::MallocMessageBuilder message;
             auto fromBridge = message.initRoot<FromBridge>();
@@ -262,10 +264,41 @@ namespace
          case WalletManagerRequest::MIGRATE_WALLET:
          {
             auto migrateReq = request.getMigrateWallet();
-            const std::filesystem::path walletId(std::string{migrateReq.getWalletPath()});
+            const std::filesystem::path walletPath(std::string{migrateReq.getWalletPath()});
             const std::string callbackId(migrateReq.getCallbackId());
-            bridge->migrateWallet(walletId.filename().string(),
-               callbackId, referenceId);
+            bridge->migrateWallet(walletPath, callbackId, referenceId);
+            break;
+         }
+
+         case WalletManagerRequest::UNLOAD_WALLET:
+         {
+            auto capnId = request.getUnloadWallet();
+            const Wallets::WalletId wltId{capnId.begin(), capnId.size()};
+            auto success = bridge->unloadWallet(wltId);
+
+            capnp::MallocMessageBuilder message;
+            auto fromBridge = message.initRoot<FromBridge>();
+            auto reply = fromBridge.initReply();
+            reply.setSuccess(success);
+            reply.setReferenceId(referenceId);
+
+            response = serializeCapnp(message);
+            break;
+         }
+
+         case WalletManagerRequest::DELETE_WALLET:
+         {
+            auto capnId = request.getDeleteWallet();
+            const Wallets::WalletId wltId{capnId.begin(), capnId.size()};
+            auto success = bridge->deleteWallet(wltId);
+
+            capnp::MallocMessageBuilder message;
+            auto fromBridge = message.initRoot<FromBridge>();
+            auto reply = fromBridge.initReply();
+            reply.setSuccess(success);
+            reply.setReferenceId(referenceId);
+
+            response = serializeCapnp(message);
             break;
          }
 
@@ -290,11 +323,12 @@ namespace
       std::shared_ptr<CppBridge> bridge, MessageId referenceId,
       WalletRequest::Reader& request)
    {
-      const std::string walletId = request.getWalletId();
-      const std::string accountIdStr = request.getAccountId();
+      auto capnId = request.getWalletId();
+      const Wallets::WalletId walletId{capnId.begin(), capnId.size()};
       Wallets::AddressAccountId accountId;
       try {
-         accountId = Wallets::AddressAccountId::fromHex(accountIdStr);
+         accountId = Wallets::AddressAccountId::fromHex(
+            request.getAccountId());
       } catch (const Wallets::IdException&) {
          //nothing to do, accountId wont be set
       }
@@ -330,6 +364,18 @@ namespace
 
             bridge->createBackupStringForWallet(
                walletId, callbackId, std::move(passphrase), referenceId);
+            break;
+         }
+
+         case WalletRequest::CHANGE_PASSPHRASE:
+         {
+            auto passStruct = request.getChangePassphrase();
+            std::string callbackId = passStruct.getCallbackId();
+            bool isPriv =
+               passStruct.which() == WalletRequest::ChangePassphraseRequest::PRIVATE ?
+               true : false;
+
+            bridge->changeWalletPassphrase(walletId, callbackId, isPriv, referenceId);
             break;
          }
 
@@ -421,20 +467,8 @@ namespace
          {
             auto args = request.getExtendAddressPool();
             bridge->extendAddressPool(walletId, accountId,
-               args.getCount(), args.getCallbackId(), referenceId);
-            break;
-         }
-
-         case WalletRequest::DELETE_WALLET:
-         {
-            auto result = bridge->deleteWallet(walletId);
-            capnp::MallocMessageBuilder message;
-            auto fromBridge = message.initRoot<FromBridge>();
-            auto reply = fromBridge.initReply();
-            reply.setSuccess(true);
-            reply.setReferenceId(referenceId);
-
-            response = serializeCapnp(message);
+               args.getCount(), args.getIsNew(), args.getCallbackId(),
+               referenceId);
             break;
          }
 
@@ -501,7 +535,7 @@ namespace
          case WalletRequest::GET_ADDRESS:
          {
             auto args = request.getGetAddress();
-            response = bridge->getAddress(walletId, accountId,
+            bridge->getAddress(walletId, accountId,
                args.getType(), args.which(), referenceId);
             break;
          }
@@ -511,6 +545,23 @@ namespace
             bridge->getUnlockTime(walletId, referenceId);
             break;
          }
+
+         case WalletRequest::FORK_WATCHING_ONLY:
+         {
+            std::string callbackId{request.getForkWatchingOnly()};
+            bridge->forkWatchingOnly(walletId, callbackId, referenceId);
+            break;
+         }
+
+         default:
+            capnp::MallocMessageBuilder message;
+            auto fromBridge = message.initRoot<FromBridge>();
+            auto reply = fromBridge.initReply();
+            reply.setSuccess(false);
+            reply.setReferenceId(referenceId);
+            reply.setError("unknown wallet method");
+            response = serializeCapnp(message);
+
       }
 
       if (!response.empty()) {
@@ -910,7 +961,9 @@ namespace
          case SignerRequest::SIGN_TX:
          {
             auto args = request.getSignTx();
-            signer->signTx(args.getWalletId(), args.getCallbackId(),
+            auto capnId = args.getWalletId();
+            const Wallets::WalletId wltId{capnId.begin(), capnId.size()};
+            signer->signTx(wltId, args.getCallbackId(),
                referenceId);
             break;
          }
@@ -965,7 +1018,9 @@ namespace
 
          case SignerRequest::RESOLVE:
          {
-            auto result = signer->resolve(request.getResolve());
+            auto capnId = request.getResolve();
+            const Wallets::WalletId wltId{capnId.begin(), capnId.size()};
+            auto result = signer->resolve(wltId);
             replySuccess(result);
             break;
          }
@@ -1230,17 +1285,27 @@ namespace
          auto handler = bridge->getCallbackHandler(notif.getCounter());
          switch (notif.which())
          {
-            case NotificationReply::WALLET_CREATION:
+            case NotificationReply::SET_PASSPHRASE:
             {
-               auto capnpPassStruct = notif.getWalletCreation();
-               auto pass = SecureBinaryData::fromString(capnpPassStruct.getPassphrase());
-               auto kdfMs = std::chrono::milliseconds{capnpPassStruct.getKdfTargetMs()};
-               return handler(Seeds::PromptReply{
-                  notif.getSuccess(), false,
-                  Passphrase::Params{
-                     kdfMs, capnpPassStruct.getKdfTargetMB(),
-                     std::move(pass)
-                  }});
+               auto capnpPassStruct = notif.getSetPassphrase();
+               auto pass = SecureBinaryData::fromString(
+                  capnpPassStruct.getPassphrase());
+
+               if (capnpPassStruct.getReuseKdf()) {
+                  return handler(Seeds::PromptReply{
+                     notif.getSuccess(), false,
+                     Passphrase::Params{std::move(pass), true}
+                  });
+               } else {
+                  auto kdfMs = std::chrono::milliseconds{
+                     capnpPassStruct.getKdfTargetMs()};
+                  return handler(Seeds::PromptReply{
+                     notif.getSuccess(), false,
+                     Passphrase::Params{
+                        kdfMs, capnpPassStruct.getKdfTargetMB(),
+                        std::move(pass)
+                     }});
+               }
             }
 
             case NotificationReply::RESTORE:
@@ -1257,10 +1322,8 @@ namespace
                auto pass = SecureBinaryData::fromString(notif.getUnlockRequest());
                return handler(Seeds::PromptReply{
                   notif.getSuccess(), false,
-                  Passphrase::Params{
-                     1ms, 0,
-                     std::move(pass)
-                  }});
+                  Passphrase::Params{std::move(pass)}
+               });
             }
 
             default:

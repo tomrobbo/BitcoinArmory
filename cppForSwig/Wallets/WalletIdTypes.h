@@ -36,21 +36,28 @@ namespace Armory
    namespace Wallets
    {
       ////////////////////////////////////////////////////////////////////////
-      using AssetKeyType = int32_t;
+      using AssetKeyType   = int32_t;
       using AccountKeyType = int32_t;
 
-      static const AccountKeyType rootAccountId = -1;
-      static const AssetKeyType rootAssetId = -1;
-      static const AccountKeyType dummyAccountId = -2;
-
-      static const size_t EncryptionKeyIdLength = 16;
+      static const AccountKeyType rootAccountId    = -1;
+      static const AssetKeyType rootAssetId        = -1;
+      static const AccountKeyType dummyAccountId   = -2;
+      static const size_t EncryptionKeyIdLength    = 16;
 
       ////
       struct IdException : public std::runtime_error
       {
-         IdException(const std::string& err) :
-            std::runtime_error(err)
-         {}
+         IdException(const std::string&);
+      };
+
+      ////////////////////////////////////////////////////////////////////////
+      class WalletId : public std::string
+      {
+      public:
+         WalletId(void);
+         WalletId(const char*, size_t);
+         WalletId(const BinaryDataRef&);
+         WalletId(const std::string_view&);
       };
 
       ////////////////////////////////////////////////////////////////////////
@@ -210,10 +217,12 @@ namespace Armory
 
          bool operator<(const KdfId&) const;
          bool operator==(const KdfId&) const;
+         bool operator==(const std::string_view&) const;
+         bool operator!=(const std::string_view&) const;
          KdfId& operator=(const KdfId&);
 
          bool isValid(void) const;
-         bool toHexStr(void) const;
+         std::string toHexStr(void) const;
          const BinaryData& data(void) const;
 
          BinaryData getSerializedKey(void) const;
@@ -221,11 +230,11 @@ namespace Armory
       };
 
       ////////////////////////////////////////////////////////////////////////
-      std::string generateWalletId(std::shared_ptr<Assets::DerivationScheme>,
+      Wallets::WalletId generateWalletId(std::shared_ptr<Assets::DerivationScheme>,
          std::shared_ptr<Assets::AssetEntry>, Seeds::SeedType);
-      std::string generateWalletId(SecureBinaryData, SecureBinaryData,
+      Wallets::WalletId generateWalletId(SecureBinaryData, SecureBinaryData,
          Seeds::SeedType);
-      std::string generateMasterId(const SecureBinaryData&,
+      Wallets::WalletId generateMasterId(const SecureBinaryData&,
          const SecureBinaryData&);
 
    }// namespace Wallets

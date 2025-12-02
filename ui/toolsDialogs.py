@@ -127,7 +127,7 @@ class MessageSigningWidget(QtWidgets.QWidget):
                self.tr('Cannot import private keys without unlocking wallet!'), \
                QtWidgets.QMessageBox.Ok)
             return
-      return wallet.getAddrObjectForHash(addr160).binPrivKey32_Plain.toBinStr()
+      return wallet.getAddrByHash(addr160).binPrivKey32_Plain.toBinStr()
 
    def bareSignMessage(self):
       messageText = str(self.messageTextEdit.toPlainText())

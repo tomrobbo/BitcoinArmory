@@ -775,7 +775,7 @@ void BlockchainScanner::writeBlockData()
       //write data
       {
          //txouts
-         auto&& tx = db_->beginTransaction(STXO, LMDB::ReadWrite);
+         auto&& tx = db_->beginTransaction(STXO, LMDB::Mode::ReadWrite);
 
          for (auto& stxo : serializedStxo)
          { 
@@ -788,7 +788,7 @@ void BlockchainScanner::writeBlockData()
 
       {
          //subssh
-         auto&& tx = db_->beginTransaction(SUBSSH, LMDB::ReadWrite);
+         auto&& tx = db_->beginTransaction(SUBSSH, LMDB::Mode::ReadWrite);
 
          for (auto& subssh : serializedSubSSH)
          {
@@ -885,7 +885,7 @@ void BlockchainScanner::processAndCommitTxHints(ParserBatch* batch)
    };
 
    {
-      auto&& hintdbtx = db_->beginTransaction(TXHINTS, LMDB::ReadOnly);
+      auto&& hintdbtx = db_->beginTransaction(TXHINTS, LMDB::Mode::ReadOnly);
 
       for (auto& utxomap : batch->outputMap_)
       {
@@ -929,7 +929,7 @@ void BlockchainScanner::processAndCommitTxHints(ParserBatch* batch)
 
    //write
    {
-      auto&& hintdbtx = db_->beginTransaction(TXHINTS, LMDB::ReadWrite);
+      auto&& hintdbtx = db_->beginTransaction(TXHINTS, LMDB::Mode::ReadWrite);
 
       for (auto& txhint : serializedHints)
       {
@@ -1006,7 +1006,7 @@ void BlockchainScanner::updateSSH(bool force, int32_t startHeight)
    auto scrAddrMap = scrAddrFilter_->getScanFilterAddrMap();
 
    {
-      auto sshTx = db_->beginTransaction(SUBSSH, LMDB::ReadOnly);
+      auto sshTx = db_->beginTransaction(SUBSSH, LMDB::Mode::ReadOnly);
       auto sshIter = db_->getIterator(SUBSSH);
       sshIter->seekToStartsWith(DB_PREFIX_SCRIPT);
 
@@ -1021,7 +1021,7 @@ void BlockchainScanner::updateSSH(bool force, int32_t startHeight)
          getDupForHeight, scrAddrMapPtr, BinaryData());
 
       //update SSH
-      auto historyTx = db_->beginTransaction(SSH, LMDB::ReadOnly);
+      auto historyTx = db_->beginTransaction(SSH, LMDB::Mode::ReadOnly);
       for (auto& ssh : subsshparser_result.second)
       {
          auto& db_ssh = sshMap[ssh.first];
@@ -1103,7 +1103,7 @@ void BlockchainScanner::updateSSH(bool force, int32_t startHeight)
    }
 
    auto topheight = topheader->getBlockHeight();
-   auto&& putsshtx = db_->beginTransaction(SSH, LMDB::ReadWrite);
+   auto&& putsshtx = db_->beginTransaction(SSH, LMDB::Mode::ReadWrite);
 
    for (auto& scrAddr : *scrAddrMap)
    {
@@ -1135,7 +1135,7 @@ void BlockchainScanner::updateSSH(bool force, int32_t startHeight)
 void BlockchainScanner::preloadUtxos()
 {
    //TODO: check utxos pulled vs scraddrfilter (to reduce dataset for side scans)
-   auto&& tx = db_->beginTransaction(STXO, LMDB::ReadOnly);
+   auto&& tx = db_->beginTransaction(STXO, LMDB::Mode::ReadOnly);
    auto dbIter = db_->getIterator(STXO);
    dbIter->seekToFirst();
 
@@ -1179,7 +1179,7 @@ void BlockchainScanner::undo(Blockchain::ReorganizationState& reorgState)
       auto currentDupId  = blockPtr->getDuplicateID();
 
       //create tx to pull subssh data
-      auto sshTx = db_->beginTransaction(SUBSSH, LMDB::ReadOnly);
+      auto sshTx = db_->beginTransaction(SUBSSH, LMDB::Mode::ReadOnly);
 
       //grab blocks from previous top until branch point
       if (blockPtr == nullptr) {
@@ -1307,7 +1307,7 @@ void BlockchainScanner::undo(Blockchain::ReorganizationState& reorgState)
 
    //stxo
    {
-      auto tx = db_->beginTransaction(STXO, LMDB::ReadWrite);
+      auto tx = db_->beginTransaction(STXO, LMDB::Mode::ReadWrite);
 
       //grab stxos and revert spentness
       map<BinaryData, StoredTxOut> stxos;
@@ -1340,7 +1340,7 @@ void BlockchainScanner::undo(Blockchain::ReorganizationState& reorgState)
 
    //ssh
    {
-      auto tx = db_->beginTransaction(SSH, LMDB::ReadWrite);
+      auto tx = db_->beginTransaction(SSH, LMDB::Mode::ReadWrite);
 
       //go thourgh all ssh in scrAddrFilter
       for (auto& scrAddr : *scrAddrMap) {
@@ -1691,7 +1691,7 @@ bool BlockchainScanner::resolveTxHashes()
       map<BinaryData, BinaryWriter> countAndHash;
 
       {
-         auto hintTx = db_->beginTransaction(TXHINTS, LMDB::ReadOnly);
+         auto hintTx = db_->beginTransaction(TXHINTS, LMDB::Mode::ReadOnly);
          for (auto& result : resolverResults) {
             resolvedHashes.insert(result.first);
 
@@ -1728,7 +1728,7 @@ bool BlockchainScanner::resolveTxHashes()
 
       //write it
       {
-         auto hintTx = db_->beginTransaction(TXHINTS, LMDB::ReadWrite);
+         auto hintTx = db_->beginTransaction(TXHINTS, LMDB::Mode::ReadWrite);
 
          for (auto& toWrite : serializedHints) {
             db_->putValue(TXHINTS,

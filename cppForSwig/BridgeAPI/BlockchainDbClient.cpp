@@ -438,11 +438,10 @@ bool Armory::Bridge::isDbRunning()
 ////////////////////////////////////////////////////////////////////////////////
 BdvPtr Armory::Bridge::setupClientConnection(
    std::shared_ptr<Armory::Wallets::AuthorizedPeers> peers,
-   const std::function<void(BinaryData&)>& writeFunc,
    std::shared_ptr<WalletManager> wltManager)
 {
    //setup bdv obj
-   auto cbPtr = wltManager->setupBdvCallback(writeFunc);
+   auto cbPtr = wltManager->getBdvCallback();
    BdvPtr result = AsyncClient::BlockDataViewer::getNewBDV(
       Armory::Config::NetworkSettings::dbIP(),
       Armory::Config::NetworkSettings::dbPort(),

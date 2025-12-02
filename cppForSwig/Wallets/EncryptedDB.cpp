@@ -80,7 +80,7 @@ DBInterface::DBInterface(
    dbEnv_(dbEnv), dbName_(dbName), controlSalt_(controlSalt),
    encrVersion_(encrVersion)
 {
-   auto tx = LMDBEnv::Transaction(dbEnv_, LMDB::ReadWrite);
+   auto tx = LMDBEnv::Transaction(dbEnv_, LMDB::Mode::ReadWrite);
    db_.open(dbEnv_, dbName_);
    dataMapPtr_ = make_shared<IfaceDataMap>();
 }
@@ -98,7 +98,7 @@ void DBInterface::reset(LMDBEnv* envPtr)
       db_.close();
 
    dbEnv_ = envPtr;
-   auto tx = LMDBEnv::Transaction(dbEnv_, LMDB::ReadWrite);
+   auto tx = LMDBEnv::Transaction(dbEnv_, LMDB::Mode::ReadWrite);
    db_.open(dbEnv_, dbName_);
 }
 
@@ -181,7 +181,7 @@ void DBInterface::loadAllEntries(const SecureBinaryData& rootKey)
       auto dataMapPtr = make_shared<IfaceDataMap>();
 
       //read all db entries
-      auto tx = LMDBEnv::Transaction(dbEnv_, LMDB::ReadOnly);
+      auto tx = LMDBEnv::Transaction(dbEnv_, LMDB::Mode::ReadOnly);
 
       int prevDbKey = -1;
       auto iter = db_.begin();
@@ -259,7 +259,7 @@ void DBInterface::loadAllEntries(const SecureBinaryData& rootKey)
       the next wallet load to cycle the key accordingly to decrypt this
       new data correctly.
       */
-      auto tx = LMDBEnv::Transaction(dbEnv_, LMDB::ReadWrite);
+      auto tx = LMDBEnv::Transaction(dbEnv_, LMDB::Mode::ReadWrite);
 
       auto flagKey = dataMapPtr_->getNewDbKey();
       BothBinaryDatas keyFlagBd(keyCycleFlag_);
@@ -469,7 +469,7 @@ bool RawIfaceIterator::isValid() const
 void RawIfaceIterator::seek(const BinaryDataRef& key)
 {
    CharacterArrayRef carKey(key.getSize(), key.getPtr());
-   iterator_.seek(carKey, LMDB::Iterator::SeekBy::Seek_GE);
+   iterator_.seek(carKey, LMDB::Iterator::SeekBy::GE);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

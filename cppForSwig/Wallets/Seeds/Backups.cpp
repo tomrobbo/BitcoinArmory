@@ -1058,26 +1058,6 @@ RestoreResult Helpers::restoreFromBackup(
       }
    }
 
-   /*
-   //prompt for passwords
-   Passphrase::Params priv;
-   if (params.privatePassphrase.empty()) {
-      auto reply = callback(RestorePrompt{RestorePromptType::Passphrases});
-      if (!reply.success) {
-         throw RestoreUserException("user did not provide a passphrase");
-      }
-      priv = std::move(reply.passParams);
-   } else {
-      priv = std::move(params.privPassParams);
-   }
-
-   IO::CreationParams paramsCopy{ params.folder,
-      std::move(priv),
-      std::move(params.ctrlPassParams),
-      params.progressFunc, params.lookup
-   };
-   */
-
    //return wallet
    auto wlt = AssetWallet_Single::createFromSeed(std::move(seed), params);
    return {wlt, merge};

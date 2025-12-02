@@ -50,7 +50,7 @@ class AddressObjectItem(object):
       return self.addrObj.getTxioCount()
 
    def getBalance(self):
-      return self.addrObj.getFullBalance()
+      return self.addrObj.getBalance('full')
 
    def getComment(self):
       return self.addrObj.getComment()
@@ -559,23 +559,23 @@ class TreeStructure_AddressDisplay():
       self.root.appendEntry(nodeChange)
       self.root.appendEntry(nodeUnused)
 
+      '''
       #if we have imports, add an import section
       if not self.wallet.hasImports():
          return
 
       nodeImports = AddressTreeNode(
-         'Imports', True, \
+         'Imports', True,
          self.wallet.getImportCppAddrList)
 
       self.root.appendEntry(nodeImports)
+      '''
 
 ################################################################################
 class TreeStructure_CoinControl():
-
    def __init__(self, wallet):
       self.wallet = wallet
       self.root = None
-
       self.setup()
 
    def getTreeData(self):

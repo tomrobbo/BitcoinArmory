@@ -188,6 +188,9 @@ class WalletMap(object):
          self.loadLockboxesFromFile(MULTISIG_FILE)
       '''
 
+   def syncWalletData(self, dbId: str):
+      self._walletMap[dbId].syncData()
+
    ## getters ##
    def get(self, wId: str, accId: str=None):
       if not accId:
@@ -308,7 +311,3 @@ class WalletMap(object):
          spend += wlt.getBalance('Spendable')
          unconf += wlt.getBalance('Unconfirmed')
       return total, spend, unconf
-
-   def detectHighestUsedIndex(self):
-      for _, wlt in self._walletMap.items():
-         wlt.detectHighestUsedIndex()

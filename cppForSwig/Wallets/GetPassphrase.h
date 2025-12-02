@@ -29,6 +29,12 @@ namespace Armory
 
    namespace Passphrase
    {
+      class PassphraseException : public std::runtime_error
+      {
+      public:
+         PassphraseException(const std::string&);
+      };
+
       struct Result
       {
          SecureBinaryData passphrase;
@@ -42,14 +48,23 @@ namespace Armory
       /* to get passphrase and kdf params at encrypted container creation */
       struct Params
       {
-         std::chrono::milliseconds unlockMs;
-         uint32_t memTargetMB=0;
+         enum class Type : int
+         {
+            Invalid,
+            Unlock,
+            SetNew
+         };
+
+         const Type type;
+         const std::chrono::milliseconds unlockMs;
+         const uint32_t memTargetMB=0;
+         const bool reuseKdf;
          SecureBinaryData passphrase{};
-         bool success;
 
          Params(void);
          Params(std::chrono::milliseconds, uint32_t,
-            SecureBinaryData, bool success=true);
+            SecureBinaryData);
+         Params(SecureBinaryData, bool reuseKdf=false);
       };
 
       class SetNew

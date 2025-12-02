@@ -79,9 +79,8 @@ void KdfRomix::computeKdfParams(
       auto start = std::chrono::system_clock::now();
       testKey = DeriveKey_OneIter(testKey);
       auto end = std::chrono::system_clock::now();
-      approx = std::chrono::duration_cast<std::chrono::milliseconds>(end-start);
 
-      if (approx > targetCompute / 4 || memoryReqtBytes_ >= KDF_MAX_MEMORY_B) {
+      if ((end-start) >= targetCompute / 4 || memoryReqtBytes_ >= KDF_MAX_MEMORY_B) {
          break;
       }
       memoryReqtBytes_ *= 2;
@@ -369,7 +368,8 @@ const KdfId& KeyDerivationFunction_Romix::getId() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-bool KeyDerivationFunction_Romix::isSame(const KeyDerivationFunction* kdf) const
+bool KeyDerivationFunction_Romix::isSame(
+   const KeyDerivationFunction* kdf) const
 {
    auto kdfromix = dynamic_cast<const KeyDerivationFunction_Romix*>(kdf);
    if (kdfromix == nullptr) {
@@ -379,6 +379,18 @@ bool KeyDerivationFunction_Romix::isSame(const KeyDerivationFunction* kdf) const
    return iterations_ == kdfromix->iterations_ &&
       memTargetBytes_ == kdfromix->memTargetBytes_ &&
       salt_ == kdfromix->salt_;
+}
+
+bool KeyDerivationFunction_Romix::isSimilar(
+   const KeyDerivationFunction* kdf) const
+{
+   auto kdfromix = dynamic_cast<const KeyDerivationFunction_Romix*>(kdf);
+   if (kdfromix == nullptr) {
+      return false;
+   }
+
+   return iterations_ == kdfromix->iterations_ &&
+      memTargetBytes_ == kdfromix->memTargetBytes_;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -425,6 +437,12 @@ SecureBinaryData KeyDerivationFunction_Passthrough::deriveKey(
 }
 
 bool KeyDerivationFunction_Passthrough::isSame(
+   const KeyDerivationFunction* rhs) const
+{
+   return rhs->getId() == getId();
+}
+
+bool KeyDerivationFunction_Passthrough::isSimilar(
    const KeyDerivationFunction* rhs) const
 {
    return rhs->getId() == getId();

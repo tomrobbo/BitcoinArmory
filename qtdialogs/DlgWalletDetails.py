@@ -1,14 +1,14 @@
-##############################################################################
-#                                                                            #
-# Copyright (C) 2011-2015, Armory Technologies, Inc.                         #
-# Distributed under the GNU Affero General Public License (AGPL v3)          #
-# See LICENSE or http://www.gnu.org/licenses/agpl.html                       #
-#                                                                            #
-# Copyright (C) 2016-2025, goatpig                                           #
-#  Distributed under the MIT license                                         #
-#  See LICENSE-MIT or https://opensource.org/licenses/MIT                    #
-#                                                                            #
-##############################################################################
+################################################################################
+#                                                                              #
+# Copyright (C) 2011-2015, Armory Technologies, Inc.                           #
+# Distributed under the GNU Affero General Public License (AGPL v3)            #
+# See LICENSE or http://www.gnu.org/licenses/agpl.html                         #
+#                                                                              #
+# Copyright (C) 2016-2025, goatpig                                             #
+#  Distributed under the MIT license                                           #
+#  See LICENSE-MIT or https://opensource.org/licenses/MIT                      #
+#                                                                              #
+################################################################################
 
 from qtpy import QtCore, QtWidgets
 
@@ -38,18 +38,17 @@ from qtdialogs.DlgNewAddress import \
    DlgNewAddressDisp, ShowRecvCoinsWarningIfNecessary
 from qtdialogs.DlgKeypoolSettings import DlgKeypoolSettings
 from qtdialogs.DlgSendBitcoins import DlgSendBitcoins
-from qtdialogs.DlgBackupCenter import DlgBackupCenter, DlgSimpleBackup
+from qtdialogs.DlgBackupCenter import DlgBackupCenter, DlgSimpleBackup, \
+   OpenPaperBackupDialog
 from qtdialogs.DlgAddressInfo import DlgAddressInfo
-from qtdialogs.DlgRestore import OpenPaperBackupDialog
 from qtdialogs.DlgChangePassphrase import DlgChangePassphrase
+from qtdialogs.DlgRemoveWallet import DlgRemoveWallet
+from qtdialogs.DlgExportWO import DlgExpWOWltData
 
 ################################################################################
 class DlgWalletDetails(ArmoryDialog):
-   """ For displaying the details of a specific wallet, with options """
-
-   #############################################################################
    def __init__(self, wlt, usermode=USERMODE.Standard, parent=None, main=None):
-      super(DlgWalletDetails, self).__init__(parent, main)
+      super().__init__(parent, main)
       self.setAttribute(QtCore.Qt.WA_DeleteOnClose)
 
       self.wlt = wlt
@@ -74,17 +73,16 @@ class DlgWalletDetails(ArmoryDialog):
       self.wltAddrView.doubleClicked.connect(self.dblClickAddressView)
 
       # Now add all the options buttons, dependent on the type of wallet.
-
       lbtnChangeLabels = QLabelButton(self.tr('Change Wallet Labels'))
       lbtnChangeLabels.linkActivated.connect(self.changeLabels)
 
       if not self.wlt.watchingOnly:
-         s = ''
+         label = ''
          if self.wlt.useEncryption:
-            s = self.tr('Change or Remove Passphrase')
+            label = self.tr('Change or Remove Passphrase')
          else:
-            s = self.tr('Encrypt Wallet')
-         lbtnChangeCrypto = QLabelButton(s)
+            label = self.tr('Encrypt Wallet')
+         lbtnChangeCrypto = QLabelButton(label)
          lbtnChangeCrypto.linkActivated.connect(self.changeEncryption)
 
       exportStr = 'Data' if self.wlt.watchingOnly else 'Copy'
@@ -104,32 +102,38 @@ class DlgWalletDetails(ArmoryDialog):
       lbtnDeleteA.linkActivated.connect(self.execDeleteAddress)
       lbtnExpWOWlt.linkActivated.connect(self.execExpWOCopy)
 
-      lbtnSendBtc.setToolTip(self.tr('Send bitcoins to other users, or transfer between wallets'))
+      lbtnSendBtc.setToolTip(self.tr(
+         'Send bitcoins to other users, or transfer between wallets'))
       if self.wlt.watchingOnly:
-         lbtnSendBtc.setToolTip(self.tr('If you have a full-copy of this wallet on another computer, you can prepare a '
-                                'transaction, to be signed by that computer.'))
-      lbtnGenAddr.setToolTip(self.tr('Get a new address from this wallet for receiving '
-                             'bitcoins.  Right click on the address list below '
-                             'to copy an existing address.'))
-      lbtnImportA.setToolTip(self.tr('Import or "Sweep" an address which is not part '
-                             'of your wallet.  Useful for VanityGen addresses '
-                             'and redeeming Casascius physical bitcoins.'))
-      lbtnDeleteA.setToolTip(self.tr('Permanently delete an imported address from '
-                             'this wallet.  You cannot delete addresses that '
-                             'were generated natively by this wallet.'))
-      # lbtnSweepA .setToolTip('')
-      lbtnExpWOWlt.setToolTip(self.tr('Export a copy of this wallet that can '
-                             'only be used for generating addresses and '
-                             'monitoring incoming payments.  A watching-only '
-                             'wallet cannot spend the funds, and thus cannot '
-                             'be compromised by an attacker'))
-      lbtnBackups.setToolTip(self.tr('See lots of options for backing up your wallet '
-                             'to protect the funds in it.'))
-      lbtnRemove.setToolTip(self.tr('Permanently delete this wallet, or just delete '
-                             'the private keys to convert it to a watching-only '
-                             'wallet.'))
-      #lbtnRecover.setToolTip('Attempt to recover a lost password using '
-      #                      'details that you remember.')
+         lbtnSendBtc.setToolTip(self.tr(
+            'If you have a full-copy of this wallet on '
+            'another computer, you can prepare a transaction, '
+            'to be signed by that computer.'))
+      lbtnGenAddr.setToolTip(self.tr(
+         'Get a new address from this wallet for receiving '
+         'bitcoins. Right click on the address list below '
+         'to copy an existing address.'))
+      lbtnImportA.setToolTip(self.tr(
+         'Import or "Sweep" an address which is not part '
+         'of your wallet.  Useful for VanityGen addresses '
+         'and redeeming Casascius physical bitcoins.'))
+      lbtnDeleteA.setToolTip(self.tr(
+         'Permanently delete an imported address from '
+         'this wallet.  You cannot delete addresses that '
+         'were generated natively by this wallet.'))
+      lbtnExpWOWlt.setToolTip(self.tr(
+         'Export a copy of this wallet that can '
+         'only be used for generating addresses and '
+         'monitoring incoming payments.  A watching-only '
+         'wallet cannot spend the funds, and thus cannot '
+         'be compromised by an attacker'))
+      lbtnBackups.setToolTip(self.tr(
+         'See lots of options for backing up your wallet '
+         'to protect the funds in it.'))
+      lbtnRemove.setToolTip(self.tr(
+         'Permanently delete this wallet, or just delete '
+         'the private keys to convert it to a watching-only '
+         'wallet.'))
       if not self.wlt.watchingOnly:
          lbtnChangeCrypto.setToolTip(self.tr('Add/Remove/Change wallet encryption settings.'))
 
@@ -155,9 +159,6 @@ class DlgWalletDetails(ArmoryDialog):
       if hasPriv:           optLayout.addWidget(lbtnBackups)
       if adv:               optLayout.addWidget(lbtnExpWOWlt)
       if True:              optLayout.addWidget(lbtnRemove)
-      # if True:              optLayout.addWidget(lbtnRecover)
-      # Not sure yet that we want to include the password finer in here
-
       if adv:               optLayout.addWidget(createVBoxSeparator())
 
       if adv:   optLayout.addWidget(lbtnImportA)
@@ -173,7 +174,7 @@ class DlgWalletDetails(ArmoryDialog):
       totalFunds = self.wlt.getBalance('Total')
       spendFunds = self.wlt.getBalance('Spendable')
       unconfFunds = self.wlt.getBalance('Unconfirmed')
-      uncolor = htmlColor('MoneyNeg')  if unconfFunds > 0          else htmlColor('Foreground')
+      uncolor = htmlColor('MoneyNeg') if unconfFunds > 0 else htmlColor('Foreground')
       btccolor = htmlColor('DisableFG') if spendFunds == totalFunds else htmlColor('MoneyPos')
       lblcolor = htmlColor('DisableFG') if spendFunds == totalFunds else htmlColor('Foreground')
       goodColor = htmlColor('TextGreen')
@@ -193,18 +194,17 @@ class DlgWalletDetails(ArmoryDialog):
       self.lblSpd.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
       self.lblUnc.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
 
-
       self.lblBTC1 = QRichLabel('', doWrap=False)
       self.lblBTC2 = QRichLabel('', doWrap=False)
       self.lblBTC3 = QRichLabel('', doWrap=False)
 
-      ttipTot = createToolTipWidget(\
-            self.tr('Total funds if all current transactions are confirmed. '
+      ttipTot = createToolTipWidget(
+         self.tr('Total funds if all current transactions are confirmed. '
             'Value appears gray when it is the same as your spendable funds.'))
-      ttipSpd = createToolTipWidget(\
-            self.tr('Funds that can be spent <i>right now</i>'))
-      ttipUcn = createToolTipWidget(\
-            self.tr('Funds that have less than 6 confirmations'))
+      ttipSpd = createToolTipWidget(
+         self.tr('Funds that can be spent <i>right now</i>'))
+      ttipUcn = createToolTipWidget(
+         self.tr('Funds that have less than 6 confirmations'))
 
       self.setSummaryBalances()
 
@@ -239,8 +239,6 @@ class DlgWalletDetails(ArmoryDialog):
       layout.addWidget(self.frm, 0, 0)
       layout.addWidget(self.wltAddrView, 2, 0)
       layout.addWidget(bottomFrm, 3, 0)
-
-      # layout.addWidget(QtWidgets.QLabel("Available Actions:"), 0, 4)
       layout.addWidget(optFrame, 0, 1, 4, 1)
       layout.setRowStretch(0, 0)
       layout.setRowStretch(1, 0)
@@ -250,8 +248,6 @@ class DlgWalletDetails(ArmoryDialog):
       layout.setColumnStretch(1, 0)
       self.setLayout(layout)
       self.setWindowTitle(self.tr('Wallet Properties'))
-
-      #self.doFilterAddr()
 
       hexgeom = TheSettings.get('WltPropGeometry')
       tblgeom = TheSettings.get('WltPropAddrCols')
@@ -267,24 +263,25 @@ class DlgWalletDetails(ArmoryDialog):
          restoreTableView(self.wltAddrView, tblgeom)
 
       def remindBackup():
-         result = MsgBoxWithDNAA(self, self.main, MSGBOX.Warning, self.tr('Wallet Backup'), self.tr(
+         result = MsgBoxWithDNAA(self, self.main, MSGBOX.Warning,
+            self.tr('Wallet Backup'), self.tr(
             '<b><font color="red" size=4>Please backup your wallet!</font></b> '
             '<br><br>'
             'Making a paper backup will guarantee you can recover your '
             'coins at <a>any time in the future</a>, even if your '
             'hard drive dies or you forget your passphrase.  Without it, '
-            'you could permanently lose your coins!  '
+            'you could permanently lose your coins! '
             'The backup buttons are to the right of the address list.'
             '<br><br>'
             'A paper backup is recommended, '
             'and it can be copied by hand if you do not have a working printer. '
             'A digital backup only works if you remember the passphrase '
-            'used at the time it was created.  If you have ever forgotten a '
+            'used at the time it was created. If you have ever forgotten a '
             'password before, only rely on a digital backup if you store '
             'the password with it!'
             '<br><br>'
             '<a href="https://bitcointalk.org/index.php?topic=152151.0">'
-            'Read more about Armory backups</a>'), None, yesStr='Ok', \
+            'Read more about Armory backups</a>'), None, yesStr='Ok',
             dnaaStartChk=True)
          wlt.setSetting('DNAA_RemindBackup', result[1])
 
@@ -295,13 +292,17 @@ class DlgWalletDetails(ArmoryDialog):
       chkDont = not TheSettings.getSettingOrSetDefault('DNAA_AllBackupWarn', False)
       if chkLoad and chkType and chkDNAA and chkDont:
          self.callLater(1, remindBackup)
-         lbtnBackups.setText(self.tr('<font color="%s"><b>Backup This Wallet</b></font>' % htmlColor('TextWarn')))
+         lbtnBackups.setText(self.tr(
+            '<font color="%s"><b>Backup This Wallet</b></font>'
+            % htmlColor('TextWarn')
+         ))
 
    #############################################################################
    def doFilterAddr(self):
-      self.wltAddrModel.setFilter(self.chkHideEmpty.isChecked(), \
-                                  self.chkHideChange.isChecked(), \
-                                  self.chkHideUnused.isChecked())
+      self.wltAddrModel.setFilter(
+         self.chkHideEmpty.isChecked(),
+         self.chkHideChange.isChecked(),
+         self.chkHideUnused.isChecked())
       self.wltAddrModel.reset()
 
    #############################################################################
@@ -439,9 +440,11 @@ class DlgWalletDetails(ArmoryDialog):
          # to get an immediate comment update on OS X, unlike Linux or Windows.
          currComment = addrObj.getComment()
          if not currComment:
-            dialog = DlgSetComment(self, self.main, currComment, self.tr('Add Address Comment'))
+            dialog = DlgSetComment(self, self.main, currComment,
+               self.tr('Add Address Comment'))
          else:
-            dialog = DlgSetComment(self, self.main, currComment, self.tr('Change Address Comment'))
+            dialog = DlgSetComment(self, self.main, currComment,
+               self.tr('Change Address Comment'))
          if dialog.exec_():
             newComment = str(dialog.edtComment.text())
             addr160 = addrObj.getAddr160()
@@ -469,45 +472,15 @@ class DlgWalletDetails(ArmoryDialog):
 
    #############################################################################
    def changeEncryption(self):
-      dlgCrypt = DlgChangePassphrase(self, self.main, not self.wlt.useEncryption)
-      if dlgCrypt.exec_():
-         self.disableEncryption = dlgCrypt.chkDisableCrypt.isChecked()
-         newPassphrase = SecureBinaryData(str(dlgCrypt.edtPasswd1.text()))
-         dlgCrypt.edtPasswd1.clear()
-         dlgCrypt.edtPasswd2.clear()
+      dlgCrypt = DlgChangePassphrase(self, self.main, self.wlt)
+      dlgCrypt.exec_()
 
-         if self.wlt.useEncryption:
-            origPassphrase = SecureBinaryData(str(dlgCrypt.edtPasswdOrig.text()))
-            dlgCrypt.edtPasswdOrig.clear()
-            if self.wlt.verifyPassphrase(origPassphrase):
-               unlockProgress = DlgProgress(self, self.main, HBar=1,
-                                            Title="Unlocking Wallet")
-               unlockProgress.exec_(self.wlt.unlock, securePassphrase=origPassphrase)
-            else:
-               # Even if the wallet is already unlocked, enter pwd again to change it
-               QtWidgets.QMessageBox.critical(self, self.tr('Invalid Passphrase'), \
-                     self.tr('Previous passphrase is not correct!  Could not unlock wallet.'), \
-                     QtWidgets.QMessageBox.Ok)
-
-
-         if self.disableEncryption:
-            unlockProgress = DlgProgress(self, self.main, HBar=1,
-                                         Title=self.tr("Changing Encryption"))
-            unlockProgress.exec_(self.wlt.changeWalletEncryption)
-            # self.accept()
-            self.labelValues[WLTFIELDS.Secure].setText(self.tr('No Encryption'))
-            self.labelValues[WLTFIELDS.Secure].setText('')
-            self.labelValues[WLTFIELDS.Secure].setText('')
-         else:
-            if not self.wlt.useEncryption:
-               kdfParams = self.wlt.computeSystemSpecificKdfParams(0.2)
-               self.wlt.changeKdfParams(*kdfParams)
-            unlockProgress = DlgProgress(self, self.main, HBar=2,
-                                         Title=self.tr("Changing Encryption"))
-            unlockProgress.exec_(self.wlt.changeWalletEncryption,
-                                 securePassphrase=newPassphrase)
-            self.labelValues[WLTFIELDS.Secure].setText(self.tr('Encrypted (AES256)'))
-            # self.accept()
+      if dlgCrypt.chkDisableCrypt.isChecked():
+         self.labelValues[WLTFIELDS.Secure].setText(self.tr('No Encryption'))
+         self.labelValues[WLTFIELDS.Secure].setText('')
+         self.labelValues[WLTFIELDS.Secure].setText('')
+      else:
+         self.labelValues[WLTFIELDS.Secure].setText(self.tr('Encrypted (AES256)'))
 
    def getNewAddress(self):
       if ShowRecvCoinsWarningIfNecessary(self.wlt, self, self.main):
@@ -519,22 +492,21 @@ class DlgWalletDetails(ArmoryDialog):
    def execSendBtc(self):
       if TheBDM.getState() in (BDM_OFFLINE, BDM_UNINITIALIZED):
          QtWidgets.QMessageBox.warning(self, self.tr('Offline Mode'), self.tr(
-           'Armory is currently running in offline mode, and has no '
-           'ability to determine balances or create transactions. '
-           '<br><br> '
-           'In order to send coins from this wallet you must use a '
-           'full copy of this wallet from an online computer, '
-           'or initiate an "offline transaction" using a watching-only '
-           'wallet on an online computer.'), QtWidgets.QMessageBox.Ok)
+            'Armory is currently running in offline mode, and has no '
+            'ability to determine balances or create transactions. '
+            '<br><br> '
+            'In order to send coins from this wallet you must use a '
+            'full copy of this wallet from an online computer, '
+            'or initiate an "offline transaction" using a watching-only '
+            'wallet on an online computer.'), QtWidgets.QMessageBox.Ok)
          return
       if TheBDM.getState() == BDM_SCANNING:
          QtWidgets.QMessageBox.warning(self, self.tr('Armory Not Ready'), self.tr(
-           'Armory is currently scanning the blockchain to collect '
-           'the information needed to create transactions.  This '
-           'typically takes between one and five minutes.  Please '
-           'wait until your balance appears on the main window, '
-           'then try again.'), \
-            QtWidgets.QMessageBox.Ok)
+            'Armory is currently scanning the blockchain to collect '
+            'the information needed to create transactions.  This '
+            'typically takes between one and five minutes.  Please '
+            'wait until your balance appears on the main window, '
+            'then try again.'), QtWidgets.QMessageBox.Ok)
          return
 
       self.accept()
@@ -558,19 +530,6 @@ class DlgWalletDetails(ArmoryDialog):
       else:
          DlgSimpleBackup(self, self.main, self.wlt).exec_()
 
-   def execPrintDlg(self):
-      if self.wlt.isLocked:
-         unlockdlg = DlgUnlockWallet(self.wlt, self, self.main, self.tr('Create Paper Backup'))
-         if not unlockdlg.exec_():
-            return
-
-      if not self.wlt.addrMap['ROOT'].hasPrivKey():
-         QtWidgets.QMessageBox.warning(self, self.tr('Move along...'), \
-           self.tr('This wallet does not contain any private keys.  Nothing to backup!'), QtWidgets.QMessageBox.Ok)
-         return
-
-      OpenPaperBackupDialog('Single', self, self.main, self.wlt)
-
    def execRemoveDlg(self):
       dlg = DlgRemoveWallet(self.wlt, self, self.main)
       if dlg.exec_():
@@ -584,11 +543,11 @@ class DlgWalletDetails(ArmoryDialog):
                QtWidgets.QMessageBox.warning(self, self.tr('Unlock Failed'), self.tr(
                   'Wallet was not unlocked.  The public keys and addresses '
                   'will still be shown, but private keys will not be available '
-                  'unless you reopen the dialog with the correct passphrase'), \
+                  'unless you reopen the dialog with the correct passphrase'),
                   QtWidgets.QMessageBox.Ok)
             else:
                QtWidgets.QMessageBox.warning(self, self.tr('Unlock Failed'), self.tr(
-                  'Wallet could not be unlocked to display individual keys.'), \
+                  'Wallet could not be unlocked to display individual keys.'),
                   QtWidgets.QMessageBox.Ok)
                return
 
@@ -616,9 +575,9 @@ class DlgWalletDetails(ArmoryDialog):
          dlg.exec_()
       else:
          QtWidgets.QMessageBox.warning(self, self.tr('Invalid Selection'), self.tr(
-               'You cannot delete addresses generated by your wallet. '
-               'Only imported addresses can be deleted.'), \
-               QtWidgets.QMessageBox.Ok)
+            'You cannot delete addresses generated by your wallet. '
+            'Only imported addresses can be deleted.'),
+            QtWidgets.QMessageBox.Ok)
          return
 
    def execImportAddress(self):
@@ -648,22 +607,8 @@ class DlgWalletDetails(ArmoryDialog):
 
    #############################################################################
    def execExpWOCopy(self):
-      """
-      Function executed when a user executes the \"Export Public Key & Chain
-      Code\" option.
-      """
-      # This should never happen....
-      if not self.wlt.addrMap['ROOT'].hasChainCode():
-         QtWidgets.QMessageBox.warning(self, self.tr(
-            'Move along... This wallet does not have '
-            'a chain code. Backups are pointless!'),
-            QtWidgets.QMessageBox.Ok)
-         return
-
-      # Proceed to the actual export center.
       dlg = DlgExpWOWltData(self.wlt, self, self.main)
-      if dlg.exec_():
-         pass  # Once executed, we're done.
+      dlg.exec_()
 
    #############################################################################
    def setWltDetailsFrame(self):
@@ -758,7 +703,6 @@ class DlgWalletDetails(ArmoryDialog):
 
       labelNames[WLTFIELDS.BelongsTo] = QtWidgets.QLabel(self.tr('Belongs to:'))
 
-
       # TODO:  Add wallet path/location to this!
 
       if dispCrypto:
@@ -775,11 +719,11 @@ class DlgWalletDetails(ArmoryDialog):
       self.labelValues[WLTFIELDS.Version] = QtWidgets.QLabel(getVersionString(self.wlt.version))
 
 
-      topUsed = max(self.wlt.highestUsedChainIndex, 0)
+      topUsed = max(self.wlt.getHighestUsedIndex(), 0)
       self.labelValues[WLTFIELDS.NumAddr] = QLabelButton('%d' % topUsed)
       self.labelValues[WLTFIELDS.NumAddr].setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
-      opendlgkeypool = lambda: DlgKeypoolSettings(self.wlt, self, self.main).exec_()
-      self.labelValues[WLTFIELDS.NumAddr].linkActivated.connect(opendlgkeypool)
+      self.labelValues[WLTFIELDS.NumAddr].linkActivated.connect(
+         lambda: DlgKeypoolSettings(self.wlt, self, self.main).exec_())
 
       # Set the owner appropriately
       if self.wlt.watchingOnly:
@@ -827,8 +771,6 @@ class DlgWalletDetails(ArmoryDialog):
          try:
             lbl.setText('<i>' + lbl.text() + '</i>')
             lbl.setContentsMargins(10, 0, 10, 0)
-            # lbl.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse | \
-                                        # QtCore.Qt.TextSelectableByKeyboard)
          except AttributeError:
             pass
 
@@ -873,13 +815,11 @@ class DlgWalletDetails(ArmoryDialog):
       layout.addWidget(labelNames[WLTFIELDS.Secure], i, 4)
       layout.addWidget(self.labelValues[WLTFIELDS.Secure], i, 5)
 
-
       if self.wlt.watchingOnly:
          i += 1
          layout.addWidget(tooltips[WLTFIELDS.BelongsTo], i, 3)
          layout.addWidget(labelNames[WLTFIELDS.BelongsTo], i, 4)
          layout.addWidget(self.labelValues[WLTFIELDS.BelongsTo], i, 5)
-
 
       if dispCrypto:
          i += 1
@@ -891,7 +831,6 @@ class DlgWalletDetails(ArmoryDialog):
          layout.addWidget(tooltips[WLTFIELDS.Mem], i, 3)
          layout.addWidget(labelNames[WLTFIELDS.Mem], i, 4)
          layout.addWidget(self.labelValues[WLTFIELDS.Mem], i, 5)
-
 
       self.frm = QtWidgets.QFrame()
       self.frm.setFrameStyle(STYLE_SUNKEN)
@@ -987,11 +926,12 @@ class DlgWalletDetails(ArmoryDialog):
                'and monitor incoming transactions.'))
             layout.addWidget(ttip, 1, 1)
 
-
          slot = lambda b: self.edtOwnerString.setEnabled(not b)
          self.chkIsMine.toggled.connect(slot)
 
-         layout.addWidget(QtWidgets.QLabel(self.tr('Wallet owner (optional):')), 3, 0)
+         layout.addWidget(
+            QtWidgets.QLabel(self.tr('Wallet owner (optional):')),
+            3, 0)
          layout.addWidget(self.edtOwnerString, 3, 1)
          bbox = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | \
             QtWidgets.QDialogButtonBox.Cancel)
@@ -1021,8 +961,8 @@ class DlgChangeLabels(ArmoryDialog):
       self.edtName.setText(currName)
       self.edtDescr.setText(currDescr)
 
-      buttonBox = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | \
-                                   QtWidgets.QDialogButtonBox.Cancel)
+      buttonBox = QtWidgets.QDialogButtonBox(
+         QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
       buttonBox.accepted.connect(self.accept)
       buttonBox.rejected.connect(self.reject)
 
@@ -1035,7 +975,6 @@ class DlgChangeLabels(ArmoryDialog):
       self.setLayout(layout)
 
       self.setWindowTitle(self.tr('Wallet Descriptions'))
-
 
    def accept(self, *args):
       try:

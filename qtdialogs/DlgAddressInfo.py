@@ -107,7 +107,7 @@ class DlgAddressInfo(ArmoryDialog):
             'not including zero-confirmation transactions from others.')))
       lbls[-1].append(QRichLabel(self.tr('<b>Current Balance</b>')))
       try:
-         balCoin = addrObj.getSpendableBalance()
+         balCoin = addrObj.getBalance('spend')
          balStr = coin2str(balCoin, maxZeros=1)
          if balCoin > 0:
             goodColor = htmlColor('MoneyPos')

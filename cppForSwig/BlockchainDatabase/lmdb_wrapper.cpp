@@ -274,7 +274,8 @@ bool LDBIter::checkKeyStartsWith(DB_PREFIX prefix, BinaryDataRef key)
 bool LDBIter_Single::seekTo(BinaryDataRef key)
 {
    iter_.seek(CharacterArrayRef(
-      key.getSize(), key.getPtr()), LMDB::Iterator::Seek_GE);
+      key.getSize(), key.getPtr()),
+      LMDB::Iterator::SeekBy::GE);
    return readIterData();
 }
 
@@ -290,7 +291,9 @@ bool LDBIter_Single::seekToExact(BinaryDataRef key)
 ////////////////////////////////////////////////////////////////////////////////
 bool LDBIter_Single::seekToBefore(BinaryDataRef key)
 {
-   iter_.seek(CharacterArrayRef(key.getSize(), key.getPtr()), LMDB::Iterator::Seek_LE);
+   iter_.seek(CharacterArrayRef(
+      key.getSize(), key.getPtr()),
+      LMDB::Iterator::SeekBy::LE);
    return readIterData();
 }
 
@@ -429,7 +432,7 @@ void LMDBBlockDatabase::openDatabases(const std::filesystem::path& basedir)
    {
       //sanity check: try to open older SDBI version
       auto dbPtr = getDbPtr(HEADERS);
-      auto&& tx = dbPtr->beginTransaction(LMDB::ReadOnly);
+      auto&& tx = dbPtr->beginTransaction(LMDB::Mode::ReadOnly);
       BinaryData key;
       key.append(DB_PREFIX_DBINFO);
       auto valueRef = dbPtr->getValue(key.getRef());
@@ -660,7 +663,7 @@ BinaryData LMDBBlockDatabase::getDBKeyForHash(const BinaryData& txhash,
 
    auto hash4 = txhash.getSliceRef(0, 4);
 
-   auto&& txHints = beginTransaction(TXHINTS, LMDB::ReadOnly);
+   auto&& txHints = beginTransaction(TXHINTS, LMDB::Mode::ReadOnly);
    BinaryRefReader brrHints = getValueRef(TXHINTS, DB_PREFIX_TXHINTS, hash4);
 
    uint32_t valSize = brrHints.getSize();
@@ -816,7 +819,7 @@ bool LMDBBlockDatabase::fillStoredSubHistory(StoredScriptHistory& ssh,
    if (DBSettings::getDbType() == ARMORY_DB_SUPER) {
       return fillStoredSubHistory_Super(ssh, start, end);
    } else {
-      auto subsshtx = beginTransaction(SUBSSH, LMDB::ReadOnly);
+      auto subsshtx = beginTransaction(SUBSSH, LMDB::Mode::ReadOnly);
       auto subsshIter = getIterator(SUBSSH);
 
       BinaryWriter dbkey_withHgtX;
@@ -904,7 +907,7 @@ bool LMDBBlockDatabase::fillStoredSubHistory_Super(
       return dupid == iter->second;
    };
 
-   auto meta_tx = beginTransaction(SUBSSH_META, LMDB::ReadOnly);
+   auto meta_tx = beginTransaction(SUBSSH_META, LMDB::Mode::ReadOnly);
 
    //convert height range to batch id range
    auto start_id = getShardIdForHeight(start);
@@ -929,7 +932,7 @@ bool LMDBBlockDatabase::fillStoredSubHistory_Super(
       --ssh_lower_bound;
 
    //grab db iterator
-   auto subsshtx = beginTransaction(SUBSSH, LMDB::ReadOnly);
+   auto subsshtx = beginTransaction(SUBSSH, LMDB::Mode::ReadOnly);
    auto dbIter = getIterator(SUBSSH);
 
    while(ssh_lower_bound != ssh.subsshSummary_.end())
@@ -998,7 +1001,7 @@ bool LMDBBlockDatabase::getStoredScriptHistorySummary(StoredScriptHistory & ssh,
    BinaryDataRef scrAddr) const
 {
    ssh.clear();
-   auto tx = beginTransaction(SSH, LMDB::ReadOnly);
+   auto tx = beginTransaction(SSH, LMDB::Mode::ReadOnly);
    auto ldbIter = getIterator(SSH);
    bool has = false;
 
@@ -1048,7 +1051,7 @@ bool LMDBBlockDatabase::getStoredSubHistoryAtHgtX(StoredSubHistory& subssh,
       throw runtime_error("deprecated in supernode");
    }
 
-   auto&& tx = beginTransaction(SUBSSH, LMDB::ReadOnly);
+   auto&& tx = beginTransaction(SUBSSH, LMDB::Mode::ReadOnly);
    auto value = getValueNoCopy(SUBSSH, dbkey);
 
    if (value.getSize() == 0)
@@ -1141,8 +1144,8 @@ bool LMDBBlockDatabase::getFullUTXOMapForSSH(
    if(!ssh.haveFullHistoryLoaded())
       return false;
 
-   auto&& stxotx = beginTransaction(STXO, LMDB::ReadOnly);
-   auto&& hinttx = beginTransaction(TXHINTS, LMDB::ReadOnly);
+   auto&& stxotx = beginTransaction(STXO, LMDB::Mode::ReadOnly);
+   auto&& hinttx = beginTransaction(TXHINTS, LMDB::Mode::ReadOnly);
 
    {
       for (const auto& ssPair : ssh.subHistMap_)
@@ -1185,7 +1188,7 @@ void LMDBBlockDatabase::readAllHeaders(
    const function<void(shared_ptr<BlockHeader>, uint32_t, uint8_t)> &callback
 )
 {
-   auto&& tx = beginTransaction(HEADERS, LMDB::ReadOnly);
+   auto&& tx = beginTransaction(HEADERS, LMDB::Mode::ReadOnly);
    auto ldbIter = getIterator(HEADERS);
 
    if(!ldbIter->seekToStartsWith(DB_PREFIX_HEADHASH))
@@ -1334,7 +1337,7 @@ uint8_t LMDBBlockDatabase::putBareHeader(StoredHeader & sbh, bool updateDupID,
    }
 
    // Batch the two operations to make sure they both hit the DB, or neither 
-   auto&& tx = beginTransaction(HEADERS, LMDB::ReadWrite);
+   auto&& tx = beginTransaction(HEADERS, LMDB::Mode::ReadWrite);
    auto&& sdbiH = getStoredDBInfo(HEADERS, 0);
 
 
@@ -1818,7 +1821,7 @@ BinaryData LMDBBlockDatabase::getTxHashForLdbKey(BinaryDataRef ldbKey6B) const
    {
       if (getDbType() != ARMORY_DB_SUPER)
       {
-         auto&& tx = beginTransaction(TXHINTS, LMDB::ReadOnly);
+         auto&& tx = beginTransaction(TXHINTS, LMDB::Mode::ReadOnly);
          BinaryData keyFull(ldbKey6B.getSize() + 1);
          keyFull[0] = (uint8_t)DB_PREFIX_TXDATA;
          ldbKey6B.copyTo(keyFull.getPtr() + 1, ldbKey6B.getSize());
@@ -1859,7 +1862,7 @@ BinaryData LMDBBlockDatabase::getTxHashForLdbKey(BinaryDataRef ldbKey6B) const
             block_id, 0xFF, txid);
 
          //get hash & height entry
-         auto&& tx = beginTransaction(STXO, LMDB::ReadOnly);
+         auto&& tx = beginTransaction(STXO, LMDB::Mode::ReadOnly);
          auto data = getValueNoCopy(STXO, id_key);
          if (data.getSize() <= 32)
          {
@@ -2155,7 +2158,7 @@ bool LMDBBlockDatabase::getStoredTxOut(
    bw.put_uint16_t(txoutid, BE);
 
    //grab tx
-   auto&& stxo_tx = beginTransaction(STXO, LMDB::ReadOnly);
+   auto&& stxo_tx = beginTransaction(STXO, LMDB::Mode::ReadOnly);
    auto data = getValueNoCopy(STXO, bw.getDataRef());
    if (data.getSize() == 0)
    {
@@ -2192,7 +2195,7 @@ bool LMDBBlockDatabase::getStoredTxOut(
       //Let's look in the db first. Stxos are fetched mostly to spend coins,
       //so there is a high chance we wont need to pull the stxo from the raw
       //block, since fullnode keeps track of all relevant stxos
-      auto&& tx = beginTransaction(STXO, LMDB::ReadOnly);
+      auto&& tx = beginTransaction(STXO, LMDB::Mode::ReadOnly);
       BinaryRefReader brr = getValueReader(STXO, DB_PREFIX_TXDATA, DBkey);
 
       if (brr.getSize() > 0)
@@ -2241,7 +2244,7 @@ bool LMDBBlockDatabase::getStoredTxOut(
       catch (length_error&)
       {
          //can't get height for this dupId, find block the block hash instead
-         auto&& hhTx = beginTransaction(HEADERS, LMDB::ReadWrite);
+         auto&& hhTx = beginTransaction(HEADERS, LMDB::Mode::ReadWrite);
          
          StoredHeadHgtList hhl;
          if (!getStoredHeadHgtList(hhl, id))
@@ -2280,7 +2283,7 @@ bool LMDBBlockDatabase::getStoredTxOut(
          }
       }
 
-      auto&& stxo_tx = beginTransaction(STXO, LMDB::ReadOnly);
+      auto&& stxo_tx = beginTransaction(STXO, LMDB::Mode::ReadOnly);
       auto data = getValueNoCopy(STXO, bdr_key);
       if (data.getSize() == 0)
       {
@@ -2297,7 +2300,7 @@ bool LMDBBlockDatabase::getStoredTxOut(
       stxo.isCoinbase_ = (txIdx == 0);
 
       //get spentness
-      auto&& spentness_tx = beginTransaction(SPENTNESS, LMDB::ReadOnly);
+      auto&& spentness_tx = beginTransaction(SPENTNESS, LMDB::Mode::ReadOnly);
       auto spentnessVal = getValueNoCopy(SPENTNESS, stxo.getSpentnessKey());
       if (spentnessVal.getSize() != 0)
       {
@@ -2350,7 +2353,7 @@ void LMDBBlockDatabase::getSpentness(StoredTxOut& stxo)
       throw runtime_error("need to implement this for full node");
 
    //get spentness
-   auto&& spentness_tx = beginTransaction(SPENTNESS, LMDB::ReadOnly);
+   auto&& spentness_tx = beginTransaction(SPENTNESS, LMDB::Mode::ReadOnly);
    auto spentnessVal = getValueNoCopy(SPENTNESS, stxo.getSpentnessKey());
    if (spentnessVal.getSize() != 0)
    {
@@ -2369,13 +2372,13 @@ void LMDBBlockDatabase::getUTXOflags(map<BinaryData, StoredSubHistory>&
 {
    if (getDbType() != ARMORY_DB_SUPER)
    {
-      auto tx = beginTransaction(STXO, LMDB::ReadOnly);
+      auto tx = beginTransaction(STXO, LMDB::Mode::ReadOnly);
       for (auto& subssh : subSshMap)
          getUTXOflags(subssh.second);
    }
    else
    {
-      auto tx = beginTransaction(SPENTNESS, LMDB::ReadOnly);
+      auto tx = beginTransaction(SPENTNESS, LMDB::Mode::ReadOnly);
       for (auto& subssh : subSshMap)
          getUTXOflags(subssh.second);
    }
@@ -2608,7 +2611,7 @@ KVLIST LMDBBlockDatabase::getAllDatabaseEntries(DB_SELECT db)
    if(!databasesAreOpen())
       return KVLIST();
 
-   auto&& tx = beginTransaction(db, LMDB::ReadOnly);
+   auto&& tx = beginTransaction(db, LMDB::Mode::ReadOnly);
 
    KVLIST outList;
    outList.reserve(100);
@@ -2678,7 +2681,7 @@ uint32_t LMDBBlockDatabase::getStxoCountForTx(const BinaryData & dbKey6) const
    {
       if (getDbType() != ARMORY_DB_SUPER)
       {
-         auto&& tx = beginTransaction(TXHINTS, LMDB::ReadOnly);
+         auto&& tx = beginTransaction(TXHINTS, LMDB::Mode::ReadOnly);
 
          BinaryRefReader brr = getValueRef(TXHINTS, DB_PREFIX_TXDATA, dbKey6);
          if (brr.getSize() == 0)
@@ -2691,7 +2694,7 @@ uint32_t LMDBBlockDatabase::getStxoCountForTx(const BinaryData & dbKey6) const
       }
       else
       {
-         auto&& tx = beginTransaction(STXO, LMDB::ReadOnly);
+         auto&& tx = beginTransaction(STXO, LMDB::Mode::ReadOnly);
 
          //convert height to id
          unsigned height;
@@ -2720,7 +2723,7 @@ uint32_t LMDBBlockDatabase::getStxoCountForTx(const BinaryData & dbKey6) const
 void LMDBBlockDatabase::resetHistoryForAddressVector(
    const vector<BinaryData>& addrVec)
 {
-   auto&& tx = beginTransaction(SSH, LMDB::ReadWrite);
+   auto&& tx = beginTransaction(SSH, LMDB::Mode::ReadWrite);
 
    for (auto& addr : addrVec)
    {
@@ -2755,7 +2758,7 @@ void LMDBBlockDatabase::resetSSHdb()
 
    {
       //gather keys
-      auto&& tx = beginTransaction(SSH, LMDB::ReadOnly);
+      auto&& tx = beginTransaction(SSH, LMDB::Mode::ReadOnly);
 
       auto dbIter = getIterator(SSH);
 
@@ -2771,7 +2774,7 @@ void LMDBBlockDatabase::resetSSHdb()
    {
       //reset them
 
-      auto&& tx = beginTransaction(SSH, LMDB::ReadWrite);
+      auto&& tx = beginTransaction(SSH, LMDB::Mode::ReadWrite);
 
       for (auto& sshkey : sshKeys)
       {
@@ -2811,7 +2814,7 @@ TxFilterPoolWriter LMDBBlockDatabase::getFilterPoolWriter(
    auto key = DBUtils::getFilterPoolKey(fileNum);
 
    auto db = TXFILTERS;
-   auto tx = beginTransaction(db, LMDB::ReadOnly);
+   auto tx = beginTransaction(db, LMDB::Mode::ReadOnly);
 
    auto val = getValueNoCopy(TXFILTERS, key);
    try
@@ -2832,7 +2835,7 @@ BinaryDataRef LMDBBlockDatabase::getFilterPoolDataRef(
    auto key = DBUtils::getFilterPoolKey(fileNum);
 
    auto db = TXFILTERS;
-   auto tx = beginTransaction(db, LMDB::ReadOnly);
+   auto tx = beginTransaction(db, LMDB::Mode::ReadOnly);
 
    auto val = getValueNoCopy(TXFILTERS, key);
    if (val.empty())
@@ -2852,7 +2855,7 @@ void LMDBBlockDatabase::putFilterPoolForFileNum(
 
    //update on disk
    auto db = TXFILTERS;
-   auto tx = beginTransaction(db, LMDB::ReadWrite);
+   auto tx = beginTransaction(db, LMDB::Mode::ReadWrite);
    putValue(TXFILTERS, key, data);
 }
 
@@ -2875,7 +2878,7 @@ set<BinaryData> LMDBBlockDatabase::getMissingHashes(uint32_t id) const
 {
    auto&& missingHashesKey = DBUtils::getMissingHashesKey(id);
 
-   auto&& tx = beginTransaction(TXFILTERS, LMDB::ReadOnly);
+   auto&& tx = beginTransaction(TXFILTERS, LMDB::Mode::ReadOnly);
 
    auto&& rawMissingHashes = getValueNoCopy(TXFILTERS, missingHashesKey);
 
@@ -2928,7 +2931,7 @@ void LMDBBlockDatabase::closeDB(DB_SELECT db)
 ////////////////////////////////////////////////////////////////////////////////
 void LMDBBlockDatabase::loadHeightToIdMap()
 {
-   auto tx = beginTransaction(SUBSSH_META, LMDB::ReadOnly);
+   auto tx = beginTransaction(SUBSSH_META, LMDB::Mode::ReadOnly);
    auto dbIter = getIterator(SUBSSH_META);
 
    std::map<unsigned, unsigned> heightToIdMap;
@@ -2958,7 +2961,7 @@ bool LMDBBlockDatabase::getOrSetFlaggedBlockFile(uint32_t fileNum)
    bw_key.put_uint8_t((uint8_t)DB_PREFIX_FLAGGED_BLOCKFILES);
    bw_key.put_uint32_t(fileNum, BE);
 
-   auto tx = beginTransaction(HEADERS, LMDB::ReadWrite);
+   auto tx = beginTransaction(HEADERS, LMDB::Mode::ReadWrite);
    auto dbIter = getIterator(HEADERS);
 
    if (!dbIter->seekToExact(bw_key.getDataRef())) {
@@ -2974,7 +2977,7 @@ bool LMDBBlockDatabase::getOrSetFlaggedBlockFile(uint32_t fileNum)
 ////////////////////////////////////////////////////////////////////////////////
 std::vector<uint32_t> LMDBBlockDatabase::getFlaggedFileNums() const
 {
-   auto tx = beginTransaction(HEADERS, LMDB::ReadOnly);
+   auto tx = beginTransaction(HEADERS, LMDB::Mode::ReadOnly);
    auto dbIter = getIterator(HEADERS);
 
    if (!dbIter->seekToStartsWith(DB_PREFIX_FLAGGED_BLOCKFILES)) {
@@ -2996,7 +2999,7 @@ std::vector<uint32_t> LMDBBlockDatabase::getFlaggedFileNums() const
 ////////////////////////////////////////////////////////////////////////////////
 void LMDBBlockDatabase::clearFlaggedFileNums()
 {
-   auto tx = beginTransaction(HEADERS, LMDB::ReadWrite);
+   auto tx = beginTransaction(HEADERS, LMDB::Mode::ReadWrite);
    auto dbIter = getIterator(HEADERS);
 
    if (!dbIter->seekToStartsWith(DB_PREFIX_FLAGGED_BLOCKFILES)) {
@@ -3104,7 +3107,7 @@ void DBPair::open(const std::filesystem::path& path, const string& dbName)
    auto map_size = LMDBBlockDatabase::mapSizes_.at(dbName);
    env_.setMapSize(map_size);
 
-   auto&& tx = beginTransaction(LMDB::ReadWrite);
+   auto&& tx = beginTransaction(LMDB::Mode::ReadWrite);
    db_.open(&env_, dbName);
 }
 
@@ -3188,7 +3191,7 @@ StoredDBInfo DatabaseContainer_Single::open()
       sdbi = std::move(getStoredDBInfo(0));
    } catch (const std::runtime_error&) {
       // If DB didn't exist yet (dbinfo key is empty), seed it
-      auto tx = db_.beginTransaction(LMDB::ReadWrite);
+      auto tx = db_.beginTransaction(LMDB::Mode::ReadWrite);
 
       sdbi.magic_ = magicBytes_;
       sdbi.metaHash_ = BtcUtils::EmptyHash_;
@@ -3214,7 +3217,7 @@ void DatabaseContainer_Single::putStoredDBInfo(
 StoredDBInfo DatabaseContainer_Single::getStoredDBInfo(uint32_t id)
 {
    SCOPED_TIMER("getStoredDBInfo");
-   auto&& tx = db_.beginTransaction(LMDB::ReadOnly);
+   auto&& tx = db_.beginTransaction(LMDB::Mode::ReadOnly);
 
    auto&& key = StoredDBInfo::getDBKey(id);
    BinaryRefReader brr(getValue(key.getRef()));

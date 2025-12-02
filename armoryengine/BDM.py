@@ -1,23 +1,16 @@
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
 ################################################################################
 #                                                                              #
-# Copyright (C) 2011-2015, Armory Technologies, Inc.                           #
+# Copyright (C) 2011-2025, Armory Technologies, Inc.                           #
 # Distributed under the GNU Affero General Public License (AGPL v3)            #
 # See LICENSE or http://www.gnu.org/licenses/agpl.html                         #
 #                                                                              #
 ################################################################################
 import os.path
-import random
-import threading
-import traceback
 
+#TODO: import * is too aggressive
 from armoryengine.ArmoryUtils import *
 from armoryengine.Timer import TimeThisFunction
-from armoryengine.BinaryPacker import UINT64
 from armoryengine.CppBridge import ServerPush, TheBridge
-
-DISCONNECTED_CALLBACK_ID = 0xff543ad8
 
 BDMPhase_DBHeaders = 1
 BDMPhase_OrganizingChain = 2
@@ -35,23 +28,23 @@ BDM_UNINITIALIZED = 'Uninitialized'
 BDM_BLOCKCHAIN_READY = 'BlockChainReady'
 BDM_SCANNING = 'Scanning'
 
-FINISH_LOAD_BLOCKCHAIN_ACTION = 'FinishLoadBlockchain'
-NEW_ZC_ACTION = 'newZC'
+SETUP_STEP1 = 'ready'
+NEW_ZC_ACTION = 'zeroConfs'
 NEW_BLOCK_ACTION = 'newBlock'
 REFRESH_ACTION = 'refresh'
 STOPPED_ACTION = 'stopped'
 WARNING_ACTION = 'warning'
 SCAN_ACTION = 'StartedWalletScan'
-NODESTATUS_UPDATE = 'NodeStatusUpdate'
+NODESTATUS_UPDATE = 'nodeStatus'
 BDM_SCAN_PROGRESS = 'BDM_Progress'
-BDV_ERROR = 'BDV_Error'
-BDV_DISCONNECTED = 'BDV_Disconnected'
+BDV_ERROR = 'error'
+BDV_DISCONNECTED = 'disconnected'
 
 CPP_BDM_NOTIF_ID      = "bdm_callback"
 CPP_PROGRESS_NOTIF_ID = "progress"
 
-SETUP_STEP2 = 'setup_step1_done'
-SETUP_STEP3 = 'setup_step2_done'
+SETUP_STEP2 = 'setupDone'
+SETUP_STEP3 = 'registerDone'
 
 def newTheBDM(isOffline=False):
    global TheBDM
@@ -85,10 +78,8 @@ class BDMCallbackWrapper(ServerPush):
 
 ################################################################################
 class BlockDataManager(object):
-
-   #############################################################################
    def __init__(self, isOffline=False):
-      super(BlockDataManager, self).__init__()
+      super().__init__()
 
       #register callbacks
       self.armoryDBDir = ""
@@ -217,50 +208,22 @@ class BlockDataManager(object):
 
    #############################################################################
    def pushNotification(self, notifProto):
-      act = ''
-      args = None
+      act = notifProto.which()
 
-      # AOTODO replace with constants
-      if notifProto.which() == "ready":
-         print('BDM is ready!')
-         act = FINISH_LOAD_BLOCKCHAIN_ACTION
+      if act == SETUP_STEP1:
+         LOGINFO('BDM is ready!')
          TheBDM.topBlockHeight = notifProto.ready
          TheBDM.setState(BDM_BLOCKCHAIN_READY)
 
-      elif notifProto.which() == "zeroConfs":
-         act = NEW_ZC_ACTION
-         args = notifProto.zeroConfs
-
-      elif notifProto.which() == "newBlock":
-         act = NEW_BLOCK_ACTION
-         args = notifProto.newBlock
+      elif act == NEW_BLOCK_ACTION:
          TheBDM.topBlockHeight = notifProto.newBlock
 
-      elif notifProto.which() == "refresh":
-         act = REFRESH_ACTION
-         args = notifProto.refresh
-
-      elif notifProto.which() == "error":
-         act = WARNING_ACTION
-         args = notifProto.error
-
-      elif notifProto.which() == "nodeStatus":
-         act = NODESTATUS_UPDATE
-         args = notifProto.nodeStatus
-
-      elif notifProto.which() == "disconnected":
+      elif act == BDV_DISCONNECTED:
          TheBDM.setState(BDM_OFFLINE)
-         act = BDV_DISCONNECTED
-
-      #setup notifs
-      elif notifProto.which() == "setupDone":
-         act = SETUP_STEP2
-      elif notifProto.which() == "registerDone":
-         act = SETUP_STEP3
 
       listenerList = self.getListenerList()
       for cppNotificationListener in listenerList:
-         cppNotificationListener(act, (args))
+         cppNotificationListener(act, getattr(notifProto, act))
 
    #############################################################################
    def reportProgress(self, notifProto):
@@ -297,8 +260,8 @@ class BlockDataManager(object):
       TheBridge.start(stringArgs, notifyReadyLbd)
 
 ################################################################################
-# Make TheBDM reference the asyncrhonous BlockDataManager wrapper if we are 
-# running 
+# Make TheBDM reference the asyncrhonous BlockDataManager wrapper if we are
+# running
 TheBDM = None
 if CLI_OPTIONS.offline:
    LOGINFO('Armory loaded in offline-mode.  Will not attempt to load ')

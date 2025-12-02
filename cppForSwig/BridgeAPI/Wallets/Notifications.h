@@ -70,6 +70,7 @@ namespace Armory
          void notifyRefresh(const std::set<std::string>&);
          void registerRefreshCallback(const std::string&,
             const std::function<void(void)>&);
+         void unregisterCallback(const std::string&);
       };
    }
 }

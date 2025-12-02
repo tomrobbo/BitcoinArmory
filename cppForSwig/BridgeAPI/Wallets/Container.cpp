@@ -70,7 +70,8 @@ std::shared_ptr<Wallets::AssetWallet> WalletContainer::getWalletPtr() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::shared_ptr<Accounts::AddressAccount> WalletContainer::getAddressAccount() const
+std::shared_ptr<Accounts::AddressAccount>
+WalletContainer::getAddressAccount() const
 {
    auto accPtr = wallet_->getAccountForID(accountId_);
    return accPtr;
@@ -92,7 +93,7 @@ void WalletContainer::resetCache()
 void WalletContainer::registerWithBDV(bool isNew)
 {
    if (bdvPtr_ == nullptr) {
-      throw std::runtime_error("bdvPtr is not set");
+      throw OfflineException();
    }
    resetCache();
 
@@ -117,10 +118,10 @@ void WalletContainer::registerWithBDV(bool isNew)
 void WalletContainer::unregisterFromBDV()
 {
    if (bdvPtr_ == nullptr) {
-      throw std::runtime_error("bdvPtr is not set");
+      throw OfflineException();
    }
    if (asyncWlt_ == nullptr) {
-      throw std::runtime_error("asyncWlt is not set");
+      throw OfflineException();
    }
    asyncWlt_->unregister();
 }
@@ -139,6 +140,26 @@ void WalletContainer::updateWalletBalanceState(
    for (const auto& addrPair : bal.addressBalances) {
       balanceMap_[addrPair.first] = addrPair.second;
    }
+}
+
+uint64_t WalletContainer::getFullBalance() const
+{
+   return totalBalance_;
+}
+
+uint64_t WalletContainer::getSpendableBalance() const
+{
+   return spendableBalance_;
+}
+
+uint64_t WalletContainer::getUnconfirmedBalance() const
+{
+   return unconfirmedBalance_;
+}
+
+uint64_t WalletContainer::getTxIOCount() const
+{
+   return txioCount_;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -295,7 +316,8 @@ void WalletContainer::updateAddressCountState(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::map<BinaryData, std::vector<uint64_t>> WalletContainer::getAddrBalanceMap() const
+std::map<BinaryData, std::vector<uint64_t>>
+WalletContainer::getAddrBalanceMap() const
 {
    std::map<BinaryData, std::vector<uint64_t>> result;
    for (const auto& dataPair : countMap_) {
@@ -310,7 +332,6 @@ std::map<BinaryData, std::vector<uint64_t>> WalletContainer::getAddrBalanceMap()
       balVec.emplace_back(dataPair.second);
       result.emplace(dataPair.first, balVec);
    }
-
    return result;
 }
 
@@ -330,7 +351,6 @@ WalletContainer::getUpdatedAddressMap()
 {
    auto mapMove = std::move(updatedAddressMap_);
    updatedAddressMap_.clear();
-
    return mapMove;
 }
 
@@ -350,6 +370,25 @@ std::unique_ptr<Seeds::WalletBackup> WalletContainer::getBackupStrings(
    wltSingle->resetPassphrasePromptLambda();
 
    return backupStrings;
+}
+
+void WalletContainer::changePassphrase(const Passphrase::UnlockFunc& unlockLbd,
+   Passphrase::SetNew& setLbd, bool isPriv)
+{
+   auto wltSingle = std::dynamic_pointer_cast<Wallets::AssetWallet_Single>(wallet_);
+   if (wltSingle == nullptr) {
+      LOGERR << "WalletContainer::changePassphrase: unexpected wallet type";
+      throw std::runtime_error(
+         "WalletContainer::changePassphrase: unexpected wallet type");
+   }
+
+   if (isPriv) {
+      wltSingle->setPassphrasePromptLambda(unlockLbd);
+      wltSingle->changePrivateKeyPassphrase(setLbd);
+      wltSingle->resetPassphrasePromptLambda();
+   } else {
+      wltSingle->changeControlPassphrase(setLbd, unlockLbd);
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -389,16 +428,16 @@ void WalletContainer::updateBalancesAndCount(uint32_t topBlockHeight)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void WalletContainer::extendAddressChain(unsigned count)
+void WalletContainer::extendAddressChain(unsigned count,
+   const std::function<void(int)>& progFunc)
 {
-   wallet_->extendPublicChain(count);
+   wallet_->extendPublicChain(accountId_, count, progFunc);
 }
 
 ////
-void WalletContainer::extendAddressChainToIndex(
-   const Armory::Wallets::AddressAccountId& id, unsigned count)
+void WalletContainer::extendAddressChainToIndex(unsigned count)
 {
-   wallet_->extendPublicChainToIndex(id, count);
+   wallet_->extendPublicChainToIndex(accountId_, count);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -424,4 +463,16 @@ void WalletContainer::getUTXOs(uint64_t val, bool zc, bool rbf,
 const Wallets::EncryptionKeyId& WalletContainer::getDefaultEncryptionKeyId() const
 {
    return wallet_->getDefaultEncryptionKeyId();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+std::filesystem::path WalletContainer::forkWatchingOnly(
+   const Passphrase::SetNew& ctrlPass)
+{
+   auto wltSingle = std::dynamic_pointer_cast<Wallets::AssetWallet_Single>(wallet_);
+   if (wltSingle == nullptr) {
+      throw std::runtime_error("unexpected wallet type");
+   }
+   auto wpd = Wallets::AssetWallet_Single::exportPublicData(wltSingle);
+   return Wallets::AssetWallet_Single::forkWatchingOnly(wpd, ctrlPass);
 }

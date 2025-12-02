@@ -76,9 +76,8 @@ namespace Armory
 
             std::function<void(const BinaryData&, BothBinaryDatas&)> insertLbd_;
             std::function<void(const BinaryData&)> eraseLbd_;
-            std::function<const std::shared_ptr<InsertData>&(const BinaryData&)> 
+            std::function<const std::shared_ptr<InsertData>&(const BinaryData&)>
                getDataLbd_;
-
             std::shared_ptr<IfaceDataMap> dataMapPtr_;
 
          private:
@@ -91,8 +90,7 @@ namespace Armory
                const BinaryData&) const;
 
          public:
-            WalletIfaceTransaction(WalletDBInterface*,
-               DBInterface* dbPtr, bool mode);
+            WalletIfaceTransaction(WalletDBInterface*, DBInterface*, bool);
             ~WalletIfaceTransaction(void) noexcept(false);
 
             const std::string& getDbName(void) const;
@@ -116,14 +114,7 @@ namespace Armory
             std::map<BinaryData, BothBinaryDatas>::const_iterator iterator_;
 
          public:
-            WalletIfaceIterator(const WalletIfaceTransaction* tx) :
-               txPtr_(tx)
-            {
-               if (tx == nullptr)
-                  throw WalletInterfaceException("null tx");
-
-               iterator_ = tx->dataMapPtr_->dataMap_.begin();
-            }
+            WalletIfaceIterator(const WalletIfaceTransaction*);
 
             bool isValid(void) const override;
             void seek(const BinaryDataRef&) override;
@@ -135,7 +126,6 @@ namespace Armory
 
          struct WalletHeader;
          struct WalletHeader_Control;
-
          struct MasterKeyStruct;
 
          //////////////////////////////////////////////////////////////////////////
@@ -148,7 +138,7 @@ namespace Armory
             mutable std::mutex setupMutex_;
 
             std::unique_ptr<LMDBEnv> dbEnv_ = nullptr;
-            std::map<std::string, std::unique_ptr<DBInterface>> dbMap_;
+            std::map<std::string, std::unique_ptr<DBInterface>, std::less<>> dbMap_;
 
             //encryption objects
             std::unique_ptr<LMDB> controlDb_;
@@ -175,10 +165,10 @@ namespace Armory
 
             //utils
             BinaryDataRef getDataRefForKey(
-               DBIfaceTransaction* tx, const BinaryData& key);
+               DBIfaceTransaction*, const BinaryData&);
             void setDbCount(unsigned, bool);
             void openDB(std::shared_ptr<WalletHeader>,
-               const SecureBinaryData&, unsigned encrVersion);
+               const SecureBinaryData&, unsigned);
 
             //header methods
             void openControlDb(void);
@@ -222,9 +212,9 @@ namespace Armory
 
             //transactions
             std::unique_ptr<DBIfaceTransaction> beginWriteTransaction(
-               const std::string&);
+               const std::string_view&);
             std::unique_ptr<DBIfaceTransaction> beginReadTransaction(
-               const std::string&);
+               const std::string_view&);
 
             //utils
             void lockControlContainer(const Passphrase::UnlockFunc&);

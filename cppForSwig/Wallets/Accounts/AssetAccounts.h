@@ -46,6 +46,7 @@ namespace Armory
 
    namespace Accounts
    {
+      using ProgressFunc = std::function<void(int)>;
       using AssetPtr = std::shared_ptr<Assets::AssetEntry>;
       struct AssetAccountData
       {
@@ -133,14 +134,14 @@ namespace Armory
 
          void extendPublicChainToIndex(
             std::shared_ptr<Wallets::IO::WalletDBInterface>, int32_t,
-            const std::function<void(int)>&);
+            const ProgressFunc&);
          void extendPublicChain(
             std::shared_ptr<Wallets::IO::WalletDBInterface>,
             AssetPtr, int32_t,
-            const std::function<void(int)>&);
+            const ProgressFunc&);
          std::vector<AssetPtr> extendPublicChain(
             AssetPtr, int32_t, int32_t,
-            const std::function<void(int)>&);
+            const ProgressFunc&);
 
          void extendPrivateChain(
             std::shared_ptr<Wallets::IO::WalletDBInterface>,
@@ -160,11 +161,14 @@ namespace Armory
             int32_t, int32_t);
 
          AssetPtr getOrSetAssetAtIndex(
-            std::shared_ptr<Wallets::IO::WalletDBInterface>, unsigned);
+            std::shared_ptr<Wallets::IO::WalletDBInterface>, unsigned,
+            const ProgressFunc&);
          AssetPtr getNewAsset(
-            std::shared_ptr<Wallets::IO::WalletDBInterface>);
+            std::shared_ptr<Wallets::IO::WalletDBInterface>,
+            const ProgressFunc&);
          AssetPtr peekNextAsset(
-            std::shared_ptr<Wallets::IO::WalletDBInterface>);
+            std::shared_ptr<Wallets::IO::WalletDBInterface>,
+            const ProgressFunc&);
 
          std::shared_ptr<Assets::Asset_PrivateKey> fillPrivateKey(
             std::shared_ptr<Wallets::IO::WalletDBInterface>,

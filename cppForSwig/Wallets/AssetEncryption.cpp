@@ -422,16 +422,6 @@ unique_ptr<EncryptionKey> EncryptionKey::deserialize(const BinaryDataRef& data)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::set<KdfId> EncryptionKey::getKdfIds() const
-{
-   std::set<KdfId> result;
-   for (const auto& cipherData : cipherDataMap_) {
-      result.emplace(cipherData.second->cipher_->getKdfId());
-   }
-   return result;
-}
-
-////////////////////////////////////////////////////////////////////////////////
 //
 //// ClearTextEncryptionKey
 //

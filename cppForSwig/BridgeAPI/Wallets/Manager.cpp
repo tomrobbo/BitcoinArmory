@@ -23,6 +23,8 @@ using namespace Armory::Bridge;
 using namespace std::string_view_literals;
 using namespace std::chrono_literals;
 
+#include "capnp/Bridge.capnp.h"
+
 ////////////////////////////////////////////////////////////////////////////////
 ////
 //// WalletManager
@@ -45,7 +47,7 @@ const std::filesystem::path& WalletManager::getWalletDir() const
 }
 
 ////
-bool WalletManager::hasWallet(const std::string& id)
+bool WalletManager::hasWallet(const Wallets::WalletId& id)
 {
    std::unique_lock<std::mutex> lock(mu_);
    auto wltIter = wallets_.find(id);
@@ -53,10 +55,10 @@ bool WalletManager::hasWallet(const std::string& id)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::map<std::string, std::set<Wallets::AddressAccountId>>
+std::map<Wallets::WalletId, std::set<Wallets::AddressAccountId>>
 WalletManager::getAccountIdMap() const
 {
-   std::map<std::string, std::set<Wallets::AddressAccountId>> result;
+   std::map<Wallets::WalletId, std::set<Wallets::AddressAccountId>> result;
    for (const auto& wltIt : wallets_) {
       auto wltIter = result.emplace(
          wltIt.first, std::set<Wallets::AddressAccountId>{});
@@ -69,7 +71,7 @@ WalletManager::getAccountIdMap() const
 
 ////////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<WalletContainer> WalletManager::getWalletContainer(
-   const std::string& wltId) const
+   const Wallets::WalletId& wltId) const
 {
    auto iter = wallets_.find(wltId);
    if (iter == wallets_.end()) {
@@ -82,7 +84,7 @@ std::shared_ptr<WalletContainer> WalletManager::getWalletContainer(
 
 ////////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<WalletContainer> WalletManager::getWalletContainer(
-   const std::string& wltId, const Wallets::AddressAccountId& accId) const
+   const Wallets::WalletId& wltId, const Wallets::AddressAccountId& accId) const
 {
    auto wltIter = wallets_.find(wltId);
    if (wltIter == wallets_.end()) {
@@ -94,15 +96,14 @@ std::shared_ptr<WalletContainer> WalletManager::getWalletContainer(
    auto accIter = wltIter->second.find(accId);
    if (accIter == wltIter->second.end()) {
       std::string errStr{"there is no account "sv};
-      errStr += accId.toHexStr() + std::string{"for wallet "sv} + wltId;
+      errStr += accId.toHexStr() + std::string{" for wallet "sv} + wltId;
       throw std::runtime_error(errStr);
    }
-
    return accIter->second;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::shared_ptr<Callback> WalletManager::setupBdvCallback(
+void WalletManager::setupBdvCallback(
    const std::function<void(BinaryData&)>& writeFunc)
 {
    if (callbackPtr_ != nullptr) {
@@ -145,8 +146,12 @@ std::shared_ptr<Callback> WalletManager::setupBdvCallback(
             throw std::runtime_error("invalid pushNotif type");
       }
    };
-
    callbackPtr_ = std::make_shared<Callback>(pushNotif);
+}
+
+////
+std::shared_ptr<Callback> WalletManager::getBdvCallback() const
+{
    return callbackPtr_;
 }
 
@@ -174,28 +179,25 @@ void WalletManager::registerWallets()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void WalletManager::registerWallet(const std::string& wltId,
+void WalletManager::registerWallet(const Wallets::WalletId& wltId,
    const Wallets::AddressAccountId& accId, bool isNew)
 {
-   auto wltIter = wallets_.find(wltId);
-   if (wltIter == wallets_.end()) {
-      throw std::runtime_error("[WalletManager::registerWallet]");
-   }
+   auto container = getWalletContainer(wltId, accId);
+   auto dbId = container->getDbId();
 
-   auto accIter = wltIter->second.find(accId);
-   if (accIter == wltIter->second.end()) {
-      throw std::runtime_error("[WalletManager::registerWallet]");
+   try {
+      callbackPtr_->registerRefreshCallback(dbId,
+         [this, dbId]() {
+            updateStateFromDB(
+               [this, dbId]() {
+                  callbackPtr_->notifyRefresh({dbId});
+               });
+         });
+      container->registerWithBDV(isNew);
+   } catch (const OfflineException& e) {
+      callbackPtr_->unregisterCallback(dbId);
+      throw e;
    }
-
-   accIter->second->registerWithBDV(isNew);
-   auto dbId = accIter->second->getDbId();
-   auto lbd = [this, dbId]()
-   {
-      updateStateFromDB([this, dbId](){
-         callbackPtr_->notifyRefresh({dbId});
-      });
-   };
-   callbackPtr_->registerRefreshCallback(dbId, lbd);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -264,7 +266,8 @@ std::shared_ptr<WalletContainer> WalletManager::createNewWallet(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::filesystem::path WalletManager::unloadWallet(const std::string& wltId)
+std::filesystem::path WalletManager::unloadWallet(
+   const Wallets::WalletId& wltId)
 {
    ReentrantLock lock(this);
    auto iter = wallets_.find(wltId);
@@ -280,31 +283,25 @@ std::filesystem::path WalletManager::unloadWallet(const std::string& wltId)
             path = acc.second->getWalletPtr()->getDbFilename();
          }
          acc.second->unregisterFromBDV();
-      } catch (const std::exception&) {
+      } catch (const OfflineException&) {
          //we do not care if the unregister operation fails
       }
    }
 
-   //remove containers from map, this should unload the underlying AssetWallet
+   //remove containers from map;
    wallets_.erase(wltId);
    return path;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void WalletManager::deleteWallet(const std::string& wltId)
+void WalletManager::deleteWallet(const Wallets::WalletId& wltId)
 {
    ReentrantLock lock(this);
    auto wltCont = getWalletContainer(wltId);
-   wallets_.erase(wltId);
+   unloadWallet(wltId);
 
-   //delete from disk
+   //delete from disk & cleanup
    wltCont->eraseFromDisk();
-   try {
-      //unregister from db
-      wltCont->unregisterFromBDV();
-   } catch (const std::exception&) {
-      //we do not care if the unregister operation fails
-   }
    wltCont.reset();
 }
 
@@ -414,7 +411,6 @@ WalletManager::listWallets()
    for (const auto& entry : walletFiles_) {
       switch (entry.second->state())
       {
-         case WalletLoadState::Migrated:
          case WalletLoadState::Loaded:
             break;
 
@@ -483,18 +479,21 @@ void WalletManager::unlockControlHeader(const std::string& path,
 }
 
 /////////
-const std::string& WalletManager::migrateWallet(const std::string& path,
+const Wallets::WalletId& WalletManager::migrateWallet(
+   const std::filesystem::path& path,
    const Passphrase::UnlockFunc& lbd,
    const Wallets::IO::CreateWalletParams& params)
 {
    //sanity checks
    if (path.empty() || lbd == nullptr) {
-      throw std::runtime_error("tried to unlock control header with empty id/lambda");
+      throw std::runtime_error(
+         "tried to unlock control header with empty id/lambda");
    }
 
-   auto iter = walletFiles_.find(path);
+   auto iter = walletFiles_.find(path.filename().string());
    if (iter == walletFiles_.end()) {
-      throw std::runtime_error("this file is not a known wallet: " + path);
+      throw std::runtime_error(
+         "this file is not a known wallet: " + path.string());
    }
 
    auto infoObj = std::dynamic_pointer_cast<A135FileInfo>(iter->second);
@@ -510,7 +509,7 @@ const std::string& WalletManager::migrateWallet(const std::string& path,
 }
 
 /////////
-bool WalletManager::stageWallet(const std::string& walletId, bool stage)
+bool WalletManager::stageWallet(const Wallets::WalletId& walletId, bool stage)
 {
    for (auto& knownFile : walletFiles_) {
       try {
@@ -581,4 +580,86 @@ void WalletManager::updateStateFromDB(const std::function<void(void)>& callback)
    if (thr.joinable()) {
       thr.detach();
    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/***
+Address creation should be called from WalletManager. It ensures data
+consistency in the following ways:
+   . Register the addresses with the db, if available
+   . Update the balance and count cache
+   . Check address types and top used count again chain data. This is
+      critical for restored wallets, where the address chain wasn't
+      extended far enough initially.
+   . notify the caller to refresh its address data on completion
+***/
+void WalletManager::extendAddressChain(const Wallets::WalletId& wltId,
+   const Wallets::AddressAccountId& accId, unsigned count, bool isNew,
+   std::function<void(int)> progressFunc)
+{
+   auto container = getWalletContainer(wltId, accId);
+   container->extendAddressChain(count, progressFunc);
+   try {
+      registerWallet(wltId, accId, isNew);
+   } catch (const OfflineException&) {
+      //if we are not connected to a db, we are done, notify the caller
+      callbackPtr_->notifyRefresh({container->getDbId()});
+   }
+}
+
+////
+std::shared_ptr<AddressEntry> WalletManager::getNewAddress(
+   const Wallets::WalletId& wltId,
+   const Wallets::AddressAccountId& accId,
+   uint32_t addrType, uint32_t addrKind)
+{
+   using namespace Armory::Codec::Bridge;
+
+   bool wasExtended = false;
+   auto progFunc = [&wasExtended](int)
+   {
+      wasExtended = true;
+   };
+
+   auto wltContainer = getWalletContainer(wltId, accId);
+   auto wltPtr = wltContainer->getWalletPtr();
+   auto accPtr = wltContainer->getAddressAccount();
+
+   std::shared_ptr<AddressEntry> addrPtr;
+   switch (addrKind)
+   {
+      case WalletRequest::AddressRequest::NEW:
+      {
+         addrPtr = accPtr->getNewAddress(
+            wltPtr->getIface(), (AddressEntryType)addrType, progFunc);
+         break;
+      }
+
+      case WalletRequest::AddressRequest::CHANGE:
+      {
+         addrPtr = accPtr->getNewChangeAddress(
+            wltPtr->getIface(), (AddressEntryType)addrType, progFunc);
+         break;
+      }
+
+      case WalletRequest::AddressRequest::PEEK_CHANGE:
+      {
+         addrPtr = accPtr->peekNextChangeAddress(
+            wltPtr->getIface(), (AddressEntryType)addrType, progFunc);
+         break;
+      }
+
+      default:
+         return nullptr;
+   }
+
+   if (wasExtended) {
+      try {
+         registerWallet(wltId, accId, true);
+      } catch (const OfflineException&) {
+         //if we are not connected to a db, we are done, notify the caller
+         callbackPtr_->notifyRefresh({wltContainer->getDbId()});
+      }
+   }
+   return addrPtr;
 }

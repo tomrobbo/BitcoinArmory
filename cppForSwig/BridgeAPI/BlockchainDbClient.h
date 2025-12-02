@@ -34,7 +34,7 @@ namespace Armory
       extern void* autoDbHandle;
    #else
       extern int autoDbPid;
-   #endif;
+   #endif
 
       ////////
       std::shared_ptr<Wallets::AuthorizedPeers> spawnDb(void);
@@ -42,7 +42,6 @@ namespace Armory
 
       BdvPtr setupClientConnection(
          std::shared_ptr<Wallets::AuthorizedPeers>,
-         const std::function<void(BinaryData&)>&,
          std::shared_ptr<WalletManager>
       );
    }

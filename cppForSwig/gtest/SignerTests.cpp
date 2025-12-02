@@ -4876,7 +4876,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2WPKH_WOResolution_fromXPub)
    auto emptyWlt = AssetWallet_Single::createFromSeed(move(seed), params);
 
    //create empty WO wallet
-   auto wltWO = AssetWallet_Single::createBlank("walletWO1", params);
+   auto wltWO = AssetWallet_Single::createBlank("walletWO1"sv, params);
 
    //derive public root
    std::vector<unsigned> derPath = { 0x800061a5, 0x80000000 };
@@ -9649,7 +9649,7 @@ TEST_F(ExtrasTest_Mainnet, Bip32PathDiscovery)
          std::move(seed), params);
 
       wltPath = wallet->getDbFilename();
-      auto woWalletPath = wallet->forkWatchingOnly(
+      auto woWalletPath = AssetWallet::forkWatchingOnly(
          IO::ReadOnlyFileParams{wltPath, {}},
          Armory::Passphrase::SetNew{}
       );
