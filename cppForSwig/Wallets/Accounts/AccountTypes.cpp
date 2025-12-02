@@ -6,6 +6,8 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
+#include "Utils/BtcUtils.h"
+#include "Utils/Cryptography.h"
 #include "AccountTypes.h"
 #include "../Assets.h"
 #include "../DecryptedDataContainer.h"
@@ -82,20 +84,20 @@ AccountType_ArmoryLegacy::AccountType_ArmoryLegacy() :
    AccountType()
 {
    //uncompressed p2pkh
-   addressTypes_.insert(AddressEntryType(
-      AddressEntryType_P2PKH | AddressEntryType_Uncompressed));
+   addressTypes_.emplace(AddressEntryType(
+      AddressEntryType::P2PKH | AddressEntryType::Uncompressed));
 
    //nested compressed p2pk
-   addressTypes_.insert(AddressEntryType(
-      AddressEntryType_P2PK | AddressEntryType_P2SH));
+   addressTypes_.emplace(AddressEntryType(
+      AddressEntryType::P2PK | AddressEntryType::P2SH));
 
    //nested p2wpkh
-   addressTypes_.insert(AddressEntryType(
-      AddressEntryType_P2WPKH | AddressEntryType_P2SH));
+   addressTypes_.emplace(AddressEntryType(
+      AddressEntryType::P2WPKH | AddressEntryType::P2SH));
 
    //default type
    defaultAddressEntryType_ = AddressEntryType(
-      AddressEntryType_P2PKH | AddressEntryType_Uncompressed);
+      AddressEntryType::P2PKH | AddressEntryType::Uncompressed);
 }
 
 ////
@@ -471,10 +473,10 @@ AddressAccountId AccountType_ECDH::getAccountID() const
       BinaryRefReader brr(pub_hash160.getRef());
       accountKey = brr.get_int32_t(BE);
    } else {
-      auto&& root_pub = CryptoECDSA().ComputePublicKey(privateKey_, true);
+      auto root_pub = Cryptography::ECDSA::computePublicKey(privateKey_, true);
       root_pub.getPtr()[0] ^= (uint8_t)type();
 
-      auto&& pub_hash160 = BtcUtils::getHash160(root_pub);
+      auto pub_hash160 = BtcUtils::getHash160(root_pub);
       BinaryRefReader brr(pub_hash160.getRef());
       accountKey = brr.get_int32_t(BE);
    }
@@ -1008,10 +1010,10 @@ const SecureBinaryData& PathAndRoot::getRootSbd() const
 }
 
 ////
-const std::string& PathAndRoot::getRootStr(void) const
+const std::string& PathAndRoot::getRootStr() const
 {
    if (b58RootStr_.empty()) {
-      b58RootStr_ = std::string{b58RootSbd_.toCharPtr(), b58RootSbd_.getSize()};
+      b58RootStr_ = std::string{b58RootSbd_.getCharPtr(), b58RootSbd_.getSize()};
    }
    return b58RootStr_;
 }

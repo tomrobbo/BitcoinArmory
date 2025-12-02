@@ -14,7 +14,7 @@
 
 #include <string_view>
 #include <chrono>
-#include "SecureBinaryData.h"
+#include "Utils/SecureBinaryData.h"
 #include "WalletIdTypes.h"
 
 /* We will look for a high memory value to use in the KDF

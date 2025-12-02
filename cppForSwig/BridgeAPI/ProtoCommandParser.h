@@ -6,21 +6,20 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _PROTO_COMMAND_PARSER_H
-#define _PROTO_COMMAND_PARSER_H
+#pragma once
 
-#include "BinaryData.h"
+#include <memory>
+class BinaryDataRef;
 
 namespace Armory
 {
    namespace Bridge
    {
       class CppBridge;
+
       namespace ProtoCommandParser
       {
          bool processData(std::shared_ptr<CppBridge>, BinaryDataRef);
       }
-   }; //namespace Bridge
-}; //namespace Armory
-
-#endif
+   } //namespace Bridge
+} //namespace Armory

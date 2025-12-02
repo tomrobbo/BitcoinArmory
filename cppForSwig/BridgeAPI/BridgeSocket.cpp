@@ -5,14 +5,17 @@
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
+#include <map>
 
 #include "BridgeSocket.h"
+#include <Utils/BIP15x_Handshake.h>
+#include <Utils/BIP150_151.h>
+#include <Utils/ArmoryConfig.h>
+#include <Wallets/AuthorizedPeers.h>
+
 #include "CppBridge.h"
-#include "BIP15x_Handshake.h"
-#include "BIP150_151.h"
 #include "ProtoCommandParser.h"
-#include "../Wallets/AuthorizedPeers.h"
-#include "../WebSocketMessage.h"
+#include "WebSocketMessage.h"
 
 using namespace Armory;
 using namespace Armory::Bridge;
@@ -43,7 +46,7 @@ CppBridgeSocket::CppBridgeSocket(
 
    //inject UI key (UI is the server, bridge connects to it)
    std::vector<std::string> peerNames = { serverName_ };
-   authPeers_->addPeer(uiPubKey, peerNames);
+   authPeers_->addPeer(uiPubKey.getRef(), peerNames);
    auto lbds = Wallets::AuthorizedPeers::getAuthPeersLambdas(
       authPeers_);
 
@@ -61,6 +64,11 @@ CppBridgeSocket::CppBridgeSocket(
 
    //init bip15x channel
    bip151Connection_ = std::make_shared<BIP151Connection>(lbds, false);
+}
+
+SocketType CppBridgeSocket::type() const
+{
+   return SocketType::CppBridge;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

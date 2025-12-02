@@ -6,6 +6,8 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
+#include <cstring>
+
 #include "DecryptedDataContainer.h"
 #include "EncryptedDB.h"
 #include "AssetEncryption.h"
@@ -40,6 +42,16 @@ DecryptedDataContainer::DecryptedDataContainer(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+DecryptedDataContainer::OtherLockedContainer::OtherLockedContainer
+(std::shared_ptr<DecryptedDataContainer> obj)
+{
+   if (obj == nullptr) {
+      throw std::runtime_error("emtpy DecryptedDataContainer ptr");
+   }
+   lock_ = std::make_unique<ReentrantLock>(obj.get());
+}
+
+////////////////////////////////////////////////////////////////////////////////
 void DecryptedDataContainer::initAfterLock()
 {
    auto decryptedDataInstance = std::make_unique<DecryptedDataMaps>();
@@ -55,7 +67,6 @@ void DecryptedDataContainer::initAfterLock()
    lockedDecryptedData_ = std::move(decryptedDataInstance);
 }
 
-////////////////////////////////////////////////////////////////////////////////
 void DecryptedDataContainer::cleanUpBeforeUnlock()
 {
    otherLocks_.clear();

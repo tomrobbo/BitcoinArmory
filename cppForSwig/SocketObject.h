@@ -23,13 +23,12 @@
 #define socketService socketService_win
 #endif
 
-#include "ThreadSafeClasses.h"
-#include "bdmenums.h"
-#include "log.h"
+#include "Utils/ThreadSafeClasses.h"
+#include "Utils/BinaryData.h"
 #include "SocketIncludes.h"
-#include "BinaryData.h"
 
 typedef std::function<bool(std::vector<uint8_t>, std::exception_ptr)> ReadCallback;
+enum class SocketType : int;
 
 ///////////////////////////////////////////////////////////////////////////////
 struct CallbackReturn
@@ -159,15 +158,15 @@ public:
    SimpleSocket(SOCKET);
    ~SimpleSocket(void);
 
-   SocketType type(void) const;
+   SocketType type(void) const override;
    SOCKET getSockFD(void) const;
    void pushPayload(
       std::unique_ptr<Socket_WritePayload>,
-      std::shared_ptr<Socket_ReadPayload>);
+      std::shared_ptr<Socket_ReadPayload>) override;
    std::vector<uint8_t> readFromSocket(void);
    void shutdown(void);
    void listen(AcceptCallback);
-   bool connectToRemote(void);
+   bool connectToRemote(void) override;
 
    //
    static bool checkSocket(const std::string& ip, const std::string& port);

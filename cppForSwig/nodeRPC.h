@@ -11,18 +11,16 @@
 
 #include <mutex>
 #include <memory>
+#include <list>
 #include <string>
 #include <functional>
 #include <filesystem>
 
 #include "SocketObject.h"
 #include "StringSockets.h"
-#include "BtcUtils.h"
 
-#include "JSON_codec.h"
-
-#include "ReentrantLock.h"
-#include "ArmoryConfig.h"
+#include "Utils/JSON_codec.h"
+#include "Utils/ReentrantLock.h"
 
 namespace CoreRPC
 {
@@ -60,7 +58,7 @@ enum ChainState
 class RpcError : public std::runtime_error
 {
 public:
-   RpcError(void) : 
+   RpcError(void) :
       std::runtime_error("RpcError")
    {}
 

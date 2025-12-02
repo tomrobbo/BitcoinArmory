@@ -9,9 +9,8 @@
 #ifndef _BIP32_SERIALIZATION_H
 #define _BIP32_SERIALIZATION_H
 
-#include "BtcUtils.h"
-#include "EncryptionUtils.h"
 #include "btc/bip32.h"
+#include "Utils/SecureBinaryData.h"
 
 class BIP32_Node
 {

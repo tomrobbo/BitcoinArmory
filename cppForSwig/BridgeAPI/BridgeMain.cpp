@@ -7,10 +7,13 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <cstdlib>
-#include "BridgeSocket.h"
-#include "../AsyncClient.h"
+#include <memory>
+
 #include "CppBridge.h"
-#include "BIP150_151.h"
+#include "Utils/ArmoryConfig.h"
+#include "Utils/BIP150_151.h"
+#include "BridgeSocket.h"
+#include "AsyncClient.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 int main(int argc, char* argv[])
@@ -21,7 +24,7 @@ int main(int argc, char* argv[])
    WSAStartup(wVersion, &wsaData);
 #endif
 
-   CryptoECDSA::setupContext();
+   Cryptography::ECDSA::setupContext();
    startupBIP151CTX();
    startupBIP150CTX(4);
 
@@ -91,7 +94,7 @@ int main(int argc, char* argv[])
    LOGINFO << "exiting";
 
    shutdownBIP151CTX();
-   CryptoECDSA::shutdown();
+   Cryptography::ECDSA::shutdown();
 
    return 0;
 }

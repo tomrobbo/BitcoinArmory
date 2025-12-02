@@ -10,11 +10,10 @@
 #define _H_DERIVATION_SCHEME
 
 #include <vector>
-#include <set>
 #include <memory>
+#include <functional>
 
-#include "BinaryData.h"
-#include "EncryptionUtils.h"
+#include "Utils/SecureBinaryData.h"
 #include "Assets.h"
 
 #define DERIVATIONSCHEME_LEGACY        0xA0
@@ -23,9 +22,7 @@
 #define DERIVATIONSCHEME_BIP32_ECDH    0xA3
 
 #define DERIVATIONSCHEME_KEY  0x00000004
-
 #define DERIVATION_LOOKUP        100
-
 
 namespace Armory
 {
@@ -227,11 +224,7 @@ namespace Armory
             std::shared_ptr<Wallets::IO::DBIfaceTransaction>);
 
       public:
-         DerivationScheme_ECDH(void) :
-            DerivationScheme(DerivationSchemeType::ECDH),
-            id_(CryptoPRNG::generateRandom(8))
-         {}
-
+         DerivationScheme_ECDH(void);
          DerivationScheme_ECDH(const BinaryData& id);
 
          //virtuals

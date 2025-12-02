@@ -6,15 +6,18 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "../AssetEncryption.h"
-#include "../DecryptedDataContainer.h"
-#include "../DerivationScheme.h"
-#include "../Assets.h"
-#include "../WalletIdTypes.h"
-#include "../BIP32_Node.h"
+#include "Utils/BtcUtils.h"
+#include "Utils/Cryptography.h"
+
+#include "AssetEncryption.h"
+#include "DecryptedDataContainer.h"
+#include "DerivationScheme.h"
+#include "Assets.h"
+#include "WalletIdTypes.h"
+#include "BIP32_Node.h"
 #include "Seeds.h"
 #include "Backups.h"
-#include "BtcUtils.h"
+
 extern "C" {
 #include <trezor-crypto/bip39.h>
 }
@@ -28,11 +31,51 @@ using namespace Armory::Assets;
 #define ENCRYPTED_SEED_VERSION_2 0x00000002
 #define WALLET_SEED_BYTE         0x84
 
+namespace
+{
+   bool isEligible(LegacyType lType, BackupType bType)
+   {
+      switch (lType)
+      {
+         case LegacyType::Armory135:
+            return bType == BackupType::Armory135a ||
+               bType==BackupType::Armory135c;
+
+         case LegacyType::Armory200:
+            return bType == BackupType::Armory200a;
+
+         default:
+            break;
+      }
+      return false;
+   }
+
+   BackupType getPreferedBackupType(LegacyType lType,
+      const SecureBinaryData& chaincode)
+   {
+      switch (lType)
+      {
+         case LegacyType::Armory135:
+         {
+            if (chaincode.empty()) {
+               return BackupType::Armory135c;
+            } else {
+               return BackupType::Armory135a;
+            }
+         }
+
+         case LegacyType::Armory200:
+            return BackupType::Armory200a;
+
+         default:
+            break;
+      }
+      return BackupType::Invalid;
+   }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
-//
-//// EncryptedSeed
-//
-////////////////////////////////////////////////////////////////////////////////
+// EncryptedSeed
 const AssetId EncryptedSeed::seedAssetId_(0x5EED, 0xDEE5, 0x5EED);
 
 EncryptedSeed::EncryptedSeed(CipherText cipher, SeedType sType) :
@@ -47,7 +90,7 @@ SeedType EncryptedSeed::type() const
    return type_;
 }
 
-//////////////////////////////-- overrides --///////////////////////////////////
+//// overrides
 BinaryData EncryptedSeed::serialize() const
 {
    BinaryWriter bw;
@@ -75,7 +118,7 @@ bool EncryptedSeed::isSame(Encryption::EncryptedAssetData* const seed) const
    return Encryption::EncryptedAssetData::isSame(seed);
 }
 
-//////////////////////////////-- statics --/////////////////////////////////////
+//// statics
 const AssetId& EncryptedSeed::getAssetId() const
 {
    return seedAssetId_;
@@ -186,7 +229,7 @@ std::unique_ptr<EncryptedSeed> EncryptedSeed::fromClearTextSeed(
    seed->serialize(bw);
 
    //encrypt it
-   auto cipherText = decrCont->encryptData(cipherCopy.get(), bw.getData());
+   auto cipherText = decrCont->encryptData(cipherCopy.get(), bw.getDataRef());
    auto cipherData = std::make_unique<Encryption::CipherData>(
       cipherText, std::move(cipherCopy));
 
@@ -195,10 +238,7 @@ std::unique_ptr<EncryptedSeed> EncryptedSeed::fromClearTextSeed(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-//
-//// ClearTextSeed
-//
-////////////////////////////////////////////////////////////////////////////////
+// ClearTextSeed
 ClearTextSeed::ClearTextSeed(SeedType sType) :
    type_(sType)
 {}
@@ -243,10 +283,9 @@ std::unique_ptr<ClearTextSeed> ClearTextSeed::deserialize(
 
    switch (type)
    {
-      case SeedType::Armory135:
+      case SeedType::ArmoryLegacy:
       {
-         ClearTextSeed_Armory135::LegacyType lType =
-            ClearTextSeed_Armory135::LegacyType::Armory200;
+         auto lType = LegacyType::Armory200;
          BinaryDataRef root;
          BinaryDataRef chaincode;
          while (!brr.isEndOfStream()) {
@@ -255,8 +294,7 @@ std::unique_ptr<ClearTextSeed> ClearTextSeed::deserialize(
             {
                case Prefix::LegacyType:
                {
-                  lType = (ClearTextSeed_Armory135::LegacyType)
-                     brr.get_uint8_t();
+                  lType = (LegacyType)brr.get_uint8_t();
                   break;
                }
 
@@ -276,10 +314,15 @@ std::unique_ptr<ClearTextSeed> ClearTextSeed::deserialize(
 
                default:
                   throw std::runtime_error("[ClearTextSeed::deserialize]"
-                     " invalid prefix for Armory135 seed");
+                     " invalid prefix for ArmoryLegacy seed");
             }
          }
-         return std::make_unique<ClearTextSeed_Armory135>(root, chaincode, lType);
+         return std::make_unique<ClearTextSeed_Armory>(root, chaincode, lType);
+      }
+
+      case SeedType::ArmoryLegacyPublic:
+      {
+         throw std::runtime_error("implement me!");
       }
 
       case SeedType::BIP32_Structured:
@@ -365,58 +408,54 @@ std::unique_ptr<ClearTextSeed> ClearTextSeed::deserialize(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-ClearTextSeed_Armory135::ClearTextSeed_Armory135(LegacyType lType) :
-   ClearTextSeed_Armory135(CryptoPRNG::generateRandom(32), lType)
+// ClearTextSeed_Armory
+ClearTextSeed_Armory::ClearTextSeed_Armory(LegacyType lType) :
+   ClearTextSeed{SeedType::ArmoryLegacy},
+   root_{Cryptography::PRNG::generateRandomStrong(32)},
+   chaincode_{}, legacyType_{lType}
 {}
 
-ClearTextSeed_Armory135::ClearTextSeed_Armory135(
-   const SecureBinaryData& root, LegacyType lType) :
-   ClearTextSeed(SeedType::Armory135),
-   root_(root), chaincode_({}),
-   legacyType_(lType)
+ClearTextSeed_Armory::ClearTextSeed_Armory(const SecureBinaryData& root,
+   SecureBinaryData chaincode, LegacyType lType) :
+   ClearTextSeed{SeedType::ArmoryLegacy},
+   root_{root}, chaincode_{std::move(chaincode)},
+   legacyType_{lType}
 {}
 
-ClearTextSeed_Armory135::ClearTextSeed_Armory135(const SecureBinaryData& root,
-   const SecureBinaryData& chaincode, LegacyType lType) :
-   ClearTextSeed(SeedType::Armory135),
-   root_(root), chaincode_(chaincode),
-   legacyType_(lType)
-{}
-
-ClearTextSeed_Armory135::~ClearTextSeed_Armory135()
+ClearTextSeed_Armory::~ClearTextSeed_Armory()
 {}
 
 ////
-const SecureBinaryData& ClearTextSeed_Armory135::getRoot() const
+const SecureBinaryData& ClearTextSeed_Armory::getRoot() const
 {
    return root_;
 }
 
-const SecureBinaryData& ClearTextSeed_Armory135::getChaincode() const
+const SecureBinaryData& ClearTextSeed_Armory::getChaincode() const
 {
    return chaincode_;
 }
 
 ////
-WalletId ClearTextSeed_Armory135::computeWalletId() const
+WalletId ClearTextSeed_Armory::computeWalletId() const
 {
    auto chaincodeCopy = chaincode_;
    if (chaincode_.empty()) {
-      chaincodeCopy = BtcUtils::computeChainCode_Armory135(root_);
+      chaincodeCopy = BtcUtils::computeChainCode_ArmoryLegacy(root_);
    }
-   auto pubkey = CryptoECDSA().ComputePublicKey(root_);
+   auto pubkey = Cryptography::ECDSA::computePublicKey(root_);
    return Armory::Wallets::generateWalletId(pubkey, chaincodeCopy, type());
 }
 
-WalletId ClearTextSeed_Armory135::computeMasterId() const
+WalletId ClearTextSeed_Armory::computeMasterId() const
 {
    //uncompressed pubkey
-   auto pubkey = CryptoECDSA().ComputePublicKey(root_);
+   auto pubkey = Cryptography::ECDSA::computePublicKey(root_);
    return generateMasterId(pubkey, chaincode_);
 }
 
 ////
-void ClearTextSeed_Armory135::serialize(BinaryWriter& bw) const
+void ClearTextSeed_Armory::serialize(BinaryWriter& bw) const
 {
    /* serialize the seed */
    BinaryWriter inner;
@@ -450,53 +489,140 @@ void ClearTextSeed_Armory135::serialize(BinaryWriter& bw) const
 }
 
 ////
-bool ClearTextSeed_Armory135::isBackupTypeEligible(BackupType bType) const
+bool ClearTextSeed_Armory::isBackupTypeEligible(BackupType bType) const
 {
-   switch (legacyType_)
-   {
-      case LegacyType::Armory135:
-         return bType == BackupType::Armory135a ||
-            bType==BackupType::Armory135c;
-
-      case LegacyType::Armory200:
-         return bType == BackupType::Armory200a;
-
-      default:
-         break;
-   }
-   return false;
+   return isEligible(legacyType_, bType);
 }
 
-BackupType ClearTextSeed_Armory135::getPreferedBackupType() const
+BackupType ClearTextSeed_Armory::getPreferedBackupType() const
 {
-   switch (legacyType_)
-   {
-      case LegacyType::Armory135:
-      {
-         if (chaincode_.empty()) {
-            return BackupType::Armory135c;
-         } else {
-            return BackupType::Armory135a;
-         }
-      }
+   return ::getPreferedBackupType(legacyType_, chaincode_);
+}
 
-      case LegacyType::Armory200:
-         return BackupType::Armory200a;
-
-      default:
-         break;
-   }
-   return BackupType::Invalid;
+LegacyType ClearTextSeed_Armory::getLegacyType() const
+{
+   return legacyType_;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// ClearTextSeed_ArmoryPublic
+ClearTextSeed_ArmoryPublic::ClearTextSeed_ArmoryPublic(
+   BinaryDataRef pubkey, BinaryDataRef chaincode, LegacyType lType) :
+   ClearTextSeed{SeedType::ArmoryLegacyPublic},
+   pubRoot_{pubkey}, chaincode_{chaincode},
+   legacyType_{lType}
+{}
+
+ClearTextSeed_ArmoryPublic::ClearTextSeed_ArmoryPublic(
+   std::shared_ptr<Assets::Asset_PublicKey> pubkey,
+   const SecureBinaryData& chaincode, LegacyType lType) :
+   ClearTextSeed{SeedType::ArmoryLegacyPublic},
+   pubRoot_{pubkey->getCompressedKey()}, chaincode_{chaincode},
+   legacyType_{lType}
+{}
+
+ClearTextSeed_ArmoryPublic::~ClearTextSeed_ArmoryPublic()
+{}
+
+////
+const SecureBinaryData& ClearTextSeed_ArmoryPublic::getPublicRoot() const
+{
+   return pubRoot_;
+}
+
+const SecureBinaryData& ClearTextSeed_ArmoryPublic::getChaincode() const
+{
+   return chaincode_;
+}
+
+LegacyType ClearTextSeed_ArmoryPublic::getLegacyType() const
+{
+   return legacyType_;
+}
+
+////
+WalletId ClearTextSeed_ArmoryPublic::computeWalletId() const
+{
+   return Armory::Wallets::generateWalletId(pubRoot_, chaincode_, type());
+}
+
+WalletId ClearTextSeed_ArmoryPublic::computeMasterId() const
+{
+   //uncompressed pubkey
+   if (pubRoot_.getSize() != 65) {
+      auto rootUnc = Cryptography::ECDSA::uncompressPoint(pubRoot_);
+      return generateMasterId(rootUnc, chaincode_);
+   } else {
+      return generateMasterId(pubRoot_, chaincode_);
+   }
+}
+
+BinaryData ClearTextSeed_ArmoryPublic::getRawId() const
+{
+   //uncompressed pubkey
+   if (pubRoot_.getSize() != 65) {
+      auto rootUnc = Cryptography::ECDSA::uncompressPoint(pubRoot_);
+      return Wallets::generateWalletIdRaw(
+         rootUnc, chaincode_, SeedType::ArmoryLegacyPublic);
+   } else {
+      return Wallets::generateWalletIdRaw(
+         pubRoot_, chaincode_, SeedType::ArmoryLegacyPublic);
+   }
+}
+
+bool ClearTextSeed_ArmoryPublic::isBackupTypeEligible(BackupType bType) const
+{
+   return isEligible(legacyType_, bType);
+}
+
+BackupType ClearTextSeed_ArmoryPublic::getPreferedBackupType() const
+{
+   return ::getPreferedBackupType(legacyType_, chaincode_);
+}
+
+////
+void ClearTextSeed_ArmoryPublic::serialize(BinaryWriter& bw) const
+{
+   /* serialize the seed */
+   BinaryWriter inner;
+
+   //legacy type
+   inner.put_uint8_t((uint8_t)Prefix::LegacyType);
+   inner.put_uint8_t((uint8_t)legacyType_);
+
+   //root
+   inner.put_uint8_t((uint8_t)Prefix::PublicRoot);
+   inner.put_var_int(pubRoot_.getSize());
+   inner.put_BinaryData(pubRoot_);
+
+   //chaincode
+   inner.put_uint8_t((uint8_t)Prefix::Chaincode);
+   inner.put_var_int(chaincode_.getSize());
+   if (!chaincode_.empty()) {
+      inner.put_BinaryData(chaincode_);
+   }
+
+   /* append to writer */
+
+   //seed type
+   bw.put_uint8_t((uint8_t)type());
+
+   //packet size
+   bw.put_var_int(inner.getSize());
+
+   //packet
+   bw.put_BinaryData(inner.getData());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ClearTextSeed_BIP32
 ClearTextSeed_BIP32::ClearTextSeed_BIP32(SeedType sType) :
-   ClearTextSeed_BIP32(CryptoPRNG::generateRandom(32), sType)
+   ClearTextSeed_BIP32(Cryptography::PRNG::generateRandomStrong(32), sType)
 {}
 
 ClearTextSeed_BIP32::ClearTextSeed_BIP32(const SecureBinaryData& raw,
    SeedType sType) :
-   ClearTextSeed(sType), rawEntropy_(raw)
+   ClearTextSeed{sType}, rawEntropy_{raw}
 {
    switch (sType)
    {
@@ -639,14 +765,17 @@ BackupType ClearTextSeed_BIP32::getPreferedBackupType() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// ClearTextSeed_BIP39
 ClearTextSeed_BIP39::ClearTextSeed_BIP39(const SecureBinaryData& raw,
    Dictionnary dictType) :
-   ClearTextSeed_BIP32(raw, SeedType::BIP39), dictionnary_(dictType)
+   ClearTextSeed_BIP32{raw, SeedType::BIP39}, dictionnary_{dictType}
 {}
 
 ClearTextSeed_BIP39::ClearTextSeed_BIP39(Dictionnary dictType) :
-   ClearTextSeed_BIP32(CryptoPRNG::generateRandom(32), SeedType::BIP39),
-   dictionnary_(dictType)
+   ClearTextSeed_BIP32{
+      Cryptography::PRNG::generateRandomStrong(32),
+      SeedType::BIP39
+   }, dictionnary_{dictType}
 {}
 
 ClearTextSeed_BIP39::~ClearTextSeed_BIP39()

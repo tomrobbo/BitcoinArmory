@@ -6,17 +6,14 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _WALLET_MANAGER_H
-#define _WALLET_MANAGER_H
+#pragma once
 
-#include <mutex>
 #include <memory>
 #include <string>
 #include <map>
-#include <iostream>
 #include <filesystem>
 
-#include "ReentrantLock.h"
+#include "Utils/ReentrantLock.h"
 #include "Loader.h"
 #include "Container.h"
 
@@ -132,5 +129,3 @@ namespace Armory
       };
    } //namespace Bridge
 } //namespace Armory
-
-#endif

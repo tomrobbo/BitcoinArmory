@@ -7,11 +7,18 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "ProtoCommandParser.h"
-#include "CppBridge.h"
-#include "Wallets/Seeds/Backups.h"
+
+#include "Utils/log.h"
+#include "Utils/BtcUtils.h"
+
 #include "Wallets/IOHeader.h"
-#include "../AsyncClient.h"
-#include "../CoinSelection.h"
+#include "Wallets/WalletIdTypes.h"
+#include "Wallets/Seeds/Backups.h"
+#include "Signer/Signer.h"
+
+#include "CppBridge.h"
+#include "AsyncClient.h"
+#include "CoinSelection.h"
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
@@ -42,7 +49,7 @@ namespace
 
          //scrAddr
          const auto& script = utxo.getScript();
-         auto scrAddr = BtcUtils::getScrAddrForScript(script);
+         auto scrAddr = BtcUtils::getTxOutScrAddr(script);
          capnUtxo.setScrAddr(capnp::Data::Builder(
             (uint8_t*)scrAddr.getPtr(), scrAddr.getSize()
          ));
@@ -354,16 +361,15 @@ namespace
          case WalletRequest::CREATE_BACKUP_STRING:
          {
             std::string callbackId;
-            SecureBinaryData passphrase;
+            bool isPriv = false;
             auto backupStruct = request.getCreateBackupString();
-            if (backupStruct.which() == WalletRequest::BackupStringStruct::PASSPHRASE) {
-               passphrase = SecureBinaryData::fromString(backupStruct.getPassphrase());
-            } else {
-               callbackId = backupStruct.getCallbackId();
+            if (backupStruct.which() == WalletRequest::BackupStringStruct::PRIVATE) {
+               callbackId = backupStruct.getPrivate();
+               isPriv = true;
             }
 
-            bridge->createBackupStringForWallet(
-               walletId, callbackId, std::move(passphrase), referenceId);
+            bridge->createBackupStringForWallet(walletId, isPriv,
+               callbackId, referenceId);
             break;
          }
 
@@ -1102,15 +1108,21 @@ namespace
 
             auto roots = walletRequest.getRoot();
             auto chaincodes = walletRequest.getChaincode();
+            auto backupId = walletRequest.getBackupId();
             std::vector<std::string_view> lines;
-            lines.reserve(roots.size() + chaincodes.size());
+            lines.reserve(roots.size() + chaincodes.size() + 1);
+
+            if (backupId.size() != 0) {
+               lines.emplace_back(std::string_view{
+                  backupId.begin(), backupId.size()});
+            }
             for (const auto& root : roots) {
-               lines.emplace_back(
-                  std::string_view{root.begin(), root.size()});
+               lines.emplace_back(std::string_view{
+                  root.begin(), root.size()});
             }
             for (const auto& chaincode : chaincodes) {
-               lines.emplace_back(
-                  std::string_view{chaincode.begin(), chaincode.size()});
+               lines.emplace_back(std::string_view{
+                  chaincode.begin(), chaincode.size()});
             }
 
             auto spPassCapnp = walletRequest.getSpPass();
@@ -1270,7 +1282,7 @@ namespace
 
          case LedgerDelegateRequest::GET_PAGE_COUNT:
          {
-            LOGWARN << "[GET_PAGE_COUNT] implement me!";
+            bridge->getPageCountForDelegate(delegateId, referenceId);
             break;
          }
       }

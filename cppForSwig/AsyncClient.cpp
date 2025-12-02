@@ -1,15 +1,17 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2016-2024, goatpig.                                         //
+//  Copyright (C) 2016-2025, goatpig.                                         //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "AsyncClient.h"
-#include "EncryptionUtils.h"
-#include "ArmoryErrors.h"
+#include <Utils/BtcUtils.h>
+#include <Utils/varint.h>
+#include <Utils/Cryptography.h>
+#include <Utils/ArmoryErrors.h>
 #include "WebSocketMessage.h"
 
 #include <capnp/message.h>
@@ -319,7 +321,7 @@ namespace {
             txObj->setRBF(capnTx.getIsRbf());
 
             result.emplace(txObj->getThisHash(), std::move(txObj));
-         } catch (const BlockDeserializingException&) {}
+         } catch (const BtcUtils::BlockDeserializingException&) {}
       }
 
       return result;
@@ -435,9 +437,9 @@ void BlockDataViewer::unregisterFromDB()
       return;
    }
 
-   if (sock_->type() == SocketWS) {
+   if (sock_->type() == SocketType::WS) {
       auto sockws = std::dynamic_pointer_cast<WebSocketClient>(sock_);
-      if(sockws == nullptr) {
+      if (sockws == nullptr) {
          return;
       }
       sockws->shutdown();

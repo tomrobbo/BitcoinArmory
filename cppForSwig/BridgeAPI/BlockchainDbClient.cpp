@@ -10,20 +10,24 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/file.h>
+#include <random>
 
 #ifndef _WIN32
-#include <sys/wait.h>
-#include "spawn.h"
+   #include <sys/wait.h>
+   #include "spawn.h"
 #endif
 
 #include "BlockchainDbClient.h"
-#include "Wallets/Manager.h"
-#include "Wallets/Notifications.h"
+#include "Utils/ArmoryConfig.h"
+#include "Utils/DBUtils.h"
+#include "Utils/Cryptography.h"
 
-#include "../Wallets/IOHeader.h"
-#include "../AsyncClient.h"
+#include "Wallets/IOHeader.h"
+#include "Wallets/AuthorizedPeers.h"
 
-#include <random>
+#include "./Wallets/Manager.h"
+#include "./Wallets/Notifications.h"
+#include "AsyncClient.h"
 
 using namespace Armory::Bridge;
 using namespace std::string_view_literals;
@@ -323,7 +327,9 @@ std::shared_ptr<Armory::Wallets::AuthorizedPeers> Armory::Bridge::spawnDb()
 
    //2. randomize a file name
    std::filesystem::path keyFilePath{ Armory::Config::getDataDir() /
-      std::string{ "keyFile_" + BtcUtils::fortuna_.generateRandom(7).toHexStr() }};
+      std::string{ "keyFile_" +
+         Cryptography::PRNG::fortuna.generateRandom(7).toHexStr()
+      }};
 
    //open file and lock it
    auto fd = open(keyFilePath.c_str(), O_CREAT | O_EXCL | O_RSYNC | O_RDWR);

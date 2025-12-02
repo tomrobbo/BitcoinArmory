@@ -17,22 +17,16 @@
 #include <string>
 #include <filesystem>
 
-#include "ReentrantLock.h"
-#include "BinaryData.h"
-#include "EncryptionUtils.h"
+#include "Utils/ReentrantLock.h"
+#include "Utils/BinaryData.h"
 #include "WalletIdTypes.h"
-#include "Script.h"
-#include "Signer.h"
 #include "Progress.h"
 
 #include "DecryptedDataContainer.h"
 #include "BIP32_Node.h"
 #include "ResolverFeed.h"
-
 #include "WalletHeader.h"
-#include "Accounts/AccountTypes.h"
-#include "Accounts/AddressAccounts.h"
-#include "Accounts/MetaAccounts.h"
+#include "Addresses.h"
 
 ////
 namespace Armory
@@ -46,15 +40,33 @@ namespace Armory
    {
       class EncryptedSeed;
       class ClearTextSeed;
-      class ClearTextSeed_Armory135;
+      class ClearTextSeed_Armory;
+      class ClearTextSeed_ArmoryPublic;
       class ClearTextSeed_BIP32;
+   }
+
+   namespace Assets
+   {
+      class AssetEntry_Single;
+   }
+
+   namespace Accounts
+   {
+      struct AddressAccountPublicData;
+      class AddressAccount;
+      class AccountType_BIP32;
+
+      enum class MetaAccountType : int;
+      class MetaDataAccount;
    }
 
    namespace Wallets
    {
+      using ProgressFunc = std::function<void(int)>;
       namespace IO
       {
          class WalletDBInterface;
+         class WalletIfaceTransaction;
          struct WalletHeader;
 
          struct ReadOnlyFileParams;
@@ -146,17 +158,17 @@ namespace Armory
 
          //local
          std::shared_ptr<AddressEntry> getNewAddress(
-            AddressEntryType aeType=AddressEntryType_Default);
+            AddressEntryType=AddressEntryType::Default);
          std::shared_ptr<AddressEntry> getNewAddress(
             const AddressAccountId&,
-            AddressEntryType aeType=AddressEntryType_Default);
+            AddressEntryType=AddressEntryType::Default);
          std::shared_ptr<AddressEntry> getNewAddress(
             const AssetAccountId&,
-            AddressEntryType aeType=AddressEntryType_Default);
+            AddressEntryType=AddressEntryType::Default);
          std::shared_ptr<AddressEntry> getNewChangeAddress(
-            AddressEntryType aeType=AddressEntryType_Default);
+            AddressEntryType=AddressEntryType::Default);
          std::shared_ptr<AddressEntry> peekNextChangeAddress(
-            AddressEntryType aeType=AddressEntryType_Default);
+            AddressEntryType=AddressEntryType::Default);
          void updateAddressEntryType(const AssetId&,
             AddressEntryType);
 
@@ -174,9 +186,9 @@ namespace Armory
 
          void extendPublicChain(int32_t);
          void extendPublicChain(const AddressAccountId&, int32_t,
-            const Accounts::ProgressFunc& progFunc=nullptr);
+            const ProgressFunc& progFunc=nullptr);
          void extendPublicChainToIndex(const AddressAccountId&, int32_t,
-            const Accounts::ProgressFunc& progFunc=nullptr);
+            const ProgressFunc& progFunc=nullptr);
          void extendPrivateChain(int32_t);
          void extendPrivateChainToIndex(int32_t);
          void extendPrivateChainToIndex(const AddressAccountId&, int32_t);
@@ -275,31 +287,25 @@ namespace Armory
 
          //static
          static std::shared_ptr<AssetWallet_Single> initWalletDb(
-            std::shared_ptr<IO::WalletDBInterface> iface,
-            const WalletId& masterID, const WalletId& walletID,
-            const SecureBinaryData& privateRoot,
-            const SecureBinaryData& chaincode,
-            const IO::CreateWalletParams&,
-            uint32_t seedFingerprint);
+            std::shared_ptr<IO::WalletDBInterface>,
+            Armory::Seeds::ClearTextSeed*,
+            const IO::CreateWalletParams&);
 
          static std::shared_ptr<AssetWallet_Single> initWalletDbWithPubRoot(
             std::shared_ptr<IO::WalletDBInterface>,
-            const WalletId& masterID, const WalletId& walletID,
-            std::shared_ptr<Assets::AssetEntry_Single> pubRoot,
+            const WalletId&, const WalletId&,
+            std::shared_ptr<Assets::AssetEntry_Single>,
             const IO::CreateWalletParams&);
 
       private:
          static void importPublicData(const WalletPublicData&,
             std::shared_ptr<IO::WalletDBInterface>,
-            Progress::Func prog=nullptr
+            Progress::Func=nullptr
          );
-
-         void setSeed(std::unique_ptr<Armory::Seeds::ClearTextSeed>,
-            const Passphrase::UnlockFunc&);
 
          //wallet creation private statics
          static std::shared_ptr<AssetWallet_Single> createFromSeed(
-            Seeds::ClearTextSeed_Armory135*,
+            Seeds::ClearTextSeed_Armory*,
             const IO::CreateWalletParams&);
 
          static std::shared_ptr<AssetWallet_Single> createFromSeed(
@@ -322,7 +328,7 @@ namespace Armory
 
          const AddressAccountId& createBIP32Account(
             std::shared_ptr<Accounts::AccountType_BIP32>,
-            const Progress::Func& prog=nullptr);
+            const Progress::Func& = nullptr);
 
          const SecureBinaryData& getDecryptedPrivateKeyForAsset(
             std::shared_ptr<Assets::AssetEntry_Single>);
@@ -356,13 +362,12 @@ namespace Armory
 
          //static
          static std::shared_ptr<AssetWallet_Single> createFromSeed(
-            std::unique_ptr<Armory::Seeds::ClearTextSeed>,
+            std::unique_ptr<Seeds::ClearTextSeed>,
             const IO::CreateWalletParams&);
 
          static std::shared_ptr<AssetWallet_Single>
-         createFromPublicRoot_Armory135(
-            SecureBinaryData&, //pub root
-            SecureBinaryData&, //chaincode
+         createFromPublicSeed(
+            Seeds::ClearTextSeed_ArmoryPublic*,
             const IO::CreateWalletParams&);
 
          static std::shared_ptr<AssetWallet_Single> createBlank(

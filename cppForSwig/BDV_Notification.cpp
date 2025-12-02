@@ -6,12 +6,13 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "BitcoinP2P.h"
 #include "BDV_Notification.h"
-#include "LedgerEntry.h"
-#include "ZeroConf.h"
+#include <Utils/log.h>
+#include <ZeroConf/Utils.h>
+#include <ZeroConf/Notifications.h>
+#include <Ledgers/LedgerEntry.h>
+#include "BitcoinP2P.h"
 #include "nodeRPC.h"
-#include "log.h"
 
 ///////////////////////////////////////////////////////////////////////////////
 // BDV_Notification
@@ -53,8 +54,8 @@ BDV_Action BDV_Notification_Init::actionType() const
 ///////////////////////////////////////////////////////////////////////////////
 // BDV_Notification_NewBlock
 BDV_Notification_NewBlock::BDV_Notification_NewBlock(
-   const Blockchain::ReorganizationState& ref,
-   std::shared_ptr<ZcPurgePacket> purgePacket) :
+   const ReorganizationState& ref,
+   std::shared_ptr<Armory::ZeroConf::ZcPurgePacket> purgePacket) :
    BDV_Notification(BDV_NOTIF_BROADCAST),
    reorgState(ref), zcPurgePacket(purgePacket)
 {}
@@ -66,8 +67,9 @@ BDV_Action BDV_Notification_NewBlock::actionType() const
 
 ///////////////////////////////////////////////////////////////////////////////
 // BDV_Notification_ZC
-BDV_Notification_ZC::BDV_Notification_ZC(ZcNotificationPacket& packet) :
-   BDV_Notification(packet.bdvID_), packet(std::move(packet))
+BDV_Notification_ZC::BDV_Notification_ZC(
+   std::shared_ptr<Armory::ZeroConf::ZcNotificationPacket> zcPacketPtr) :
+   BDV_Notification(zcPacketPtr->bdvID), packet(zcPacketPtr)
 {}
 
 BDV_Action BDV_Notification_ZC::actionType() const
@@ -79,9 +81,10 @@ BDV_Action BDV_Notification_ZC::actionType() const
 // BDV_Notification_Refresh
 BDV_Notification_Refresh::BDV_Notification_Refresh(BdvIdKey bdvID,
    BDV_refresh refresh, const std::string& refreshID) :
-   BDV_Notification(bdvID),
-   refresh(refresh), refreshID(refreshID), zcPacket(bdvID)
-{}
+   BDV_Notification(bdvID), refresh(refresh), refreshID(refreshID)
+{
+   zcPacket = std::make_shared<Armory::ZeroConf::ZcNotificationPacket>(bdvID);
+}
 
 BDV_Action BDV_Notification_Refresh::actionType() const
 {

@@ -6,14 +6,15 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _H_WALLET_ID_TYPES
-#define _H_WALLET_ID_TYPES
+#pragma once
 
 #include <string>
 #include <stdexcept>
-#include "../BinaryData.h"
+#include "Utils/BinaryData.h"
 
 #define KDF_PREFIX 0xC1
+
+class SecureBinaryData;
 
 namespace Armory
 {
@@ -30,12 +31,11 @@ namespace Armory
 
    namespace Seeds
    {
-      enum class SeedType;
+      enum class SeedType : int;
    }
 
    namespace Wallets
    {
-      ////////////////////////////////////////////////////////////////////////
       using AssetKeyType   = int32_t;
       using AccountKeyType = int32_t;
 
@@ -230,13 +230,11 @@ namespace Armory
       };
 
       ////////////////////////////////////////////////////////////////////////
-      Wallets::WalletId generateWalletId(std::shared_ptr<Assets::DerivationScheme>,
-         std::shared_ptr<Assets::AssetEntry>, Seeds::SeedType);
-      Wallets::WalletId generateWalletId(SecureBinaryData, SecureBinaryData,
-         Seeds::SeedType);
+      BinaryData generateWalletIdRaw(SecureBinaryData,
+         SecureBinaryData, Seeds::SeedType);
+      Wallets::WalletId generateWalletId(SecureBinaryData,
+         SecureBinaryData, Seeds::SeedType);
       Wallets::WalletId generateMasterId(const SecureBinaryData&,
          const SecureBinaryData&);
-
-   }// namespace Wallets
+   } // namespace Wallets
 }
-#endif

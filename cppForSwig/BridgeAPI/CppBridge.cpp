@@ -8,17 +8,29 @@
 
 #include "CppBridge.h"
 #include "BridgeSocket.h"
-#include "Wallets/Manager.h"
+#include "./Wallets/Manager.h"
+
+#include <Utils/ArmoryConfig.h>
+#include <Utils/BtcUtils.h>
+#include <Utils/DBUtils.h>
+#include <Signer/Signer.h>
+#include <Signer/ResolverFeed_Wallets.h>
+
+#include <Wallets/Seeds/Backups.h>
+#include <Wallets/IOHeader.h>
+#include <Wallets/WalletIdTypes.h>
+#include <Wallets/KDF.h>
+#include <Wallets/Wallets.h>
+#include <Wallets/AuthorizedPeers.h>
+#include <Wallets/Addresses.h>
+#include <Wallets/Accounts/AccountTypes.h>
+#include <Wallets/Accounts/AddressAccounts.h>
+
 #include "BlockchainDbClient.h"
 #include "PassphrasePrompt.h"
-#include "../AsyncClient.h"
-#include "../Wallets/Seeds/Backups.h"
-#include "../Wallets/IOHeader.h"
-#include "../Signer/ResolverFeed_Wallets.h"
-#include "../Wallets/WalletIdTypes.h"
-#include "../Wallets/KDF.h"
-#include "../CoinSelection.h"
-#include "../TerminalPassphrasePrompt.h"
+#include "AsyncClient.h"
+#include "CoinSelection.h"
+#include "TerminalPassphrasePrompt.h"
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
@@ -41,7 +53,7 @@ enum CppBridgeState
 
 namespace
 {
-   PRNG_Fortuna fortuna;
+   Cryptography::PRNG::Fortuna fortuna;
 
    ////
    BinaryData serializeCapnp(capnp::MallocMessageBuilder& msg)
@@ -289,7 +301,7 @@ namespace
 
          //scrAddr
          const auto& script = utxo.getScript();
-         auto scrAddr = BtcUtils::getScrAddrForScript(script);
+         auto scrAddr = BtcUtils::getTxOutScrAddr(script);
          capnUtxo.setScrAddr(capnp::Data::Builder(
             (uint8_t*)scrAddr.getPtr(), scrAddr.getSize()
          ));
@@ -959,57 +971,47 @@ void CppBridge::registerWallet(const Wallets::WalletId& wltId,
 
 ////////////////////////////////////////////////////////////////////////////////
 void CppBridge::createBackupStringForWallet(const Wallets::WalletId& wltId,
-   const std::string& callbackId, SecureBinaryData passphrase, MessageId msgId)
+   bool isPriv, const std::string& callbackId, MessageId msgId)
 {
-   auto func = [this, wltId, msgId, callbackId, passphrase=std::move(passphrase)]()
+   auto func = [this, wltId, isPriv, callbackId, msgId]()
    {
-      std::shared_ptr<BridgePassphrasePrompt> passPromptObj;
-      if (passphrase.empty()) {
-         passPromptObj = std::make_shared<BridgePassphrasePrompt>(
-            callbackId, [this](ServerPushWrapper wrapper){
-               this->callbackWriter(wrapper);
-            });
-      }
-
       std::unique_ptr<Seeds::WalletBackup> backupData;
       std::string error;
       try {
          //grab wallet
          auto wltContainer = wltManager_->getWalletContainer(wltId);
 
-         //grab root
-         if (passphrase.empty()) {
+         //grab the backup
+         if (isPriv) {
+            //setup passphrase prompt
+            auto passPromptObj = std::make_shared<BridgePassphrasePrompt>(
+               callbackId, [this](ServerPushWrapper wrapper){
+                  this->callbackWriter(wrapper);
+               });
             auto lbd = passPromptObj->getLambda();
-            backupData = std::move(wltContainer->getBackupStrings(lbd));
-         } else {
-            int count = 0;
+
+            //generate private root backup
             backupData = std::move(wltContainer->getBackupStrings(
-               [passphrase=std::move(passphrase), &count]
-               (const std::set<Wallets::EncryptionKeyId>&)->Passphrase::Result
-               {
-                  if (count++ == 0) {
-                     return { passphrase, true };
-                  } else {
-                     return { {}, false };
-                  }
-               }
-            ));
+               true, lbd));
+
+            //cleanup
+            passPromptObj->cleanup();
+         } else {
+            //nothing to setup when generating public root backups
+            backupData = std::move(wltContainer->getBackupStrings(
+               false, nullptr));
          }
       } catch (const std::exception& e) {
          error = e.what();
          backupData = nullptr;
       }
 
-      //wind down passphrase prompt
-      if (passPromptObj != nullptr) {
-         passPromptObj->cleanup();
-         passPromptObj.reset();
-      }
-
+      //prepare reply
       capnp::MallocMessageBuilder message;
       auto fromBridge = message.initRoot<FromBridge>();
       auto reply = fromBridge.initReply();
       reply.setReferenceId(msgId);
+
       if (backupData == nullptr) {
          //return on error
          reply.setSuccess(false);
@@ -1019,59 +1021,77 @@ void CppBridge::createBackupStringForWallet(const Wallets::WalletId& wltId,
          return;
       }
 
-      auto backupE16 = dynamic_cast<Armory::Seeds::Backup_Easy16*>(
-         backupData.get());
-      if (backupE16 == nullptr) {
-         throw std::runtime_error("[createBackupStringForWallet]"
-            " invalid backup type");
-      }
       auto walletReply = reply.initWallet();
       auto backupStringCapnp = walletReply.initCreateBackupString();
+      auto backupE16 = dynamic_cast<Seeds::Backup_Easy16*>(
+         backupData.get());
+      if (backupE16 != nullptr) {
+         //secure print passphrase
+         auto spPass = backupE16->getSpPass();
+         backupStringCapnp.setSpPass(
+            capnp::Text::Reader(spPass.data(), spPass.size()));
 
-      //cleartext root
-      {
-         auto line1 = backupE16->getRoot(
-            Armory::Seeds::Backup_Easy16::LineIndex::One, false);
-         auto line2 = backupE16->getRoot(
-            Armory::Seeds::Backup_Easy16::LineIndex::Two, false);
-         auto clearLines = backupStringCapnp.initRootClear(2);
-         clearLines.set(0, capnp::Text::Reader(line1.data(), line1.size()));
-         clearLines.set(1, capnp::Text::Reader(line2.data(), line2.size()));
+         {
+            //cleartext root
+            auto line1 = backupE16->getRoot(Seeds::LineIndex::One, false);
+            auto line2 = backupE16->getRoot(Seeds::LineIndex::Two, false);
+            auto clearLines = backupStringCapnp.initRootClear(2);
+            clearLines.set(0, capnp::Text::Reader(line1.data(), line1.size()));
+            clearLines.set(1, capnp::Text::Reader(line2.data(), line2.size()));
 
-         //encrypted root
-         auto line3 = backupE16->getRoot(
-            Armory::Seeds::Backup_Easy16::LineIndex::One, true);
-         auto line4 = backupE16->getRoot(
-            Armory::Seeds::Backup_Easy16::LineIndex::Two, true);
-         auto encrLines = backupStringCapnp.initRootEncr(2);
-         encrLines.set(0, capnp::Text::Reader(line3.data(), line3.size()));
-         encrLines.set(1, capnp::Text::Reader(line4.data(), line4.size()));
+            //encrypted root
+            auto line3 = backupE16->getRoot(Seeds::LineIndex::One, true);
+            auto line4 = backupE16->getRoot(Seeds::LineIndex::Two, true);
+            auto encrLines = backupStringCapnp.initRootEncr(2);
+            encrLines.set(0, capnp::Text::Reader(line3.data(), line3.size()));
+            encrLines.set(1, capnp::Text::Reader(line4.data(), line4.size()));
+         }
+
+         if (backupE16->hasChaincode()) {
+            //cleartext chaincode
+            auto line1 = backupE16->getChaincode(Seeds::LineIndex::One, false);
+            auto line2 = backupE16->getChaincode(Seeds::LineIndex::Two, false);
+            auto clearLines = backupStringCapnp.initChainClear(2);
+            clearLines.set(0, capnp::Text::Reader(line1.data(), line1.size()));
+            clearLines.set(1, capnp::Text::Reader(line2.data(), line2.size()));
+
+            //encrypted chaincode
+            auto line3 = backupE16->getChaincode(Seeds::LineIndex::One, true);
+            auto line4 = backupE16->getChaincode(Seeds::LineIndex::Two, true);
+            auto encrLines = backupStringCapnp.initChainEncr(2);
+            encrLines.set(0, capnp::Text::Reader(line3.data(), line3.size()));
+            encrLines.set(1, capnp::Text::Reader(line4.data(), line4.size()));
+         }
+      } else {
+         auto backupE16Public = dynamic_cast<Seeds::Backup_Easy16Public*>(
+            backupData.get());
+         if (backupE16Public == nullptr) {
+            reply.setSuccess(false);
+            reply.setError("invalid backup type!");
+            auto payload = serializeCapnp(message);
+            writeToClient(payload);
+            return;
+         }
+
+         //pubroot
+         auto line1 = backupE16Public->getPublicRoot(Seeds::LineIndex::One);
+         auto line2 = backupE16Public->getPublicRoot(Seeds::LineIndex::Two);
+         auto rootLines = backupStringCapnp.initRootClear(2);
+         rootLines.set(0, capnp::Text::Reader(line1.data(), line1.size()));
+         rootLines.set(1, capnp::Text::Reader(line2.data(), line2.size()));
+
+         //chaincode
+         auto line3 = backupE16Public->getChaincode(Seeds::LineIndex::One);
+         auto line4 = backupE16Public->getChaincode(Seeds::LineIndex::Two);
+         auto ccLines = backupStringCapnp.initChainClear(2);
+         ccLines.set(0, capnp::Text::Reader(line3.data(), line3.size()));
+         ccLines.set(1, capnp::Text::Reader(line4.data(), line4.size()));
+
+         //backupId
+         auto backupId = backupE16Public->getBackupId();
+         backupStringCapnp.setBackupId(capnp::Text::Reader(
+            backupId.data(), backupId.size()));
       }
-
-      if (backupE16->hasChaincode()) {
-         //cleartext chaincode
-         auto line1 = backupE16->getChaincode(
-            Armory::Seeds::Backup_Easy16::LineIndex::One, false);
-         auto line2 = backupE16->getChaincode(
-            Armory::Seeds::Backup_Easy16::LineIndex::Two, false);
-         auto clearLines = backupStringCapnp.initChainClear(2);
-         clearLines.set(0, capnp::Text::Reader(line1.data(), line1.size()));
-         clearLines.set(1, capnp::Text::Reader(line2.data(), line2.size()));
-
-         //encrypted chaincode
-         auto line3 = backupE16->getChaincode(
-            Armory::Seeds::Backup_Easy16::LineIndex::One, true);
-         auto line4 = backupE16->getChaincode(
-            Armory::Seeds::Backup_Easy16::LineIndex::Two, true);
-         auto encrLines = backupStringCapnp.initChainEncr(2);
-         encrLines.set(0, capnp::Text::Reader(line3.data(), line3.size()));
-         encrLines.set(1, capnp::Text::Reader(line4.data(), line4.size()));
-      }
-
-      //secure print passphrase
-      auto spPass = backupE16->getSpPass();
-      backupStringCapnp.setSpPass(
-         capnp::Text::Reader(spPass.data(), spPass.size()));
 
       //backup type
       backupStringCapnp.setBackupType(toCapnBackupType(backupData->type()));
@@ -1140,12 +1160,18 @@ void CppBridge::restoreWallet(
    requests). It has to run in its own thread.
    */
 
-   auto backup = Seeds::Backup_Easy16::fromLines(lines_sv, spPass_sv);
+   std::unique_ptr<Seeds::WalletBackup> backup;
+   bool isWO = lines_sv.size() == 5;
+   if (isWO) {
+      backup = Seeds::Backup_Easy16Public::fromLines(lines_sv);
+   } else {
+      backup = Seeds::Backup_Easy16::fromLines(lines_sv, spPass_sv);
+   }
 
    //
    auto restoreLbd = [
-      this, refId, callbackId=std::string{callbackId}](
-      std::unique_ptr<Seeds::Backup_Easy16> backup)
+      this, refId, callbackId=std::string{callbackId}, isWO](
+      std::unique_ptr<Seeds::WalletBackup> backup)
    {
       auto createCallbackMessage = [callbackId](
          const Seeds::RestorePrompt& prompt, uint32_t notifCounter)->BinaryData
@@ -1343,10 +1369,14 @@ void CppBridge::restoreWallet(
          } else {
             //we didnt have an old wallet merge into the new one, extend
             //the address chain for some baseline count
-            restoreResult.wltPtr->setPassphrasePromptLambda(
-               params.setPrivPassObj.getUnlockFunc());
             progFunc(std::make_unique<Wallets::Progress::ExtendChain>(500));
-            restoreResult.wltPtr->extendPrivateChainToIndex(499);
+            if (isWO) {
+               restoreResult.wltPtr->extendPublicChain(499);
+            } else {
+               restoreResult.wltPtr->setPassphrasePromptLambda(
+                  params.setPrivPassObj.getUnlockFunc());
+               restoreResult.wltPtr->extendPrivateChainToIndex(499);
+            }
             restoreResult.wltPtr.reset();
          }
 
@@ -1589,6 +1619,38 @@ void CppBridge::getHistoryPageForDelegate(const std::string& id,
       this->writeToClient(payload);
    };
    iter->second.getHistoryPages(from, to, lbd);
+}
+
+void CppBridge::getPageCountForDelegate(const std::string& id, MessageId msgId)
+{
+   auto iter = delegateMap_.find(id);
+   if (iter == delegateMap_.end()) {
+      capnp::MallocMessageBuilder message;
+      auto fromBridge = message.initRoot<FromBridge>();
+      auto reply = fromBridge.initReply();
+      reply.setReferenceId(msgId);
+      reply.setSuccess(false);
+      reply.setError(std::string{"unknown delegate id: "} + id);
+
+      auto payload = serializeCapnp(message);
+      this->writeToClient(payload);
+      return;
+   }
+
+   auto lbd = [this, msgId](ReturnMessage<uint64_t> result)->void
+   {
+      capnp::MallocMessageBuilder message;
+      auto fromBridge = message.initRoot<FromBridge>();
+      auto reply = fromBridge.initReply();
+      reply.setReferenceId(msgId);
+      auto delegate = reply.initDelegate();
+      delegate.setGetPageCount(result.get());
+      reply.setSuccess(true);
+
+      auto payload = serializeCapnp(message);
+      this->writeToClient(payload);
+   };
+   iter->second.getPageCount(lbd);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1969,13 +2031,13 @@ void CppBridge::getTxsByHash(const std::set<BinaryData>& hashes, MessageId msgId
 BinaryData CppBridge::getTxInScriptType(
    const BinaryData& script, const BinaryData& hash, MessageId msgId) const
 {
-   auto typeInt = BtcUtils::getTxInScriptTypeInt(script, hash);
+   auto type = BtcUtils::getTxInScriptType(script, hash);
 
    capnp::MallocMessageBuilder message;
    auto fromBridge = message.initRoot<FromBridge>();
    auto reply = fromBridge.initReply();
    auto utilsReply = reply.initScriptUtils();
-   utilsReply.setGetTxInScriptType(typeInt);
+   utilsReply.setGetTxInScriptType((uint32_t)type);
 
    reply.setSuccess(true);
    reply.setReferenceId(msgId);
@@ -1986,13 +2048,13 @@ BinaryData CppBridge::getTxInScriptType(
 BinaryData CppBridge::getTxOutScriptType(
    const BinaryData& script, MessageId msgId) const
 {
-   auto typeInt = BtcUtils::getTxOutScriptTypeInt(script);
+   auto type = BtcUtils::getTxOutScriptType(script);
 
    capnp::MallocMessageBuilder message;
    auto fromBridge = message.initRoot<FromBridge>();
    auto reply = fromBridge.initReply();
    auto utilsReply = reply.initScriptUtils();
-   utilsReply.setGetTxOutScriptType(typeInt);
+   utilsReply.setGetTxOutScriptType((uint32_t)type);
 
    reply.setSuccess(true);
    reply.setReferenceId(msgId);
@@ -2003,7 +2065,7 @@ BinaryData CppBridge::getTxOutScriptType(
 BinaryData CppBridge::getScrAddrForScript(
    const BinaryData& script, MessageId msgId) const
 {
-   auto scrAddr = BtcUtils::getScrAddrForScript(script);
+   auto scrAddr = BtcUtils::getTxOutScrAddr(script);
 
    capnp::MallocMessageBuilder message;
    auto fromBridge = message.initRoot<FromBridge>();
@@ -2125,68 +2187,7 @@ BinaryData CppBridge::getAddrStrForScrAddr(
 ////////////////////////////////////////////////////////////////////////////////
 std::string CppBridge::getNameForAddrType(int addrTypeInt) const
 {
-   std::string result;
-
-   auto nestedFlag = addrTypeInt & ADDRESS_NESTED_MASK;
-   bool nested = false;
-   switch (nestedFlag)
-   {
-      case 0:
-         break;
-
-      case AddressEntryType_P2SH:
-         result += "P2SH";
-         nested = true;
-         break;
-
-      case AddressEntryType_P2WSH:
-         result += "P2WSH";
-         nested = true;
-         break;
-
-      default:
-         throw std::runtime_error("[getNameForAddrType] unknown nested flag");
-   }
-
-   auto addressType = addrTypeInt & ADDRESS_TYPE_MASK;
-   if (addressType == 0) {
-      return result;
-   }
-
-   if (nested) {
-      result += "-";
-   }
-
-   switch (addressType)
-   {
-      case AddressEntryType_P2PKH:
-         result += "P2PKH";
-         break;
-
-      case AddressEntryType_P2PK:
-         result += "P2PK";
-         break;
-
-      case AddressEntryType_P2WPKH:
-         result += "P2WPKH";
-         break;
-
-      case AddressEntryType_Multisig:
-         result += "Multisig";
-         break;
-
-      default:
-         throw std::runtime_error("[getNameForAddrType] unknown address type");
-   }
-
-   if (addrTypeInt & ADDRESS_COMPRESSED_MASK) {
-      result += " (Uncompressed)";
-   }
-
-   if (result.empty()) {
-      result = "N/A";
-   }
-   return result;
+   return Armory::getNameForAddrType(addrTypeInt);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -12,8 +12,7 @@
 #include <string>
 #include <memory>
 
-#include "BinaryData.h"
-#include "SecureBinaryData.h"
+#include "Utils/SecureBinaryData.h"
 #include "WalletIdTypes.h"
 
 

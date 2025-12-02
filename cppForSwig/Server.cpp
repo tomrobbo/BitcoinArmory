@@ -8,10 +8,13 @@
 
 
 #include "Server.h"
-#include "ArmoryConfig.h"
+#include <Utils/ArmoryConfig.h>
+#include <Utils/Cryptography.h>
+#include <Utils/BIP150_151.h>
+#include <Utils/BIP15x_Handshake.h>
+#include <Wallets/AuthorizedPeers.h>
+#include "WebSocketMessage.h"
 #include "BDM_Server.h"
-#include "BIP15x_Handshake.h"
-#include "Wallets/AuthorizedPeers.h"
 
 using namespace Armory::Threading;
 using namespace Armory::Wallets;
@@ -97,7 +100,7 @@ int WebSocketServer::callback(struct lws *wsi,
 
       case LWS_CALLBACK_ESTABLISHED:
       {
-         auto bdid = CryptoPRNG::generateRandom(8);
+         auto bdid = Cryptography::PRNG::generateRandomStrong(8);
          session_data->id_ = *(uint64_t*)bdid.getPtr();
 
          auto instance = WebSocketServer::getInstance();
@@ -229,10 +232,10 @@ void WebSocketServer::initAuthPeers(const IO::ReadOnlyFileParams& params)
       //inject caller pubkey in the store
       std::string serverName{"127.0.0.1:" +
          Armory::Config::NetworkSettings::dbPort()};
-      instance->authorizedPeers_->addPeer(callerPubKey, serverName);
+      instance->authorizedPeers_->addPeer(callerPubKey.getRef(), serverName);
 
       //set caller pubkey as master key
-      if (!instance->authorizedPeers_->setMasterKey(callerPubKey)) {
+      if (!instance->authorizedPeers_->setMasterKey(callerPubKey.getRef())) {
          throw std::runtime_error("ephemeral peers db setup snafu");
       }
       const auto& ownKey = instance->authorizedPeers_->getOwnPublicKey();

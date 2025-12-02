@@ -17,7 +17,7 @@
 #include <map>
 #include <unordered_map>
 
-#include "BinaryData.h"
+#include "Utils/BinaryData.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 struct TxFilterException : public std::runtime_error

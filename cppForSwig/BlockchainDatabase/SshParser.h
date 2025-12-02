@@ -113,11 +113,15 @@ public:
    void undo(void);
 };
 
-typedef std::pair<std::set<BinaryData>, std::map<BinaryData, StoredScriptHistory>> subSshParserResult;
-subSshParserResult parseSubSsh(
+using SubSshParserResult = std::pair<
+   std::set<BinaryData>,
+   std::map<BinaryData, StoredScriptHistory>>;
+using AddrAndHashMap = std::map<BinaryData, std::shared_ptr<AddrAndHash>>;
+
+SubSshParserResult parseSubSsh(
    std::unique_ptr<LDBIter>, int32_t scanFrom, bool,
    std::function<uint8_t(unsigned)>,
-   std::shared_ptr<const std::map<BinaryData, std::shared_ptr<AddrAndHash>>>,
-   BinaryData upperBound);
+   std::shared_ptr<const AddrAndHashMap>
+);
 
 #endif

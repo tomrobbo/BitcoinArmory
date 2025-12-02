@@ -6,11 +6,13 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
+#include <cstring>
 #include <filesystem>
 
+#include <Utils/BtcUtils.h>
+#include <Utils/DBUtils.h>
+#include <Utils/Cryptography.h>
 #include "WalletFileInterface.h"
-#include "BtcUtils.h"
-#include "DBUtils.h"
 #include "WalletHeader.h"
 #include "DecryptedDataContainer.h"
 #include "Seeds/Seeds.h"
@@ -24,15 +26,18 @@ using namespace Armory::Wallets::Encryption;
 #define COMPACT_FILE_COPY_NAME "compactCopy"
 #define COMPACT_FILE_FOLDER    "_delete_me"
 
+namespace
+{
+   Cryptography::PRNG::Fortuna fortuna;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 //// WalletDBInterface
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 WalletDBInterface::WalletDBInterface()
-{
-   fortuna_ = std::make_unique<PRNG_Fortuna>();
-}
+{}
 
 ////////////////////////////////////////////////////////////////////////////////
 WalletDBInterface::~WalletDBInterface()
@@ -349,7 +354,7 @@ MasterKeyStruct WalletDBInterface::initWalletHeaderObject(
 
    //generate master encryption key, do not apply a kdf
    auto passthroughKdf = std::make_shared<KeyDerivationFunction_Passthrough>();
-   auto masterKeySBD = CryptoPRNG::generateRandom(32);
+   auto masterKeySBD = Cryptography::PRNG::generateRandomStrong(32);
    MasterKeyStruct mks;
    mks.decryptedMasterKey_ = std::make_shared<ClearTextEncryptionKey>(masterKeySBD);
    mks.decryptedMasterKey_->deriveKey(passthroughKdf);
@@ -374,7 +379,8 @@ MasterKeyStruct WalletDBInterface::initWalletHeaderObject(
    /*
    setup default encryption key, only ever used if no user passphrase is provided
    */
-   headerPtr->defaultEncryptionKey_ = CryptoPRNG::generateRandom(32);
+   headerPtr->defaultEncryptionKey_ =
+      Cryptography::PRNG::generateRandomStrong(32);
 
    //build clear key object from const reference cause ctor moves the key in
    auto defaultKey = headerPtr->getDefaultEncryptionKey();
@@ -446,7 +452,7 @@ MasterKeyStruct WalletDBInterface::initWalletHeaderObject(
    /*
    setup control salt
    */
-   headerPtr->controlSalt_ = CryptoPRNG::generateRandom(32);
+   headerPtr->controlSalt_ = Cryptography::PRNG::generateRandomStrong(32);
    return mks;
 }
 
@@ -492,7 +498,7 @@ std::shared_ptr<WalletHeader_Control> WalletDBInterface::setupControlDB(
 
    {
       //create encrypted seed object
-      auto seed = CryptoPRNG::generateRandom(32);
+      auto seed = Cryptography::PRNG::generateRandomStrong(32);
       auto lock = ReentrantLock(decryptedData.get());
 
       auto cipherCopy = keyStruct.cipher_->getCopy();
@@ -803,7 +809,8 @@ void WalletDBInterface::compactFile()
    std::filesystem::path copyName;
    while (true) {
       std::stringstream ss;
-      ss << COMPACT_FILE_COPY_NAME << "-" << fortuna_->generateRandom(16).toHexStr();
+      ss << COMPACT_FILE_COPY_NAME << "-" <<
+         fortuna.generateRandom(16).toHexStr();
       auto fullpath = swapFolder / std::filesystem::path(ss.str());
       if (!FileUtils::fileExists(fullpath, 0)) {
          copyName = fullpath;
@@ -821,7 +828,8 @@ void WalletDBInterface::compactFile()
    std::filesystem::path swapPath;
    while (true) {
       std::stringstream ss;
-      ss << COMPACT_FILE_SWAP_NAME << "-" << fortuna_->generateRandom(16).toHexStr();
+      ss << COMPACT_FILE_SWAP_NAME << "-" <<
+         fortuna.generateRandom(16).toHexStr();
       auto fullpath = swapFolder / std::filesystem::path(ss.str());
       if (FileUtils::fileExists(fullpath, 0)) {
          continue;

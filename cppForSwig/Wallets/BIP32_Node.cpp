@@ -7,7 +7,10 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "BIP32_Node.h"
-#include "BitcoinSettings.h"
+#include <Utils/BtcUtils.h>
+#include <Utils/BitcoinSettings.h>
+
+using namespace Armory;
 
 ////////////////////////////////////////////////////////////////////////////////
 void BIP32_Node::init()
@@ -87,7 +90,7 @@ SecureBinaryData BIP32_Node::encodeBase58() const
       throw std::runtime_error("uninitialized BIP32 object, cannot encode");
    }
 
-   auto finalLen = strnlen(result.toCharPtr(), result_len);
+   auto finalLen = strnlen(result.getCharPtr(), result_len);
    if (finalLen == 0 || finalLen == result_len) {
       throw std::runtime_error("failed to serialized bip32 string");
    }
@@ -255,7 +258,7 @@ BIP32_Node BIP32_Node::getPublicCopy() const
 {
    BIP32_Node copy;
    copy.initFromPublicKey(
-      getDepth(), getLeafID(), getParentFingerprint(), 
+      getDepth(), getLeafID(), getParentFingerprint(),
       getPublicKey(), getChaincode());
    return copy;
 }
@@ -263,7 +266,7 @@ BIP32_Node BIP32_Node::getPublicCopy() const
 ////////////////////////////////////////////////////////////////////////////////
 bool BIP32_Node::isPublic() const
 {
-   if (privkey_.empty() || privkey_ == BtcUtils::EmptyHash()) {
+   if (privkey_.empty() || privkey_ == BtcUtils::EmptyHash) {
       return true;
    }
    return false;

@@ -8,10 +8,16 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "Loader.h"
-#include "../Wallets/Wallets.h"
-#include "../Wallets/IOHeader.h"
-#include "../Wallets/KDF.h"
-#include "../Wallets/Seeds/Seeds.h"
+#include <Utils/ArmoryConfig.h>
+#include <Utils/BtcUtils.h>
+#include <Utils/DBUtils.h>
+#include <Utils/Cryptography.h>
+
+#include <Wallets/Wallets.h>
+#include <Wallets/IOHeader.h>
+#include <Wallets/KDF.h>
+#include <Wallets/Accounts/AddressAccounts.h>
+#include <Wallets/Seeds/Seeds.h>
 
 using namespace Armory;
 using namespace Armory::Bridge;
@@ -302,12 +308,12 @@ void Armory135Header::parseFile()
       auto labelNameBd = brr.get_BinaryData(32);
       auto labelDescBd = brr.get_BinaryData(256);
 
-      auto labelNameLen = strnlen(labelNameBd.toCharPtr(), 32);
-      labelName_ = std::string{labelNameBd.toCharPtr(), labelNameLen};
+      auto labelNameLen = strnlen(labelNameBd.getCharPtr(), 32);
+      labelName_ = std::string{labelNameBd.getCharPtr(), labelNameLen};
 
-      auto labelDescriptionLen = strnlen(labelDescBd.toCharPtr(), 256);
+      auto labelDescriptionLen = strnlen(labelDescBd.getCharPtr(), 256);
       labelDescription_ = std::string{
-         labelDescBd.toCharPtr(), labelDescriptionLen};
+         labelDescBd.getCharPtr(), labelDescriptionLen};
 
       //highest used chain index
       highestUsedIndex_ = brr.get_int64_t();
@@ -455,11 +461,11 @@ std::shared_ptr<Wallets::AssetWallet_Single> Armory135Header::migrate(
                auto derivedPass = myKdf.DeriveKey(result.passphrase);
 
                //decrypt the privkey
-               auto decryptedKey = CryptoAES::DecryptCFB(
+               auto decryptedKey = Cryptography::Encryption::AES::decryptCFB(
                   rootAddrObj.privKey(), derivedPass, rootAddrObj.iv());
 
                //generate pubkey
-               auto computedPubKey = CryptoECDSA().ComputePublicKey(
+               auto computedPubKey = Cryptography::ECDSA::computePublicKey(
                   decryptedKey, false);
 
                if (rootAddrObj.pubKey() != computedPubKey) {
@@ -476,29 +482,30 @@ std::shared_ptr<Wallets::AssetWallet_Single> Armory135Header::migrate(
    }
 
    //create wallet
-   std::shared_ptr<Wallets::AssetWallet_Single> wallet;
+   std::unique_ptr<Seeds::ClearTextSeed> seed;
    if (decryptedRoot.empty()) {
-      auto pubKeyCopy = rootAddrObj.pubKey();
-      wallet = Wallets::AssetWallet_Single::createFromPublicRoot_Armory135(
-         pubKeyCopy, chaincodeCopy, newParams);
+      seed = std::make_unique<Seeds::ClearTextSeed_ArmoryPublic>(
+         rootAddrObj.pubKey().getRef(), rootAddrObj.chaincode().getRef(),
+         Seeds::LegacyType::Armory135
+      );
    } else {
       /*
       Derive chaincode from the clear text root. If it matches the
       chaincode from file, this is a 1.35c root (deterministic chaincode)
       */
-      auto derivedCc = BtcUtils::computeChainCode_Armory135(decryptedRoot);
+      auto derivedCc = BtcUtils::computeChainCode_ArmoryLegacy(decryptedRoot);
       if (derivedCc == chaincodeCopy) {
          //deterministic chaincode, clear it
          chaincodeCopy.clear();
       }
-
-      std::unique_ptr<Seeds::ClearTextSeed> seed(
-         new Seeds::ClearTextSeed_Armory135(
-            decryptedRoot, chaincodeCopy
-      ));
-      wallet = Wallets::AssetWallet_Single::createFromSeed(
-         std::move(seed), newParams);
+      seed = std::make_unique<Seeds::ClearTextSeed_Armory>(
+         decryptedRoot, chaincodeCopy,
+         Seeds::LegacyType::Armory135
+      );
    }
+
+   auto wallet = Wallets::AssetWallet_Single::createFromSeed(
+      std::move(seed), newParams);
 
    //main account id, check it matches armory wallet id
    if (wallet->getID() != walletID_) {
@@ -591,7 +598,7 @@ void Armory135Address::parseFromRef(const BinaryDataRef& bdr)
    isEncrypted_   = addrFlags & 0x0000000000000004;
 
    //chaincode
-   chaincode_ = brrScrAddr.get_BinaryData(32);
+   chaincode_ = SecureBinaryData{brrScrAddr.get_BinaryDataRef(32)};
    auto chaincodeChecksum = brrScrAddr.get_BinaryDataRef(4);
    Armory135Header::verifyChecksum(chaincode_, chaincodeChecksum);
 
@@ -600,21 +607,21 @@ void Armory135Address::parseFromRef(const BinaryDataRef& bdr)
    depth_            = brrScrAddr.get_int64_t();
 
    //iv
-   iv_               = brrScrAddr.get_BinaryData(16);
+   iv_               = SecureBinaryData{brrScrAddr.get_BinaryDataRef(16)};
    auto ivChecksum   = brrScrAddr.get_BinaryDataRef(4);
    if (isEncrypted_) {
       Armory135Header::verifyChecksum(iv_, ivChecksum);
    }
 
    //private key
-   privKey_             = brrScrAddr.get_BinaryData(32);
+   privKey_             = SecureBinaryData{brrScrAddr.get_BinaryDataRef(32)};
    auto privKeyChecksum = brrScrAddr.get_BinaryDataRef(4);
    if (hasPrivKey_) {
       Armory135Header::verifyChecksum(privKey_, privKeyChecksum);
    }
 
    //pub key
-   pubKey_              = brrScrAddr.get_BinaryData(65);
+   pubKey_              = SecureBinaryData{brrScrAddr.get_BinaryDataRef(65)};
    auto pubKeyChecksum  = brrScrAddr.get_BinaryDataRef(4);
    Armory135Header::verifyChecksum(pubKey_, pubKeyChecksum);
 }

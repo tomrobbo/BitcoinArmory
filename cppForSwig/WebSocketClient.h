@@ -16,15 +16,9 @@
 #include <filesystem>
 
 #include "libwebsockets.h"
-#include "ThreadSafeClasses.h"
-#include "BinaryData.h"
+#include "Utils/ThreadSafeClasses.h"
 #include "SocketObject.h"
 #include "WebSocketMessage.h"
-#include "ArmoryConfig.h"
-#include "DBClientClasses.h"
-
-#include "BIP150_151.h"
-#include "AuthorizedPeers.h"
 
 #define CLIENT_AUTH_PEER_FILENAME "client.peers"
 
@@ -32,12 +26,16 @@ namespace Armory
 {
    namespace Wallets
    {
+      class AuthorizedPeers;
+
       namespace IO
       {
          struct ReadOnlyFileParams;
       }
    }
 }
+
+class RemoteCallback;
 
 ////////////////////////////////////////////////////////////////////////////////
 struct WriteAndReadPacket
@@ -159,11 +157,11 @@ public:
    void setPubkeyPromptLambda(std::function<bool(const BinaryData&, const std::string&)>);
 
    //virtuals
-   SocketType type(void) const { return SocketWS; }
+   SocketType type(void) const override;
    void pushPayload(
       std::unique_ptr<Socket_WritePayload>,
-      std::shared_ptr<Socket_ReadPayload>);
-   bool connectToRemote(void);
+      std::shared_ptr<Socket_ReadPayload>) override;
+   bool connectToRemote(void) override;
 
    static int callback(
       struct lws *wsi, enum lws_callback_reasons reason,

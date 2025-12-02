@@ -6,7 +6,7 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "../../DBUtils.h"
+#include "Utils/DBUtils.h"
 #include "AccountTypes.h"
 #include "AssetAccounts.h"
 #include "../EncryptedDB.h"
@@ -23,7 +23,7 @@ using namespace Armory::Wallets;
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 AssetAccountData::AssetAccountData(
-   const AssetAccountTypeEnum type,
+   const AssetAccountType type,
    const Wallets::AssetAccountId& id,
    std::shared_ptr<Assets::AssetEntry> root,
    std::shared_ptr<Assets::DerivationScheme> scheme,
@@ -65,9 +65,9 @@ AssetAccount::AssetAccount(std::shared_ptr<AssetAccountData> data) :
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-AssetAccountTypeEnum AssetAccount::type() const
+AssetAccountType AssetAccount::type() const
 {
-   return AssetAccountTypeEnum_Plain;
+   return AssetAccountType::Plain;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -144,7 +144,7 @@ void AssetAccount::commit(std::shared_ptr<IO::WalletDBInterface> iface)
    BinaryWriter bwData;
 
    //type
-   bwData.put_uint8_t(type());
+   bwData.put_uint8_t((uint8_t)type());
 
    //place holder for former parent key size var_int
    bwData.put_var_int(0);
@@ -190,7 +190,7 @@ std::shared_ptr<AssetAccountData> AssetAccount::loadFromDisk(
    BinaryRefReader brr(diskDataRef);
 
    //type
-   auto type = AssetAccountTypeEnum(brr.get_uint8_t());
+   auto type = AssetAccountType(brr.get_uint8_t());
 
    //skip parent_id len, irrelevant now
    brr.get_var_int();
@@ -827,9 +827,9 @@ unsigned AssetAccount_ECDH::getLookup() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-AssetAccountTypeEnum AssetAccount_ECDH::type() const
+AssetAccountType AssetAccount_ECDH::type() const
 {
-   return AssetAccountTypeEnum_ECDH;
+   return AssetAccountType::ECDH;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -894,9 +894,9 @@ unsigned AssetAccount_Imports::getLookup() const
 }
 
 ////
-AssetAccountTypeEnum AssetAccount_Imports::type() const
+AssetAccountType AssetAccount_Imports::type() const
 {
-   return AssetAccountTypeEnum_Imports;
+   return AssetAccountType::Imports;
 }
 
 ////
@@ -939,9 +939,9 @@ unsigned AssetAccount_ImportsWO::getLookup() const
 }
 
 ////
-AssetAccountTypeEnum AssetAccount_ImportsWO::type() const
+AssetAccountType AssetAccount_ImportsWO::type() const
 {
-   return AssetAccountTypeEnum_ImportsWO;
+   return AssetAccountType::ImportsWO;
 }
 
 ////

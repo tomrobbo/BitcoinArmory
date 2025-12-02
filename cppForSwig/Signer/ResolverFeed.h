@@ -1,21 +1,20 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2020-2021, goatpig                                          //
+//  Copyright (C) 2020-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _H_RESOLVER_FEED
-#define _H_RESOLVER_FEED
+#pragma once
 
 #include <vector>
 #include <string>
 #include <memory>
 
-#include "../BinaryData.h"
-#include "../SecureBinaryData.h"
-#include "../Wallets/BIP32_Node.h"
+#include "Utils/BinaryData.h"
+#include "Utils/SecureBinaryData.h"
+#include "Wallets/BIP32_Node.h"
 
 ////
 class NoAssetException : public std::runtime_error
@@ -81,8 +80,8 @@ namespace Armory
             uint32_t, //fingerprint
             std::shared_ptr<BIP32_PublicDerivedRoot>);
 
-         bool operator==(const BIP32_AssetPath& rhs) const;
-         bool operator!=(const BIP32_AssetPath& rhs) const;
+         bool operator==(const BIP32_AssetPath&) const;
+         bool operator!=(const BIP32_AssetPath&) const;
          bool isValid(void) const;
 
          uint32_t getSeedFingerprint(void) const;
@@ -116,6 +115,5 @@ namespace Armory
          virtual BIP32_AssetPath resolveBip32PathForPubkey(
             const BinaryData&) = 0;
       };
-   }; //namespace Signer
-}; //namespace Armory
-#endif
+   } //namespace Signer
+} //namespace Armory

@@ -25,13 +25,13 @@ void MetaDataAccount::make_new(MetaAccountType type)
    type_ = type;
    switch (type_)
    {
-      case MetaAccount_Comments:
+      case MetaAccountType::Comments:
       {
          ID_ = WRITE_UINT32_BE(META_ACCOUNT_COMMENTS);
          break;
       }
 
-      case MetaAccount_AuthPeers:
+      case MetaAccountType::AuthPeers:
       {
          ID_ = WRITE_UINT32_BE(META_ACCOUNT_AUTHPEER);
          break;
@@ -113,7 +113,7 @@ void MetaDataAccount::updateOnDisk(
 ////////////////////////////////////////////////////////////////////////////////
 void MetaDataAccount::reset()
 {
-   type_ = MetaAccount_Unset;
+   type_ = MetaAccountType::Unset;
    ID_.clear();
    assets_.clear();
 }
@@ -151,13 +151,13 @@ void MetaDataAccount::readFromDisk(
    std::set<uint8_t> prefixes;
    switch (type_)
    {
-      case MetaAccount_Comments:
+      case MetaAccountType::Comments:
       {
          prefixes.emplace(METADATA_COMMENTS_PREFIX);
          break;
       }
 
-      case MetaAccount_AuthPeers:
+      case MetaAccountType::AuthPeers:
       {
          prefixes = {
             METADATA_AUTHPEER_PREFIX,
@@ -289,7 +289,7 @@ std::shared_ptr<MetaDataAccount> MetaDataAccount::copy(
 AuthPeerAssetMap AuthPeerAssetConversion::getAssetMap(
    const MetaDataAccount* account)
 {
-   if (account == nullptr || account->getType() != MetaAccount_AuthPeers) {
+   if (account == nullptr || account->getType() != MetaAccountType::AuthPeers) {
       throw AccountException("invalid metadata account ptr");
    }
    ReentrantLock lock(account);
@@ -299,7 +299,7 @@ AuthPeerAssetMap AuthPeerAssetConversion::getAssetMap(
    for (const auto& asset : assets) {
       switch (asset.second->type())
       {
-         case MetaType_AuthorizedPeer:
+         case MetaType::AuthorizedPeer:
          {
             auto assetPeer = std::dynamic_pointer_cast<PeerPublicData>(
                asset.second);
@@ -315,7 +315,7 @@ AuthPeerAssetMap AuthPeerAssetConversion::getAssetMap(
             break;
          }
 
-         case MetaType_PeerRootKey:
+         case MetaType::PeerRootKey:
          {
             auto assetRoot = std::dynamic_pointer_cast<PeerRootKey>(
                asset.second);
@@ -327,7 +327,7 @@ AuthPeerAssetMap AuthPeerAssetConversion::getAssetMap(
             break;
          }
 
-         case MetaType_PeerRootSig:
+         case MetaType::PeerRootSig:
          {
             auto assetSig = std::dynamic_pointer_cast<PeerRootSignature>(
                asset.second);
@@ -336,9 +336,10 @@ AuthPeerAssetMap AuthPeerAssetConversion::getAssetMap(
             }
             result.rootSignature = std::make_pair(
                assetSig->getKey(), assetSig->getSig());
+            break;
          }
 
-         case MetaType_PeerMasterKey:
+         case MetaType::PeerMasterKey:
          {
             auto assetMasterKey = std::dynamic_pointer_cast<PeerMasterKey>(
                asset.second);
@@ -346,6 +347,7 @@ AuthPeerAssetMap AuthPeerAssetConversion::getAssetMap(
                continue;
             }
             result.masterKey = assetMasterKey->getKey();
+            break;
          }
 
          default:
@@ -359,7 +361,7 @@ AuthPeerAssetMap AuthPeerAssetConversion::getAssetMap(
 std::map<SecureBinaryData, std::set<uint32_t>>
    AuthPeerAssetConversion::getKeyIndexMap(const MetaDataAccount* account)
 {
-   if (account == nullptr || account->getType() != MetaAccount_AuthPeers) {
+   if (account == nullptr || account->getType() != MetaAccountType::AuthPeers) {
       throw AccountException("invalid metadata account ptr");
    }
    ReentrantLock lock(account);
@@ -391,7 +393,7 @@ int AuthPeerAssetConversion::addAsset(
 {
    ReentrantLock lock(account);
 
-   if (account == nullptr || account->getType() != MetaAccount_AuthPeers) {
+   if (account == nullptr || account->getType() != MetaAccountType::AuthPeers) {
       throw AccountException("invalid metadata account ptr");
    }
    uint32_t index = account->getNextAssetId();
@@ -415,7 +417,7 @@ void AuthPeerAssetConversion::addRootSignature(MetaDataAccount* account,
 {
    ReentrantLock lock(account);
 
-   if (account == nullptr || account->getType() != MetaAccount_AuthPeers) {
+   if (account == nullptr || account->getType() != MetaAccountType::AuthPeers) {
       throw AccountException("invalid metadata account ptr");
    }
    const auto& accountID = account->getID();
@@ -435,7 +437,7 @@ unsigned AuthPeerAssetConversion::addRootPeer(MetaDataAccount* account,
 {
    ReentrantLock lock(account);
 
-   if (account == nullptr || account->getType() != MetaAccount_AuthPeers) {
+   if (account == nullptr || account->getType() != MetaAccountType::AuthPeers) {
       throw AccountException("invalid metadata account ptr");
    }
    auto& accountID = account->getID();
@@ -455,7 +457,7 @@ void AuthPeerAssetConversion::addMasterKey(MetaDataAccount* account,
 {
    ReentrantLock lock(account);
 
-   if (account == nullptr || account->getType() != MetaAccount_AuthPeers) {
+   if (account == nullptr || account->getType() != MetaAccountType::AuthPeers) {
       throw AccountException("invalid metadata account ptr");
    }
    clearMasterKeyAssets(account);
@@ -475,18 +477,17 @@ void AuthPeerAssetConversion::clearMasterKeyAssets(MetaDataAccount* account)
 {
    ReentrantLock lock(account);
 
-   if (account == nullptr || account->getType() != MetaAccount_AuthPeers) {
+   if (account == nullptr || account->getType() != MetaAccountType::AuthPeers) {
       throw AccountException("invalid metadata account ptr");
    }
 
    auto assets = account->getAssetMap();
    for (const auto& assetPair : assets) {
-      if (assetPair.second->type() == MetaType_PeerMasterKey) {
+      if (assetPair.second->type() == MetaType::PeerMasterKey) {
          assetPair.second->clear();
       }
    }
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -498,7 +499,7 @@ std::shared_ptr<CommentData> CommentAssetConversion::getByKey(
 {
    ReentrantLock lock(account);
 
-   if (account == nullptr || account->getType() != MetaAccount_Comments) {
+   if (account == nullptr || account->getType() != MetaAccountType::Comments) {
       throw AccountException("invalid metadata account ptr");
    }
 
@@ -525,7 +526,7 @@ int CommentAssetConversion::setAsset(MetaDataAccount* account,
    }
    ReentrantLock lock(account);
 
-   if (account == nullptr || account->getType() != MetaAccount_Comments) {
+   if (account == nullptr || account->getType() != MetaAccountType::Comments) {
       throw AccountException("invalid metadata account ptr");
    }
 
@@ -564,7 +565,7 @@ std::map<BinaryData, std::string> CommentAssetConversion::getCommentMap(
 {
    ReentrantLock lock(account);
 
-   if (account == nullptr || account->getType() != MetaAccount_Comments) {
+   if (account == nullptr || account->getType() != MetaAccountType::Comments) {
       throw AccountException("invalid metadata account ptr");
    }
 

@@ -13,10 +13,9 @@
 #include <string>
 #include <memory>
 
-#include "BinaryData.h"
+#include "Utils/BinaryData.h"
+#include "Utils/BIP150_151.h"
 #include "SocketObject.h"
-
-#include "BIP150_151.h"
 
 //64 bit aligned
 #define WEBSOCKET_MESSAGE_PACKET_SIZE 1496

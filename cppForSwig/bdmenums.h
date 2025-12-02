@@ -57,11 +57,11 @@ enum BDMAction
    BDMAction_BDV_Error
 };
 
-enum ARMORY_DB_TYPE
+enum class ARMORY_DB_TYPE : int
 {
-   ARMORY_DB_BARE,
-   ARMORY_DB_FULL,
-   ARMORY_DB_SUPER
+   Bare,
+   Full,
+   Super
 };
 
 enum SOCKET_SERVICE
@@ -71,21 +71,21 @@ enum SOCKET_SERVICE
    SERVICE_UNITTEST_WITHWS
 };
 
-enum BDM_INIT_MODE
+enum class BdmInitMode : int
 {
-   INIT_RESUME,
-   INIT_RESCAN,
-   INIT_REBUILD,
-   INIT_SSH
+   RESUME,
+   RESCAN,
+   REBUILD,
+   SSH
 };
 
-enum SocketType
+enum class SocketType : int
 {
-   SocketHttp,
-   SocketWS,
-   SocketBitcoinP2P,
-   SocketSimple,
-   SocketCppBridge,
+   Http,
+   WS,
+   BitcoinP2P,
+   Simple,
+   CppBridge,
 };
 
 enum BDV_Action

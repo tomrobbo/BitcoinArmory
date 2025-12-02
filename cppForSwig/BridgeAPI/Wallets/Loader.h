@@ -8,9 +8,11 @@
 #pragma once
 
 #include <memory>
-#include "../../SecureBinaryData.h"
-#include "../../Wallets/GetPassphrase.h"
-#include "../../Wallets/WalletIdTypes.h"
+#include <map>
+
+#include <Utils/SecureBinaryData.h>
+#include <Wallets/GetPassphrase.h>
+#include <Wallets/WalletIdTypes.h>
 
 #define A135_NOERROR          0
 #define A135_ERROR_NOTAWALLET -1

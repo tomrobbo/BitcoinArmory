@@ -1,53 +1,60 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2019, goatpig.                                              //
+//  Copyright (C) 2019-2025, goatpig.                                         //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _H_NODEUNITTEST
-#define _H_NODEUNITTEST
+#pragma once
 
 #include <memory>
 #include <vector>
 #include <map>
 
-#include "../BinaryData.h"
-#include "../BtcUtils.h"
+#include <Utils/BinaryData.h>
+#include "BitcoinP2P.h"
+#include "nodeRPC.h"
 
-#include "../BlockchainDatabase/BlockUtils.h"
-#include "../BitcoinP2P.h"
-#include "../BlockchainDatabase/Blockchain.h"
-#include "../Signer/ScriptRecipient.h"
-#include "../BlockchainDatabase/BlockDataMap.h"
-#include "../nodeRPC.h"
+class Blockchain;
+class BlockFiles;
+class LMDBBlockDatabase;
+class BlockDataManager;
+class BlockHeader;
+class Tx;
+
+namespace Armory
+{
+   namespace Signing
+   {
+      class ScriptRecipient;
+   }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 struct UnitTestBlock
 {
-   BinaryData rawHeader_;
-   BinaryData headerHash_;
+   BinaryData rawHeader;
+   BinaryData headerHash;
 
-   Tx coinbase_;
-   std::vector<Tx> transactions_;
+   std::shared_ptr<Tx> coinbase;
+   std::vector<Tx> transactions;
 
-   unsigned height_;
-   unsigned timestamp_;
-   BinaryData diffBits_;
+   unsigned height;
+   unsigned timestamp;
+   BinaryData diffBits;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 struct MempoolObject
 {
-   BinaryData rawTx_;
-   BinaryData hash_;
-   unsigned order_;
-   unsigned blocksUntilMined_ = 0;
-   bool staged_;
+   BinaryData rawTx;
+   BinaryData hash;
+   unsigned order;
+   unsigned blocksUntilMined = 0;
+   bool staged;
 
-   bool operator<(const MempoolObject& rhs) const
-   { return order_ < rhs.order_; }
+   bool operator<(const MempoolObject&) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -69,7 +76,7 @@ private:
    std::map<BinaryData, std::map<unsigned, BinaryData>> spenderSet_;
    std::vector<UnitTestBlock> blocks_;
    std::atomic<unsigned> counter_;
-   
+
    std::shared_ptr<Blockchain> blockchain_ = nullptr;
    std::shared_ptr<BlockFiles> filesPtr_ = nullptr;
    std::atomic<unsigned> skipZc_ = {0};
@@ -92,28 +99,27 @@ private:
    void purgeSpender(const BinaryData&);
 
 public:
-   NodeUnitTest(uint32_t magic_word, bool watcher);
+   NodeUnitTest(uint32_t, bool);
    ~NodeUnitTest(void);
 
    //locals
-   void updateNodeStatus(bool connected);
+   void updateNodeStatus(bool);
    void notifyNewBlock(void);
    void watcherProcess(void);
 
    std::map<unsigned, BinaryData> mineNewBlock(
-      std::shared_ptr<BlockDataManager> bdm,
-      unsigned count, const BinaryData& h160, double diff = 1.0);
+      std::shared_ptr<BlockDataManager>,
+      unsigned, const BinaryData&, double = 1.0);
    std::map<unsigned, BinaryData> mineNewBlock(
-      std::shared_ptr<BlockDataManager> bdm,
-      unsigned, Armory::Signing::ScriptRecipient*, double diff = 1.0);
+      std::shared_ptr<BlockDataManager>,
+      unsigned, Armory::Signing::ScriptRecipient*, double = 1.0);
 
-   std::vector<UnitTestBlock> getMinedBlocks(void) const { return blocks_; }
+   std::vector<UnitTestBlock> getMinedBlocks(void) const;
    void setReorgBranchPoint(std::shared_ptr<BlockHeader>);
    void skipZc(unsigned);
    void delayNextZc(unsigned);
    void stallNextZc(unsigned);
-
-   void checkSigs(bool check) { checkSigs_ = check; }
+   void checkSigs(bool);
 
    //<raw tx, blocks to wait until mining>
    void pushZC(const std::vector<std::pair<BinaryData, unsigned>>&, bool);
@@ -123,13 +129,13 @@ public:
    //set
    void setBlockchain(std::shared_ptr<Blockchain>);
    void setBlockFiles(std::shared_ptr<BlockFiles>);
-   void setIface(LMDBBlockDatabase* iface) { iface_ = iface; }
+   void setIface(LMDBBlockDatabase*);
 
    //virtuals
    void sendMessage(std::unique_ptr<Armory::Node::Payload>) override;
 
    void connectToNode(bool) override;
-   bool connected(void) const override { return true; }
+   bool connected(void) const override;
    void shutdown(void) override;
 
    //misc
@@ -143,35 +149,24 @@ class NodeRPC_UnitTest : public CoreRPC::NodeRPCInterface
 private:
    std::shared_ptr<NodeUnitTest> primaryNode_;
    std::shared_ptr<NodeUnitTest> watcherNode_;
-   
+
    std::deque<unsigned> zcStalls_;
    std::mutex zcStallMutex_;
 
 public:
-
    NodeRPC_UnitTest(
-      std::shared_ptr<NodeUnitTest> primaryNode,
-      std::shared_ptr<NodeUnitTest> watcherNode) :
-      CoreRPC::NodeRPCInterface(), 
-      primaryNode_(primaryNode), watcherNode_(watcherNode)
-   {}
+      std::shared_ptr<NodeUnitTest>,
+      std::shared_ptr<NodeUnitTest>
+   );
 
    //virtuals
-   void shutdown(void) override {}
-   CoreRPC::RpcState testConnection(void) override 
-   { return CoreRPC::RpcState_Online; }
-   
-   bool canPoll(void) const override { return false; }
-
-   void waitOnChainSync(std::function<void(void)>) {}
+   void shutdown(void) override;
+   CoreRPC::RpcState testConnection(void) override;
+   bool canPoll(void) const override;
+   void waitOnChainSync(std::function<void(void)>);
    int broadcastTx(const BinaryDataRef&, std::string&) override;
-
-   CoreRPC::FeeEstimateResult getFeeByte(
-      unsigned, const std::string&) override
-   { return CoreRPC::FeeEstimateResult(); }
+   CoreRPC::FeeEstimateResult getFeeByte(unsigned, const std::string&) override;
 
    //locals
    void stallNextZc(unsigned);
 };
-
-#endif

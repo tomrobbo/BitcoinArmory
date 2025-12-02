@@ -14,7 +14,7 @@
 #include <string>
 
 #include "../WalletIdTypes.h"
-#include "../../ReentrantLock.h"
+#include "Utils/ReentrantLock.h"
 
 #define ASSET_ACCOUNT_PREFIX        0xE1
 #define ASSET_COUNT_PREFIX          0xE2
@@ -46,12 +46,15 @@ namespace Armory
 
    namespace Accounts
    {
+      enum class AssetAccountType : int;
+
       using ProgressFunc = std::function<void(int)>;
       using AssetPtr = std::shared_ptr<Assets::AssetEntry>;
+
       struct AssetAccountData
       {
       public:
-         const AssetAccountTypeEnum type_;
+         const AssetAccountType type_;
          Wallets::AssetAccountId id_;
 
          AssetPtr root_;
@@ -70,7 +73,7 @@ namespace Armory
 
       public:
          AssetAccountData(
-            const AssetAccountTypeEnum,
+            const AssetAccountType,
             const Wallets::AssetAccountId&,
             AssetPtr,
             std::shared_ptr<Assets::DerivationScheme>,
@@ -176,7 +179,7 @@ namespace Armory
             const Wallets::AssetId&);
 
          virtual unsigned getLookup(void) const;
-         virtual AssetAccountTypeEnum type(void) const;
+         virtual AssetAccountType type(void) const;
 
       public:
          AssetAccount(std::shared_ptr<AssetAccountData>);
@@ -221,7 +224,7 @@ namespace Armory
       {
       private:
          unsigned getLookup(void) const override;
-         AssetAccountTypeEnum type(void) const override;
+         AssetAccountType type(void) const override;
          void commit(std::shared_ptr<Wallets::IO::WalletDBInterface>) override;
 
       public:
@@ -239,7 +242,7 @@ namespace Armory
       {
       private:
          unsigned getLookup(void) const override;
-         AssetAccountTypeEnum type(void) const override;
+         AssetAccountType type(void) const override;
 
       public:
          AssetAccount_Imports(std::shared_ptr<AssetAccountData>);
@@ -261,7 +264,7 @@ namespace Armory
       {
       private:
          unsigned getLookup(void) const override;
-         AssetAccountTypeEnum type(void) const override;
+         AssetAccountType type(void) const override;
 
       public:
          AssetAccount_ImportsWO(std::shared_ptr<AssetAccountData>);

@@ -12,10 +12,13 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "BDM_mainthread.h"
-#include "BlockDataViewer.h"
-#include "nodeRPC.h"
+#include <Utils/ArmoryConfig.h>
+#include <BlockchainDatabase/BlockUtils.h>
+#include <BlockchainDatabase/BlockObj.h>
+#include <ZeroConf/Parser.h>
+
 #include "BitcoinP2P.h"
-#include <ctime>
+#include "BDV_Notification.h"
 
 using namespace Armory::Config;
 
@@ -42,7 +45,7 @@ BlockDataManagerThread::~BlockDataManagerThread()
    }
 }
 
-void BlockDataManagerThread::start(BDM_INIT_MODE mode)
+void BlockDataManagerThread::start(BdmInitMode mode)
 {
    pimpl->mode = mode;
    pimpl->run = true;
@@ -130,39 +133,14 @@ try {
       bdm->notificationStack_.push_back(std::move(notifPtr));
    };
 
-   unsigned mode = pimpl->mode & 0x00000003;
-   bool clearZc = DBSettings::clearMempool();
-
    bool success = false;
-   switch (mode)
-   {
-      case 0:
-         success = bdm->doInitialSyncOnLoad(loadProgress);
-         break;
-
-      case 1:
-         success = bdm->doInitialSyncOnLoad_Rescan(loadProgress);
-         break;
-
-      case 2:
-         success = bdm->doInitialSyncOnLoad_Rebuild(loadProgress);
-         break;
-
-      case 3:
-         success = bdm->doInitialSyncOnLoad_RescanBalance(loadProgress);
-         break;
-
-      default:
-         throw std::runtime_error("invalid bdm init mode");
-   }
-
-   if (!success) {
+   if (!bdm->doInitialSyncOnLoad(pimpl->mode, loadProgress)) {
       //db init failed, exit
       return;
    }
 
    if (!DBSettings::checkChain()) {
-      bdm->enableZeroConf(clearZc);
+      bdm->enableZeroConf(DBSettings::clearMempool());
    }
    isReadyPromise.set_value(true);
 
@@ -174,10 +152,10 @@ try {
    {
       LOGINFO << "readBlkFileUpdate";
       auto reorgState = bdm->readBlkFileUpdate();
-      if (reorgState.hasNewTop_) {
+      if (reorgState.hasNewTop) {
          //purge zc container
-         auto purgeFuture =
-            bdm->zeroConfCont_->pushNewBlockNotification(reorgState);
+         auto purgeFuture = bdm->zeroConfCont_->pushNewBlockNotification(
+            reorgState);
          auto purgePacket = purgeFuture.get();
 
          //notify bdvs
@@ -188,8 +166,8 @@ try {
 
          std::stringstream ss;
          ss << "found new top!" << std::endl;
-         ss << "  hash: " << reorgState.newTop_->getThisHash().toHexStr() << std::endl;
-         ss << "  height: " << reorgState.newTop_->getBlockHeight();
+         ss << "  hash: " << reorgState.newTop->getThisHash().toHexStr() << std::endl;
+         ss << "  height: " << reorgState.newTop->getBlockHeight();
          LOGINFO << ss.str();
       }
    };

@@ -10,13 +10,18 @@
 #include <string_view>
 
 #include "Manager.h"
-#include "Notifications.h"
+#include "Utils/BtcUtils.h"
+#include "Utils/DBUtils.h"
+
+#include "Wallets/Wallets.h"
+#include "Wallets/IOHeader.h"
+#include "Wallets/Accounts/AddressAccounts.h"
 #include "Wallets/Seeds/Backups.h"
+#include "Wallets/Seeds/Seeds.h"
+
+#include "Notifications.h"
 #include "../PassphrasePrompt.h"
-#include "../Wallets/Seeds/Seeds.h"
-#include "../Wallets/KDF.h"
-#include "../Wallets/IOHeader.h"
-#include "../AsyncClient.h"
+#include "AsyncClient.h"
 
 using namespace Armory;
 using namespace Armory::Bridge;
@@ -252,14 +257,14 @@ std::shared_ptr<WalletContainer> WalletManager::createNewWallet(
    const SecureBinaryData& extraEntropy,
    const Wallets::IO::CreateWalletParams& params)
 {
-   auto root = CryptoPRNG::generateRandom(32);
+   auto root = Cryptography::PRNG::generateRandomStrong(32);
    if (!extraEntropy.empty()) {
       auto hashTropy = BtcUtils::getHash256(extraEntropy);
       root.XOR(hashTropy);
    }
 
-   auto seed = std::make_unique<Seeds::ClearTextSeed_Armory135>(
-      root, Seeds::ClearTextSeed_Armory135::LegacyType::Armory200);
+   auto seed = std::make_unique<Seeds::ClearTextSeed_Armory>(
+      root, SecureBinaryData{}, Seeds::LegacyType::Armory200);
    auto wallet = Wallets::AssetWallet_Single::createFromSeed(
       std::move(seed), params);
    return addAccount(wallet, wallet->getMainAccountID());

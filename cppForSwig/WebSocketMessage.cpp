@@ -6,12 +6,12 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#include "BtcUtils.h"
 #include "WebSocketMessage.h"
-#include "libwebsockets.h"
-#include "BIP15x_Handshake.h"
+#include "Utils/BtcUtils.h"
+#include "Utils/BIP15x_Handshake.h"
+#include "Utils/log.h"
 #include "SocketWritePayload.h"
-#include "log.h"
+#include "libwebsockets.h"
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>

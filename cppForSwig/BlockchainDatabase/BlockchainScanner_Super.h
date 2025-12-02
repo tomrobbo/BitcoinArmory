@@ -9,14 +9,10 @@
 #ifndef _BLOCKCHAINSCANNER_SUPER_H
 #define _BLOCKCHAINSCANNER_SUPER_H
 
-#include "Blockchain.h"
-#include "lmdb_wrapper.h"
-#include "BlockDataMap.h"
+#include <Utils/ThreadSafeClasses.h>
+#include <Utils/BinaryData.h>
 #include "Progress.h"
 #include "bdmenums.h"
-#include "ThreadSafeClasses.h"
-
-#include "SshParser.h"
 
 #include <future>
 #include <atomic>
@@ -37,6 +33,22 @@ enum BLOCKDATA_ORDER
    BD_ORDER_DECREMENT
 };
 
+class StoredSubHistory;
+class BlockData;
+class BlockFiles;
+class Blockchain;
+struct HeightAndDup;
+struct ReorganizationState;
+class LMDBBlockDatabase;
+
+namespace Armory
+{
+   namespace FileUtils
+   {
+      class FileMap;
+   }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 struct ThreadSubSshResult
 {
@@ -52,7 +64,7 @@ struct BlockDataBatch
    const int start_;
    const int end_;
 
-   std::map<unsigned, std::shared_ptr<FileUtils::FileMap>> fileMaps_;
+   std::map<unsigned, std::shared_ptr<Armory::FileUtils::FileMap>> fileMaps_;
    std::map<unsigned, std::shared_ptr<BlockData>> blockMap_;
 
    std::set<unsigned> blockDataFileIDs_;
@@ -223,7 +235,7 @@ public:
    void scan(void);
    void scanSpentness(void);
    void updateSSH(bool);
-   void undo(Blockchain::ReorganizationState&);
+   void undo(ReorganizationState&);
 
    const BinaryData& getTopScannedBlockHash(void) const
    {

@@ -6,9 +6,11 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
+#include "Utils/Cryptography.h"
+#include "Utils/DBUtils.h"
+#include "Utils/BtcUtils.h"
 #include "AssetEncryption.h"
 #include "KDF.h"
-#include "DBUtils.h"
 #include "GetPassphrase.h"
 
 #define CIPHER_VERSION     0x00000001
@@ -17,13 +19,15 @@ using namespace std;
 using namespace Armory::Wallets;
 using namespace Armory::Wallets::Encryption;
 
+namespace
+{
+   Cryptography::PRNG::Fortuna fortuna;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 //// Cipher
 ////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-const PRNG_Fortuna Cipher::fortuna_;
-
 ////////////////////////////////////////////////////////////////////////////////
 Cipher::~Cipher()
 {}
@@ -42,7 +46,7 @@ unsigned Cipher::getBlockSize(CipherType type)
    {
       case CipherType_AES:
       {
-         blockSize = AES_BLOCK_SIZE;
+         blockSize = Cryptography::Encryption::AES::BLOCK_SIZE;
          break;
       }
 
@@ -55,7 +59,7 @@ unsigned Cipher::getBlockSize(CipherType type)
 ////////////////////////////////////////////////////////////////////////////////
 SecureBinaryData Cipher::generateIV(void) const
 {
-   return fortuna_.generateRandom(getBlockSize(type_));
+   return fortuna.generateRandom(getBlockSize(type_));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -144,10 +148,8 @@ SecureBinaryData Cipher_AES::encrypt(ClearTextEncryptionKey* const key,
    if (key == nullptr) {
       throw std::runtime_error("null key ptr");
    }
-   auto& encryptionKey = key->getDerivedKey(kdfId);
-
-   CryptoAES cipher;
-   return cipher.EncryptCBC(data, encryptionKey, iv_);
+   const auto& encryptionKey = key->getDerivedKey(kdfId);
+   return Cryptography::Encryption::AES::encryptCBC(data, encryptionKey, iv_);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -164,8 +166,7 @@ SecureBinaryData Cipher_AES::encrypt(ClearTextEncryptionKey* const key,
 SecureBinaryData Cipher_AES::decrypt(const SecureBinaryData& key,
    const SecureBinaryData& data) const
 {
-   CryptoAES aes_cipher;
-   return aes_cipher.DecryptCBC(data, key, iv_);
+   return Cryptography::Encryption::AES::decryptCBC(data, key, iv_);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -243,7 +244,7 @@ unique_ptr<CipherData> CipherData::deserialize(BinaryRefReader& brr)
             throw CipherException("invalid ciphertext length");
          }
 
-         auto cipherText = brr.get_SecureBinaryData(len);
+         SecureBinaryData cipherText{brr.get_BinaryDataRef(len)};
          len = brr.get_var_int();
          if (len > brr.getSizeRemaining()) {
             throw CipherException("invalid cipher length");
@@ -468,8 +469,8 @@ EncryptionKeyId ClearTextEncryptionKey::computeId(
    const SecureBinaryData& key) const
 {
    //treat value as scalar, get pubkey for it
-   auto hashedKey = BtcUtils::hash256(key);
-   auto pubkey = CryptoECDSA().ComputePublicKey(hashedKey);
+   auto hashedKey = BtcUtils::getHash256(key);
+   auto pubkey = Cryptography::ECDSA::computePublicKey(hashedKey.getRef());
 
    //HMAC the pubkey, get last 16 bytes as ID
    return EncryptionKeyId(

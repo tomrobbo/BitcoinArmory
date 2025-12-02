@@ -6,16 +6,20 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#include <stdio.h>
-#include <cstdarg>
+#include <cstring>
 
-#include "BIP150_151.h"
-#include "BIP32_Node.h"
 #include "AuthorizedPeers.h"
-#include "btc/ecc.h"
+#include <Utils/BIP150_151.h>
+#include <Utils/DBUtils.h>
+
+#include "Accounts/AccountTypes.h"
+#include "Accounts/AddressAccounts.h"
+#include "Accounts/MetaAccounts.h"
+#include "Wallets.h"
 #include "WalletFileInterface.h"
 #include "Seeds/Seeds.h"
 #include "TerminalPassphrasePrompt.h"
+#include "BIP32_Node.h"
 
 using namespace Armory::Assets;
 using namespace Armory::Accounts;
@@ -43,11 +47,11 @@ AuthorizedPeers::AuthorizedPeers(const IO::ReadOnlyFileParams& params)
 AuthorizedPeers::AuthorizedPeers()
 {
    //No filename was passed, create an ephemral peer db instead
-   auto privateKey = CryptoPRNG::generateRandom(32);
+   auto privateKey = Cryptography::PRNG::generateRandomStrong(32);
 
    //compute the public key
-   auto ownPubKey = CryptoECDSA().ComputePublicKey(privateKey);
-   auto ownPubKey_compressed = CryptoECDSA().CompressPoint(ownPubKey);
+   auto ownPubKey = Cryptography::ECDSA::computePublicKey(privateKey);
+   auto ownPubKey_compressed = Cryptography::ECDSA::compressPoint(ownPubKey);
 
    //add to private keys map
    privateKeys_.emplace(ownPubKey_compressed, privateKey);
@@ -76,7 +80,7 @@ void AuthorizedPeers::initFromWallet()
       throw AuthorizedPeersException("failed to initialize peer wallet");
    }
    //grab all meta entries, populate public key map
-   auto peerAccount = wallet_->getMetaAccount(MetaAccount_AuthPeers);
+   auto peerAccount = wallet_->getMetaAccount(MetaAccountType::AuthPeers);
    auto peerAssets = AuthPeerAssetConversion::getAssetMap(peerAccount.get());
 
    //root signature
@@ -89,7 +93,7 @@ void AuthorizedPeers::initFromWallet()
 
       SecureBinaryData pubkey_cmp;
       if (pubkey.second->getSize() != BIP151PUBKEYSIZE) {
-         pubkey_cmp = CryptoECDSA().CompressPoint(*pubkey.second);
+         pubkey_cmp = Cryptography::ECDSA::compressPoint(*pubkey.second);
       } else {
          pubkey_cmp = *pubkey.second;
       }
@@ -136,8 +140,8 @@ void AuthorizedPeers::initFromWallet()
          assetSingle->getPrivKey());
 
       //compute the public key
-      auto ownPubKey = CryptoECDSA().ComputePublicKey(privateKey);
-      ownPubKey_compressed = CryptoECDSA().CompressPoint(ownPubKey);
+      auto ownPubKey = Cryptography::ECDSA::computePublicKey(privateKey);
+      ownPubKey_compressed = Cryptography::ECDSA::compressPoint(ownPubKey);
 
       //add to private keys map
       privateKeys_.emplace(ownPubKey_compressed, privateKey);
@@ -188,7 +192,8 @@ std::shared_ptr<AuthorizedPeers> AuthorizedPeers::createWallet(
       //generate bip32 node from random seed
       wallet = AssetWallet_Single::createFromSeed(
          std::make_unique<ClearTextSeed_BIP32>(
-            CryptoPRNG::generateRandom(32), SeedType::BIP32_Virgin),
+            Cryptography::PRNG::generateRandomStrong(32),
+            SeedType::BIP32_Virgin),
          walletParams);
       auto wltSingle = std::dynamic_pointer_cast<AssetWallet_Single>(wallet);
 
@@ -208,7 +213,7 @@ std::shared_ptr<AuthorizedPeers> AuthorizedPeers::createWallet(
    }
 
    //add the peers meta account
-   wallet->addMetaAccount(MetaAccount_AuthPeers);
+   wallet->addMetaAccount(MetaAccountType::AuthPeers);
 
    //grab wallet filename
    auto currentname = wallet->getDbFilename();
@@ -277,7 +282,7 @@ void AuthorizedPeers::addPeer(const SecureBinaryData& pubkey,
    //convert sbd pubkey to libbtc pubkey
    SecureBinaryData pubkey_cmp;
    if (pubkey.getSize() == 65) {
-      pubkey_cmp = CryptoECDSA().CompressPoint(pubkey);
+      pubkey_cmp = Cryptography::ECDSA::compressPoint(pubkey);
    } else if (pubkey.getSize() == BIP151PUBKEYSIZE) {
       pubkey_cmp = pubkey;
    } else {
@@ -302,7 +307,7 @@ void AuthorizedPeers::addPeer(const SecureBinaryData& pubkey,
    }
 
    //get a dbtx for the wallet & add the pubkey with its names
-   auto peerAccount = wallet_->getMetaAccount(MetaAccount_AuthPeers);
+   auto peerAccount = wallet_->getMetaAccount(MetaAccountType::AuthPeers);
    auto uniqueTx = wallet_->getIface()->beginWriteTransaction(
       wallet_->getDbName());
    std::shared_ptr<IO::DBIfaceTransaction> sharedTx(std::move(uniqueTx));
@@ -375,7 +380,7 @@ void AuthorizedPeers::eraseName(const std::string& name)
 
    //grab metadata account from wallet, cycle through assets, clean up
    //indexMap as we go
-   auto metaAccount = wallet_->getMetaAccount(MetaAccount_AuthPeers);
+   auto metaAccount = wallet_->getMetaAccount(MetaAccountType::AuthPeers);
    auto setIter = indexIter->second.begin();
    while (setIter != indexIter->second.end()) {
       const auto& index = *setIter;
@@ -432,7 +437,7 @@ void AuthorizedPeers::eraseKey(const SecureBinaryData& pubkey)
    //make sure we're working with compressed keys only
    SecureBinaryData pubkey_cmp;
    if (pubkey.getSize() == 65) {
-      pubkey_cmp = CryptoECDSA().CompressPoint(pubkey);
+      pubkey_cmp = Cryptography::ECDSA::compressPoint(pubkey);
    } else {
       pubkey_cmp = pubkey;
    }
@@ -475,7 +480,7 @@ void AuthorizedPeers::eraseKey(const SecureBinaryData& pubkey)
    if (iter == keyToAssetIndexMap_.end()) {
       return;
    }
-   auto metaAccount = wallet_->getMetaAccount(MetaAccount_AuthPeers);
+   auto metaAccount = wallet_->getMetaAccount(MetaAccountType::AuthPeers);
    std::set<std::string> namesToDelete;
 
    for (auto& index : iter->second) {
@@ -528,14 +533,14 @@ void AuthorizedPeers::addRootSignature(
    const SecureBinaryData& key, const SecureBinaryData& sig)
 {
    //check key is valid
-   if (!CryptoECDSA().VerifyPublicKeyValid(key)) {
+   if (!Cryptography::ECDSA::verifyPublicKeyValid(key)) {
       throw AuthorizedPeersException("invalid root pubkey");
    }
 
    //check sig is valid
    auto ownKey = getOwnPublicKey();
    BinaryDataRef ownKeyBdr(ownKey.pubkey, 33);
-   if (!CryptoECDSA().VerifyData(ownKeyBdr, sig, key)) {
+   if (!Cryptography::ECDSA::verifyData(ownKeyBdr, sig, key)) {
       throw AuthorizedPeersException("invalid root signature");
    }
    rootSignature_ = std::make_pair(key, sig);
@@ -547,7 +552,7 @@ void AuthorizedPeers::addRootSignature(
    auto uniqueTx = wallet_->getIface()->beginWriteTransaction(
       wallet_->getDbName());
    std::shared_ptr<IO::DBIfaceTransaction> sharedTx(std::move(uniqueTx));
-   auto peerAccount = wallet_->getMetaAccount(MetaAccount_AuthPeers);
+   auto peerAccount = wallet_->getMetaAccount(MetaAccountType::AuthPeers);
    AuthPeerAssetConversion::addRootSignature(
       peerAccount.get(), key, sig, sharedTx);
 }
@@ -557,7 +562,7 @@ void AuthorizedPeers::addPeerRootKey(
    const SecureBinaryData& key, std::string description)
 {
    //check key is valid
-   if (!CryptoECDSA().VerifyPublicKeyValid(key)) {
+   if (!Cryptography::ECDSA::verifyPublicKeyValid(key)) {
       throw AuthorizedPeersException("invalid root pubkey");
    }
    if (wallet_ == nullptr) {
@@ -565,7 +570,7 @@ void AuthorizedPeers::addPeerRootKey(
       return;
    }
 
-   auto peerAccount = wallet_->getMetaAccount(MetaAccount_AuthPeers);
+   auto peerAccount = wallet_->getMetaAccount(MetaAccountType::AuthPeers);
    auto uniqueTx = wallet_->getIface()->beginWriteTransaction(
       wallet_->getDbName());
    std::shared_ptr<IO::DBIfaceTransaction> sharedTx(std::move(uniqueTx));
@@ -583,7 +588,7 @@ void AuthorizedPeers::erasePeerRootKey(const SecureBinaryData& key)
    }
    if (wallet_ != nullptr) {
       //update wallet to reflect erasure
-      auto metaAccount = wallet_->getMetaAccount(MetaAccount_AuthPeers);
+      auto metaAccount = wallet_->getMetaAccount(MetaAccountType::AuthPeers);
       metaAccount->eraseMetaDataByIndex(iter->second.second);
 
       //update on disk
@@ -659,7 +664,7 @@ bool AuthorizedPeers::setMasterKey(const SecureBinaryData& pubkey)
       return true;
    }
 
-   if (!CryptoECDSA().VerifyPublicKeyValid(pubkey)) {
+   if (!Cryptography::ECDSA::verifyPublicKeyValid(pubkey)) {
       //not a valid pubkey
       return false;
    }
@@ -671,7 +676,7 @@ bool AuthorizedPeers::setMasterKey(const SecureBinaryData& pubkey)
 
    //set in wallet
    if (wallet_ != nullptr) {
-      auto metaAccount = wallet_->getMetaAccount(MetaAccount_AuthPeers);
+      auto metaAccount = wallet_->getMetaAccount(MetaAccountType::AuthPeers);
       auto uniqueTx = wallet_->getIface()->beginWriteTransaction(
          wallet_->getDbName());
       std::shared_ptr<IO::DBIfaceTransaction> sharedTx(std::move(uniqueTx));
@@ -695,7 +700,7 @@ void AuthorizedPeers::eraseMasterKey()
       return;
    }
 
-   auto metaAccount = wallet_->getMetaAccount(MetaAccount_AuthPeers);
+   auto metaAccount = wallet_->getMetaAccount(MetaAccountType::AuthPeers);
    auto uniqueTx = wallet_->getIface()->beginWriteTransaction(
       wallet_->getDbName());
    std::shared_ptr<IO::DBIfaceTransaction> sharedTx(std::move(uniqueTx));
@@ -711,7 +716,7 @@ bool AuthorizedPeers::isMasterKey(const btc_pubkey& pubkey) const
    }
 
    BinaryDataRef keyRef{pubkey.pubkey, pubkey.compressed ? 33u : 65u};
-   return masterKey_ == keyRef;
+   return masterKey_.getRef() == keyRef;
 }
 
 ////
@@ -720,5 +725,5 @@ bool AuthorizedPeers::isMasterKey(const SecureBinaryData& pubkey) const
    if (masterKey_.empty()) {
       return false;
    }
-   return masterKey_ == pubkey;
+   return masterKey_.getRef() == pubkey;
 }

@@ -6,19 +6,16 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _H_AUTHORIZEDPEERS
-#define _H_AUTHORIZEDPEERS
+#pragma once
 
 #include <memory>
 #include <string>
+#include <set>
 #include <map>
 #include <filesystem>
 
-#include "btc/ecc_key.h"
-#include "EncryptionUtils.h"
-#include "Wallets.h"
-#include "DBUtils.h"
-#include "ArmoryConfig.h"
+#include <Utils/SecureBinaryData.h>
+#include <btc/ecc_key.h>
 
 #define PEERS_WALLET_PASSWORD "password"
 #define PEERS_WALLET_BIP32_ACCOUNT 0xFF005618
@@ -29,6 +26,8 @@ namespace Armory
 {
    namespace Wallets
    {
+      class AssetWallet;
+
       namespace IO
       {
          struct ReadOnlyFileParams;
@@ -83,7 +82,7 @@ namespace Armory
          void initFromWallet(void);
          void addPeer(const SecureBinaryData&,
             const std::initializer_list<std::string>&);
-         void addPeer(const btc_pubkey&,
+         void addPeer(const btc_pubkey_&,
             const std::initializer_list<std::string>&);
          void erasePeerRootKey(const SecureBinaryData&);
 
@@ -146,7 +145,5 @@ namespace Armory
          static std::shared_ptr<AuthorizedPeers> createWallet(
             const IO::CreateFileParams&);
       };
-   }; //namespace Wallets
-}; //namespace Armory
-
-#endif
+   } //namespace Wallets
+} //namespace Armory

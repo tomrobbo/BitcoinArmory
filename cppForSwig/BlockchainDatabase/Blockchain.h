@@ -11,16 +11,18 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _BLOCKCHAIN_H
-#define _BLOCKCHAIN_H
-
-#include "ThreadSafeClasses.h"
-#include "BlockObj.h"
-#include "lmdb_wrapper.h"
+#pragma once
 
 #include <memory>
 #include <deque>
 #include <map>
+
+#include <Utils/ThreadSafeClasses.h>
+#include <Utils/BinaryData.h>
+
+class BlockHeader;
+class BlockData;
+class LMDBBlockDatabase;
 
 ////////////////////////////////////////////////////////////////////////////////
 struct HeightAndDup
@@ -34,7 +36,14 @@ struct HeightAndDup
    {}
 };
 
-class BlockData;
+struct ReorganizationState
+{
+   bool prevTopStillValid = false;
+   bool hasNewTop = false;
+   std::shared_ptr<BlockHeader> prevTop;
+   std::shared_ptr<BlockHeader> newTop;
+   std::shared_ptr<BlockHeader> reorgBranchPoint;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -46,17 +55,8 @@ class Blockchain
    using HeaderPtr = std::shared_ptr<BlockHeader>;
 
 public:
-   Blockchain(const HashString &genesisHash);
+   Blockchain(const BinaryData& genesisHash);
    void clear();
-
-   struct ReorganizationState
-   {
-      bool prevTopStillValid_ = false;
-      bool hasNewTop_ = false;
-      std::shared_ptr<BlockHeader> prevTop_;
-      std::shared_ptr<BlockHeader> newTop_;
-      std::shared_ptr<BlockHeader> reorgBranchPoint_;
-   };
 
    /**
     * check/add blocks to the chain
@@ -126,5 +126,3 @@ private:
    mutable std::mutex mu_;
    bool forceRebuildFlag_ = false;
 };
-
-#endif

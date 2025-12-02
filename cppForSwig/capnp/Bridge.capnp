@@ -5,10 +5,8 @@ $Cxx.namespace("Armory::Codec::Bridge");
 
 using Types = import "Types.capnp";
 
-###############################
-# WalletData
-###############################
-
+################################################################################
+## shared data structs
 struct WalletBackup {
    enum Type {
       unknown     @0;
@@ -32,6 +30,7 @@ struct WalletBackup {
 
    spPass      @4 : Text;
    backupType  @5 : Type;
+   backupId    @6 : Text; #for WO backups only
 }
 
 struct WalletData {
@@ -97,10 +96,13 @@ struct WalletImportPreview {
    }
 }
 
-###############################
-# Notifications
-###############################
+struct UTXO {
+   output   @0 : Types.Output;
+   scrAddr  @1 : Types.ScrAddr;
+}
 
+################################################################################
+## Notifications
 struct Notification {
    ## Wallet creation progress notifs
    struct WalletProgress {
@@ -199,10 +201,8 @@ struct NotificationReply {
    }
 }
 
-###############################
-# Blockchain Service
-###############################
-
+################################################################################
+## Blockchain Service
 struct BlockchainServiceRequest {
    struct RegisterWallet {
       walletId    @0 : Types.WalletId;
@@ -255,9 +255,8 @@ struct BlockchainServiceReply {
    }
 }
 
-###############################
-# WalletManager
-###############################
+################################################################################
+## WalletManager
 struct WalletManagerRequest {
    struct StageWalletStruct {
       walletId    @0 : Types.WalletId;
@@ -331,9 +330,8 @@ struct WalletManagerReply {
    }
 }
 
-###############################
-# Wallet
-###############################
+################################################################################
+## Wallet
 struct WalletRequest {
    struct AddressRequest {
       type           @0 : UInt32;
@@ -352,8 +350,11 @@ struct WalletRequest {
 
    struct BackupStringStruct {
       union {
-         callbackId  @0 : Types.CallbackId;
-         passphrase  @1 : Text;
+         #requires a callback id to unlock private root
+         private  @0 : Types.CallbackId;
+
+         #nothing to provide when creating a public root backup
+         public   @1 : Void;
       }
    }
 
@@ -420,12 +421,6 @@ struct WalletRequest {
    }
 }
 
-####
-struct UTXO {
-   output   @0 : Types.Output;
-   scrAddr  @1 : Types.ScrAddr;
-}
-
 struct WalletReply {
    # Address Balance
    struct AddressBalanceData {
@@ -464,10 +459,8 @@ struct WalletReply {
    }
 }
 
-###############################
-# Coin Selection
-###############################
-
+################################################################################
+## Coin Selection
 struct CoinSelectionRequest {
    struct SetRecipient {
       address  @0 : Text;
@@ -529,10 +522,8 @@ struct CoinSelectionReply {
    }
 }
 
-###############################
-# Signer
-###############################
-
+################################################################################
+## Signer
 struct SignerRequest {
    struct AddSpenderByOutpoint {
       hash     @0 : Types.Hash;
@@ -615,10 +606,8 @@ struct SignerReply {
    }
 }
 
-###############################
-# Utils
-###############################
-
+################################################################################
+## Utils
 struct UtilsRequest {
    struct CreateWalletStruct {
       callbackId        @0 : Text;
@@ -632,8 +621,9 @@ struct UtilsRequest {
    struct RestoreWalletStruct {
       root              @0 : List(Text);
       chaincode         @1 : List(Text);
-      spPass            @2 : Text;
-      callbackId        @3 : Text;
+      backupId          @2 : Text;
+      spPass            @3 : Text;
+      callbackId        @4 : Text;
    }
 
    union {
@@ -660,10 +650,8 @@ struct UtilsReply {
    }
 }
 
-###############################
-# Script Utils
-###############################
-
+################################################################################
+## Script Utils
 struct ScriptUtilsRequest {
    script                        @0 : Data;
 
@@ -694,9 +682,8 @@ struct ScriptUtilsReply {
    }
 }
 
-###############################
-# Ledger Delegates
-###############################
+################################################################################
+## Ledger Delegates
 struct LedgerDelegateRequest {
    id                @0 : Types.DelegateId;
 
@@ -717,10 +704,8 @@ struct LedgerDelegateReply {
    }
 }
 
-###############################
-# Request/Reply
-###############################
-
+################################################################################
+## top level RPC API
 struct ToBridge {
    referenceId       @0 : UInt64;
 

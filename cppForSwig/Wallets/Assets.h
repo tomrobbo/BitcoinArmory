@@ -14,11 +14,9 @@
 #include <string>
 #include <memory>
 
-#include "BinaryData.h"
-#include "EncryptionUtils.h"
+#include "Utils/BinaryData.h"
 #include "WalletIdTypes.h"
 #include "AssetEncryption.h"
-
 
 #define ASSETENTRY_PREFIX           0x8A
 #define PUBKEY_UNCOMPRESSED_BYTE    0x80
@@ -49,6 +47,11 @@ namespace Armory
       class MetaDataAccount;
    };
 
+   namespace Seeds
+   {
+      enum class LegacyType : int;
+   }
+
    namespace Assets
    {
       class AssetException : public std::runtime_error
@@ -65,22 +68,22 @@ namespace Armory
          PrivateKey,
       };
 
-      enum MetaType
+      enum class MetaType : int
       {
-         MetaType_Comment,
-         MetaType_AuthorizedPeer,
-         MetaType_PeerRootKey,
-         MetaType_PeerRootSig,
-         MetaType_PeerMasterKey
+         Comment,
+         AuthorizedPeer,
+         PeerRootKey,
+         PeerRootSig,
+         PeerMasterKey
       };
 
       ////
-      enum AssetEntryType
+      enum class AssetEntryType : int
       {
-         AssetEntryType_Single = 0x01,
-         AssetEntryType_Multisig,
-         AssetEntryType_BIP32Root,
-         AssetEntryType_ArmoryLegacyRoot
+         Single = 0x01,
+         Multisig,
+         BIP32Root,
+         ArmoryLegacyRoot
       };
 
       enum ScriptHashType
@@ -216,18 +219,21 @@ namespace Armory
       {
       private:
          const SecureBinaryData chaincode_;
+         const Seeds::LegacyType seedType_;
 
       public:
          //tors
          AssetEntry_ArmoryLegacyRoot(
             Wallets::AssetId, SecureBinaryData&,
             std::shared_ptr<Asset_PrivateKey>,
-            const SecureBinaryData&);
+            const SecureBinaryData&, Seeds::LegacyType);
 
          BinaryData serialize(void) const override;
          AssetEntryType getType(void) const override;
-         const SecureBinaryData& getChaincode(void) const;
          std::shared_ptr<AssetEntry_Single> getPublicCopy(void) override;
+
+         Seeds::LegacyType getSeedType(void) const;
+         const SecureBinaryData& getChaincode(void) const;
       };
 
       //////////////////////////////////////////////////////////////////////////

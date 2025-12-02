@@ -9,7 +9,7 @@
 #include <mutex>
 #include <map>
 
-#include "SecureBinaryData.h"
+#include "Utils/SecureBinaryData.h"
 #include "Wallets/WalletIdTypes.h"
 #include "Wallets/GetPassphrase.h"
 

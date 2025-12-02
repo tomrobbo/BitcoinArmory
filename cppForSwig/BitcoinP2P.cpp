@@ -9,8 +9,14 @@
 #include <thread>
 #include <chrono>
 #include <string.h>
+
 #include "BitcoinP2P.h"
+#include <Utils/BtcUtils.h>
+#include <Utils/varint.h>
+#include <Utils/Cryptography.h>
+#include <Utils/BitcoinSettings.h>
 #include "SocketWritePayload.h"
+#include "bdmenums.h"
 
 using namespace Armory::Threading;
 using namespace Armory::Node;
@@ -620,7 +626,7 @@ void Payload_Version::deserialize(const uint8_t* data, size_t len)
 size_t Payload_Version::serializeInner(uint8_t* dataptr) const
 {
    if (dataptr == nullptr) {
-      return BtcUtils::get_varint_len(userAgent_.size()) +
+      return BtcUtils::calcVarIntSize(userAgent_.size()) +
          userAgent_.size() +
          VERSION_MINLENGTH;
    }
@@ -667,7 +673,7 @@ void Payload_Version::setVersionHeaderIPv4(uint32_t version,
    vheader_.addr_recv_.setIPv4(services, recvaddr);
    vheader_.addr_from_.setIPv4(services, fromaddr);
 
-   auto randombytes = BtcUtils::fortuna_.generateRandom(8);
+   auto randombytes = Cryptography::PRNG::fortuna.generateRandom(8);
    memcpy(&vheader_.nonce_, randombytes.getPtr(), 8);
 }
 
@@ -852,7 +858,7 @@ size_t Payload_Inv::serializeInner(uint8_t* dataptr) const
 {
    if (dataptr == nullptr) {
       auto invcount = invVector_.size();
-      auto varintlen = BtcUtils::get_varint_len(invcount);
+      auto varintlen = BtcUtils::calcVarIntSize(invcount);
       return invcount * INV_ENTRY_LEN + varintlen;
    }
 
@@ -922,6 +928,11 @@ void Payload_Tx::setRawTx(std::vector<uint8_t> rawtx)
 size_t Payload_Tx::getSize() const
 {
    return rawTx_.size();
+}
+
+bool Payload_Tx::empty() const
+{
+   return rawTx_.size() == 0;
 }
 
 ////////
@@ -1011,7 +1022,7 @@ size_t Payload_GetData::serializeInner(uint8_t* dataptr) const
 {
    if (dataptr == nullptr) {
       auto invcount = invVector_.size();
-      auto varintlen = BtcUtils::get_varint_len(invcount);
+      auto varintlen = BtcUtils::calcVarIntSize(invcount);
       return invcount * INV_ENTRY_LEN + varintlen;
    }
 
@@ -1267,7 +1278,7 @@ void BitcoinNodeInterface::requestTx(InvVector invVec)
    reply will be processed in processGetTx
    */
 
-   for (auto& entry : invVec) {
+   for (const auto& entry : invVec) {
       if (entry.invtype != Inv_Msg_Tx && entry.invtype!= Inv_Msg_Witness_Tx) {
         throw GetDataException("entry type isnt Inv_Msg_Tx");
       }
@@ -1702,7 +1713,7 @@ BitcoinP2PSocket::BitcoinP2PSocket(
 
 SocketType BitcoinP2PSocket::type() const
 {
-   return SocketBitcoinP2P;
+   return SocketType::BitcoinP2P;
 }
 
 ////////
