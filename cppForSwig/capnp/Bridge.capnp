@@ -14,10 +14,10 @@ struct WalletBackup {
       legacy135A  @1;
       legacy135C  @2;
 
-      legacy200A  @3;
-      legacy200B  @4;
-      legacy200C  @5;
-      legacy200D  @6;
+      armory200A  @3;
+      armory200B  @4;
+      armory200C  @5;
+      armory200D  @6;
 
       bip39       @7;
    }
@@ -609,13 +609,21 @@ struct SignerReply {
 ################################################################################
 ## Utils
 struct UtilsRequest {
+   enum WalletType {
+      legacy            @0;
+      structuredBip32   @1;
+      rawBip32          @2;
+      virgin            @3;
+   }
+
    struct CreateWalletStruct {
       callbackId        @0 : Text;
-      lookup            @1 : UInt32;
-      extraEntropy      @2 : Data;
+      walletType        @1 : WalletType;
+      lookup            @2 : UInt32;
+      extraEntropy      @3 : Data;
 
-      label             @3 : Text;
-      description       @4 : Text;
+      label             @4 : Text;
+      description       @5 : Text;
    }
 
    struct RestoreWalletStruct {

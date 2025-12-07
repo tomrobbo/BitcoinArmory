@@ -8,17 +8,18 @@
 
 #include "ProtoCommandParser.h"
 
-#include "Utils/log.h"
-#include "Utils/BtcUtils.h"
+#include <Utils/log.h>
+#include <Utils/BtcUtils.h>
 
-#include "Wallets/IOHeader.h"
-#include "Wallets/WalletIdTypes.h"
-#include "Wallets/Seeds/Backups.h"
-#include "Signer/Signer.h"
+#include <Wallets/IOHeader.h>
+#include <Wallets/WalletIdTypes.h>
+#include <Wallets/Seeds/Backups.h>
+#include <Wallets/Seeds/Seeds.h>
+#include <Signer/Signer.h>
+#include <Signer/CoinSelection.h>
+#include <AsyncClient.h>
 
 #include "CppBridge.h"
-#include "AsyncClient.h"
-#include "CoinSelection.h"
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
@@ -1089,8 +1090,24 @@ namespace
                (uint8_t*)capnEntropy.end()
             };
 
+            auto seedType = Seeds::SeedType::Raw;
+            switch (args.getWalletType())
+            {
+               case UtilsRequest::WalletType::LEGACY:
+                  seedType = Seeds::SeedType::ArmoryLegacy;
+                  break;
+
+               case UtilsRequest::WalletType::STRUCTURED_BIP32:
+                  seedType = Seeds::SeedType::BIP32_Structured;
+                  break;
+
+               case UtilsRequest::WalletType::RAW_BIP32:
+                  seedType = Seeds::SeedType::BIP32_Virgin;
+                  break;
+            }
+
             bridge->createWallet(
-               std::move(sbdEntropy),
+               seedType, std::move(sbdEntropy),
                Wallets::IO::CreateWalletParams{
                   bridge->getDataDir(),
                   Passphrase::SetNew{}, Passphrase::SetNew{},

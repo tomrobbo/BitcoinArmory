@@ -30,6 +30,7 @@ namespace Armory
    namespace Seeds
    {
       struct PromptReply;
+      enum class SeedType : int;
    };
 
    namespace Signing
@@ -164,6 +165,7 @@ namespace Armory
             const Wallets::AddressAccountId&, uint32_t,
             uint32_t, MessageId);
          void createWallet(
+            Seeds::SeedType,
             SecureBinaryData, //extra entropy
             Wallets::IO::CreateWalletParams,
             const std::string&, //callbackId

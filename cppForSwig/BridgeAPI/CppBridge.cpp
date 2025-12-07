@@ -430,16 +430,16 @@ namespace
             return WalletBackup::Type::LEGACY135_C;
 
          case Seeds::BackupType::Armory200a:
-            return WalletBackup::Type::LEGACY200_A;
+            return WalletBackup::Type::ARMORY200_A;
 
          case Seeds::BackupType::Armory200b:
-            return WalletBackup::Type::LEGACY200_B;
+            return WalletBackup::Type::ARMORY200_B;
 
          case Seeds::BackupType::Armory200c:
-            return WalletBackup::Type::LEGACY200_C;
+            return WalletBackup::Type::ARMORY200_C;
 
          case Seeds::BackupType::Armory200d:
-            return WalletBackup::Type::LEGACY200_D;
+            return WalletBackup::Type::ARMORY200_D;
 
          case Seeds::BackupType::BIP39:
             return WalletBackup::Type::BIP39;
@@ -1857,9 +1857,9 @@ void CppBridge::extendAddressPool(const Wallets::WalletId& wltId,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void CppBridge::createWallet(SecureBinaryData extraEntropy,
-   Wallets::IO::CreateWalletParams params, const std::string& callbackId,
-   MessageId refId)
+void CppBridge::createWallet(Seeds::SeedType sType,
+   SecureBinaryData extraEntropy, Wallets::IO::CreateWalletParams params,
+   const std::string& callbackId, MessageId refId)
 {
    auto setCtrlPassFunc = getSetPassFunc(this, callbackId, false);
    auto setPrivPassFunc = getSetPassFunc(this, callbackId, true);
@@ -1873,7 +1873,7 @@ void CppBridge::createWallet(SecureBinaryData extraEntropy,
    );
 
    //this is a long process (several seconds), run in its own thread
-   auto createWltFunc = [this, callbackId,
+   auto createWltFunc = [this, sType, callbackId,
       extraEntropy=std::move(extraEntropy),
       refId](std::unique_ptr<Wallets::IO::CreateWalletParams> paramPtr) {
       //prepare reply
@@ -1884,7 +1884,8 @@ void CppBridge::createWallet(SecureBinaryData extraEntropy,
 
       try {
          //create wallet
-         auto wltContainer = wltManager_->createNewWallet(extraEntropy, *paramPtr);
+         auto wltContainer = wltManager_->createNewWallet(
+            sType, extraEntropy, *paramPtr);
 
          //put first address in use, or the GUI will have nothing to display
          auto wltPtr = wltContainer->getWalletPtr();

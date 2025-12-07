@@ -254,6 +254,7 @@ void WalletManager::addAllAccounts(std::shared_ptr<Wallets::AssetWallet> wltPtr)
 
 ////////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<WalletContainer> WalletManager::createNewWallet(
+   Seeds::SeedType sType,
    const SecureBinaryData& extraEntropy,
    const Wallets::IO::CreateWalletParams& params)
 {
@@ -263,11 +264,30 @@ std::shared_ptr<WalletContainer> WalletManager::createNewWallet(
       root.XOR(hashTropy);
    }
 
-   auto seed = std::make_unique<Seeds::ClearTextSeed_Armory>(
-      root, SecureBinaryData{}, Seeds::LegacyType::Armory200);
-   auto wallet = Wallets::AssetWallet_Single::createFromSeed(
-      std::move(seed), params);
-   return addAccount(wallet, wallet->getMainAccountID());
+   switch (sType)
+   {
+      case Seeds::SeedType::ArmoryLegacy:
+      {
+         auto seed = std::make_unique<Seeds::ClearTextSeed_Armory>(
+            root, SecureBinaryData{}, Seeds::LegacyType::Armory200);
+         auto wallet = Wallets::AssetWallet_Single::createFromSeed(
+            std::move(seed), params);
+         return addAccount(wallet, wallet->getMainAccountID());
+      }
+
+      case Seeds::SeedType::BIP32_Structured:
+      case Seeds::SeedType::BIP32_Virgin:
+      {
+         auto seed = std::make_unique<Seeds::ClearTextSeed_BIP32>(
+            root, sType);
+         auto wallet = Wallets::AssetWallet_Single::createFromSeed(
+            std::move(seed), params);
+         return addAccount(wallet, wallet->getMainAccountID());
+      }
+
+      default:
+         throw std::runtime_error("unsupported seed type");
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

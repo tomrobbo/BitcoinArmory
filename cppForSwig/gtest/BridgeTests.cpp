@@ -2043,7 +2043,7 @@ protected:
 
    WalletData progressWalletCreation(const std::string& callbackId,
       const std::string& passphrase, std::chrono::milliseconds targetMs,
-      uint32_t targetMB, int lookup, bool WO=false)
+      uint32_t targetMB, int lookup, bool WO=false, bool isBIP32=false)
    {
       std::string masterId;
       std::filesystem::path path;
@@ -2166,21 +2166,39 @@ protected:
 
                   case Codec::Bridge::Notification::WalletProgress::CREATE_ACCOUNT:
                   {
-                     if (notifCount++ != 5) {
-                        throw std::runtime_error("count != 5");
+                     if (!isBIP32) {
+                        if (notifCount++ != 5) {
+                           throw std::runtime_error("count != 5");
+                        }
+                        EXPECT_EQ(wltNotif.getCreateAccount(), "Armory Legacy");
+                     } else {
+                        auto count = notifCount++;
+                        if (count < 5 || count > 9) {
+                           throw std::runtime_error("invalid create account notif count");
+                        }
+                        EXPECT_EQ(wltNotif.getCreateAccount(), "BIP32");
                      }
-                     EXPECT_EQ(wltNotif.getCreateAccount(), "Armory Legacy");
                      break;
                   }
 
                   case Codec::Bridge::Notification::WalletProgress::EXTEND_CHAIN:
                   {
-                     if (notifCount++ != 6) {
-                        throw std::runtime_error("count != 6");
+                     if (!isBIP32) {
+                        if (notifCount++ != 6) {
+                           throw std::runtime_error("count != 6");
+                        }
+                        auto extendNotif = wltNotif.getExtendChain();
+                        EXPECT_EQ(extendNotif.getTotal(), lookup);
+                        EXPECT_EQ(extendNotif.getCurrent(), 0);
+                     } else {
+                        auto count = notifCount++;
+                        if (count < 6 || count > 10) {
+                           throw std::runtime_error("invalid extend chain notif count");
+                        }
+                        auto extendNotif = wltNotif.getExtendChain();
+                        EXPECT_EQ(extendNotif.getTotal(), lookup);
+                        EXPECT_EQ(extendNotif.getCurrent(), 0);
                      }
-                     auto extendNotif = wltNotif.getExtendChain();
-                     EXPECT_EQ(extendNotif.getTotal(), lookup);
-                     EXPECT_EQ(extendNotif.getCurrent(), 0);
                      break;
                   }
 
@@ -2209,7 +2227,8 @@ protected:
          }
       }
 
-      if (!passphrase.empty() && notifCount != 7) {
+      auto totalCount = isBIP32 ? 11 : 7;
+      if (!passphrase.empty() && notifCount != totalCount) {
          throw std::runtime_error("unexpected notif count");
       }
 
@@ -2778,6 +2797,7 @@ TEST_F(BridgeTests, CreateWallet)
    auto createWltReq = request.initCreateWallet();
 
    createWltReq.setCallbackId(callbackId);
+   createWltReq.setWalletType(Codec::Bridge::UtilsRequest::WalletType::LEGACY);
    createWltReq.setLookup(100);
    createWltReq.setLabel("labl");
    createWltReq.setDescription("desc");
@@ -2829,16 +2849,94 @@ TEST_F(BridgeTests, CreateWallet)
    EXPECT_EQ(wltData.addresses.size(), 1);
    EXPECT_EQ(wltData.kdfMemReq, 128);
 
-   /* extras
-      1. KDF unlock time
-      2. change passphrase
-      3. change KDF
-      4. remove passphrase
-   */
-
-   //1 request KDF unlock time
+   //request KDF unlock time
    auto unlockTime = testKDFUnlock(wltId);
    EXPECT_GE(unlockTime, 500ms) << unlockTime.count();
+
+   //grab backup string
+   auto backup = getBackup(wltId, "pass1",
+      Codec::Bridge::WalletBackup::Type::ARMORY200_A);
+   ASSERT_EQ(backup.size(), 2);
+   ASSERT_EQ(backup[0].size(), 46);
+   ASSERT_EQ(backup[1].size(), 46);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(BridgeTests, CreateWallet_BIP32)
+{
+   //create the wallet
+   auto refId = rand();
+   auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
+
+   capnp::MallocMessageBuilder message;
+   auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+   toBridge.setReferenceId(refId);
+   auto request = toBridge.initUtils();
+   auto createWltReq = request.initCreateWallet();
+
+   createWltReq.setCallbackId(callbackId);
+   createWltReq.setWalletType(Codec::Bridge::UtilsRequest::WalletType::STRUCTURED_BIP32);
+   createWltReq.setLookup(100);
+   createWltReq.setLabel("labl");
+   createWltReq.setDescription("desc");
+
+   auto rawReq = serializeCapnp(message);
+   pushRequest(bridge_, rawReq);
+
+   //handle progress notifs
+   std::string masterId;
+   std::filesystem::path path;
+   try {
+      auto walletData = progressWalletCreation(callbackId,
+         "pass1", 500ms, 128, 100, false, true);
+      masterId = walletData.masterId;
+      path = walletData.path;
+   } catch (const std::exception& e) {
+      ASSERT_TRUE(false) << e.what();
+   }
+
+   //validate reply
+   auto result = waitOnReply();
+   kj::ArrayPtr<const capnp::word> words(
+      reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+      result->data.getSize() / sizeof(capnp::word));
+   capnp::FlatArrayMessageReader reader(words);
+   auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+   auto reply = fromBridge.getReply();
+   ASSERT_TRUE(reply.getSuccess());
+   ASSERT_EQ(reply.getReferenceId(), refId);
+
+   ASSERT_EQ(reply.which(), Codec::Bridge::RpcReply::UTILS);
+   auto utilsReply = reply.getUtils();
+   ASSERT_EQ(utilsReply.which(), Codec::Bridge::UtilsReply::CREATE_WALLET);
+   std::string wltId = utilsReply.getCreateWallet();
+   ASSERT_FALSE(wltId.empty());
+
+   //get the wallet data & validate it
+   auto wltData = getWalletData(bridge_, wltId);
+   EXPECT_EQ(wltData.walletId, wltId);
+   EXPECT_FALSE(wltData.accountId.empty());
+   EXPECT_EQ(wltData.path.filename().string(), path);
+   EXPECT_EQ(wltData.masterId, masterId);
+
+   EXPECT_EQ(wltData.label, "labl");
+   EXPECT_EQ(wltData.desc, "desc");
+
+   EXPECT_TRUE(wltData.encrypted);
+   EXPECT_FALSE(wltData.watchingOnly);
+   EXPECT_EQ(wltData.addresses.size(), 1);
+   EXPECT_EQ(wltData.kdfMemReq, 128);
+
+   //request KDF unlock time
+   auto unlockTime = testKDFUnlock(wltId);
+   EXPECT_GE(unlockTime, 500ms) << unlockTime.count();
+
+   //grab backup string
+   auto backup = getBackup(wltId, "pass1",
+      Codec::Bridge::WalletBackup::Type::ARMORY200_B);
+   ASSERT_EQ(backup.size(), 2);
+   ASSERT_EQ(backup[0].size(), 46);
+   ASSERT_EQ(backup[1].size(), 46);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -3276,7 +3374,7 @@ TEST_F(BridgeTests, RestoreMerge)
    std::vector<std::string> lines;
    try {
       lines = getBackup(wltId, passphrase,
-         Codec::Bridge::WalletBackup::Type::LEGACY200_A);
+         Codec::Bridge::WalletBackup::Type::ARMORY200_A);
    } catch (const std::exception& e) {
       ASSERT_TRUE(false) << e.what();
    }
@@ -3287,7 +3385,7 @@ TEST_F(BridgeTests, RestoreMerge)
       ASSERT_FALSE(line.empty());
    }
    auto restoreData = restoreWallet(lines, wltId,
-      Codec::Bridge::WalletBackup::Type::LEGACY200_A,
+      Codec::Bridge::WalletBackup::Type::ARMORY200_A,
       passphrase2, 1ms, 0, true,
       //the legacy armory account always starts with asset 0
       lookup - 1
@@ -3320,7 +3418,7 @@ TEST_F(BridgeTests, RestoreMerge)
    std::vector<std::string> lines2;
    try {
       lines2 = getBackup(wltId, passphrase2,
-         Codec::Bridge::WalletBackup::Type::LEGACY200_A);
+         Codec::Bridge::WalletBackup::Type::ARMORY200_A);
    } catch (const std::exception& e) {
       ASSERT_TRUE(false) << e.what();
    }
@@ -3662,7 +3760,7 @@ TEST_F(BridgeTests, ChangeWalletPassphrase)
    /* 3. check current passphrase, grab backup */
    auto now = std::chrono::system_clock::now();
    auto wltBackupLines = getBackup(walletId, currentPass,
-      Codec::Bridge::WalletBackup::Type::LEGACY200_A);
+      Codec::Bridge::WalletBackup::Type::ARMORY200_A);
    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::system_clock::now() - now);
    EXPECT_GE(elapsed, 500ms);
@@ -3678,7 +3776,7 @@ TEST_F(BridgeTests, ChangeWalletPassphrase)
    /* 5. check current passphrase fails to unlock wallet */
    try {
       auto newLines = getBackup(walletId, currentPass,
-         Codec::Bridge::WalletBackup::Type::LEGACY200_A);
+         Codec::Bridge::WalletBackup::Type::ARMORY200_A);
       ASSERT_TRUE(false);
    } catch (const std::exception& e) {
       EXPECT_EQ(e.what(), std::string{"unlock request rejected"});
@@ -3688,7 +3786,7 @@ TEST_F(BridgeTests, ChangeWalletPassphrase)
    try {
       auto now = std::chrono::system_clock::now();
       auto newLines = getBackup(walletId, newPass,
-         Codec::Bridge::WalletBackup::Type::LEGACY200_A);
+         Codec::Bridge::WalletBackup::Type::ARMORY200_A);
       auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
          std::chrono::system_clock::now() - now);
       EXPECT_GE(elapsed, 500ms);
