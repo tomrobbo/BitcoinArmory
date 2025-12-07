@@ -2208,10 +2208,23 @@ protected:
                         EXPECT_EQ(wltNotif.getCreateAccount(), "Armory Legacy");
                      } else {
                         auto count = notifCount++;
-                        if (count < 5 || count > 9) {
-                           throw std::runtime_error("invalid create account notif count");
+                        switch (count)
+                        {
+                           case 5:
+                              EXPECT_EQ(wltNotif.getCreateAccount(), "BIP44");
+                              break;
+
+                           case 7:
+                              EXPECT_EQ(wltNotif.getCreateAccount(), "BIP49");
+                              break;
+
+                           case 9:
+                              EXPECT_EQ(wltNotif.getCreateAccount(), "BIP84");
+                              break;
+
+                           default:
+                              throw std::runtime_error("unexpected notif count in create account");
                         }
-                        EXPECT_EQ(wltNotif.getCreateAccount(), "BIP32");
                      }
                      break;
                   }
