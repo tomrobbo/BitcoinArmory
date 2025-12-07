@@ -313,12 +313,13 @@ struct WalletManagerReply {
       state          @0 : WalletLoadState;
       path           @1 : Text;
       walletId       @2 : Text;
-      staged         @3 : Bool;
-      watchingOnly   @4 : Bool;
+      accountIds     @3 : List(Text);
+      staged         @4 : Bool;
+      watchingOnly   @5 : Bool;
 
       union {
-         undefined   @5 : Void;
-         legacy      @6 : WalletImportPreview;
+         undefined   @6 : Void;
+         legacy      @7 : WalletImportPreview;
       }
    }
 

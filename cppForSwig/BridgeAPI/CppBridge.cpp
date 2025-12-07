@@ -591,6 +591,15 @@ BinaryData CppBridge::listWallets(MessageId msgId)
          capnWltObj.setWalletId("N/A");
       }
 
+      if (wltObj.second->hasAccountIds()) {
+         const auto& accountIds = wltObj.second->getAccountIds();
+         auto capnAccIds = capnWltObj.initAccountIds(accountIds.size());
+         unsigned i = 0;
+         for (const auto& accId : accountIds) {
+            capnAccIds.set(i++, accId.toHexStr());
+         }
+      }
+
       if (wltObj.second->state() == WalletLoadState::Legacy) {
          auto a135Info = std::dynamic_pointer_cast<A135FileInfo>(wltObj.second);
          auto extendedData = capnWltObj.initLegacy();

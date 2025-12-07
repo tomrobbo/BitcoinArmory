@@ -15,6 +15,7 @@
 #include <Utils/DBUtils.h>
 
 #include <Wallets/Accounts/AddressAccounts.h>
+#include <Wallets/Accounts/AccountTypes.h>
 #include <Wallets/WalletFileInterface.h>
 #include <Wallets/Seeds/Seeds.h>
 #include <Wallets/AuthorizedPeers.h>
@@ -46,6 +47,8 @@ namespace {
    int CapnWalletState_Legacy = 1;
    int CapnWalletState_Encrypted = 2;
    int CapnWalletState_Ready = 3;
+   std::string legacyAccId = Armory::Wallets::AddressAccountId(
+      ARMORY_LEGACY_ACCOUNTID).toHexStr();
 
    BinaryData serializeCapnp(capnp::MallocMessageBuilder& msg)
    {
@@ -57,6 +60,7 @@ namespace {
    struct WltListEntry
    {
       std::string walletId;
+      std::vector<std::string> accountIds;
       int loadState;
       bool staged;
       bool isWO;
@@ -318,9 +322,14 @@ namespace {
 
       std::map<std::string, WltListEntry> wltMap;
       for (auto capnEntry : replyListWlts) {
+         std::vector<std::string> accountIds;
+         for (auto accId : capnEntry.getAccountIds()) {
+            accountIds.emplace_back(std::string{accId});
+         }
          wltMap.emplace(std::string(capnEntry.getPath()),
             WltListEntry{
                capnEntry.getWalletId(),
+               accountIds,
                (int)capnEntry.getState(),
                capnEntry.getStaged(),
                capnEntry.getWatchingOnly()}
@@ -1129,9 +1138,22 @@ TEST_F(WalletManagerTests, ListStageLoad)
       if (listEntry->state() != expLoadState) {
          return false;
       }
-      if (listEntry->state() == Bridge::WalletLoadState::Ready &&
-         listEntry->walletId().empty()) {
-         return false;
+      if (listEntry->state() == Bridge::WalletLoadState::Ready) {
+         if (!listEntry->hasAccountIds()) {
+            return false;
+         } else {
+            auto accIds = listEntry->getAccountIds();
+            if (accIds.begin()->toHexStr() != legacyAccId) {
+               return false;
+            }
+         }
+         if (listEntry->walletId().empty()) {
+            return false;
+         }
+      } else {
+         if (listEntry->hasAccountIds()) {
+            return false;
+         }
       }
       return listEntry->staged() == expectedStaged;
    };
@@ -1286,9 +1308,22 @@ TEST_F(WalletManagerTests, ListWO)
       if (listEntry->state() != expLoadState) {
          return false;
       }
-      if (listEntry->state() == Bridge::WalletLoadState::Ready &&
-         listEntry->walletId().empty()) {
-         return false;
+      if (listEntry->state() == Bridge::WalletLoadState::Ready) {
+         if (!listEntry->hasAccountIds()) {
+            return false;
+         } else {
+            auto accIds = listEntry->getAccountIds();
+            if (accIds.begin()->toHexStr() != legacyAccId) {
+               return false;
+            }
+         }
+         if (listEntry->walletId().empty()) {
+            return false;
+         }
+      } else {
+         if (listEntry->hasAccountIds()) {
+            return false;
+         }
       }
       if (isWO != listEntry->isWatchingOnly()) {
          return false;
@@ -2859,6 +2894,14 @@ TEST_F(BridgeTests, CreateWallet)
    ASSERT_EQ(backup.size(), 2);
    ASSERT_EQ(backup[0].size(), 46);
    ASSERT_EQ(backup[1].size(), 46);
+
+   auto wltList = listWallets(bridge_);
+   ASSERT_EQ(wltList.size(), 1);
+   auto wltIter = wltList.begin();
+   ASSERT_EQ(wltIter->second.accountIds.size(), 1);
+   for (const auto& accId : wltIter->second.accountIds) {
+      EXPECT_EQ(accId, legacyAccId);
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2937,6 +2980,14 @@ TEST_F(BridgeTests, CreateWallet_BIP32)
    ASSERT_EQ(backup.size(), 2);
    ASSERT_EQ(backup[0].size(), 46);
    ASSERT_EQ(backup[1].size(), 46);
+
+   auto wltList = listWallets(bridge_);
+   ASSERT_EQ(wltList.size(), 1);
+   auto wltIter = wltList.begin();
+   ASSERT_EQ(wltIter->second.accountIds.size(), 3);
+   for (const auto& accId : wltIter->second.accountIds) {
+      EXPECT_NE(accId, legacyAccId);
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -3448,6 +3499,7 @@ TEST_F(BridgeTests, Migrate_Legacy)
       ASSERT_EQ(wltInfoLegacy.walletId, wltId);
       ASSERT_FALSE(wltInfoLegacy.staged);
       ASSERT_EQ(wltInfoLegacy.loadState, 1);
+      ASSERT_EQ(wltInfoLegacy.accountIds.size(), 0);
    } catch (const std::exception& e) {
       ASSERT_TRUE(false) << e.what();
    }
@@ -3524,9 +3576,12 @@ TEST_F(BridgeTests, Migrate_Legacy)
          if (wltInfo.first == fileName) {
             ASSERT_FALSE(wltInfo.second.staged);
             ASSERT_EQ(wltInfo.second.loadState, CapnWalletState_Legacy);
+            ASSERT_EQ(wltInfo.second.accountIds.size(), 0);
          } else {
             ASSERT_TRUE(wltInfo.second.staged);
             ASSERT_EQ(wltInfo.second.loadState, CapnWalletState_Ready);
+            ASSERT_EQ(wltInfo.second.accountIds.size(), 1);
+            ASSERT_EQ(wltInfo.second.accountIds[0], legacyAccId);
          }
       }
    } catch (const std::exception& e) {
@@ -3614,6 +3669,7 @@ TEST_F(BridgeTests, ImportWallet_Legacy)
       ASSERT_EQ(wltInfoLegacy.walletId, walletId);
       ASSERT_FALSE(wltInfoLegacy.staged);
       ASSERT_EQ(wltInfoLegacy.loadState, 1);
+      ASSERT_EQ(wltInfoLegacy.accountIds.size(), 0);
    } catch (const std::exception& e) {
       ASSERT_TRUE(false) << e.what();
    }
@@ -3690,9 +3746,12 @@ TEST_F(BridgeTests, ImportWallet_Legacy)
          if (wltInfo.first == legacyWalletFile.filename()) {
             ASSERT_FALSE(wltInfo.second.staged);
             ASSERT_EQ(wltInfo.second.loadState, CapnWalletState_Legacy);
+            ASSERT_EQ(wltInfo.second.accountIds.size(), 0);
          } else {
             ASSERT_TRUE(wltInfo.second.staged);
             ASSERT_EQ(wltInfo.second.loadState, CapnWalletState_Ready);
+            ASSERT_EQ(wltInfo.second.accountIds.size(), 1);
+            ASSERT_EQ(wltInfo.second.accountIds[0], legacyAccId);
          }
       }
    } catch (const std::exception& e) {

@@ -25,6 +25,7 @@ namespace Armory
    {
       class AssetWallet;
       class AssetWallet_Single;
+      class AddressAccountId;
 
       namespace IO
       {
@@ -64,6 +65,8 @@ namespace Armory
          WalletLoadState state(void) const;
 
          virtual const Wallets::WalletId& walletId(void) const = 0;
+         virtual bool hasAccountIds(void) const = 0;
+         virtual std::set<Wallets::AddressAccountId> getAccountIds(void) const = 0;
          virtual const std::string& name(void) const = 0;
          virtual bool isWatchingOnly(void) const = 0;
       };
@@ -82,6 +85,8 @@ namespace Armory
 
          void unlockControlHeader(const Passphrase::UnlockFunc&);
          const Wallets::WalletId& walletId(void) const override;
+         bool hasAccountIds(void) const override;
+         std::set<Wallets::AddressAccountId> getAccountIds(void) const override;
          const std::string& name(void) const override;
          bool isWatchingOnly(void) const override;
 
@@ -207,6 +212,8 @@ namespace Armory
             const Wallets::IO::CreateWalletParams&) const;
 
          const Wallets::WalletId& walletId(void) const override;
+         bool hasAccountIds(void) const override;
+         std::set<Wallets::AddressAccountId> getAccountIds(void) const override;
          const std::string& name(void) const override;
          bool isWatchingOnly(void) const override;
 
