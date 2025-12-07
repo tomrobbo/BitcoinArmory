@@ -253,7 +253,7 @@ void WalletManager::addAllAccounts(std::shared_ptr<Wallets::AssetWallet> wltPtr)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::shared_ptr<WalletContainer> WalletManager::createNewWallet(
+Wallets::WalletId WalletManager::createNewWallet(
    Seeds::SeedType sType,
    const SecureBinaryData& extraEntropy,
    const Wallets::IO::CreateWalletParams& params)
@@ -272,7 +272,12 @@ std::shared_ptr<WalletContainer> WalletManager::createNewWallet(
             root, SecureBinaryData{}, Seeds::LegacyType::Armory200);
          auto wallet = Wallets::AssetWallet_Single::createFromSeed(
             std::move(seed), params);
-         return addAccount(wallet, wallet->getMainAccountID());
+
+         //put first address in use, or the GUI will have nothing to display
+         auto accPtr = wallet->getAccountForID(wallet->getMainAccountID());
+         accPtr->getNewAddress(wallet->getIface());
+         addAccount(wallet, wallet->getMainAccountID());
+         return wallet->getID();
       }
 
       case Seeds::SeedType::BIP32_Structured:
@@ -282,7 +287,15 @@ std::shared_ptr<WalletContainer> WalletManager::createNewWallet(
             root, sType);
          auto wallet = Wallets::AssetWallet_Single::createFromSeed(
             std::move(seed), params);
-         return addAccount(wallet, wallet->getMainAccountID());
+         const auto& accIds = wallet->getAccountIDs();
+
+         //put first address in use for each account
+         for (const auto& accId : accIds) {
+            auto accPtr = wallet->getAccountForID(accId);
+            accPtr->getNewAddress(wallet->getIface());
+            addAccount(wallet, accId);
+         }
+         return wallet->getID();
       }
 
       default:

@@ -110,7 +110,7 @@ namespace Armory
 
          /* wallet add/create/delete */
          void loadWallet(const Wallets::IO::ReadOnlyFileParams&);
-         std::shared_ptr<WalletContainer> createNewWallet(
+         Wallets::WalletId createNewWallet(
             Seeds::SeedType,
             const SecureBinaryData&, //extra entropy
             const Wallets::IO::CreateWalletParams&);

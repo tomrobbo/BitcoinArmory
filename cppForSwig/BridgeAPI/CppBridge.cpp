@@ -1884,17 +1884,11 @@ void CppBridge::createWallet(Seeds::SeedType sType,
 
       try {
          //create wallet
-         auto wltContainer = wltManager_->createNewWallet(
+         auto wltId = wltManager_->createNewWallet(
             sType, extraEntropy, *paramPtr);
-
-         //put first address in use, or the GUI will have nothing to display
-         auto wltPtr = wltContainer->getWalletPtr();
-         auto accPtr = wltContainer->getAddressAccount();
-         accPtr->getNewAddress(wltPtr->getIface());
 
          reply.setSuccess(true);
          auto utilsReply = reply.initUtils();
-         auto wltId = wltPtr->getID();
          utilsReply.setCreateWallet(wltId);
       } catch (const std::exception& e) {
          reply.setSuccess(false);
