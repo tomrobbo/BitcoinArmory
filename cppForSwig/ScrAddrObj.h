@@ -151,10 +151,8 @@ public:
    const std::map<uint32_t, uint32_t>& getHistSSHsummary(void) const
    { return hist_.getSSHsummary(); }
 
-   std::map<BinaryData, TxIOPair> getHistoryForScrAddr(
-      uint32_t, uint32_t,
-      bool, bool=false) const;
-   std::map<BinaryData, TxIOPair> getTxios(void) const;
+   std::map<BinaryData, TxIOPair> getTxios(
+      uint32_t, uint32_t, bool=false) const;
 
    size_t getPageCount(void) const { return hist_.getPageCount(); }
    std::vector<LedgerEntry> getHistoryPageById(uint32_t);

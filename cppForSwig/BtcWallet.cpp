@@ -21,6 +21,8 @@
 #include <BlockchainDatabase/BlockUtils.h>
 #include <BlockchainDatabase/txio.h>
 #include <Ledgers/LedgerEntry.h>
+#include <ZeroConf/Utils.h>
+#include <ZeroConf/Parser.h>
 #include "BlockDataViewer.h"
 
 using namespace std;
@@ -390,7 +392,7 @@ std::vector<AddressBookEntry> BtcWallet::createAddressBook() const
    auto db = bdvPtr_->getDB();
 
    for (const auto& saPair : *scrAddrMap) {
-      auto txioMap = saPair.second->getTxios();
+      auto txioMap = saPair.second->getTxios(0, UINT32_MAX);
 
       for (auto& txioPair : txioMap) {
          //skip unspent and zc spends
@@ -674,13 +676,11 @@ bool BtcWallet::isPaged() const
 {
    //get address map
    auto addrMap = scrAddrMap_.get();
-
-   for (auto& saPair : *addrMap)
-   {
-      if (!saPair.second->hist_.isInitiliazed())
+   for (auto& saPair : *addrMap) {
+      if (!saPair.second->hist_.isInitiliazed()) {
          return false;
+      }
    }
-
    return true;
 }
 
@@ -692,8 +692,7 @@ map<BinaryData, TxIOPair> BtcWallet::getTxioForRange(
    auto addrMap = scrAddrMap_.get();
 
    for (const auto& scrAddrPair : *addrMap) {
-      auto saTxioMap =
-         scrAddrPair.second->getHistoryForScrAddr(start, end, false);
+      auto saTxioMap = scrAddrPair.second->getTxios(start, end);
       outMap.insert(saTxioMap.begin(), saTxioMap.end());
    }
    return outMap;
@@ -704,8 +703,9 @@ map<BinaryData, LedgerEntry> BtcWallet::updateWalletLedgersFromTxio(
    const map<BinaryData, TxIOPair>& txioMap,
    uint32_t startBlock, uint32_t endBlock) const
 {
+   auto mempoolSs = bdvPtr_->zcContainer()->getSnapshot();
    return LedgerEntry::computeLedgerMap(txioMap, startBlock, endBlock,
-      walletID_, bdvPtr_->getDB(), &bdvPtr_->blockchain(), bdvPtr_->zcContainer());
+      walletID_, bdvPtr_->getDB(), &bdvPtr_->blockchain(), mempoolSs);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

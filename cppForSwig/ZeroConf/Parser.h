@@ -48,7 +48,7 @@ struct ReorganizationState;
 class Tx;
 class TxIOPair;
 class TxOut;
-class UTXO;
+struct UTXO;
 
 namespace Armory
 {

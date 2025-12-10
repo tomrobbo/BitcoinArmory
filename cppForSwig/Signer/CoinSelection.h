@@ -30,7 +30,7 @@
 #define WEIGHT_OUTANON  30.0f
 
 class BinaryData;
-class UTXO;
+struct UTXO;
 
 namespace Armory
 {

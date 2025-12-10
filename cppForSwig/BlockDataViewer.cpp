@@ -20,6 +20,7 @@
 #include <ZeroConf/Utils.h>
 #include <ZeroConf/Notifications.h>
 #include <Ledgers/LedgerEntry.h>
+#include "BtcWallet.h"
 
 using namespace std;
 using namespace Armory;

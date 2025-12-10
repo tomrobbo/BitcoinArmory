@@ -38,7 +38,7 @@ uint64_t ScrAddrObj::getSpendableBalance(uint32_t currBlk) const
 {
    //TODO: this call is way too expensive, improve it
    uint64_t balance = getFullBalance();
-   auto txios = getTxios();
+   auto txios = getTxios(0, UINT32_MAX);
    for (const auto& txio : txios) {
       if (!txio.second.hasTxIn() && !txio.second.isSpendable(db_, currBlk)) {
          balance -= txio.second.getValue();
@@ -53,7 +53,7 @@ uint64_t ScrAddrObj::getUnconfirmedBalance(
 {
    //TODO: this call is way too expensive, improve it
    uint64_t balance = 0;
-   auto txios = getTxios();
+   auto txios = getTxios(0, UINT32_MAX);
    for (const auto& txio : txios) {
       if (txio.second.isMineButUnconfirmed(db_, currBlk, confTarget)) {
          balance += txio.second.getValue();
@@ -71,7 +71,7 @@ uint64_t ScrAddrObj::getFullBalance(unsigned updateID) const
    uint64_t balance = ssh.getScriptBalance(false);
 
    //grab zc balances
-   auto zcTxios = getHistoryForScrAddr(UINT32_MAX, UINT32_MAX, 0, false);
+   auto zcTxios = getTxios(UINT32_MAX, UINT32_MAX);
    for (const auto& txio : zcTxios) {
       if (txio.second.hasTxOutZC()) {
          balance += txio.second.getValue();
@@ -110,7 +110,6 @@ std::map<BinaryData, TxIOPair> ScrAddrObj::scanZC(
    //can't modify original txio, so we use a copy.
    std::set<BinaryData> invalidatedInputs;
    std::set<BinaryData> invalidatedOutputs;
-   std::map<BinaryData, TxIOPair> newZC;
 
    if (scanInfo.invalidatedZcKeys_ != nullptr &&
       !scanInfo.invalidatedZcKeys_->empty()) {
@@ -142,32 +141,33 @@ std::map<BinaryData, TxIOPair> ScrAddrObj::scanZC(
 
    auto haveIter = scanInfo.scrAddrToTxioKeys_.find(scrAddr_);
    if (haveIter == scanInfo.scrAddrToTxioKeys_.end()) {
-      return newZC;
+      return {};
    } else if (haveIter->second.empty()) {
       LOGWARN << "empty zc notification txio map";
-      return newZC;
+      return {};
    }
 
    //look for new keys
+   std::map<BinaryData, TxIOPair> newZCs;
    const auto& txioKeys = haveIter->second;
    for (const auto& txiokey : txioKeys) {
       auto newtxio = scanInfo.zcState_->getTxioByKey(txiokey);
       if (newtxio == nullptr) {
          continue;
       }
-      newZC[txiokey] = *newtxio;
+      newZCs[txiokey] = *newtxio;
       if (newtxio->hasTxInZC()) {
          zcInputKeys_[newtxio->getDBKeyOfInput()] = txiokey;
       }
    }
 
    //nothing to do if we didn't find new ZC
-   if (newZC.empty()) {
-      return newZC;
+   if (newZCs.empty()) {
+      return {};
    }
    updateID_ = updateID;
 
-   for (auto& txioPair : newZC) {
+   for (auto& txioPair : newZCs) {
       if (txioPair.second.hasTxOutZC() &&
          isZcFromWallet(txioPair.second.getDBKeyOfOutput().getSliceRef(0, 6))) {
          txioPair.second.setTxOutFromSelf(true);
@@ -175,7 +175,7 @@ std::map<BinaryData, TxIOPair> ScrAddrObj::scanZC(
       txioPair.second.setScrAddrRef(getScrAddr());
       zcTxios_[txioPair.first] = txioPair.second;
    }
-   return newZC;
+   return newZCs;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -224,9 +224,10 @@ std::map<BinaryData, LedgerEntry> ScrAddrObj::updateLedgers(
    const std::map<BinaryData, TxIOPair>& txioMap,
    uint32_t startBlock, uint32_t endBlock) const
 {
+   auto mempoolSs = zc_->getSnapshot();
    return LedgerEntry::computeLedgerMap(
       txioMap, startBlock, endBlock,
-      {}, db_, bc_, zc_
+      {}, db_, bc_, mempoolSs
    );
 }
 
@@ -235,26 +236,22 @@ uint64_t ScrAddrObj::getTxioCountFromSSH(bool withZc) const
 {
    StoredScriptHistory ssh;
    db_->getStoredScriptHistorySummary(ssh, scrAddr_);
-
    uint32_t count = ssh.totalTxioCount_;
 
-   if (withZc)
-   {
-      auto&& zcTxios = getHistoryForScrAddr(UINT32_MAX, UINT32_MAX, 0, false);
-      for (auto& txio : zcTxios)
-      {
-         if (txio.second.hasTxOutZC() || txio.second.hasTxInZC())
+   if (withZc) {
+      auto zcTxios = getTxios(UINT32_MAX, UINT32_MAX);
+      for (const auto& txio : zcTxios) {
+         if (txio.second.hasTxOutZC() || txio.second.hasTxInZC()) {
             ++count;
+         }
       }
    }
-
    return count;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-std::map<BinaryData, TxIOPair> ScrAddrObj::getHistoryForScrAddr(
-   uint32_t startBlock, uint32_t endBlock,
-   bool, bool withMultisig) const
+std::map<BinaryData, TxIOPair> ScrAddrObj::getTxios(
+   uint32_t startBlock, uint32_t endBlock, bool withMultisig) const
 {
    std::map<BinaryData, TxIOPair> outMap;
 
@@ -272,13 +269,9 @@ std::map<BinaryData, TxIOPair> ScrAddrObj::getHistoryForScrAddr(
       lastSeenBlock_ = bc_->top()->getBlockHeight();
    }
 
-   if (scrAddr_[0] == (uint8_t)Armory::ScriptPrefix::MULTISIG) {
-      withMultisig = true;
-   }
-
    if (ssh.isInitialized()) {
       //Serve content as a map. Do not overwrite existing TxIOs to avoid wiping ZC
-      //data, Since the data isn't overwritten, iterate the map from its end to make
+      //data. Since the data isn't overwritten, iterate the map from its end to make
       //sure newer txio aren't ignored due to older ones being inserted first.
       auto subSSHiter = ssh.subHistMap_.rbegin();
       while (subSSHiter != ssh.subHistMap_.rend()) {
@@ -309,12 +302,6 @@ std::map<BinaryData, TxIOPair> ScrAddrObj::getHistoryForScrAddr(
    return outMap;
 }
 
-///////////////////////////////////////////////////////////////////////////////
-std::map<BinaryData, TxIOPair> ScrAddrObj::getTxios() const
-{
-   return getHistoryForScrAddr(0, UINT32_MAX, 0, false);
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 std::vector<LedgerEntry> ScrAddrObj::getHistoryPageById(uint32_t id)
 {
@@ -324,7 +311,7 @@ std::vector<LedgerEntry> ScrAddrObj::getHistoryPageById(uint32_t id)
    auto getTxio = [this](uint32_t start, uint32_t end)->
    std::map<BinaryData, TxIOPair>
    {
-      return this->getHistoryForScrAddr(start, end, false);
+      return this->getTxios(start, end);
    };
 
    auto buildLedgers = [this](
@@ -463,7 +450,7 @@ std::vector<UnspentTxOut> ScrAddrObj::getSpendableTxOutList(
    db_->getStoredScriptHistory(ssh, scrAddr_);
    db_->getFullUTXOMapForSSH(ssh, utxoMap, false);
 
-   auto txios = getTxios();
+   auto txios = getTxios(0, UINT32_MAX);
    std::vector<UnspentTxOut> utxoVec;
    for (auto& utxo : utxoMap) {
       auto txioIter = txios.find(utxo.first);

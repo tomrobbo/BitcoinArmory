@@ -17,10 +17,9 @@
 #include <stdint.h>
 #include <string>
 
-#include "BlockchainDatabase/txio.h"
+#include <Ledgers/HistoryPager.h>
 #include "BDV_Notification.h"
 #include "bdmenums.h"
-#include "BtcWallet.h"
 
 typedef enum
 {
@@ -82,6 +81,16 @@ struct CombinedBalances
 class ScrAddrFilter;
 class Blockchain;
 class LedgerDelegate;
+class BtcWallet;
+class BlockDataManager;
+class StoredHeader;
+class Tx;
+class TxOut;
+class TxIn;
+struct StoredTxOut;
+struct ScanWalletStruct;
+struct UTXO;
+struct Output;
 
 namespace Armory
 {

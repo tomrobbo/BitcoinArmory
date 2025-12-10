@@ -208,7 +208,7 @@ std::map<BinaryData, LedgerEntry> LedgerEntry::computeLedgerMap(
    const std::map<BinaryData, TxIOPair>& txioMap,
    uint32_t startBlock, uint32_t endBlock, const std::string& ID,
    const LMDBBlockDatabase* db, const Blockchain* bc,
-   const Armory::ZeroConf::ZeroConfContainer* zc)
+   const std::shared_ptr<ZeroConf::MempoolSnapshot> zcSs)
 {
    using TxDbKey = BinaryDataRef;
    using TxnQueue = std::vector<const TxIOPair*>;
@@ -237,8 +237,6 @@ std::map<BinaryData, LedgerEntry> LedgerEntry::computeLedgerMap(
    }
 
    //convert TxIO to ledgers
-   auto ss = zc->getSnapshot();
-
    std::map<BinaryData, LedgerEntry> leMap;
    for (const auto& txioVec : txnTxIOMap) {
       //reset ledger variables
@@ -268,10 +266,10 @@ std::map<BinaryData, LedgerEntry> LedgerEntry::computeLedgerMap(
          blockNum = UINT32_MAX;
          txIndex = READ_UINT32_BE(txioVec.first.getSliceRef(2, 4));
          txTime = (*txioIter)->getTxTime();
-         if (ss == nullptr) {
+         if (zcSs == nullptr) {
             LOGWARN << "zc txio without a snapshot!";
          } else {
-            txHash = ss->getHashForKey(txioVec.first);
+            txHash = zcSs->getHashForKey(txioVec.first);
          }
       }
 
@@ -327,9 +325,9 @@ std::map<BinaryData, LedgerEntry> LedgerEntry::computeLedgerMap(
          uint32_t nTxOutInTx = UINT32_MAX;
          if (!isZc) {
             nTxOutInTx = db->getStxoCountForTx(txioVec.first.getSliceRef(0, 6));
-         } else if (ss != nullptr) {
+         } else if (zcSs != nullptr) {
             //grab zc by key
-            auto ptx = ss->getTxByKey(txioVec.first);
+            auto ptx = zcSs->getTxByKey(txioVec.first);
             if (ptx != nullptr) {
                nTxOutInTx = ptx->outputs.size();
             }
@@ -382,10 +380,10 @@ std::map<BinaryData, LedgerEntry> LedgerEntry::computeLedgerMap(
             } catch (const std::exception&) {
                LOGWARN << "no tx on record for txio " << txioVec.first.toHexStr();
             }
-         } else if (ss != nullptr) {
+         } else if (zcSs != nullptr) {
             if (ptx == nullptr) {
                //grab zc by key if we haven't got it previously
-               auto ptx = ss->getTxByKey(txioVec.first);
+               auto ptx = zcSs->getTxByKey(txioVec.first);
             }
             if (ptx == nullptr) {
                LOGWARN << "failed to get zc for ledger parsing";

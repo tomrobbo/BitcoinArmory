@@ -23,7 +23,7 @@ namespace Armory
 {
    namespace ZeroConf
    {
-      class ZeroConfContainer;
+      class MempoolSnapshot;
    }
 }
 
@@ -119,7 +119,7 @@ public:
       const std::map<BinaryData, TxIOPair>&,
       uint32_t, uint32_t, const std::string&,
       const LMDBBlockDatabase*, const Blockchain*,
-      const Armory::ZeroConf::ZeroConfContainer*);
+      const std::shared_ptr<Armory::ZeroConf::MempoolSnapshot>);
 
 private:
    std::string ID_; //holds either a scrAddr or a walletId

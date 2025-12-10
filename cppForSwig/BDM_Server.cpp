@@ -11,6 +11,7 @@
 #include <Utils/ArmoryConfig.h>
 #include <BlockchainDatabase/BlockUtils.h>
 #include <BlockchainDatabase/lmdb_wrapper.h>
+#include <BlockchainDatabase/StoredBlockObj.h>
 #include <ZeroConf/Parser.h>
 #include <ZeroConf/Utils.h>
 #include <ZeroConf/Notifications.h>
@@ -19,6 +20,7 @@
 #include "SocketWritePayload.h"
 #include "Server.h"
 #include "WebSocketMessage.h"
+#include "BtcWallet.h"
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
