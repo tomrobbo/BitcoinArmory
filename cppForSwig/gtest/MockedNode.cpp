@@ -41,8 +41,8 @@ namespace
          if (iface->getStoredTxOut(
             stxo, outpoint.getTxHash(), outpoint.getTxOutIndex())) {
             UTXO utxo(
-               stxo.getValue(), stxo.getHeight(), 
-               stxo.txIndex_, outpoint.getTxOutIndex(), 
+               stxo.getValue(), stxo.getHeight(),
+               stxo.txIndex, outpoint.getTxOutIndex(),
                outpoint.getTxHash(), stxo.getScriptRef());
 
             auto& idMap = utxoMap[outpoint.getTxHash()];
@@ -731,12 +731,12 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
                      BinaryRefReader keyReader(dbKey);
                      uint32_t blockid; uint8_t dup;
                      DBUtils::readBlkDataKeyNoPrefix(keyReader,
-                        blockid, dup, stxo.txIndex_);
+                        blockid, dup, stxo.txIndex);
 
                      auto headerPtr = blockchain_->getHeaderById(blockid);
-                     stxo.blockHeight_ = headerPtr->getBlockHeight();
-                     stxo.duplicateID_ = headerPtr->getDuplicateID();
-                     stxo.txOutIndex_ = outpoint.getTxOutIndex();
+                     stxo.blockHeight = headerPtr->getBlockHeight();
+                     stxo.duplicateID = headerPtr->getDuplicateID();
+                     stxo.txOutIndex = outpoint.getTxOutIndex();
 
                      iface_->getSpentness(stxo);
                      if (stxo.isSpent()) {
@@ -1019,15 +1019,15 @@ int NodeRPC_UnitTest::broadcastTx(const BinaryDataRef& rawTx, std::string&)
       StoredTxOut stxo;
       BinaryRefReader keyReader(dbKey);
       uint32_t blockid; uint8_t dup;
-      DBUtils::readBlkDataKeyNoPrefix(keyReader, blockid, dup, stxo.txIndex_);
+      DBUtils::readBlkDataKeyNoPrefix(keyReader, blockid, dup, stxo.txIndex);
       auto headerPtr = nodeUT->blockchain_->getHeaderById(blockid);
-      stxo.blockHeight_ = headerPtr->getBlockHeight();
-      stxo.duplicateID_ = headerPtr->getDuplicateID();
+      stxo.blockHeight = headerPtr->getBlockHeight();
+      stxo.duplicateID = headerPtr->getDuplicateID();
 
       //are any of its outpouts spent?
       unsigned spentCount = 0;
-      for (unsigned i=0; i<tx.getNumTxOut(); i++) {
-         stxo.txOutIndex_ = i;
+      for (unsigned i = 0; i < tx.getNumTxOut(); i++) {
+         stxo.txOutIndex = i;
          iface->getSpentness(stxo);
          if (stxo.isSpent()) {
             spentCount++;
@@ -1094,12 +1094,12 @@ int NodeRPC_UnitTest::broadcastTx(const BinaryDataRef& rawTx, std::string&)
       BinaryRefReader keyReader(dbKeyInput);
       uint32_t blockid; uint8_t dup;
       DBUtils::readBlkDataKeyNoPrefix(keyReader,
-         blockid, dup, stxo.txIndex_);
+         blockid, dup, stxo.txIndex);
 
       auto headerPtr = nodeUT->blockchain_->getHeaderById(blockid);
-      stxo.blockHeight_ = headerPtr->getBlockHeight();
-      stxo.duplicateID_ = headerPtr->getDuplicateID();
-      stxo.txOutIndex_ = outpoint.getTxOutIndex();
+      stxo.blockHeight = headerPtr->getBlockHeight();
+      stxo.duplicateID = headerPtr->getDuplicateID();
+      stxo.txOutIndex = outpoint.getTxOutIndex();
 
       iface->getSpentness(stxo);
       if (stxo.isSpent()) {

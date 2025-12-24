@@ -18,34 +18,34 @@
 #include <gtest/gtest.h>
 #include <btc/ecc.h>
 
-#include "Utils/log.h"
-#include "Utils/ArmoryErrors.h"
-#include "Utils/BinaryData.h"
-#include "Utils/BtcUtils.h"
-#include "Utils/Cryptography.h"
-#include "Utils/BitcoinSettings.h"
+#include <Utils/log.h>
+#include <Utils/ArmoryErrors.h>
+#include <Utils/BinaryData.h>
+#include <Utils/BtcUtils.h>
+#include <Utils/Cryptography.h>
+#include <Utils/BitcoinSettings.h>
 
-#include "Signer/Script.h"
-#include "Signer/Signer.h"
-#include "Signer/ResolverFeed_Wallets.h"
+#include <Signer/Script.h>
+#include <Signer/Signer.h>
+#include <Signer/ResolverFeed_Wallets.h>
 
-#include "BlockchainDatabase/BlockObj.h"
-#include "BlockchainDatabase/lmdb_wrapper.h"
-#include "BlockchainDatabase/BlockUtils.h"
-#include "BlockchainDatabase/txio.h"
-#include "BlockchainDatabase/StoredBlockObj.h"
-#include "AsyncClient.h"
-#include "ScrAddrObj.h"
-#include "BtcWallet.h"
-#include "BlockDataViewer.h"
-#include "BitcoinP2P.h"
+#include <BlockchainDatabase/BlockObj.h>
+#include <BlockchainDatabase/lmdb_wrapper.h>
+#include <BlockchainDatabase/BlockUtils.h>
+#include <BlockchainDatabase/txio.h>
+#include <BlockchainDatabase/StoredBlockObj.h>
+#include <AsyncClient.h>
+#include <ScrAddrObj.h>
+#include <BtcWallet.h>
+#include <BlockDataViewer.h>
+#include <BitcoinP2P.h>
 
-#include "Progress.h"
-#include "BDM_Server.h"
-#include "TxClasses.h"
-#include "bdmenums.h"
-#include "Wallets/Wallets.h"
-#include "Wallets/BIP32_Node.h"
+#include <Progress.h>
+#include <BDM_Server.h>
+#include <TxClasses.h>
+#include <bdmenums.h>
+#include <Wallets/Wallets.h>
+#include <Wallets/BIP32_Node.h>
 
 #include "MockedNode.h"
 
@@ -60,6 +60,14 @@ namespace Armory
 };
 
 class BlockDataManagerThread;
+
+template<class T, typename ...Args>
+static BinaryData serializeDBValue(const T &o, const Args &...a)
+{
+   BinaryWriter wr;
+   o.serializeDBValue(wr, a...);
+   return wr.getData();
+}
 
 namespace TestUtils
 {

@@ -1018,7 +1018,7 @@ unsigned ZeroConfContainer::loadZeroConfMempool(bool clearMempool)
             //add to newZCMap_
             auto zckey = zcKey.getSliceCopy(1, 6);
             auto parsedTx = std::make_shared<ParsedTx>(zckey);
-            parsedTx->setTx(zcStx.getSerializedTx(), zcStx.unixTime_);
+            parsedTx->setTx(zcStx.getSerializedTx(), zcStx.unixTime);
             zcMap.emplace(parsedTx->getKeyRef(), std::move(parsedTx));
          } else if (zcKey.getSize() == 9) {
             //TxOut, ignore it

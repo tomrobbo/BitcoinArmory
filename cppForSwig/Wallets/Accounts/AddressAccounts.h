@@ -6,20 +6,18 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _H_ADDRESS_ACCOUNTS
-#define _H_ADDRESS_ACCOUNTS
+#pragma once
 
 #include <set>
 #include <map>
 #include <memory>
 
 
-#include "Utils/ReentrantLock.h"
+#include <Utils/ReentrantLock.h>
 #include "../WalletIdTypes.h"
 #include "../Assets.h"
 #include "../Addresses.h"
 #include "../DerivationScheme.h"
-
 #include "AssetAccounts.h"
 
 #define BIP32_OUTER_ACCOUNT_DERIVATIONID 0x00000000
@@ -243,7 +241,5 @@ namespace Armory
          bool hasBip32Path(const Signing::BIP32_AssetPath&) const;
          bool isLegacy(void) const;
       };
-   }; //namespace Accounts
-}; //namespace Armory
-
-#endif
+   } //namespace Accounts
+} //namespace Armory

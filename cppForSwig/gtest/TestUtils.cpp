@@ -139,7 +139,7 @@ namespace TestUtils
    {
       StoredDBInfo sdbi;
       bdm.getIFace()->getStoredDBInfo(db, 0);
-      return sdbi.topBlkHgt_;
+      return sdbi.topBlkHgt;
    }
 
    /////////////////////////////////////////////////////////////////////////////
@@ -246,12 +246,11 @@ namespace TestUtils
       StoredHeader sbh;
       sbh.unserializeFullBlock(brr, false, true);
 
-      if (sbh.stxMap_.size() - 1 < id) {
+      auto iter = sbh.stxMap.find(id);
+      if (iter == sbh.stxMap.end()) {
          throw range_error("invalid tx id");
       }
-
-      const auto& stx = sbh.stxMap_[id];
-      return stx.dataCopy_;
+      return iter->second.dataCopy;
    }
 
    ////////////////////////////////////////////////////////////////////////////////
@@ -282,14 +281,14 @@ namespace DBTestUtils
    unsigned getTopBlockHeight(LMDBBlockDatabase* db, DB_SELECT dbSelect)
    {
       auto&& sdbi = db->getStoredDBInfo(dbSelect, 0);
-      return sdbi.topBlkHgt_;
+      return sdbi.topBlkHgt;
    }
 
    /////////////////////////////////////////////////////////////////////////////
    BinaryData getTopBlockHash(LMDBBlockDatabase* db, DB_SELECT dbSelect)
    {
       auto&& sdbi = db->getStoredDBInfo(dbSelect, 0);
-      return sdbi.topScannedBlkHash_;
+      return sdbi.topScannedBlkHash;
    }
 
    /////////////////////////////////////////////////////////////////////////////
@@ -748,58 +747,51 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   void addTxioToSsh(StoredScriptHistory& ssh, 
+   void addTxioToSsh(StoredScriptHistory& ssh,
       const map<BinaryDataRef, shared_ptr<const TxIOPair>>& txioMap)
    {
-      for (auto& txio_pair : txioMap)
-      {
+      for (auto& txio_pair : txioMap) {
          auto subssh_key = txio_pair.first.getSliceRef(0, 4);
-
-         auto& subssh = ssh.subHistMap_[subssh_key];
-         subssh.txioMap_[txio_pair.first] = *txio_pair.second;
+         auto& subssh = ssh.subHistMap[subssh_key];
+         auto emplaceResult = subssh.txioMap.emplace(
+            txio_pair.first, *txio_pair.second);
+         if (!emplaceResult.second) {
+            emplaceResult.first->second.merge(*txio_pair.second);
+         }
 
          unsigned txioCount = 1;
-         if (txio_pair.second->hasTxIn())
-         {
-            ssh.totalUnspent_ -= txio_pair.second->getValue();
+         if (txio_pair.second->hasTxIn()) {
+            ssh.totalUnspent -= txio_pair.second->getValue();
 
-            auto txinKey_prefix = 
+            auto txinKey_prefix =
                txio_pair.second->getDBKeyOfInput().getSliceCopy(0, 4);
-            if (txio_pair.second->getDBKeyOfOutput().startsWith(txinKey_prefix))
-            {
-               ssh.totalUnspent_ += txio_pair.second->getValue();
+            if (txio_pair.second->getDBKeyOfOutput().startsWith(txinKey_prefix)) {
+               ssh.totalUnspent += txio_pair.second->getValue();
                ++txioCount;
             }
+         } else {
+            ssh.totalUnspent += txio_pair.second->getValue();
          }
-         else
-         {
-            ssh.totalUnspent_ += txio_pair.second->getValue();
-         }
-
-         ssh.totalTxioCount_ += txioCount;
+         ssh.totalTxioCount += txioCount;
       }
    }
 
    /////////////////////////////////////////////////////////////////////////////
    void prettyPrintSsh(StoredScriptHistory& ssh)
    {
-      cout << "balance: " << ssh.totalUnspent_ << endl;
-      cout << "txioCount: " << ssh.totalTxioCount_ << endl;
+      cout << "balance: " << ssh.totalUnspent << endl;
+      cout << "txioCount: " << ssh.totalTxioCount << endl;
 
-      for(auto& subssh : ssh.subHistMap_)
-      {
+      for (const auto& subssh : ssh.subHistMap) {
          cout << "key: " << subssh.first.toHexStr() << ", txCount:" << 
-            subssh.second.txioCount_ << endl;
+            subssh.second.txioCount << endl;
         
-         for(auto& txio : subssh.second.txioMap_)
-         {
+         for (const auto& txio : subssh.second.txioMap) {
             cout << "   amount: " << txio.second.getValue();
             cout << "   keys: " << txio.second.getDBKeyOfOutput().toHexStr();
-            if (txio.second.hasTxIn())
-            {
+            if (txio.second.hasTxIn()) {
                cout << " to " << txio.second.getDBKeyOfInput().toHexStr();
             }
-
             cout << ", isUTXO: " << txio.second.isUTXO();
             cout << endl;
          }

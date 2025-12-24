@@ -43,7 +43,7 @@
 class Blockchain;
 class TxFilterPoolWriter;
 struct StoredDBInfo;
-class StoredSubHistory;
+struct StoredSubHistory;
 class UnspentTxOut;
 
 enum class DB_SELECT : int;
@@ -114,15 +114,13 @@ class Tx;
 class TxIn;
 class TxOut;
 class TxRef;
-class TxIOPair;
-class GlobalDBUtilities;
 
-class StoredHeader;
-class StoredTx;
+struct StoredHeader;
+struct StoredTx;
 struct StoredTxOut;
-class StoredScriptHistory;
-class StoredTxHints;
-class StoredHeadHgtList;
+struct StoredScriptHistory;
+struct StoredTxHints;
+struct StoredHeadHgtList;
 
 enum class DbPrefix : uint8_t;
 

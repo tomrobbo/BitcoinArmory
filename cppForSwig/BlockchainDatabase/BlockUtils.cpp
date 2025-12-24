@@ -28,6 +28,7 @@
 #include "BlockchainScanner.h"
 #include "DatabaseBuilder.h"
 #include "BDV_Notification.h"
+#include "txio.h"
 #include "StoredBlockObj.h"
 
 using namespace Armory;
@@ -58,10 +59,10 @@ protected:
          getSshSDBI();
       } catch (const std::runtime_error&) {
          StoredDBInfo sdbi;
-         sdbi.magic_ = Config::BitcoinSettings::getMagicBytes();
-         sdbi.metaHash_ = BtcUtils::EmptyHash;
-         sdbi.topBlkHgt_ = 0;
-         sdbi.armoryType_ = Config::DBSettings::getDbType();
+         sdbi.magic = Config::BitcoinSettings::getMagicBytes();
+         sdbi.metaHash = BtcUtils::EmptyHash;
+         sdbi.topBlkHgt = 0;
+         sdbi.armoryType = Config::DBSettings::getDbType();
 
          //write sdbi
          putSshSDBI(sdbi);
@@ -71,10 +72,10 @@ protected:
          getSubSshSDBI();
       } catch (const std::runtime_error&) {
          StoredDBInfo sdbi;
-         sdbi.magic_ = Config::BitcoinSettings::getMagicBytes();
-         sdbi.metaHash_ = BtcUtils::EmptyHash;
-         sdbi.topBlkHgt_ = 0;
-         sdbi.armoryType_ = Config::DBSettings::getDbType();
+         sdbi.magic = Config::BitcoinSettings::getMagicBytes();
+         sdbi.metaHash = BtcUtils::EmptyHash;
+         sdbi.topBlkHgt = 0;
+         sdbi.armoryType = Config::DBSettings::getDbType();
 
          //write sdbi
          putSubSshSDBI(sdbi);

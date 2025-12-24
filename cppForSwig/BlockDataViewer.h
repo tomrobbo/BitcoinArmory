@@ -83,7 +83,7 @@ class Blockchain;
 class LedgerDelegate;
 class BtcWallet;
 class BlockDataManager;
-class StoredHeader;
+struct StoredHeader;
 class Tx;
 class TxOut;
 class TxIn;

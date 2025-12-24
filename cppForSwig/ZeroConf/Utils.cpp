@@ -112,13 +112,14 @@ FilteredZeroConfData ZeroConf::filterParsedTx(
       }
 
       auto txio = std::make_shared<TxIOPair>(
-         TxRef{input.opRef.getDbTxKeyRef()}, input.opRef.getIndex(),
-         TxRef{zcKey}, inputId
+         TxRef{input.opRef.getDbTxKeyRef()},
+         input.opRef.getIndex(),
+         input.value
       );
 
+      txio->setTxIn(TxRef{zcKey}, inputId);
       txio->setTxHashOfOutput(input.opRef.getTxHashRef());
       txio->setTxHashOfInput(txHash);
-      txio->setValue(input.value);
       auto txTime = input.opRef.getTime();
       if (txTime == UINT64_MAX) {
          txTime = timeFromTx;
@@ -152,8 +153,8 @@ FilteredZeroConfData ZeroConf::filterParsedTx(
       const auto& output = parsedTxPtr->outputs[iout];
       auto flaggedBDVs = filter(output.scrAddr);
       if (flaggedBDVs.first) {
-         auto txio = std::make_shared<TxIOPair>(TxRef(zcKey), iout);
-         txio->setValue(output.value);
+         auto txio = std::make_shared<TxIOPair>(
+            TxRef{zcKey}, iout, output.value);
          txio->setTxHashOfOutput(txHash);
          txio->setTxTime(timeFromTx);
          txio->setUTXO(true);
@@ -182,10 +183,13 @@ void ZeroConf::preprocessTx(ParsedTx& tx, LMDBBlockDatabase* db)
    */
 
    const auto& txHash = tx.getTxHash();
-   auto txref = db->getTxRef(txHash);
-   if (txref.isInitialized()) {
+   try {
+      //sanity check: is this tx mined?
+      db->getTxRef(txHash);
       tx.state = ParsedTxStatus::Mined;
       return;
+   } catch (const std::exception&) {
+      //tx isn't mined, proceed further
    }
 
    const auto& txObj = tx.getTxObj();

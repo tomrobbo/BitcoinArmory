@@ -155,9 +155,12 @@ std::map<BinaryData, TxIOPair> ScrAddrObj::scanZC(
       if (newtxio == nullptr) {
          continue;
       }
-      newZCs[txiokey] = *newtxio;
+      auto emplaceResult = newZCs.emplace(txiokey, *newtxio);
       if (newtxio->hasTxInZC()) {
          zcInputKeys_[newtxio->getDBKeyOfInput()] = txiokey;
+         if (!emplaceResult.second) {
+            emplaceResult.first->second.merge(*newtxio);
+         }
       }
    }
 
@@ -173,7 +176,10 @@ std::map<BinaryData, TxIOPair> ScrAddrObj::scanZC(
          txioPair.second.setTxOutFromSelf(true);
       }
       txioPair.second.setScrAddrRef(getScrAddr());
-      zcTxios_[txioPair.first] = txioPair.second;
+      auto emplaceResult = zcTxios_.emplace(txioPair);
+      if (!emplaceResult.second && txioPair.second.hasTxIn()) {
+         emplaceResult.first->second.merge(txioPair.second);
+      }
    }
    return newZCs;
 }
@@ -236,7 +242,7 @@ uint64_t ScrAddrObj::getTxioCountFromSSH(bool withZc) const
 {
    StoredScriptHistory ssh;
    db_->getStoredScriptHistorySummary(ssh, scrAddr_);
-   uint32_t count = ssh.totalTxioCount_;
+   uint32_t count = ssh.totalTxioCount;
 
    if (withZc) {
       auto zcTxios = getTxios(UINT32_MAX, UINT32_MAX);
@@ -261,7 +267,7 @@ std::map<BinaryData, TxIOPair> ScrAddrObj::getTxios(
    db_->getStoredScriptHistory(ssh, scrAddr_, start, endBlock);
 
    //update scrAddrObj containers
-   totalTxioCount_ = ssh.totalTxioCount_;
+   totalTxioCount_ = ssh.totalTxioCount;
 
    if (endBlock != UINT32_MAX) {
       lastSeenBlock_ = endBlock;
@@ -273,16 +279,16 @@ std::map<BinaryData, TxIOPair> ScrAddrObj::getTxios(
       //Serve content as a map. Do not overwrite existing TxIOs to avoid wiping ZC
       //data. Since the data isn't overwritten, iterate the map from its end to make
       //sure newer txio aren't ignored due to older ones being inserted first.
-      auto subSSHiter = ssh.subHistMap_.rbegin();
-      while (subSSHiter != ssh.subHistMap_.rend()) {
+      auto subSSHiter = ssh.subHistMap.rbegin();
+      while (subSSHiter != ssh.subHistMap.rend()) {
          StoredSubHistory& subssh = subSSHiter->second;
-         for (auto &txiop : subssh.txioMap_) {
-            if (withMultisig || !txiop.second.isMultisig()) {
-               auto& txio = outMap[txiop.first];
-               if (!txio.hasValue()) {
-                  txio = txiop.second;
+         for (auto &txioPair : subssh.txioMap) {
+            if (withMultisig || !txioPair.second.isMultisig()) {
+               auto iter = outMap.find(txioPair.first);
+               if (iter == outMap.end()) {
+                  iter = outMap.emplace(txioPair).first;
                }
-               txio.setScrAddrRef(getScrAddr());
+               iter->second.setScrAddrRef(getScrAddr());
             }
          }
          ++subSSHiter;
@@ -296,7 +302,7 @@ std::map<BinaryData, TxIOPair> ScrAddrObj::getTxios(
             outMap.emplace(zcTxio);
             continue;
          }
-         iter->second = zcTxio.second;
+         iter->second.merge(zcTxio.second);
       }
    }
    return outMap;
@@ -554,8 +560,8 @@ uint32_t ScrAddrObj::PagedUTXOs::fetchMoreUTXO(uint32_t start, uint32_t end,
    scrAddrObj->db_->getStoredScriptHistory(
       ssh, scrAddrObj->scrAddr_, start, end);
 
-   for (const auto& subsshPair : ssh.subHistMap_) {
-      for (const auto& txioPair : subsshPair.second.txioMap_) {
+   for (const auto& subsshPair : ssh.subHistMap) {
+      for (const auto& txioPair : subsshPair.second.txioMap) {
          if (txioPair.second.isUTXO()) {
             //isMultisig only signifies this scrAddr was used in the
             //composition of a funded multisig transaction. This is purely

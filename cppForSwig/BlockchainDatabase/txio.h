@@ -5,159 +5,163 @@
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
 //                                                                            //
-//  Copyright (C) 2016, goatpig                                               //            
+//  Copyright (C) 2016, goatpig                                               //
 //  Distributed under the MIT license                                         //
-//  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //                                   
+//  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
-#ifndef _TXIO_H_
-#define _TXIO_H_
 
-#include <functional>
+#pragma once
 
-#include "Utils/BinaryData.h"
-#include "BlockObj.h"
+#include <Utils/BinaryData.h>
 
+class LMDBBlockDatabase;
+class Outpoint;
+class TxIn;
+class TxOut;
+class Tx;
+
+////////////////////////////////////////////////////////////////////////////////
+class TxRef
+{
+   friend class BlockDataManager;
+   friend class Tx;
+   friend class TxIOPair;
+
+public:
+   TxRef(void);
+   TxRef(BinaryDataRef);
+
+   bool isInitialized(void) const;
+
+   const BinaryData& getDBKey(void) const;
+   BinaryDataRef getDBKeyRef(void) const;
+   BinaryData getDBKeyOfChild(uint16_t) const;
+   uint16_t getBlockTxIndex(void) const;
+   uint32_t getBlockHeight(void) const;
+   uint8_t getDuplicateID(void) const;
+   void pprint(std::ostream& = std::cout, int = 0) const;
+
+   bool operator==(const BinaryData&) const;
+   bool operator==(const TxRef&) const;
+   bool operator>=(const BinaryData&) const;
+
+protected:
+   BinaryData dbKey6B_;
+};
+
+class DBTxRef : public TxRef
+{
+public:
+   DBTxRef(const TxRef&, const LMDBBlockDatabase*);
+
+   BinaryData serialize(void) const;
+   BinaryData getThisHash(void) const;
+   Tx getTxCopy(void) const;
+   bool isMainBranch(void) const;
+
+   /////////////////////////////////////////////////////////////////////////////
+   // This as fast as you can get a single TxIn or TxOut from the DB.  But if 
+   // need multiple of them from the same Tx, you should getTxCopy() and then
+   // iterate over them in the Tx object
+   TxIn  getTxInCopy(uint32_t);
+   TxOut getTxOutCopy(uint32_t);
+
+private:
+   const LMDBBlockDatabase* db_;
+};
+
+////////////////////////////////////////////////////////////////////////////////
 class TxIOPair
 {
 public:
-   //////////////////////////////////////////////////////////////////////////////
-   // TODO:  since we tend not to track TxIn/TxOuts but make them on the fly,
-   //        we should probably do that here, too.  I designed this before I
-   //        realized that these copies will fall out of sync on a reorg
-   TxIOPair(void);
-   explicit TxIOPair(uint64_t amount);
-   explicit TxIOPair(TxRef txRefO, uint32_t txoutIndex);
-   explicit TxIOPair(const BinaryData& txOutKey8B, uint64_t value);
-   explicit TxIOPair(TxRef txRefO, uint32_t txoutIndex,
-      TxRef txRefI, uint32_t txinIndex);
-
-   TxIOPair(const TxIOPair& txio)
-   {
-      *this = txio;
-   }
+   explicit TxIOPair(const BinaryData&, uint64_t);
+   explicit TxIOPair(const TxRef&, uint16_t, uint64_t);
 
    // Lots of accessors
-   bool      hasTxOut(void) const   { return (txRefOfOutput_.isInitialized()); }
-   bool      hasTxIn(void) const    { return (txRefOfInput_.isInitialized()); }
-   bool      hasTxOutInMain(LMDBBlockDatabase *db) const;
-   bool      hasTxInInMain(LMDBBlockDatabase *db) const;
+   bool      hasTxIn(void) const;
+   bool      hasTxOutInMain(LMDBBlockDatabase*) const;
+   bool      hasTxInInMain(LMDBBlockDatabase*) const;
    bool      hasTxOutZC(void) const;
    bool      hasTxInZC(void) const;
-   bool      hasValue(void) const   { return (amount_ != 0); }
-   uint64_t  getValue(void) const   { return  amount_; }
-   void      setValue(const uint64_t& newVal) { amount_ = newVal; }
+   uint64_t  getValue(void) const;
 
-   //////////////////////////////////////////////////////////////////////////////
-   TxRef     getTxRefOfOutput(void) { return txRefOfOutput_; }
-   TxRef     getTxRefOfInput(void) { return txRefOfInput_; }
-   const TxRef& getTxRefOfOutput(void) const { return txRefOfOutput_; }
-   const TxRef& getTxRefOfInput(void) const { return txRefOfInput_; }
+   ////
+   const TxRef& getTxRefOfOutput(void) const;
+   const TxRef& getTxRefOfInput(void) const;
+   BinaryData getDBKeyOfOutput(void) const;
+   BinaryData getDBKeyOfInput(void) const;
 
-   uint32_t  getIndexOfOutput(void) const { return indexOfOutput_; }
-   uint32_t  getIndexOfInput(void) const  { return indexOfInput_; }
-   Outpoint  getOutPoint(LMDBBlockDatabase *db) const { return Outpoint(getTxHashOfOutput(db), indexOfOutput_); }
+   uint32_t  getIndexOfOutput(void) const;
+   uint32_t  getIndexOfInput(void) const;
+   Outpoint  getOutPoint(LMDBBlockDatabase*) const;
 
-   std::pair<bool, bool> reassessValidity(LMDBBlockDatabase *db);
-   bool  isTxOutFromSelf(void) const  { return isTxOutFromSelf_; }
-   void setTxOutFromSelf(bool isTrue = true) { isTxOutFromSelf_ = isTrue; }
-   bool  isFromCoinbase(void) const { return isFromCoinbase_; }
-   void setFromCoinbase(bool isTrue = true) { isFromCoinbase_ = isTrue; }
-   bool  isMultisig(void) const { return isMultisig_; }
-   void setMultisig(bool isTrue = true) { isMultisig_ = isTrue; }
-   bool isRBF(void) const { return isRBF_; }
-   void setRBF(bool isTrue) { isRBF_ = isTrue; }
-   void setChained(bool isTrue) { isZCChained_ = isTrue; }
-   bool isChainedZC(void) const { return isZCChained_; }
+   std::pair<bool, bool> reassessValidity(LMDBBlockDatabase*);
+   bool  isTxOutFromSelf(void) const;
+   void setTxOutFromSelf(bool = true);
+   bool  isFromCoinbase(void) const;
+   void setFromCoinbase(bool = true);
+   bool  isMultisig(void) const;
+   void setMultisig(bool = true);
+   bool isRBF(void) const;
+   void setRBF(bool);
+   void setChained(bool);
+   bool isChainedZC(void) const;
 
-   BinaryData getDBKeyOfOutput(void) const
-   {
-      return txRefOfOutput_.getDBKeyOfChild(indexOfOutput_);
-   }
-   BinaryData getDBKeyOfInput(void) const
-   {
-      return txRefOfInput_.getDBKeyOfChild(indexOfInput_);
-   }
+   /////////////////////////////////////////////////////////////////////////////
+   BinaryData getTxHashOfInput(const LMDBBlockDatabase* = nullptr) const;
+   BinaryData getTxHashOfOutput(const LMDBBlockDatabase* = nullptr) const;
+   void setTxHashOfInput(const BinaryData&);
+   void setTxHashOfOutput(const BinaryData&);
 
-   //////////////////////////////////////////////////////////////////////////////
-   BinaryData    getTxHashOfInput(const LMDBBlockDatabase *db = nullptr) const;
-   BinaryData    getTxHashOfOutput(const LMDBBlockDatabase *db = nullptr) const;
+   TxOut getTxOutCopy(LMDBBlockDatabase*) const;
+   TxIn  getTxInCopy(LMDBBlockDatabase*) const;
 
-   void setTxHashOfInput(const BinaryData& txHash)
-   {
-      txHashOfInput_ = txHash;
-   }
-   void setTxHashOfOutput(const BinaryData& txHash)
-   {
-      txHashOfOutput_ = txHash;
-   }
+   bool setTxIn(const TxRef&, uint32_t);
+   bool setTxIn(const BinaryData&);
+   void merge(const TxIOPair&);
 
-   TxOut getTxOutCopy(LMDBBlockDatabase *db) const;
-   TxIn  getTxInCopy(LMDBBlockDatabase *db) const;
-
-   bool setTxIn(TxRef  txref, uint32_t index);
-   bool setTxIn(const BinaryData& dbKey8B);
-   bool setTxOut(TxRef  txref, uint32_t index);
-   bool setTxOut(const BinaryData& dbKey8B);
-
-   //////////////////////////////////////////////////////////////////////////////
-   bool isSourceUnknown(void) { return (!hasTxOut() && hasTxIn()); }
-
-   bool isSpent(LMDBBlockDatabase *db) const;
-   bool isUnspent(LMDBBlockDatabase *db) const;
-   bool isSpendable(LMDBBlockDatabase *db, uint32_t currBlk) const;
+   /////////////////////////////////////////////////////////////////////////////
+   bool isSpent(LMDBBlockDatabase*) const;
+   bool isUnspent(LMDBBlockDatabase*) const;
+   bool isSpendable(LMDBBlockDatabase*, uint32_t) const;
    bool isMineButUnconfirmed(
-      LMDBBlockDatabase *db, uint32_t currBlk, unsigned confTarget) const;
-   void pprintOneLine(LMDBBlockDatabase *db) const;
+      LMDBBlockDatabase*, uint32_t, unsigned) const;
+   void pprintOneLine(LMDBBlockDatabase*) const;
 
-   bool operator<(TxIOPair const & t2)
-   {
-      return (getDBKeyOfOutput() < t2.getDBKeyOfOutput());
-   }
-   bool operator==(TxIOPair const & t2)
-   {
-      return (getDBKeyOfOutput() == t2.getDBKeyOfOutput());
-   }
-   bool operator>=(const BinaryData &) const;
-   TxIOPair& operator=(const TxIOPair &);
-   TxIOPair& operator=(TxIOPair&& toMove);
+   bool operator<(const TxIOPair&) const;
+   bool operator==(const TxIOPair&) const;
+   bool operator>=(const BinaryData&) const;
 
-   void setTxTime(uint32_t t) { txtime_ = t; }
-   uint32_t getTxTime(void) const { return txtime_; }
+   void setTxTime(uint32_t);
+   uint32_t getTxTime(void) const;
 
-   bool isUTXO(void) const { return isUTXO_; }
-   void setUTXO(bool val) { isUTXO_ = val; }
+   bool isUTXO(void) const;
+   void setUTXO(bool);
 
-   void setScrAddrRef(const BinaryDataRef& bdr)
-   {
-      scrAddr_ = bdr;
-   }
-
-   const BinaryDataRef& getScrAddr(void) const
-   {
-      return scrAddr_;
-   }
+   void setScrAddrRef(const BinaryDataRef&);
+   const BinaryDataRef& getScrAddr(void) const;
 
 public:
    bool flagged = false;
 
 private:
-   uint64_t  amount_;
+   const uint64_t amount_;
+   const TxRef txRefOfOutput_;
+   const uint32_t indexOfOutput_;
 
-   TxRef     txRefOfOutput_;
-   uint32_t  indexOfOutput_;
-   TxRef     txRefOfInput_;
-   uint32_t  indexOfInput_;
+   TxRef    txRefOfInput_;
+   uint32_t indexOfInput_;
 
-   mutable BinaryData txHashOfOutput_;
-   mutable BinaryData txHashOfInput_;
+   mutable  BinaryData txHashOfOutput_;
+   mutable  BinaryData txHashOfInput_;
 
    // Zero-conf data isn't on disk, yet, so can't use TxRef
-   bool      isTxOutFromSelf_ = false;
-   bool      isFromCoinbase_;
-   bool      isMultisig_;
-   bool      isRBF_ = false;
-   bool      isZCChained_ = false;
+   bool     isTxOutFromSelf_ = false;
+   bool     isFromCoinbase_;
+   bool     isMultisig_;
+   bool     isRBF_ = false;
+   bool     isZCChained_ = false;
 
    //mainly for ZC ledgers. Could replace the need for a blockchain 
    //object to build scrAddrObj ledgers.
@@ -173,10 +177,8 @@ private:
    While spent txouts at txin height are unique, spent txouts at txout height
    need to be differenciated from UTXOs.
    ***/
-   bool isUTXO_ = false;
+   bool     isUTXO_ = false;
 
    //used to get a relevant scrAddr from a txio
    BinaryDataRef scrAddr_;
 };
-
-#endif

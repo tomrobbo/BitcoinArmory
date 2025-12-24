@@ -304,7 +304,7 @@ vector<UTXO> BtcWallet::getSpendableTxOutListForValue(uint64_t val)
 
          UTXO utxo(
             stxo.getValue(), stxo.getHeight(),
-            stxo.txIndex_, stxo.txOutIndex_,
+            stxo.txIndex, stxo.txOutIndex,
             hash, stxo.getScriptRef());
          utxoList.emplace_back(move(utxo));
       }
@@ -367,8 +367,8 @@ vector<UTXO> BtcWallet::getRBFTxOutList()
       auto stxo = bdvPtr_->getStoredTxOut(txoutkey);
       UTXO utxo(
          stxo.getValue(), stxo.getHeight(),
-         stxo.txIndex_, stxo.txOutIndex_,
-         stxo.parentHash_, stxo.getScriptRef());
+         stxo.txIndex, stxo.txOutIndex,
+         stxo.parentHash, stxo.getScriptRef());
 
       utxoVec.emplace_back(move(utxo));
    }
@@ -597,7 +597,7 @@ map<uint32_t, uint32_t> BtcWallet::computeScrAddrMapHistSummary()
             StoredSubHistory subssh;
             if (bdvPtr_->getDB()->getStoredSubHistoryAtHgtX(subssh, scrAddr, hgtX))
             {
-               for (auto& txioPair : subssh.txioMap_)
+               for (auto& txioPair : subssh.txioMap)
                {
                   if (txioPair.second.hasTxIn())
                      txKeys.insert(txioPair.second.getTxRefOfInput().getDBKey());

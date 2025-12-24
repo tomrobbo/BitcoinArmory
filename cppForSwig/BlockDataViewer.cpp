@@ -15,6 +15,7 @@
 #include "BlockDataViewer.h"
 #include <BlockchainDatabase/BlockUtils.h>
 #include <BlockchainDatabase/lmdb_wrapper.h>
+#include <BlockchainDatabase/txio.h>
 #include <Utils/DBUtils.h>
 #include <ZeroConf/Parser.h>
 #include <ZeroConf/Utils.h>
@@ -738,7 +739,7 @@ StoredTxOut BlockDataViewer::getStoredTxOut(const BinaryData& dbKey) const
 
    StoredTxOut stxo;
    db_->getStoredTxOut(stxo, dbKey);
-   stxo.parentHash_ = move(db_->getTxHashForLdbKey(dbKey.getSliceRef(0, 6)));
+   stxo.parentHash = move(db_->getTxHashForLdbKey(dbKey.getSliceRef(0, 6)));
    return stxo;
 }
 
@@ -752,7 +753,7 @@ Tx BlockDataViewer::getSpenderTxForTxOut(uint32_t height, uint32_t txindex,
    if (!stxo.isSpent()) {
       throw std::runtime_error("output is not spent!");
    }
-   TxRef txref(stxo.spentByTxInKey_.getSliceCopy(0, 6));
+   TxRef txref(stxo.spentByTxInKey.getSliceCopy(0, 6));
    DBTxRef dbTxRef(txref, db_);
    return dbTxRef.getTxCopy();
 }
@@ -813,7 +814,7 @@ tuple<uint64_t, uint64_t> BlockDataViewer::getAddrFullBalance(
    StoredScriptHistory ssh;
    db_->getStoredScriptHistorySummary(ssh, scrAddr);
 
-   return move(make_tuple(ssh.totalUnspent_, ssh.totalTxioCount_));
+   return make_tuple(ssh.totalUnspent, ssh.totalTxioCount);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -833,7 +834,7 @@ std::map<BinaryData, std::vector<Output>> BlockDataViewer::getAddressOutpoints(
          if (!db_->getStoredScriptHistory(ssh, scrAddr, heightCutoff)) {
             continue;
          }
-         if (ssh.subHistMap_.empty()) {
+         if (ssh.subHistMap.empty()) {
             continue;
          }
 
@@ -847,10 +848,10 @@ std::map<BinaryData, std::vector<Output>> BlockDataViewer::getAddressOutpoints(
          */
 
          set<BinaryData> processedKeys;
-         auto rIter = ssh.subHistMap_.rbegin();
-         while (rIter != ssh.subHistMap_.rend()) {
+         auto rIter = ssh.subHistMap.rbegin();
+         while (rIter != ssh.subHistMap.rend()) {
             auto& subssh = rIter->second;
-            for (auto& txioPair : subssh.txioMap_) {
+            for (auto& txioPair : subssh.txioMap) {
                //keep track of processed txios by their output key,
                //skip if already in set
                auto txOutKey = txioPair.second.getDBKeyOfOutput();
@@ -872,11 +873,10 @@ std::map<BinaryData, std::vector<Output>> BlockDataViewer::getAddressOutpoints(
 
                opVec.emplace_back(Output(
                   stxo.getValue(), stxo.getHeight(),
-                  stxo.txIndex_, stxo.txOutIndex_,
+                  stxo.txIndex, stxo.txOutIndex,
                   txHash, stxo.getScriptRef(), spenderHash
                ));
             }
-
             ++rIter;
          }
       }
@@ -948,7 +948,7 @@ std::map<BinaryData, std::vector<Output>> BlockDataViewer::getAddressOutpoints(
                }
                firstPairIter->second.emplace_back(Output(
                   stxo.getValue(), stxo.getHeight(),
-                  stxo.txIndex_, stxo.txOutIndex_,
+                  stxo.txIndex, stxo.txOutIndex,
                   txHash, stxo.getScriptRef(), spenderHash)
                );
             } else {
@@ -991,8 +991,8 @@ std::vector<UTXO> BlockDataViewer::getUtxosForAddress(
    //mined utxos
    StoredScriptHistory ssh;
    if (db_->getStoredScriptHistory(ssh, scrAddr)) {
-      for (auto& subssh : ssh.subHistMap_) {
-         for (auto& txioPair : subssh.second.txioMap_) {
+      for (auto& subssh : ssh.subHistMap) {
+         for (auto& txioPair : subssh.second.txioMap) {
             if (!txioPair.second.isUTXO()) {
                continue;
             }
@@ -1003,8 +1003,8 @@ std::vector<UTXO> BlockDataViewer::getUtxosForAddress(
             }
 
             auto txHash = txioPair.second.getTxHashOfOutput(db_);
-            UTXO utxo(stxo.getValue(), stxo.getHeight(), stxo.txIndex_, 
-               stxo.txOutIndex_, txHash, stxo.getScriptRef());
+            UTXO utxo(stxo.getValue(), stxo.getHeight(), stxo.txIndex,
+               stxo.txOutIndex, txHash, stxo.getScriptRef());
             result.emplace_back(utxo);
          }
       }
@@ -1065,7 +1065,7 @@ BlockDataViewer::getOutputsForOutpoints(
             pair<StoredTxOut, BinaryDataRef> stxoPair;
             stxoPair.second = opSet.first;
             auto& stxo = stxoPair.first;
-            stxo.txOutIndex_ = op;
+            stxo.txOutIndex = op;
 
             auto stxoKey = dbkey;
             stxoKey.append(WRITE_UINT16_BE(op));
@@ -1073,8 +1073,8 @@ BlockDataViewer::getOutputsForOutpoints(
                throw runtime_error("invalid outpoint");
             }
             if (stxo.isSpent()) {
-               stxo.spenderHash_ = db_->getTxHashForLdbKey(
-                  stxo.spentByTxInKey_);
+               stxo.spenderHash = db_->getTxHashForLdbKey(
+                  stxo.spentByTxInKey);
             }
             result.emplace_back(std::move(stxoPair));
          }
@@ -1103,7 +1103,7 @@ BlockDataViewer::getOutputsForOutpoints(
          stxoPair.second = opSet.first;
 
          auto& stxo = stxoPair.first;
-         stxo.txOutIndex_ = op;
+         stxo.txOutIndex = op;
          if (txFromSS->outputs.size() <= op) {
             throw std::runtime_error("invalid outpoint");
          }
@@ -1115,8 +1115,8 @@ BlockDataViewer::getOutputsForOutpoints(
          auto txOutRef = brr.get_BinaryDataRef(output.len);
 
          stxo.unserialize(txOutRef);
-         stxo.blockHeight_ = UINT32_MAX;
-         stxo.txIndex_ = UINT16_MAX;
+         stxo.blockHeight = UINT32_MAX;
+         stxo.txIndex = UINT16_MAX;
 
          //check spentness
          BinaryWriter bwKey(8);
@@ -1133,10 +1133,9 @@ BlockDataViewer::getOutputsForOutpoints(
 
             //get hash for the txin key, this is our spender
             auto txInRef = zcTxio->getTxRefOfInput();
-            stxoPair.first.spenderHash_ =
+            stxoPair.first.spenderHash =
                zcSS->getHashForKey(txInRef.getDBKeyRef());
          }
-
          result.emplace_back(stxoPair);
       }
    }

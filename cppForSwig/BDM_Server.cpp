@@ -11,6 +11,7 @@
 #include <Utils/ArmoryConfig.h>
 #include <BlockchainDatabase/BlockUtils.h>
 #include <BlockchainDatabase/lmdb_wrapper.h>
+#include <BlockchainDatabase/txio.h>
 #include <BlockchainDatabase/StoredBlockObj.h>
 #include <ZeroConf/Parser.h>
 #include <ZeroConf/Utils.h>
@@ -70,19 +71,19 @@ namespace {
       Codec::Types::Output::Builder& result)
    {
       result.setValue(output.getValue());
-      result.setTxHeight(output.blockHeight_);
-      result.setTxIndex(output.txIndex_);
-      result.setTxOutIndex(output.txOutIndex_);
+      result.setTxHeight(output.blockHeight);
+      result.setTxIndex(output.txIndex);
+      result.setTxOutIndex(output.txOutIndex);
 
       auto script = output.getScriptRef();
       result.setScript(capnp::Data::Builder(
          (uint8_t*)script.getPtr(), script.getSize()
       ));
 
-      if (!output.spenderHash_.empty()) {
+      if (!output.spenderHash.empty()) {
          result.setSpenderHash(capnp::Data::Builder(
-            (uint8_t*)output.spenderHash_.getPtr(),
-            output.spenderHash_.getSize()
+            (uint8_t*)output.spenderHash.getPtr(),
+            output.spenderHash.getSize()
          ));
       }
    }

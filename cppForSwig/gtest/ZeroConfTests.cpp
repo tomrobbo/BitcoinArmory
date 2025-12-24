@@ -393,8 +393,6 @@ protected:
          "--public"},
          Config::ProcessType::DB);
 
-      LOGDISABLESTDOUT();
-
       //addrMap
       mainAddrMap_ = std::make_shared<std::map<BinaryData, std::shared_ptr<AddrAndHash>>>();
 
@@ -409,7 +407,6 @@ protected:
    /////////////////////////////////////////////////////////////////////////////
    virtual void TearDown(void)
    {
-      LOGENABLESTDOUT();
       FileUtils::removeDirectory(blkdir_);
       FileUtils::removeDirectory(homedir_);
       FileUtils::removeDirectory(ldbdir_);
@@ -1428,7 +1425,6 @@ protected:
    /////////////////////////////////////////////////////////////////////////////
    virtual void SetUp()
    {
-      LOGDISABLESTDOUT();
       zeros_ = READHEX("00000000");
 
       FileUtils::removeDirectory(blkdir_);
@@ -1478,8 +1474,6 @@ protected:
       std::filesystem::create_directory("./ldbtestdir");
 
       Config::reset();
-
-      LOGENABLESTDOUT();
       CLEANUP_ALL_TIMERS();
    }
 
@@ -1796,7 +1790,6 @@ TEST_F(ZeroConfTests_FullNode, Load3Blocks_ZC_Plus3_TestLedgers)
       EXPECT_EQ(scrObj->getFullBalance(), 20 * COIN);
    }
 
-
    fullBalance = wlt->getFullBalance();
    spendableBalance = wlt->getSpendableBalance(4);
    unconfirmedBalance = wlt->getUnconfirmedBalance(4);
@@ -1818,12 +1811,12 @@ TEST_F(ZeroConfTests_FullNode, Load3Blocks_ZC_Plus3_TestLedgers)
    zcKey.append(WRITE_UINT32_LE(0));
 
    EXPECT_EQ(iface_->getStoredZcTx(zcStx, zcKey), true);
-   EXPECT_EQ(zcStx.thisHash_, ZChash1);
-   EXPECT_EQ(zcStx.numBytes_ , TestChain::zcTxSize);
-   EXPECT_EQ(zcStx.fragBytes_, 190U);
-   EXPECT_EQ(zcStx.numTxOut_, 2U);
-   ASSERT_FALSE(zcStx.stxoMap_.empty());
-   EXPECT_EQ(zcStx.stxoMap_.begin()->second.getValue(), 10 * COIN);
+   EXPECT_EQ(zcStx.thisHash, ZChash1);
+   EXPECT_EQ(zcStx.numBytes , TestChain::zcTxSize);
+   EXPECT_EQ(zcStx.fragBytes, 190U);
+   EXPECT_EQ(zcStx.numTxOut, 2U);
+   ASSERT_FALSE(zcStx.stxoMap.empty());
+   EXPECT_EQ(zcStx.stxoMap.begin()->second.getValue(), 10 * COIN);
 
    //check ZChash in DB
    {
@@ -1886,11 +1879,11 @@ TEST_F(ZeroConfTests_FullNode, Load3Blocks_ZC_Plus3_TestLedgers)
    StoredTx zcStx3;
 
    EXPECT_EQ(iface_->getStoredZcTx(zcStx3, zcKey), true);
-   EXPECT_EQ(zcStx3.thisHash_, ZChash1);
-   EXPECT_EQ(zcStx3.numBytes_, TestChain::zcTxSize);
-   EXPECT_EQ(zcStx3.fragBytes_, 190U); // Not sure how Python can get this value
-   EXPECT_EQ(zcStx3.numTxOut_, 2U);
-   EXPECT_EQ(zcStx3.stxoMap_.begin()->second.getValue(), 10 * COIN);
+   EXPECT_EQ(zcStx3.thisHash, ZChash1);
+   EXPECT_EQ(zcStx3.numBytes, TestChain::zcTxSize);
+   EXPECT_EQ(zcStx3.fragBytes, 190U); // Not sure how Python can get this value
+   EXPECT_EQ(zcStx3.numTxOut, 2U);
+   EXPECT_EQ(zcStx3.stxoMap.begin()->second.getValue(), 10 * COIN);
 
    dbtx.reset();
 
@@ -4070,7 +4063,6 @@ protected:
    /////////////////////////////////////////////////////////////////////////////
    virtual void SetUp()
    {
-      LOGDISABLESTDOUT();
       zeros_ = READHEX("00000000");
 
       FileUtils::removeDirectory(blkdir_);
@@ -4110,7 +4102,6 @@ protected:
       std::filesystem::create_directory("./ldbtestdir");
 
       Config::reset();
-      LOGENABLESTDOUT();
       CLEANUP_ALL_TIMERS();
    }
 
@@ -5344,7 +5335,6 @@ protected:
    /////////////////////////////////////////////////////////////////////////////
    virtual void SetUp()
    {
-      LOGDISABLESTDOUT();
       zeros_ = READHEX("00000000");
 
       FileUtils::removeDirectory(blkdir_);
@@ -5422,8 +5412,6 @@ protected:
       FileUtils::removeDirectory(ldbdir_);
 
       Config::reset();
-
-      LOGENABLESTDOUT();
       CLEANUP_ALL_TIMERS();
    }
 
@@ -12017,17 +12005,12 @@ GTEST_API_ int main(int argc, char **argv)
    WORD wVersion = MAKEWORD(2, 0);
    WSAStartup(wVersion, &wsaData);
 #endif
-
-   std::cout << "Running with following parameters:" << std::endl;
-   std::cout << "   MEMPOOL_DEPTH: " << MEMPOOL_DEPTH << std::endl;
-   std::cout << "   POOL_MERGE_THRESHOLD: " << POOL_MERGE_THRESHOLD << std::endl;
-   std::cout << "   COINBASE_MATURITY: " << COINBASE_MATURITY << std::endl;
-
-   Cryptography::ECDSA::setupContext();
-
    srand(time(0));
-   std::cout << "Running main() from gtest_main.cc" << std::endl;
+   Cryptography::ECDSA::setupContext();
+   //LOGENABLESTDOUT();
+   LOGDISABLESTDOUT();
 
+   std::cout << "Running main() from gtest_main.cc" << std::endl;
    testing::InitGoogleTest(&argc, argv);
    int exitCode = RUN_ALL_TESTS();
 
