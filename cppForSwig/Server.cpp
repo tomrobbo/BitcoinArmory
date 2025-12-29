@@ -13,6 +13,7 @@
 #include <Utils/BIP150_151.h>
 #include <Utils/BIP15x_Handshake.h>
 #include <Wallets/AuthorizedPeers.h>
+#include <Ledgers/LedgerEntry.h>
 #include "WebSocketMessage.h"
 #include "BDM_Server.h"
 

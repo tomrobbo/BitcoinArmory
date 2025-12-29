@@ -13,6 +13,7 @@
 #include <reorgTest/blkdata.h>
 #include <Utils/ArmoryConfig.h>
 #include <Utils/DBUtils.h>
+#include <Ledgers/LedgerEntry.h>
 
 #include <Wallets/Accounts/AddressAccounts.h>
 #include <Wallets/Accounts/AccountTypes.h>
@@ -124,10 +125,10 @@ namespace {
       };
    }
 
-   std::vector<std::vector<LedgerEntry>> capnToLedgers(
+   std::vector<std::vector<Ledgers::Entry>> capnToLedgers(
       const capnp::List<Codec::Types::TxLedger, capnp::Kind::STRUCT>::Reader& capnLedgers)
    {
-      std::vector<std::vector<LedgerEntry>> result(capnLedgers.size());
+      std::vector<std::vector<Ledgers::Entry>> result(capnLedgers.size());
 
       unsigned i=0;
       for (auto txLedgers : capnLedgers) {
@@ -136,22 +137,20 @@ namespace {
             auto capnHash = capnLedger.getTxHash();
             BinaryData txHash{capnHash.begin(), capnHash.end()};
 
-            LedgerEntry le{std::string{capnLedger.getWalletId()},
-               capnLedger.getBalance(), capnLedger.getTxHeight(), txHash,
-               capnLedger.getTxOutIndex(), capnLedger.getTxTime(),
-               capnLedger.getIsCoinbase(), capnLedger.getIsSTS(), capnLedger.getIsChangeBack(),
-               capnLedger.getIsOptInRBF(), capnLedger.getIsWitness(), capnLedger.getIsChainedZC()
-            };
-
             auto capnAddrList = capnLedger.getScrAddrs();
             std::set<BinaryData> addrSet;
             for (auto capnAddr : capnAddrList) {
                addrSet.emplace(BinaryData{capnAddr.begin(), capnAddr.end()});
             }
-            if (!addrSet.empty()) {
-               le.setScrAddrList(addrSet);
-            }
-            ledgerVec.emplace_back(std::move(le));
+
+            ledgerVec.emplace_back(Ledgers::Entry{
+               std::string{capnLedger.getWalletId()},
+               capnLedger.getBalance(), capnLedger.getTxHeight(), txHash,
+               capnLedger.getTxOutIndex(), capnLedger.getTxTime(),
+               addrSet,
+               capnLedger.getIsCoinbase(), capnLedger.getIsSTS(), capnLedger.getIsChangeBack(),
+               capnLedger.getIsOptInRBF(), capnLedger.getIsWitness(), capnLedger.getIsChainedZC()
+            });
          }
       }
       return result;
@@ -1000,7 +999,8 @@ namespace {
       return delegateReply.getGetPageCount();
    }
 
-   std::vector<LedgerEntry> getLedgersPage(std::shared_ptr<Bridge::CppBridge> bridge,
+   std::vector<Ledgers::Entry> getLedgersPage(
+      std::shared_ptr<Bridge::CppBridge> bridge,
       const std::string& delegateId, uint32_t pageId)
    {
       auto refId = rand();

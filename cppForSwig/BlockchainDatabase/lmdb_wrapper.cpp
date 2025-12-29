@@ -2476,49 +2476,6 @@ std::map<uint32_t, uint32_t> LMDBBlockDatabase::getSSHSummary(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-uint32_t LMDBBlockDatabase::getStxoCountForTx(const BinaryData& dbKey6) const
-{
-   if (dbKey6.getSize() != 6) {
-      LOGERR << "wrong key size";
-      return UINT32_MAX;
-   }
-
-   if (!dbKey6.startsWith(DBUtils::ZCPrefix)) {
-      if (getDbType() != ARMORY_DB_TYPE::Super) {
-         auto tx = beginTransaction(DB_SELECT::TXHINTS, LMDB::Mode::ReadOnly);
-
-         BinaryRefReader brr = getValueRef(DB_SELECT::TXHINTS, DbPrefix::TXDATA, dbKey6);
-         if (brr.empty()) {
-            LOGERR << "no Tx data at key";
-            return UINT32_MAX;
-         }
-         return brr.get_uint32_t();
-      } else {
-         auto tx = beginTransaction(DB_SELECT::STXO, LMDB::Mode::ReadOnly);
-
-         //convert height to id
-         unsigned height;
-         uint8_t dup;
-         uint16_t txid;
-
-         BinaryRefReader brr(dbKey6.getRef());
-         DBUtils::readBlkDataKeyNoPrefix(brr, height, dup, txid);
-
-         auto header = blockchainPtr_->getHeaderByHeight(height, dup);
-         auto id = header->getThisID();
-
-         auto id_key = DBUtils::getBlkDataKeyNoPrefix(id, 0xFF, txid);
-         auto data = getValueNoCopy(DB_SELECT::STXO, id_key);
-
-         BinaryRefReader data_brr(data);
-         data_brr.advance(32);
-         return data_brr.get_var_int();
-      }
-   }
-   return UINT32_MAX;
-}
-
-////////////////////////////////////////////////////////////////////////////////
 void LMDBBlockDatabase::resetHistoryForAddressVector(
    const vector<BinaryData>& addrVec)
 {

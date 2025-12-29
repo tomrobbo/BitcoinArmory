@@ -11,6 +11,7 @@
 #include <Utils/DBUtils.h>
 #include <Utils/ArmoryConfig.h>
 #include <Utils/BitcoinSettings.h>
+#include <Ledgers/LedgerEntry.h>
 
 #include <Wallets/GetPassphrase.h>
 #include <Wallets/AuthorizedPeers.h>

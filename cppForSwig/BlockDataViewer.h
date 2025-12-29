@@ -80,7 +80,6 @@ struct CombinedBalances
 
 class ScrAddrFilter;
 class Blockchain;
-class LedgerDelegate;
 class BtcWallet;
 class BlockDataManager;
 struct StoredHeader;
@@ -97,6 +96,12 @@ namespace Armory
    namespace ZeroConf
    {
       class ZeroConfContainer;
+   }
+
+   namespace Ledgers
+   {
+      class Delegate;
+      class HistoryPager;
    }
 }
 
@@ -139,11 +144,11 @@ public:
    std::shared_ptr<BlockHeader> getHeaderByHash(const BinaryData&) const;
 
    size_t getWalletsPageCount(void) const;
-   std::vector<LedgerEntry> getWalletsHistoryPage(uint32_t,
+   std::vector<Armory::Ledgers::Entry> getWalletsHistoryPage(uint32_t,
       bool rebuildLedger, bool remapWallets);
 
    size_t getLockboxesPageCount(void) const;
-   std::vector<LedgerEntry> getLockboxesHistoryPage(uint32_t,
+   std::vector<Armory::Ledgers::Entry> getLockboxesHistoryPage(uint32_t,
       bool rebuildLedger, bool remapWallets);
 
    StoredHeader getMainBlockFromDB(uint32_t height) const;
@@ -171,10 +176,10 @@ public:
    uint32_t getBlockTimeByHeight(uint32_t) const;
    uint32_t getClosestBlockHeightForTime(uint32_t);
 
-   LedgerDelegate getLedgerDelegateForWallets();
-   LedgerDelegate getLedgerDelegateForLockboxes();
-   LedgerDelegate getLedgerDelegateForWallet(const std::string&);
-   LedgerDelegate getLedgerDelegateForScrAddr(
+   Armory::Ledgers::Delegate getLedgerDelegateForWallets(void);
+   Armory::Ledgers::Delegate getLedgerDelegateForLockboxes(void);
+   Armory::Ledgers::Delegate getLedgerDelegateForWallet(const std::string&);
+   Armory::Ledgers::Delegate getLedgerDelegateForScrAddr(
       const std::string& wltID, const BinaryData& scrAddr);
 
    TxOut getTxOutCopy(const BinaryData& txHash, uint16_t index) const;
@@ -323,7 +328,8 @@ public:
 
    void reset();
    size_t getPageCount(void) const { return hist_.getPageCount(); }
-   std::vector<LedgerEntry> getHistoryPage(uint32_t pageId, unsigned updateID,
+   std::vector<Armory::Ledgers::Entry> getHistoryPage(
+      uint32_t pageId, unsigned updateID,
       bool rebuildLedger, bool remapWallets);
 
 private:
@@ -348,7 +354,7 @@ private:
    //a single one), the globalLedger does not merge wallet level txn. It
    //can thus have several entries under the same transaction. Thus, this
    //cannot be a map nor a set.
-   HistoryPager hist_;
+   Armory::Ledgers::HistoryPager hist_;
    HistoryOrdering order_ = order_descending;
 
    BlockDataViewer* bdvPtr_ = nullptr;

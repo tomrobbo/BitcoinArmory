@@ -24,6 +24,7 @@
 #include <ZeroConf/Parser.h>
 #include <ZeroConf/Utils.h>
 #include <ZeroConf/Notifications.h>
+#include <Ledgers/LedgerEntry.h>
 
 #include "BDM_mainthread.h"
 #include "Server.h"
@@ -4214,7 +4215,7 @@ TEST_F(ZeroConfTests_Supernode, ZeroConfUpdate)
    EXPECT_EQ(wlt->getScrAddrObjByKey(TestChain::scrAddrE)->getFullBalance(), 3 * COIN);
 
    //test ledger entry
-   LedgerEntry le = DBTestUtils::getLedgerEntryFromWallet(wlt, ZChash);
+   Ledgers::Entry le = DBTestUtils::getLedgerEntryFromWallet(wlt, ZChash);
 
    //EXPECT_EQ(le.getTxTime(), 1300000000);
    EXPECT_EQ(le.isSentToSelf(), false);

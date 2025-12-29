@@ -12,6 +12,7 @@
 #include <Utils/BIP15x_Handshake.h>
 #include <Utils/DBUtils.h>
 #include <Wallets/Accounts/AddressAccounts.h>
+#include <Ledgers/LedgerEntry.h>
 #include <BDM_mainthread.h>
 
 using namespace std;
@@ -799,7 +800,7 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   LedgerEntry getLedgerEntryFromWallet(
+   Ledgers::Entry getLedgerEntryFromWallet(
       shared_ptr<BtcWallet> wlt, const BinaryData& txHash)
    {
       //get ledgermap from wallet
@@ -815,7 +816,7 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   LedgerEntry getLedgerEntryFromAddr(
+   Ledgers::Entry getLedgerEntryFromAddr(
       ScrAddrObj* scrAddrObj, const BinaryData& txHash)
    {
       //get ledgermap from wallet
@@ -846,7 +847,7 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   void init(void)
+   void init()
    {
       /*
       Need a counter to increment the message id of the packets sent to the

@@ -13,6 +13,7 @@
 
 #include "TestUtils.h"
 #include <reorgTest/blkdata.h>
+#include <Ledgers/LedgerEntry.h>
 
 #include <Utils/ArmoryConfig.h>
 #include <Utils/DBUtils.h>

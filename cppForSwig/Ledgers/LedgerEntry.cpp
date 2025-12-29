@@ -18,11 +18,10 @@
 #include <Utils/BtcUtils.h>
 #include <BlockchainDatabase/BlockObj.h>
 #include <BlockchainDatabase/txio.h>
-#include <BlockchainDatabase/lmdb_wrapper.h>
-#include <ZeroConf/Utils.h>
-#include <ZeroConf/Parser.h>
+#include "Context.h"
 
 using namespace Armory;
+using namespace Armory::Ledgers;
 
 namespace
 {
@@ -63,9 +62,7 @@ namespace
       return txnTxIOMap;
    }
 
-   void resolveTxnData(std::map<TxDbKey, TxData>& txnMap,
-      const LMDBBlockDatabase* db, const Blockchain* bc,
-      const std::shared_ptr<ZeroConf::MempoolSnapshot> zcSs)
+   void resolveTxnData(std::map<TxDbKey, TxData>& txnMap, const Context& ctx)
    {
       //get txhash, block, txIndex and txtime
       for (auto& txPair : txnMap) {
@@ -75,9 +72,8 @@ namespace
                txPair.first.getSliceRef(0, 4));
             txPair.second.txIndex = READ_UINT16_BE(
                txPair.first.getSliceRef(4, 2));
-            txPair.second.txTime = bc->getHeaderByHeight(
-               txPair.second.blockNum, 0xFF)->getTimestamp();
-            txPair.second.txHash = db->getTxHashForLdbKey(txPair.first);
+            txPair.second.txTime = ctx.getTimestampForBlockHeight(
+               txPair.second.blockNum);
          } else {
             txPair.second.blockNum = UINT32_MAX;
             txPair.second.txIndex = READ_UINT32_BE(
@@ -89,101 +85,94 @@ namespace
                auto txioIter = txPair.second.txios.begin();
                txPair.second.txTime = (*txioIter)->getTxTime();
             }
-            if (zcSs == nullptr) {
-               LOGWARN << "zc txio without a snapshot!";
-            } else {
-               txPair.second.txHash = zcSs->getHashForKey(txPair.first);
-            }
          }
+         txPair.second.txHash = ctx.getTxHash(txPair.first);
       }
    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // LedgerEntry
-LedgerEntry::LedgerEntry(const std::string& ID,
+Entry::Entry(const std::string& ID,
    int64_t val, uint32_t blkNum, const BinaryData& txHash,
    uint32_t idx, uint32_t txtime,
+   std::set<BinaryData>& scrAddrSet,
    bool isCoinbase, bool isToSelf, bool isChange,
    bool isOptInRBF, bool usesWitness, bool isChainedZC) :
    ID_(ID), value_(val), blockNum_(blkNum),
    txHash_(txHash), index_(idx), txTime_(txtime),
+   scrAddrSet_{std::move(scrAddrSet)},
    isCoinbase_(isCoinbase), isSentToSelf_(isToSelf), isChangeBack_(isChange),
    isOptInRBF_(isOptInRBF), usesWitness_(usesWitness), isChainedZC_(isChainedZC)
 {}
 
 ////////
-std::string LedgerEntry::getWalletID() const
+std::string Entry::getWalletID() const
 {
    return ID_;
 }
 
-const std::set<BinaryData>& LedgerEntry::getScrAddrList() const
+const std::set<BinaryData>& Entry::getScrAddrList() const
 {
    return scrAddrSet_;
 }
 
-void LedgerEntry::setScrAddrList(std::set<BinaryData>& addrList)
-{
-   scrAddrSet_ = std::move(addrList);
-}
-
-int64_t LedgerEntry::getValue() const
+int64_t Entry::getValue() const
 {
    return value_;
 }
 
-uint32_t LedgerEntry::getBlockNum() const
+uint32_t Entry::getBlockNum() const
 {
    return blockNum_;
 }
-const BinaryData& LedgerEntry::getTxHash() const
+const BinaryData& Entry::getTxHash() const
 {
    return txHash_;
 }
 
-uint32_t LedgerEntry::getIndex() const
+uint32_t Entry::getIndex() const
 {
    return index_;
 }
 
-uint32_t LedgerEntry::getTxTime() const
+uint32_t Entry::getTxTime() const
 {
    return txTime_;
 }
 
-bool LedgerEntry::isCoinbase() const
+bool Entry::isCoinbase() const
 {
    return isCoinbase_;
 }
 
-bool LedgerEntry::isSentToSelf() const
+bool Entry::isSentToSelf() const
 {
    return isSentToSelf_;
 }
 
-bool LedgerEntry::isChangeBack() const
+bool Entry::isChangeBack() const
 {
    return isChangeBack_;
 }
 
-bool LedgerEntry::isOptInRBF() const
+bool Entry::isOptInRBF() const
 {
    return isOptInRBF_;
 }
 
-bool LedgerEntry::usesWitness() const
+bool Entry::usesWitness() const
 {
    return usesWitness_;
 }
 
-bool LedgerEntry::isChainedZC() const
+bool Entry::isChainedZC() const
 {
    return isChainedZC_;
 }
 
 ////////
-bool LedgerEntry::operator<(const LedgerEntry& le2) const
+bool Entry::operator<(const Entry& le2) const
 {
    if (blockNum_ != le2.blockNum_) {
       return blockNum_ < le2.blockNum_;
@@ -194,12 +183,12 @@ bool LedgerEntry::operator<(const LedgerEntry& le2) const
    }
 }
 
-bool LedgerEntry::operator==(const LedgerEntry& le2) const
+bool Entry::operator==(const Entry& le2) const
 {
-   return (blockNum_ == le2.blockNum_ && index_ == le2.index_);
+   return blockNum_ == le2.blockNum_ && index_ == le2.index_;
 }
 
-bool LedgerEntry::operator>(const LedgerEntry& le2) const
+bool Entry::operator>(const Entry& le2) const
 {
    if (blockNum_ != le2.blockNum_) {
       return blockNum_ > le2.blockNum_;
@@ -210,13 +199,13 @@ bool LedgerEntry::operator>(const LedgerEntry& le2) const
    }
 }
 
-Armory::ScriptPrefix LedgerEntry::getScriptType() const
+ScriptPrefix Entry::getScriptType() const
 {
-   return (Armory::ScriptPrefix)ID_[0];
+   return (ScriptPrefix)ID_[0];
 }
 
 //////////////////////////////////////////////////////////////////////////////
-void LedgerEntry::pprint()
+void Entry::pprint()
 {
    std::cout << "LedgerEntry: " << std::endl;
    std::cout << "   ID      : " << getWalletID() << std::endl;
@@ -235,7 +224,7 @@ void LedgerEntry::pprint()
    std::cout << std::endl;
 }
 
-void LedgerEntry::pprintOneLine() const
+void Entry::pprintOneLine() const
 {
    printf("   Addr:%s Tx:%s:%02d   BTC:%0.3f   Blk:%06d\n",
       "   ",
@@ -247,8 +236,8 @@ void LedgerEntry::pprintOneLine() const
 }
 
 //////////////////////////////////////////////////////////////////////////////
-void LedgerEntry::purgeLedgerMapFromHeight(
-   std::map<BinaryData, LedgerEntry>& leMap, uint32_t purgeFrom)
+void Entry::purgeLedgerMapFromHeight(
+   std::map<BinaryData, Entry>& leMap, uint32_t purgeFrom)
 {
    //Remove all entries starting this height, included.
    BinaryData cutOffHeight(6);
@@ -264,8 +253,8 @@ void LedgerEntry::purgeLedgerMapFromHeight(
    leMap.erase(cutOffIterPair.first, leMap.end());
 }
 
-void LedgerEntry::purgeLedgerVectorFromHeight(
-  std::vector<LedgerEntry>& leVec, uint32_t purgeFrom)
+void Entry::purgeLedgerVectorFromHeight(
+  std::vector<Entry>& leVec, uint32_t purgeFrom)
 {
    //Remove all entries starting this height, included.
    uint32_t i = 0;
@@ -280,17 +269,16 @@ void LedgerEntry::purgeLedgerVectorFromHeight(
 }
 
 //////////////////////////////////////////////////////////////////////////////
-std::map<BinaryData, LedgerEntry> LedgerEntry::computeLedgerMap(
+std::map<BinaryData, Entry> Entry::computeLedgerMap(
    const std::map<BinaryData, TxIOPair>& txioMap,
    uint32_t startBlock, uint32_t endBlock, const std::string& id,
-   const LMDBBlockDatabase* db, const Blockchain* bc,
-   const std::shared_ptr<ZeroConf::MempoolSnapshot> zcSs)
+   const Context& ctx)
 {
    auto txnTxIOMap = sortByTx(txioMap);
-   resolveTxnData(txnTxIOMap, db, bc, zcSs);
+   resolveTxnData(txnTxIOMap, ctx);
 
    //convert TxIO to ledgers
-   std::map<BinaryData, LedgerEntry> leMap;
+   std::map<BinaryData, Entry> leMap;
    for (auto& txnPair : txnTxIOMap) {
       auto& txnData = txnPair.second;
       if (txnData.blockNum < startBlock || txnData.blockNum > endBlock) {
@@ -342,22 +330,10 @@ std::map<BinaryData, LedgerEntry> LedgerEntry::computeLedgerMap(
 
       bool isSentToSelf = false;
       bool isChangeBack = false;
-      std::shared_ptr<const Armory::ZeroConf::ParsedTx> ptx;
       if (nTxInAreOurs * nTxOutAreOurs > 0) {
          //if some of the txins AND some of the txouts are ours, this could be an STS
          //pull the txn and compare the txin and txout counts
-         uint32_t nTxOutInTx = UINT32_MAX;
-         if (!isZc) {
-            nTxOutInTx = db->getStxoCountForTx(txnPair.first.getSliceRef(0, 6));
-         } else if (zcSs != nullptr) {
-            //grab zc by key
-            auto ptx = zcSs->getTxByKey(txnPair.first);
-            if (ptx != nullptr) {
-               nTxOutInTx = ptx->outputs.size();
-            }
-         }
-
-         if (nTxOutInTx == nTxOutAreOurs) {
+         if (ctx.getTxOutCount(txnPair.first) == nTxOutAreOurs) {
             value = valIn;
             isSentToSelf = true;
          }
@@ -365,79 +341,30 @@ std::map<BinaryData, LedgerEntry> LedgerEntry::computeLedgerMap(
          isChangeBack = true;
       }
 
-      LedgerEntry le{id,
-         value,
-         txnData.blockNum,
-         txnData.txHash,
-         txnData.txIndex,
-         txnData.txTime,
-         isCoinbase,
-         isSentToSelf,
-         isChangeBack,
-         isRBF,
-         usesWitness,
-         isChained};
-
-      /*
-      When signing a tx online, the wallet knows the txhash, therefor it can register all
-      comments on outgoing addresses under the txhash.
-
-      When the tx is signed offline, there is no guarantee that the txhash will be known
-      when the offline tx is crafted. Therefor the comments for each outgoing address are
-      registered under that address only.
-
-      In order for the GUI to be able to resolve outgoing address comments, the ledger entry
-      needs to carry those for pay out transactions
-      */
-      if (value < 0) {
-         if (!isZc) {
-            try {
-               //grab tx by key
-               auto payout_tx = db->getFullTxCopy(txnPair.first);
-
-               //get scrAddr for each txout
-               for (unsigned i=0; i < payout_tx.getNumTxOut(); i++) {
-                  auto txout = payout_tx.getTxOutCopy(i);
-                  scrAddrSet.emplace(txout.getScrAddressStr());
-               }
-            } catch (const std::exception&) {
-               LOGWARN << "no tx on record for txio " << txnPair.first.toHexStr();
-            }
-         } else if (zcSs != nullptr) {
-            if (ptx == nullptr) {
-               //grab zc by key if we haven't got it previously
-               auto ptx = zcSs->getTxByKey(txnPair.first);
-            }
-            if (ptx == nullptr) {
-               LOGWARN << "failed to get zc for ledger parsing";
-            } else {
-               for (const auto& txout : ptx->outputs) {
-                  scrAddrSet.emplace(txout.scrAddr);
-               }
-            }
-         } else {
-            LOGWARN << "we have a zc txio but no snapshot =(";
-         }
-      }
-
-      le.setScrAddrList(scrAddrSet);
-      leMap.emplace(txnPair.first, std::move(le));
+      leMap.emplace(txnPair.first, Entry{
+         id, value,
+         txnData.blockNum, txnData.txHash,
+         txnData.txIndex, txnData.txTime,
+         scrAddrSet,
+         isCoinbase, isSentToSelf, isChangeBack, isRBF,
+         usesWitness, isChained}
+      );
    }
    return leMap;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // comparator
-bool LedgerEntry_DescendingOrder::operator()(
-   const LedgerEntry& a, const LedgerEntry& b) const
+bool DescendingOrder::operator()(
+   const Entry& a, const Entry& b) const
 {
    return a > b;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// LedgerDelegate
-LedgerDelegate::LedgerDelegate(
-   std::function<std::vector<LedgerEntry>(uint32_t)> getHist,
+// Delegate
+Delegate::Delegate(
+   std::function<std::vector<Entry>(uint32_t)> getHist,
    std::function<uint32_t(uint32_t)> getBlock,
    std::function<uint32_t(uint32_t)> getPageId,
    std::function<uint32_t(void)> getPageCount) :
@@ -448,22 +375,22 @@ LedgerDelegate::LedgerDelegate(
 {}
 
 ////////
-std::vector<LedgerEntry> LedgerDelegate::getHistoryPage(uint32_t id)
+std::vector<Entry> Delegate::getHistoryPage(uint32_t id)
 {
    return getHistoryPage_(id);
 }
 
-uint32_t LedgerDelegate::getBlockInVicinity(uint32_t blk)
+uint32_t Delegate::getBlockInVicinity(uint32_t blk)
 {
    return getBlockInVicinity_(blk);
 }
 
-uint32_t LedgerDelegate::getPageIdForBlockHeight(uint32_t blk)
+uint32_t Delegate::getPageIdForBlockHeight(uint32_t blk)
 {
    return getPageIdForBlockHeight_(blk);
 }
 
-uint32_t LedgerDelegate::getPageCount()
+uint32_t Delegate::getPageCount()
 {
    return getPageCount_();
 }

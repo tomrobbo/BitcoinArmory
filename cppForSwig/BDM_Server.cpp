@@ -16,6 +16,7 @@
 #include <ZeroConf/Parser.h>
 #include <ZeroConf/Utils.h>
 #include <ZeroConf/Notifications.h>
+#include <Ledgers/LedgerEntry.h>
 #include <btc/ecc.h>
 
 #include "SocketWritePayload.h"
@@ -88,7 +89,7 @@ namespace {
       }
    }
 
-   void historyPageToCapn(const std::vector<LedgerEntry>& page,
+   void historyPageToCapn(const std::vector<Ledgers::Entry>& page,
       Codec::Types::TxLedger::Builder& result)
    {
       auto capnLes = result.initLedgers(page.size());
@@ -669,7 +670,7 @@ namespace {
          case LedgerRequest::Which::GET_HISTORY_PAGES:
          {
             auto pagesReq = request.getGetHistoryPages();
-            std::list<std::vector<LedgerEntry>> pages;
+            std::list<std::vector<Ledgers::Entry>> pages;
             for (unsigned i=pagesReq.getFirst(); i<=pagesReq.getLast(); i++) {
                try {
                   auto page = delegateIter->second.getHistoryPage(i);

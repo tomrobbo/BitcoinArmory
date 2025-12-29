@@ -113,7 +113,7 @@ void BlockDataViewer::scanWallets(shared_ptr<BDV_Notification> action)
    bool refresh = false;
 
    ScanWalletStruct scanData;
-   vector<LedgerEntry>* leVecPtr = nullptr;
+   vector<Ledgers::Entry>* leVecPtr = nullptr;
 
    switch (action->actionType())
    {
@@ -436,7 +436,7 @@ size_t BlockDataViewer::getWalletsPageCount() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-vector<LedgerEntry> BlockDataViewer::getWalletsHistoryPage(uint32_t pageId,
+vector<Ledgers::Entry> BlockDataViewer::getWalletsHistoryPage(uint32_t pageId,
    bool rebuildLedger, bool remapWallets)
 {
    return groups_[group_wallet].getHistoryPage(pageId, 
@@ -450,7 +450,7 @@ size_t BlockDataViewer::getLockboxesPageCount(void) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-vector<LedgerEntry> BlockDataViewer::getLockboxesHistoryPage(uint32_t pageId,
+vector<Ledgers::Entry> BlockDataViewer::getLockboxesHistoryPage(uint32_t pageId,
    bool rebuildLedger, bool remapWallets)
 {
    return groups_[group_lockbox].getHistoryPage(pageId,
@@ -550,9 +550,9 @@ uint32_t BlockDataViewer::getBlockTimeByHeight(uint32_t height) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-LedgerDelegate BlockDataViewer::getLedgerDelegateForWallets()
+Ledgers::Delegate BlockDataViewer::getLedgerDelegateForWallets()
 {
-   auto getHist = [this](uint32_t pageID)->vector<LedgerEntry>
+   auto getHist = [this](uint32_t pageID)->vector<Ledgers::Entry>
    { return this->getWalletsHistoryPage(pageID, false, false); };
 
    auto getBlock = [this](uint32_t block)->uint32_t
@@ -564,13 +564,13 @@ LedgerDelegate BlockDataViewer::getLedgerDelegateForWallets()
    auto getPageCount = [this](void)->uint32_t
    { return this->getWalletsPageCount(); };
 
-   return LedgerDelegate(getHist, getBlock, getPageId, getPageCount);
+   return Ledgers::Delegate(getHist, getBlock, getPageId, getPageCount);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-LedgerDelegate BlockDataViewer::getLedgerDelegateForLockboxes()
+Ledgers::Delegate BlockDataViewer::getLedgerDelegateForLockboxes()
 {
-   auto getHist = [this](uint32_t pageID)->vector<LedgerEntry>
+   auto getHist = [this](uint32_t pageID)->vector<Ledgers::Entry>
    { return this->getLockboxesHistoryPage(pageID, false, false); };
 
    auto getBlock = [this](uint32_t block)->uint32_t
@@ -582,11 +582,11 @@ LedgerDelegate BlockDataViewer::getLedgerDelegateForLockboxes()
    auto getPageCount = [this](void)->uint32_t
    { return this->getLockboxesPageCount(); };
 
-   return LedgerDelegate(getHist, getBlock, getPageId, getPageCount);
+   return Ledgers::Delegate(getHist, getBlock, getPageId, getPageCount);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-LedgerDelegate BlockDataViewer::getLedgerDelegateForWallet(
+Ledgers::Delegate BlockDataViewer::getLedgerDelegateForWallet(
    const std::string& wltID)
 {
    std::shared_ptr<BtcWallet> wlt;
@@ -603,7 +603,7 @@ LedgerDelegate BlockDataViewer::getLedgerDelegateForWallet(
       throw std::runtime_error("Unregistered wallet ID");
    }
 
-   auto getHist = [wlt](uint32_t pageID)->vector<LedgerEntry>
+   auto getHist = [wlt](uint32_t pageID)->vector<Ledgers::Entry>
    { return wlt->getHistoryPageAsVector(pageID); };
 
    auto getBlock = [wlt](uint32_t block)->uint32_t
@@ -615,11 +615,11 @@ LedgerDelegate BlockDataViewer::getLedgerDelegateForWallet(
    auto getPageCount = [wlt](void)->uint32_t
    { return wlt->historyPager().getPageCount(); };
 
-   return LedgerDelegate(getHist, getBlock, getPageId, getPageCount);
+   return Ledgers::Delegate(getHist, getBlock, getPageId, getPageCount);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-LedgerDelegate BlockDataViewer::getLedgerDelegateForScrAddr(
+Ledgers::Delegate BlockDataViewer::getLedgerDelegateForScrAddr(
    const string& wltID, const BinaryData& scrAddr)
 {
    std::shared_ptr<BtcWallet> wlt;
@@ -638,7 +638,7 @@ LedgerDelegate BlockDataViewer::getLedgerDelegateForScrAddr(
 
    ScrAddrObj& sca = wlt->getScrAddrObjRef(scrAddr);
 
-   auto getHist = [&](uint32_t pageID)->vector<LedgerEntry>
+   auto getHist = [&](uint32_t pageID)->vector<Ledgers::Entry>
    { return sca.getHistoryPageById(pageID); };
 
    auto getBlock = [&](uint32_t block)->uint32_t
@@ -650,7 +650,7 @@ LedgerDelegate BlockDataViewer::getLedgerDelegateForScrAddr(
    auto getPageCount = [&](void)->uint32_t
    { return sca.getPageCount(); };
 
-   return LedgerDelegate(getHist, getBlock, getPageId, getPageCount);
+   return Ledgers::Delegate(getHist, getBlock, getPageId, getPageCount);
 }
 
 
@@ -659,38 +659,40 @@ uint32_t BlockDataViewer::getClosestBlockHeightForTime(uint32_t timestamp)
 {
    //get timestamp of genesis block
    auto genBlock = blockchain().getGenesisBlock();
-   
+
    //sanity check
-   if (timestamp < genBlock->getTimestamp())
+   if (timestamp < genBlock->getTimestamp()) {
       return 0;
+   }
 
    //get time diff and divide by average time per block (600 sec for Bitcoin)
    uint32_t diff = timestamp - genBlock->getTimestamp();
    int32_t blockHint = diff/600;
 
    //look for a block in the hint vicinity with a timestamp lower than ours
-   while (blockHint > 0)
-   {
+   while (blockHint > 0) {
       auto block = blockchain().getHeaderByHeight(blockHint, 0xFF);
-      if (block->getTimestamp() < timestamp)
+      if (block->getTimestamp() < timestamp) {
          break;
-
+      }
       blockHint -= 1000;
    }
 
    //another sanity check
-   if (blockHint < 0)
+   if (blockHint < 0) {
       return 0;
+   }
 
-   for (uint32_t id = blockHint; id < blockchain().top()->getBlockHeight() - 1; id++)
-   {
+   for (uint32_t id = blockHint;
+      id < blockchain().top()->getBlockHeight() - 1;
+      id++) {
       //not looking for a really precise block, 
       //anything within the an hour of the timestamp is enough
       auto block = blockchain().getHeaderByHeight(id, 0xFF);
-      if (block->getTimestamp() + 3600 > timestamp)
+      if (block->getTimestamp() + 3600 > timestamp) {
          return block->getBlockHeight();
+      }
    }
-
    return blockchain().top()->getBlockHeight() - 1;
 }
 
@@ -1506,7 +1508,7 @@ bool WalletGroup::pageHistory(bool forcePaging, bool pageAnyway)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::vector<LedgerEntry> WalletGroup::getHistoryPage(
+std::vector<Ledgers::Entry> WalletGroup::getHistoryPage(
    uint32_t pageId, unsigned updateID,
    bool rebuildLedger, bool remapWallets)
 {
@@ -1525,7 +1527,7 @@ std::vector<LedgerEntry> WalletGroup::getHistoryPage(
       updateID = UINT32_MAX;
    }
 
-   std::vector<LedgerEntry> vle;
+   std::vector<Ledgers::Entry> vle;
    {
       ReadWriteLock::ReadLock rl(lock_);
       std::set<string> localFilterSet;
@@ -1553,9 +1555,9 @@ std::vector<LedgerEntry> WalletGroup::getHistoryPage(
       auto buildLedgers = [&localWalletMap](
          const map<BinaryData, TxIOPair>&,
          uint32_t startBlock, uint32_t endBlock)
-      ->std::map<BinaryData, LedgerEntry>
+      ->std::map<BinaryData, Ledgers::Entry>
       {
-         std::map<BinaryData, LedgerEntry> result;
+         std::map<BinaryData, Ledgers::Entry> result;
          unsigned i = 0;
          for (auto& wlt_pair : localWalletMap) {
             auto txio_map = wlt_pair.second->getTxioForRange(
@@ -1585,8 +1587,7 @@ std::vector<LedgerEntry> WalletGroup::getHistoryPage(
    if (order_ == order_ascending) {
       std::sort(vle.begin(), vle.end());
    } else {
-      LedgerEntry_DescendingOrder desc;
-      std::sort(vle.begin(), vle.end(), desc);
+      std::sort(vle.begin(), vle.end(), Ledgers::DescendingOrder{});
    }
    return vle;
 }

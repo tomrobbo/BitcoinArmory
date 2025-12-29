@@ -164,11 +164,11 @@ void ZeroConfContainer::setZeroConfCallbacks(
    bdvCallbacks_ = std::move(ptr);
 }
 
-std::shared_ptr<MempoolSnapshot> ZeroConfContainer::getSnapshot() const
+std::shared_ptr<const MempoolSnapshot> ZeroConfContainer::getSnapshot() const
 {
    auto ss = std::atomic_load_explicit(
       &snapshot_, std::memory_order_acquire);
-   return ss;
+   return std::const_pointer_cast<const MempoolSnapshot>(ss);
 }
 
 ////////

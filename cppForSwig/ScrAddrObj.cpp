@@ -22,6 +22,7 @@
 #include <ZeroConf/Utils.h>
 #include <ZeroConf/Parser.h>
 #include <Ledgers/LedgerEntry.h>
+#include <Ledgers/Context.h>
 #include "BitcoinP2P.h"
 
 using namespace Armory;
@@ -226,15 +227,13 @@ bool ScrAddrObj::purgeZC(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::map<BinaryData, LedgerEntry> ScrAddrObj::updateLedgers(
+std::map<BinaryData, Ledgers::Entry> ScrAddrObj::updateLedgers(
    const std::map<BinaryData, TxIOPair>& txioMap,
    uint32_t startBlock, uint32_t endBlock) const
 {
-   auto mempoolSs = zc_->getSnapshot();
-   return LedgerEntry::computeLedgerMap(
-      txioMap, startBlock, endBlock,
-      {}, db_, bc_, mempoolSs
-   );
+   auto ctx = Ledgers::prepareContext(txioMap, *bc_, db_, zc_->getSnapshot());
+   return Ledgers::Entry::computeLedgerMap(txioMap,
+      startBlock, endBlock, {}, ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -309,7 +308,7 @@ std::map<BinaryData, TxIOPair> ScrAddrObj::getTxios(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::vector<LedgerEntry> ScrAddrObj::getHistoryPageById(uint32_t id)
+std::vector<Ledgers::Entry> ScrAddrObj::getHistoryPageById(uint32_t id)
 {
    if (id > hist_.getPageCount()) {
       throw std::range_error("pageId out of range");
@@ -323,7 +322,7 @@ std::vector<LedgerEntry> ScrAddrObj::getHistoryPageById(uint32_t id)
    auto buildLedgers = [this](
       const std::map<BinaryData, TxIOPair>& txioMap,
       uint32_t start, uint32_t end)->
-   std::map<BinaryData, LedgerEntry>
+   std::map<BinaryData, Ledgers::Entry>
    {
       return this->updateLedgers(txioMap, start, end);
    };
@@ -364,10 +363,10 @@ ScrAddrObj& ScrAddrObj::operator=(const ScrAddrObj& rhs)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::vector<LedgerEntry> ScrAddrObj::getTxLedgerAsVector(
-   const std::map<BinaryData, LedgerEntry>* leMap) const
+std::vector<Ledgers::Entry> ScrAddrObj::getTxLedgerAsVector(
+   const std::map<BinaryData, Ledgers::Entry>* leMap) const
 {
-   std::vector<LedgerEntry>le;
+   std::vector<Ledgers::Entry>le;
    if (leMap == nullptr) {
       return le;
    }

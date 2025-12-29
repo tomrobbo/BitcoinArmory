@@ -173,6 +173,7 @@ ARMORYCLI_SOURCE_FILES = BDM_mainthread.cpp \
 	BtcWallet.cpp \
 	Ledgers/HistoryPager.cpp \
 	Ledgers/LedgerEntry.cpp \
+	Ledgers/Context.cpp \
 	nodeRPC.cpp \
 	Progress.cpp \
 	ScrAddrObj.cpp \

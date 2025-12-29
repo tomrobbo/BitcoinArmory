@@ -472,8 +472,6 @@ public:
    );
 
    std::map<uint32_t, uint32_t> getSSHSummary(BinaryDataRef scrAddrStr);
-
-   uint32_t getStxoCountForTx(const BinaryData & dbKey6) const;
    void resetHistoryForAddressVector(const std::vector<BinaryData>&);
 
 public:

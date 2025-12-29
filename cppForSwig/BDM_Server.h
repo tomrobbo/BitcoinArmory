@@ -15,12 +15,9 @@
 #include <future>
 
 #include <Utils/ArmoryErrors.h>
-#include <Ledgers/LedgerEntry.h>
 #include "BitcoinP2P.h"
 #include "BlockDataViewer.h"
 #include "BDV_Notification.h"
-//#include "Server.h"
-//#include "BtcWallet.h"
 
 #define MAX_CONTENT_LENGTH 1024*1024*1024
 #define CALLBACK_EXPIRE_COUNT 5
@@ -139,7 +136,7 @@ private:
    std::vector<uint8_t> scratchPad_;
 
 public:
-   std::map<std::string, LedgerDelegate> delegateMap_;
+   std::map<std::string, Armory::Ledgers::Delegate> delegateMap_;
    std::unique_ptr<Callback> notifications_;
 
 private:

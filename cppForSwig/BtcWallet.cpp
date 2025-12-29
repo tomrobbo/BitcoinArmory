@@ -21,6 +21,7 @@
 #include <BlockchainDatabase/BlockUtils.h>
 #include <BlockchainDatabase/txio.h>
 #include <Ledgers/LedgerEntry.h>
+#include <Ledgers/Context.h>
 #include <ZeroConf/Utils.h>
 #include <ZeroConf/Parser.h>
 #include "BlockDataViewer.h"
@@ -508,7 +509,7 @@ bool BtcWallet::scanWallet(ScanWalletStruct& scanInfo, int32_t updateID)
       !scanInfo.saStruct_.invalidatedZcKeys_->empty())) {
       //top block didnt change, only have to check for new ZC
       if (bdvPtr_->isZcEnabled()) {
-         auto&& zcTxios = scanWalletZeroConf(scanInfo, updateID);
+         auto zcTxios = scanWalletZeroConf(scanInfo, updateID);
          if (scanInfo.saStruct_.newKeysAndScrAddr_ != nullptr && !zcTxios.empty()) {
             auto ledgerMap = updateWalletLedgersFromTxio(
                zcTxios, scanInfo.endBlock_ + 1, UINT32_MAX);
@@ -699,13 +700,16 @@ map<BinaryData, TxIOPair> BtcWallet::getTxioForRange(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-map<BinaryData, LedgerEntry> BtcWallet::updateWalletLedgersFromTxio(
-   const map<BinaryData, TxIOPair>& txioMap,
+std::map<BinaryData, Ledgers::Entry> BtcWallet::updateWalletLedgersFromTxio(
+   const std::map<BinaryData, TxIOPair>& txioMap,
    uint32_t startBlock, uint32_t endBlock) const
 {
-   auto mempoolSs = bdvPtr_->zcContainer()->getSnapshot();
-   return LedgerEntry::computeLedgerMap(txioMap, startBlock, endBlock,
-      walletID_, bdvPtr_->getDB(), &bdvPtr_->blockchain(), mempoolSs);
+   auto ledgerContext = Ledgers::prepareContext(txioMap,
+      bdvPtr_->blockchain(), bdvPtr_->getDB(),
+      bdvPtr_->zcContainer()->getSnapshot());
+   return Ledgers::Entry::computeLedgerMap(
+      txioMap, startBlock, endBlock,
+      walletID_, ledgerContext);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -739,7 +743,7 @@ ScrAddrObj& BtcWallet::getScrAddrObjRef(const BinaryData& key)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-shared_ptr<const map<BinaryData, LedgerEntry>> BtcWallet::getHistoryPage(
+shared_ptr<const map<BinaryData, Ledgers::Entry>> BtcWallet::getHistoryPage(
    uint32_t pageId)
 {
    if (!bdvPtr_->isBDMRunning())
@@ -754,18 +758,18 @@ shared_ptr<const map<BinaryData, LedgerEntry>> BtcWallet::getHistoryPage(
 
    auto computeLedgers = [this](
       const map<BinaryData, TxIOPair>& txioMap, uint32_t start, uint32_t end)->
-      map<BinaryData, LedgerEntry>
+      map<BinaryData, Ledgers::Entry>
    { return this->updateWalletLedgersFromTxio(txioMap, start, end); };
 
    return histPages_.getPageLedgerMap(getTxio, computeLedgers, pageId, updateID_);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-vector<LedgerEntry> BtcWallet::getHistoryPageAsVector(uint32_t pageId)
+vector<Ledgers::Entry> BtcWallet::getHistoryPageAsVector(uint32_t pageId)
 {
    auto ledgerMap = getHistoryPage(pageId);
 
-   vector<LedgerEntry> ledgerVec;
+   vector<Ledgers::Entry> ledgerVec;
    if (ledgerMap == nullptr)
       return ledgerVec;
 
@@ -775,7 +779,7 @@ vector<LedgerEntry> BtcWallet::getHistoryPageAsVector(uint32_t pageId)
    return ledgerVec;
 }
 
-const HistoryPager& BtcWallet::historyPager() const
+const Ledgers::HistoryPager& BtcWallet::historyPager() const
 {
    return histPages_;
 }

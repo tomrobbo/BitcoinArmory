@@ -18,6 +18,7 @@
 #include <Utils/varint.h>
 #include <Utils/DBUtils.h>
 #include <Utils/UniversalTimer.h>
+#include <Ledgers/LedgerEntry.h>
 #include <BlockchainDatabase/TxHashFilters.h>
 #include <Wallets/KDF.h>
 #include <hkdf.h>

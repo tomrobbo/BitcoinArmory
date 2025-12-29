@@ -108,7 +108,7 @@ public:
    void setChained(bool);
    bool isChainedZC(void) const;
 
-   /////////////////////////////////////////////////////////////////////////////
+   ////
    BinaryData getTxHashOfInput(const LMDBBlockDatabase* = nullptr) const;
    BinaryData getTxHashOfOutput(const LMDBBlockDatabase* = nullptr) const;
    void setTxHashOfInput(const BinaryData&);
@@ -121,7 +121,7 @@ public:
    bool setTxIn(const BinaryData&);
    void merge(const TxIOPair&);
 
-   /////////////////////////////////////////////////////////////////////////////
+   ////
    bool isSpent(LMDBBlockDatabase*) const;
    bool isUnspent(LMDBBlockDatabase*) const;
    bool isSpendable(LMDBBlockDatabase*, uint32_t) const;

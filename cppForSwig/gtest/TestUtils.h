@@ -162,8 +162,8 @@ namespace DBTestUtils
    void addTxioToSsh(StoredScriptHistory&,
       const std::map<BinaryDataRef, std::shared_ptr<const TxIOPair>>&);
    void prettyPrintSsh(StoredScriptHistory& ssh);
-   LedgerEntry getLedgerEntryFromWallet(std::shared_ptr<BtcWallet>, const BinaryData&);
-   LedgerEntry getLedgerEntryFromAddr(ScrAddrObj*, const BinaryData&);
+   Armory::Ledgers::Entry getLedgerEntryFromWallet(std::shared_ptr<BtcWallet>, const BinaryData&);
+   Armory::Ledgers::Entry getLedgerEntryFromAddr(ScrAddrObj*, const BinaryData&);
    void updateWalletsLedgerFilter(
       Clients*, BdvIdKey, const std::vector<std::string> &);
 
