@@ -26,6 +26,21 @@
 using namespace std;
 using namespace Armory;
 
+namespace
+{
+   const BinaryData& getTxHash(LMDBBlockDatabase* db,
+      const BinaryData& key,
+      std::map<BinaryData, BinaryData>& hashMap)
+   {
+      auto iter = hashMap.find(key);
+      if (iter == hashMap.end()) {
+         auto hash = db->getTxHashForLdbKey(key.getRef());
+         iter = hashMap.emplace(key, std::move(hash)).first;
+      }
+      return iter->second;
+   }
+}
+
 /////////////////////////////////////////////////////////////////////////////
 BlockDataViewer::BlockDataViewer(std::shared_ptr<BlockDataManager> bdm) :
    bdm_(bdm), rescanZC_(false), zeroConfCont_(bdm->zeroConfCont())
@@ -755,9 +770,7 @@ Tx BlockDataViewer::getSpenderTxForTxOut(uint32_t height, uint32_t txindex,
    if (!stxo.isSpent()) {
       throw std::runtime_error("output is not spent!");
    }
-   TxRef txref(stxo.spentByTxInKey.getSliceCopy(0, 6));
-   DBTxRef dbTxRef(txref, db_);
-   return dbTxRef.getTxCopy();
+   return db_->getFullTxCopy(stxo.spentByTxInKey.getSliceRef(0, 6));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -828,6 +841,7 @@ std::map<BinaryData, std::vector<Output>> BlockDataViewer::getAddressOutpoints(
 
    auto topHeight = getTopBlockHeader()->getBlockHeight();
    std::map<BinaryData, std::vector<Output>> outpointMap;
+   std::map<BinaryData, BinaryData> hashMap;
 
    //confirmed outputs, skip if heightCutoff is UINT32_MAX
    if (heightCutoff != UINT32_MAX) {
@@ -867,10 +881,12 @@ std::map<BinaryData, std::vector<Output>> BlockDataViewer::getAddressOutpoints(
                   throw std::runtime_error("failed to grab txout");
                }
 
-               auto txHash = txioPair.second.getTxHashOfOutput(db_);
+               const auto& txHash = getTxHash(db_,
+                  txioPair.second.getTxRefOfOutput().getDBKey(), hashMap);
                BinaryData spenderHash;
                if (stxo.isSpent()) {
-                  spenderHash = txioPair.second.getTxHashOfInput(db_);
+                  spenderHash = getTxHash(db_,
+                     txioPair.second.getTxRefOfInput().getDBKey(), hashMap);
                }
 
                opVec.emplace_back(Output(
@@ -941,7 +957,8 @@ std::map<BinaryData, std::vector<Output>> BlockDataViewer::getAddressOutpoints(
             }
 
             if (!txOutZc) {
-               auto txHash = txiopair.second->getTxHashOfOutput(db_);
+               const auto& txHash = getTxHash(db_,
+                  txiopair.second->getTxRefOfOutput().getDBKey(), hashMap);
 
                //mined txout, have to grab it from db
                StoredTxOut stxo;
@@ -989,6 +1006,7 @@ std::vector<UTXO> BlockDataViewer::getUtxosForAddress(
    /*wallet agnostic method*/
 
    std::vector<UTXO> result;
+   std::map<BinaryData, BinaryData> hashMap;
 
    //mined utxos
    StoredScriptHistory ssh;
@@ -1004,7 +1022,8 @@ std::vector<UTXO> BlockDataViewer::getUtxosForAddress(
                throw std::runtime_error("failed to grab txout");
             }
 
-            auto txHash = txioPair.second.getTxHashOfOutput(db_);
+            const auto& txHash = getTxHash(db_,
+               txioPair.second.getTxRefOfOutput().getDBKey(), hashMap);
             UTXO utxo(stxo.getValue(), stxo.getHeight(), stxo.txIndex,
                stxo.txOutIndex, txHash, stxo.getScriptRef());
             result.emplace_back(utxo);

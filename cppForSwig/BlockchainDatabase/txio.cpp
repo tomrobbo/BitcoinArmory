@@ -16,8 +16,6 @@
 #include "txio.h"
 #include <Utils/BtcUtils.h>
 #include <Utils/DBUtils.h>
-#include <TxClasses.h>
-#include "lmdb_wrapper.h"
 
 using namespace Armory;
 
@@ -113,87 +111,20 @@ BinaryData TxRef::getDBKeyOfChild(uint16_t i) const
    return dbKey6B_ + WRITE_UINT16_BE(i);
 }
 
-////////
-void TxRef::pprint(std::ostream& os, int) const
-{
-   os << "TxRef Information:" << std::endl;
-   //os << "   Hash:      " << getThisHash().toHexStr() << endl;
-   os << "   Height:    " << getBlockHeight() << std::endl;
-   os << "   BlkIndex:  " << getBlockTxIndex() << std::endl;
-   //os << "   FileIdx:   " << blkFilePtr_.getFileIndex() << endl;
-   //os << "   FileStart: " << blkFilePtr_.getStartByte() << endl;
-   //os << "   NumBytes:  " << blkFilePtr_.getNumBytes() << endl;
-   os << "   ----- " << std::endl;
-   os << "   Read from disk, full tx-info: " << std::endl;
-   //getTxCopy().pprint(os, nIndent+1);
-}
-
-/////////////////////////////////////////////////////////////////////////////
-// DBTxRef Methods
-DBTxRef::DBTxRef(const TxRef& txref, const LMDBBlockDatabase* db)
-   : TxRef(txref), db_(db)
-{}
-
-////////
-BinaryData DBTxRef::serialize() const
-{ 
-   return db_->getFullTxCopy(dbKey6B_).serialize();
-}
-
-Tx DBTxRef::getTxCopy() const
-{
-   return db_->getFullTxCopy(dbKey6B_);
-}
-
-bool DBTxRef::isMainBranch() const
-{
-   if(dbKey6B_.getSize() != 6) {
-      return false;
-   } else {
-      uint8_t dup8 = db_->getValidDupIDForHeight(getBlockHeight());
-      return getDuplicateID() == dup8;
-   }
-}
-
-BinaryData DBTxRef::getThisHash() const
-{
-   return db_->getTxHashForLdbKey(dbKey6B_);
-}
-
-TxIn  DBTxRef::getTxInCopy(uint32_t i)
-{
-   return db_->getTxInCopy(dbKey6B_, i);
-}
-
-TxOut DBTxRef::getTxOutCopy(uint32_t i)
-{
-   return db_->getTxOutCopy(dbKey6B_, i);
-}
-
 //////////////////////////////////////////////////////////////////////////////
 // TxIOPair
 TxIOPair::TxIOPair(const BinaryData& txOutKey8B, uint64_t val) :
    amount_(val),
    txRefOfOutput_{txOutKey8B.getSliceRef(0, 6)},
    indexOfOutput_(getTxIndex(txOutKey8B)),
-   indexOfInput_(0),
-   isTxOutFromSelf_(false),
-   isFromCoinbase_(false),
-   isMultisig_(false),
-   txtime_(0),
-   isUTXO_(false)
+   indexOfInput_(0)
 {}
 
 TxIOPair::TxIOPair(const TxRef& txRef, uint16_t outputId, uint64_t val) :
    amount_(val),
    txRefOfOutput_{txRef},
    indexOfOutput_(outputId),
-   indexOfInput_(0),
-   isTxOutFromSelf_(false),
-   isFromCoinbase_(false),
-   isMultisig_(false),
-   txtime_(0),
-   isUTXO_(false)
+   indexOfInput_(0)
 {}
 
 ////////
@@ -202,63 +133,14 @@ bool TxIOPair::hasTxIn() const
    return txRefOfInput_.isInitialized();
 }
 
-////////
-BinaryData TxIOPair::getTxHashOfOutput(const LMDBBlockDatabase *db) const
+bool TxIOPair::hasTxOutZC() const
 {
-   if (txHashOfOutput_.getSize() == 32) {
-      return txHashOfOutput_;
-   } else if (db != nullptr) {
-      DBTxRef dbTxRef(txRefOfOutput_, db);
-      txHashOfOutput_ = dbTxRef.getThisHash();
-      return txHashOfOutput_;
-   }
-   return {};
+   return txRefOfOutput_.getDBKey().startsWith(DBUtils::ZCPrefix);
 }
 
-BinaryData TxIOPair::getTxHashOfInput(const LMDBBlockDatabase *db) const
+bool TxIOPair::hasTxInZC() const
 {
-   if (!hasTxIn()) {
-      return BtcUtils::EmptyHash;
-   } else if (txHashOfInput_.getSize() == 32) {
-      return txHashOfInput_;
-   } else if (db != nullptr) {
-      DBTxRef dbTxRef(txRefOfInput_, db);
-      txHashOfInput_ = dbTxRef.getThisHash();
-      return txHashOfInput_;
-   }
-   return {};
-}
-
-void TxIOPair::setTxHashOfInput(const BinaryData& txHash)
-{
-   txHashOfInput_ = txHash;
-}
-
-void TxIOPair::setTxHashOfOutput(const BinaryData& txHash)
-{
-   txHashOfOutput_ = txHash;
-}
-
-////////
-TxOut TxIOPair::getTxOutCopy(LMDBBlockDatabase* db) const
-{
-   // I actually want this to segfault when there is no TxOut...
-   // we should't ever be trying to access it without checking it
-   // first in the calling code (hasTxOut/hasTxOutZC)
-   DBTxRef dbTxRef(txRefOfOutput_, db);
-   return dbTxRef.getTxOutCopy(indexOfOutput_);
-}
-
-TxIn TxIOPair::getTxInCopy(LMDBBlockDatabase* db) const
-{
-   // I actually want this to segfault when there is no TxIn...
-   // we should't ever be trying to access it without checking it
-   // first in the calling code (hasTxIn/hasTxInZC)
-   if (hasTxIn()) {
-      DBTxRef dbTxRef(txRefOfInput_, db);
-      return dbTxRef.getTxInCopy(indexOfInput_);
-   }
-   throw std::runtime_error("Has not TxInCopy");
+   return txRefOfInput_.getDBKey().startsWith(DBUtils::ZCPrefix);
 }
 
 ////////
@@ -298,11 +180,6 @@ uint32_t TxIOPair::getIndexOfInput() const
    return indexOfInput_;
 }
 
-Outpoint TxIOPair::getOutPoint(LMDBBlockDatabase* db) const
-{
-   return Outpoint{getTxHashOfOutput(db), indexOfOutput_};
-}
-
 ////////
 bool TxIOPair::setTxIn(const TxRef& txref, uint32_t index)
 {
@@ -323,15 +200,6 @@ bool TxIOPair::setTxIn(const BinaryData& dbKey8B)
       setTxIn({}, 0);
       return false;
    }
-}
-
-////////
-std::pair<bool, bool> TxIOPair::reassessValidity(LMDBBlockDatabase* db)
-{
-   std::pair<bool, bool> result;
-   result.first = hasTxOutInMain(db);
-   result.second = hasTxInInMain(db);
-   return result;
 }
 
 ////////
@@ -386,63 +254,33 @@ bool TxIOPair::isChainedZC() const
 }
 
 ////////
-bool TxIOPair::isSpent(LMDBBlockDatabase* db) const
+bool TxIOPair::isSpendable(uint32_t currBlk) const
 {
-   // Not sure whether we should verify hasTxOut.  It wouldn't make much 
-   // sense to have TxIn but not TxOut, but there might be a preferred 
-   // behavior in such awkward circumstances
-   return hasTxInZC() || hasTxInInMain(db);
-}
-
-bool TxIOPair::isUnspent(LMDBBlockDatabase* db) const
-{
-   return (hasTxOutZC() || hasTxOutInMain(db)) && !isSpent(db);
-}
-
-bool TxIOPair::isSpendable(LMDBBlockDatabase* db, uint32_t currBlk) const
-{
-   // Spendable TxOuts are ones with at least 1 confirmation
-   if (hasTxInZC() || hasTxInInMain(db)) {
+   // spendable TxOuts are ones with at least 1 confirmation
+   if (hasTxIn() || hasTxOutZC()) {
       return false;
    }
 
-   if (hasTxOutInMain(db)) {
-      uint32_t nConf = currBlk - txRefOfOutput_.getBlockHeight() + 1;
-      if (isFromCoinbase_ && nConf < COINBASE_MATURITY) {
-         return false;
-      } else {
-         return true;
-      }
-   }
-
-   if (hasTxOutZC()) {
+   uint32_t nConf = currBlk - txRefOfOutput_.getBlockHeight() + 1;
+   if (isFromCoinbase_ && nConf < COINBASE_MATURITY) {
       return false;
+   } else {
+      return true;
    }
-   return false;
 }
 
-////////
-bool TxIOPair::isMineButUnconfirmed(
-   LMDBBlockDatabase* db, uint32_t currBlk, unsigned confTarget) const
+bool TxIOPair::isUnconfirmed(uint32_t currBlk, unsigned confTarget) const
 {
-   DBTxRef dbTxRef(txRefOfInput_, db);
-   if (hasTxInZC() || (hasTxIn() && dbTxRef.isMainBranch())) {
-      return false;
-   }
-
    if (hasTxOutZC()) {
       return true;
    }
 
-   if (hasTxOutInMain(db)) {
-      uint32_t nConf = currBlk - txRefOfOutput_.getBlockHeight() + 1;
-      if (isFromCoinbase_) {
-         return (nConf<COINBASE_MATURITY);
-      } else {
-         return (nConf<confTarget);
-      }
+   uint32_t nConf = currBlk - txRefOfOutput_.getBlockHeight() + 1;
+   if (isFromCoinbase_) {
+      return nConf < COINBASE_MATURITY;
+   } else {
+      return nConf < confTarget;
    }
-   return false;
 }
 
 ////////
@@ -464,43 +302,6 @@ bool TxIOPair::isUTXO() const
 void TxIOPair::setUTXO(bool val)
 {
    isUTXO_ = val;
-}
-
-////////
-bool TxIOPair::hasTxOutInMain(LMDBBlockDatabase* db) const
-{
-   DBTxRef dbTxRef(txRefOfOutput_, db);
-   return !hasTxOutZC() && dbTxRef.isMainBranch();
-}
-
-bool TxIOPair::hasTxInInMain(LMDBBlockDatabase* db) const
-{
-   DBTxRef dbTxRef(txRefOfInput_, db);
-   return !hasTxInZC() && hasTxIn() && dbTxRef.isMainBranch();
-}
-
-bool TxIOPair::hasTxOutZC() const
-{
-   return txRefOfOutput_.getDBKey().startsWith(DBUtils::ZCPrefix);
-}
-
-bool TxIOPair::hasTxInZC() const
-{
-   return txRefOfInput_.getDBKey().startsWith(DBUtils::ZCPrefix);
-}
-
-////////
-void TxIOPair::pprintOneLine(LMDBBlockDatabase* db) const
-{
-   printf("   Val:(%0.3f)\t  (STS, I, Omb,Imb, Oz,Iz)  %d  %d %d%d %d%d\n",
-      (double)getValue() / 1e8,
-      isTxOutFromSelf() ? 1 : 0,
-      hasTxIn() ? 1 : 0,
-      hasTxOutInMain(db) ? 1 : 0,
-      hasTxInInMain(db) ? 1 : 0,
-      hasTxOutZC() ? 1 : 0,
-      hasTxInZC() ? 1 : 0
-   );
 }
 
 ////////
@@ -545,27 +346,11 @@ void TxIOPair::merge(const TxIOPair& rhs)
 {
    setTxIn(rhs.txRefOfInput_, rhs.indexOfInput_);
 
-   txHashOfOutput_   = rhs.txHashOfOutput_;
-   txHashOfInput_    = rhs.txHashOfInput_;
-
    isTxOutFromSelf_  = rhs.isTxOutFromSelf_;
    isFromCoinbase_   = rhs.isFromCoinbase_;
    isMultisig_       = rhs.isMultisig_;
    isRBF_            = rhs.isRBF_;
    isZCChained_      = rhs.isZCChained_;
    isUTXO_           = rhs.isUTXO_;
-
    txtime_           = rhs.txtime_;
-   scrAddr_          = rhs.scrAddr_;
-}
-
-////////
-void TxIOPair::setScrAddrRef(const BinaryDataRef& bdr)
-{
-   scrAddr_ = bdr;
-}
-
-const BinaryDataRef& TxIOPair::getScrAddr() const
-{
-   return scrAddr_;
 }

@@ -325,7 +325,7 @@ std::map<BinaryData, Entry> Entry::computeLedgerMap(
             }
          }
 
-         scrAddrSet.emplace(txio.getScrAddr());
+         scrAddrSet.emplace(ctx.getScrAddrForTxOut(txio));
       }
 
       bool isSentToSelf = false;

@@ -283,21 +283,19 @@ vector<UTXO> BtcWallet::getSpendableTxOutListForValue(uint64_t val)
    LMDBBlockDatabase *db = bdvPtr_->getDB();
 
    //start a RO txn to grab the txouts from DB
-   auto&& tx = db->beginTransaction(DB_SELECT::STXO, LMDB::Mode::ReadOnly);
+   auto tx = db->beginTransaction(DB_SELECT::STXO, LMDB::Mode::ReadOnly);
 
    vector<UTXO> utxoList;
    uint32_t blk = bdvPtr_->getTopBlockHeight();
 
    auto addrMap = scrAddrMap_.get();
 
-   for (const auto& scrAddr : *addrMap)
-   {
+   for (const auto& scrAddr : *addrMap) {
       const auto& txioMap = scrAddr.second->getPreparedTxOutList();
-      for (const auto& txioPair : txioMap)
-      {
-         if (!txioPair.second.isSpendable(db, blk))
+      for (const auto& txioPair : txioMap) {
+         if (!txioPair.second.isSpendable(blk)) {
             continue;
-
+         }
          auto&& txout_key = txioPair.second.getDBKeyOfOutput();
          StoredTxOut stxo;
          db->getStoredTxOut(stxo, txout_key);
@@ -394,8 +392,7 @@ std::vector<AddressBookEntry> BtcWallet::createAddressBook() const
 
    for (const auto& saPair : *scrAddrMap) {
       auto txioMap = saPair.second->getTxios(0, UINT32_MAX);
-
-      for (auto& txioPair : txioMap) {
+      for (const auto& txioPair : txioMap) {
          //skip unspent and zc spends
          if (!txioPair.second.hasTxIn() || txioPair.second.hasTxInZC()) {
             continue;

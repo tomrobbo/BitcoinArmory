@@ -29,11 +29,9 @@ FilteredZeroConfData ZeroConf::filterParsedTx(
    const std::function<bool(const BinaryData&)>& addrFilter,
    ZeroConfCallbacks* bdvCallbacks)
 {
-   auto zcKey = parsedTxPtr->getKeyRef();
-
    FilteredZeroConfData result;
    result.txPtr = parsedTxPtr;
-   const auto& txHash = parsedTxPtr->getTxHash();
+   auto zcKey = parsedTxPtr->getKeyRef();
 
    auto filter = [&addrFilter, bdvCallbacks]
       (const BinaryData& addr)->std::pair<bool, std::set<BdvIdKey>>
@@ -118,8 +116,6 @@ FilteredZeroConfData ZeroConf::filterParsedTx(
       );
 
       txio->setTxIn(TxRef{zcKey}, inputId);
-      txio->setTxHashOfOutput(input.opRef.getTxHashRef());
-      txio->setTxHashOfInput(txHash);
       auto txTime = input.opRef.getTime();
       if (txTime == UINT64_MAX) {
          txTime = timeFromTx;
@@ -155,7 +151,6 @@ FilteredZeroConfData ZeroConf::filterParsedTx(
       if (flaggedBDVs.first) {
          auto txio = std::make_shared<TxIOPair>(
             TxRef{zcKey}, iout, output.value);
-         txio->setTxHashOfOutput(txHash);
          txio->setTxTime(timeFromTx);
          txio->setUTXO(true);
          txio->setRBF(parsedTxPtr->isRBF);

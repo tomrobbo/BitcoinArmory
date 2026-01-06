@@ -361,7 +361,7 @@ struct StoredSubHistory
       unsigned, unsigned, BinaryWriter&);
 
 public:
-   // Store all TxIOs for this ScrAddr and block
+   //track all TxIOs for this ScrAddr at given block
    BinaryData uniqueKey; // includes the prefix byte!
    BinaryData hgtX;
    std::map<BinaryData, TxIOPair> txioMap;

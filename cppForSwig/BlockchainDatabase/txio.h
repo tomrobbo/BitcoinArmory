@@ -15,12 +15,6 @@
 
 #include <Utils/BinaryData.h>
 
-class LMDBBlockDatabase;
-class Outpoint;
-class TxIn;
-class TxOut;
-class Tx;
-
 ////////////////////////////////////////////////////////////////////////////////
 class TxRef
 {
@@ -40,7 +34,6 @@ public:
    uint16_t getBlockTxIndex(void) const;
    uint32_t getBlockHeight(void) const;
    uint8_t getDuplicateID(void) const;
-   void pprint(std::ostream& = std::cout, int = 0) const;
 
    bool operator==(const BinaryData&) const;
    bool operator==(const TxRef&) const;
@@ -48,27 +41,6 @@ public:
 
 protected:
    BinaryData dbKey6B_;
-};
-
-class DBTxRef : public TxRef
-{
-public:
-   DBTxRef(const TxRef&, const LMDBBlockDatabase*);
-
-   BinaryData serialize(void) const;
-   BinaryData getThisHash(void) const;
-   Tx getTxCopy(void) const;
-   bool isMainBranch(void) const;
-
-   /////////////////////////////////////////////////////////////////////////////
-   // This as fast as you can get a single TxIn or TxOut from the DB.  But if 
-   // need multiple of them from the same Tx, you should getTxCopy() and then
-   // iterate over them in the Tx object
-   TxIn  getTxInCopy(uint32_t);
-   TxOut getTxOutCopy(uint32_t);
-
-private:
-   const LMDBBlockDatabase* db_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -80,8 +52,6 @@ public:
 
    // Lots of accessors
    bool      hasTxIn(void) const;
-   bool      hasTxOutInMain(LMDBBlockDatabase*) const;
-   bool      hasTxInInMain(LMDBBlockDatabase*) const;
    bool      hasTxOutZC(void) const;
    bool      hasTxInZC(void) const;
    uint64_t  getValue(void) const;
@@ -92,16 +62,14 @@ public:
    BinaryData getDBKeyOfOutput(void) const;
    BinaryData getDBKeyOfInput(void) const;
 
-   uint32_t  getIndexOfOutput(void) const;
-   uint32_t  getIndexOfInput(void) const;
-   Outpoint  getOutPoint(LMDBBlockDatabase*) const;
+   uint32_t getIndexOfOutput(void) const;
+   uint32_t getIndexOfInput(void) const;
 
-   std::pair<bool, bool> reassessValidity(LMDBBlockDatabase*);
-   bool  isTxOutFromSelf(void) const;
+   bool isTxOutFromSelf(void) const;
    void setTxOutFromSelf(bool = true);
-   bool  isFromCoinbase(void) const;
+   bool isFromCoinbase(void) const;
    void setFromCoinbase(bool = true);
-   bool  isMultisig(void) const;
+   bool isMultisig(void) const;
    void setMultisig(bool = true);
    bool isRBF(void) const;
    void setRBF(bool);
@@ -109,25 +77,13 @@ public:
    bool isChainedZC(void) const;
 
    ////
-   BinaryData getTxHashOfInput(const LMDBBlockDatabase* = nullptr) const;
-   BinaryData getTxHashOfOutput(const LMDBBlockDatabase* = nullptr) const;
-   void setTxHashOfInput(const BinaryData&);
-   void setTxHashOfOutput(const BinaryData&);
-
-   TxOut getTxOutCopy(LMDBBlockDatabase*) const;
-   TxIn  getTxInCopy(LMDBBlockDatabase*) const;
-
    bool setTxIn(const TxRef&, uint32_t);
    bool setTxIn(const BinaryData&);
    void merge(const TxIOPair&);
 
    ////
-   bool isSpent(LMDBBlockDatabase*) const;
-   bool isUnspent(LMDBBlockDatabase*) const;
-   bool isSpendable(LMDBBlockDatabase*, uint32_t) const;
-   bool isMineButUnconfirmed(
-      LMDBBlockDatabase*, uint32_t, unsigned) const;
-   void pprintOneLine(LMDBBlockDatabase*) const;
+   bool isSpendable(uint32_t) const;
+   bool isUnconfirmed(uint32_t, unsigned) const;
 
    bool operator<(const TxIOPair&) const;
    bool operator==(const TxIOPair&) const;
@@ -139,9 +95,6 @@ public:
    bool isUTXO(void) const;
    void setUTXO(bool);
 
-   void setScrAddrRef(const BinaryDataRef&);
-   const BinaryDataRef& getScrAddr(void) const;
-
 public:
    bool flagged = false;
 
@@ -150,22 +103,16 @@ private:
    const TxRef txRefOfOutput_;
    const uint32_t indexOfOutput_;
 
-   TxRef    txRefOfInput_;
+   TxRef txRefOfInput_;
    uint32_t indexOfInput_;
 
-   mutable  BinaryData txHashOfOutput_;
-   mutable  BinaryData txHashOfInput_;
-
    // Zero-conf data isn't on disk, yet, so can't use TxRef
-   bool     isTxOutFromSelf_ = false;
-   bool     isFromCoinbase_;
-   bool     isMultisig_;
-   bool     isRBF_ = false;
-   bool     isZCChained_ = false;
-
-   //mainly for ZC ledgers. Could replace the need for a blockchain 
-   //object to build scrAddrObj ledgers.
-   uint32_t txtime_;
+   bool isTxOutFromSelf_ = false;
+   bool isFromCoinbase_ = false;
+   bool isMultisig_ = false;
+   bool isRBF_ = false;
+   bool isZCChained_ = false;
+   uint32_t txtime_ = 0;
 
    /***marks txio as spent for serialize/deserialize operations. It signifies
    whether a subSSH entry with only a TxOut DBkey is spent.
@@ -177,8 +124,5 @@ private:
    While spent txouts at txin height are unique, spent txouts at txout height
    need to be differenciated from UTXOs.
    ***/
-   bool     isUTXO_ = false;
-
-   //used to get a relevant scrAddr from a txio
-   BinaryDataRef scrAddr_;
+   bool isUTXO_ = false;
 };

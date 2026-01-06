@@ -13,6 +13,7 @@
 
 #include "ScrAddrObj.h"
 #include <Utils/BitcoinSettings.h>
+#include <Utils/BtcUtils.h>
 #include <Utils/DBUtils.h>
 #include <BlockchainDatabase/lmdb_wrapper.h>
 #include <BlockchainDatabase/Blockchain.h>
@@ -41,7 +42,7 @@ uint64_t ScrAddrObj::getSpendableBalance(uint32_t currBlk) const
    uint64_t balance = getFullBalance();
    auto txios = getTxios(0, UINT32_MAX);
    for (const auto& txio : txios) {
-      if (!txio.second.hasTxIn() && !txio.second.isSpendable(db_, currBlk)) {
+      if (!txio.second.hasTxIn() && !txio.second.isSpendable(currBlk)) {
          balance -= txio.second.getValue();
       }
    }
@@ -56,7 +57,9 @@ uint64_t ScrAddrObj::getUnconfirmedBalance(
    uint64_t balance = 0;
    auto txios = getTxios(0, UINT32_MAX);
    for (const auto& txio : txios) {
-      if (txio.second.isMineButUnconfirmed(db_, currBlk, confTarget)) {
+      if (txio.second.hasTxIn()) {
+         continue;
+      } else if (txio.second.isUnconfirmed(currBlk, confTarget)) {
          balance += txio.second.getValue();
       }
    }
@@ -176,7 +179,6 @@ std::map<BinaryData, TxIOPair> ScrAddrObj::scanZC(
          isZcFromWallet(txioPair.second.getDBKeyOfOutput().getSliceRef(0, 6))) {
          txioPair.second.setTxOutFromSelf(true);
       }
-      txioPair.second.setScrAddrRef(getScrAddr());
       auto emplaceResult = zcTxios_.emplace(txioPair);
       if (!emplaceResult.second && txioPair.second.hasTxIn()) {
          emplaceResult.first->second.merge(txioPair.second);
@@ -216,8 +218,7 @@ bool ScrAddrObj::purgeZC(
          if (!txio.hasTxOutZC()) {
             zcTxios_.erase(outputIter);
          } else {
-            txio.setTxIn(BinaryData(0));
-            txio.setTxHashOfInput(BinaryData(0));
+            txio.setTxIn({});
          }
       }
       zcInputKeys_.erase(inputIter);
@@ -283,11 +284,7 @@ std::map<BinaryData, TxIOPair> ScrAddrObj::getTxios(
          StoredSubHistory& subssh = subSSHiter->second;
          for (auto &txioPair : subssh.txioMap) {
             if (withMultisig || !txioPair.second.isMultisig()) {
-               auto iter = outMap.find(txioPair.first);
-               if (iter == outMap.end()) {
-                  iter = outMap.emplace(txioPair).first;
-               }
-               iter->second.setScrAddrRef(getScrAddr());
+               outMap.emplace(txioPair);
             }
          }
          ++subSSHiter;
@@ -403,7 +400,7 @@ std::vector<UnspentTxOut> ScrAddrObj::getAllUTXOs(
    uint32_t blk = bc_->top()->getBlockHeight();
 
    for (const auto& txioPair : utxos.utxoList) {
-      if (!txioPair.second.isSpendable(db_, blk)) {
+      if (!txioPair.second.isSpendable(blk)) {
          continue;
       }
       auto txout_key = txioPair.second.getDBKeyOfOutput();

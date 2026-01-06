@@ -812,10 +812,9 @@ TEST_F(BlockUtilsSuper, Load3BlocksPlus3)
    EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    //grab a tx by hash for coverage
-   auto& txioHeightMap = ssh.subHistMap.rbegin()->second;
-   auto& txio = txioHeightMap.txioMap.rbegin()->second;
-   auto txhash = txio.getTxHashOfOutput(iface_);
-
+   const auto& txioHeightMap = ssh.subHistMap.rbegin()->second;
+   const auto& txio = txioHeightMap.txioMap.rbegin()->second;
+   auto txhash = iface_->getTxHashForLdbKey(txio.getTxRefOfOutput().getDBKey());
    auto txObj = DBTestUtils::getTxByHash(clients_, bdvID, txhash);
    EXPECT_EQ(txObj.getThisHash(), txhash);
 }

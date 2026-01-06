@@ -22,8 +22,10 @@ using namespace Armory::Ledgers;
 // Context
 Context::Context(std::map<uint32_t, uint32_t>& timestamps,
    std::map<BinaryData, Tx>& txMap,
-   std::shared_ptr<const ZeroConf::MempoolSnapshot> ss) :
-   timestamps_(std::move(timestamps)), txMap_{std::move(txMap)}, ss_{ss}
+   std::map<BinaryData, std::map<uint32_t, BinaryData>>& txioKeyToScrAddr) :
+   timestamps_(std::move(timestamps)),
+   txMap_{std::move(txMap)},
+   txioKeyToScrAddr_{std::move(txioKeyToScrAddr)}
 {}
 
 uint32_t Context::getTimestampForBlockHeight(uint32_t blockNum) const
@@ -50,13 +52,13 @@ size_t Context::getTxOutCount(BinaryDataRef key) const
 
 const Tx& Context::getTx(BinaryDataRef key) const
 {
-   auto iter = txMap_.find(key);
-   if (iter != txMap_.end()) {
-      return iter->second;
-   }
-   auto ptx = ss_->getTxByKey(key);
-   auto result = txMap_.emplace(key, ptx->getTxObj());
-   return result.first->second;
+   return txMap_.at(key);
+}
+
+const BinaryData& Context::getScrAddrForTxOut(const TxIOPair& txio) const
+{
+   return txioKeyToScrAddr_.at(txio.getTxRefOfOutput().getDBKey()).at(
+      txio.getIndexOfOutput());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -68,10 +70,19 @@ Context Ledgers::prepareContext(
    std::shared_ptr<const ZeroConf::MempoolSnapshot> zcSs)
 {
    std::map<uint32_t, uint32_t> timestamps;
-   std::map<BinaryData, Tx> txMap;
+   std::set<BinaryData> txKeys;
+
+   /* 1. gather all tx keys, set timestamps */
    for (const auto& txioPair : txioMap) {
       /* output */
       const auto& txKeyOut = txioPair.second.getTxRefOfOutput().getDBKey();
+      txKeys.emplace(txKeyOut);
+      BinaryDataRef txInKeyRef;
+      if (txioPair.second.hasTxIn()) {
+         txInKeyRef = txioPair.second.getTxRefOfInput().getDBKeyRef();
+         txKeys.emplace(BinaryData{txInKeyRef});
+      }
+
       if (txKeyOut.startsWith(DBUtils::ZCPrefix)) {
          continue;
       }
@@ -88,20 +99,16 @@ Context Ledgers::prepareContext(
          }
       }
 
-      //tx
-      txMap.emplace(txKeyOut, db->getFullTxCopy(txKeyOut));
-
       /* input */
-      if (!txioPair.second.hasTxIn()) {
+      if (txInKeyRef.empty()) {
          continue;
       }
-      const auto& txKeyIn = txioPair.second.getTxRefOfInput().getDBKey();
-      if (txKeyIn.startsWith(DBUtils::ZCPrefix)) {
+      if (txInKeyRef.startsWith(DBUtils::ZCPrefix)) {
          continue;
       }
 
       //block timestamp
-      blockNum = DBUtils::hgtxToHeight(txKeyIn.getSliceRef(0, 4));
+      blockNum = DBUtils::hgtxToHeight(txInKeyRef.getSliceRef(0, 4));
       if (timestamps.find(blockNum) == timestamps.end()) {
          try {
             auto headerPtr = bc.getHeaderByHeight(blockNum, 0xFF);
@@ -111,9 +118,32 @@ Context Ledgers::prepareContext(
             continue;
          }
       }
-
-      //tx
-      txMap.emplace(txKeyIn, db->getFullTxCopy(txKeyIn));
    }
-   return Context{timestamps, txMap, zcSs};
+
+   /* 2. grab all txs */
+   std::map<BinaryData, Tx> txMap;
+   for (const auto& txKey : txKeys) {
+      if (!txKey.startsWith(DBUtils::ZCPrefix)) {
+         txMap.emplace(txKey, db->getFullTxCopy(txKey));
+      } else {
+         auto ptx = zcSs->getTxByKey(txKey);
+         txMap.emplace(txKey, ptx->getTxObj());
+      }
+   }
+
+   /* 3. resolve output addresses */
+   std::map<BinaryData, std::map<uint32_t, BinaryData>> txioKeyToScrAddr;
+   for (const auto& txioPair : txioMap) {
+      //output
+      const auto& txKeyOut = txioPair.second.getTxRefOfOutput().getDBKey();
+      const auto& outTx = txMap.at(txKeyOut);
+      auto iterOut = txioKeyToScrAddr.find(txKeyOut);
+      if (iterOut == txioKeyToScrAddr.end()) {
+         iterOut = txioKeyToScrAddr.emplace(
+            txKeyOut, std::map<uint32_t, BinaryData>{}).first;
+      }
+      auto indexOut = txioPair.second.getIndexOfOutput();
+      iterOut->second.emplace(indexOut, outTx.getScrAddrForTxOut(indexOut));
+   }
+   return Context{timestamps, txMap, txioKeyToScrAddr};
 }

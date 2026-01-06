@@ -31,21 +31,24 @@ namespace Armory
       class Context
       {
       private:
-         std::map<uint32_t, uint32_t> timestamps_;
-         mutable std::map<BinaryData, Tx> txMap_;
-         std::shared_ptr<const ZeroConf::MempoolSnapshot> ss_;
+         const std::map<uint32_t, uint32_t> timestamps_;
+
+         //TODO: setup with transparent bdr/bd comparator
+         const std::map<BinaryData, Tx> txMap_;
+         const std::map<BinaryData, std::map<uint32_t, BinaryData>> txioKeyToScrAddr_;
 
       public:
          Context(
             std::map<uint32_t, uint32_t>&,
             std::map<BinaryData, Tx>&,
-            std::shared_ptr<const ZeroConf::MempoolSnapshot>
+            std::map<BinaryData, std::map<uint32_t, BinaryData>>&
          );
 
          uint32_t getTimestampForBlockHeight(uint32_t) const;
          const BinaryData& getTxHash(BinaryDataRef) const;
          size_t getTxOutCount(BinaryDataRef) const;
          const Tx& getTx(BinaryDataRef) const;
+         const BinaryData& getScrAddrForTxOut(const TxIOPair&) const;
       };
 
       Context prepareContext(
