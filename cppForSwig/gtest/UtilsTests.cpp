@@ -5098,7 +5098,6 @@ TEST_F(StoredBlockObjTest, SScriptHistoryUnser)
    EXPECT_EQ(ssh.totalTxioCount, 2ULL);
    EXPECT_EQ(ssh.totalUnspent, READ_UINT64_HEX_LE("0000030400000000"));
 
-   EXPECT_EQ(subssh1.uniqueKey,  uniq);
    EXPECT_EQ(subssh1.hgtX,       hgtX0);
    EXPECT_EQ(subssh1.txioMap.size(), 2ULL);
    auto txio0Iter = subssh1.txioMap.find(txio0key);
@@ -5115,7 +5114,6 @@ TEST_F(StoredBlockObjTest, SScriptHistoryUnser)
    ASSERT_NE(ssh.subHistMap.find(hgtX0), ssh.subHistMap.end());
 
    StoredSubHistory& subref = ssh.subHistMap[hgtX0];
-   EXPECT_EQ(subref.uniqueKey, uniq);
    EXPECT_EQ(subref.hgtX,      hgtX0);
    EXPECT_EQ(subref.txioMap.size(), 2ULL);
    auto txioRef0Iter = subref.txioMap.find(txio0key);

@@ -1727,7 +1727,6 @@ void StoredScriptHistory::insertTxio(const TxIOPair& txio)
    auto hgtX = txioKey.getSliceRef(0, 4);
    auto& subSshEntry = subHistMap[hgtX];
    if (!subSshEntry.isInitialized()) {
-      subSshEntry.uniqueKey = uniqueKey;
       subSshEntry.hgtX      = hgtX;
    }
 
@@ -1805,7 +1804,7 @@ void StoredScriptHistory::substractSummary(const StoredScriptHistory& ssh)
 // for massively-reused addresses like SatoshiDice.
 ////////////////////////////////////////////////////////////////////////////////
 StoredSubHistory::StoredSubHistory() :
-   uniqueKey(0), hgtX(0), height(0), dupID(0), txioCount(0)
+   hgtX(0), height(0), dupID(0), txioCount(0)
 {}
 
 StoredSubHistory::StoredSubHistory(const StoredSubHistory& copy)
@@ -1815,7 +1814,7 @@ StoredSubHistory::StoredSubHistory(const StoredSubHistory& copy)
 
 bool StoredSubHistory::isInitialized() const
 {
-   return !uniqueKey.empty();
+   return !hgtX.empty();
 }
 
 StoredSubHistory& StoredSubHistory::operator=(const StoredSubHistory& copy)
@@ -1824,7 +1823,6 @@ StoredSubHistory& StoredSubHistory::operator=(const StoredSubHistory& copy)
       return *this;
    }
 
-   uniqueKey = copy.uniqueKey;
    hgtX = copy.hgtX;
    txioMap = copy.txioMap;
    height = copy.height;
@@ -1836,12 +1834,9 @@ StoredSubHistory& StoredSubHistory::operator=(const StoredSubHistory& copy)
 ////////
 void StoredSubHistory::unserializeDBValue(BinaryRefReader& brr)
 {
-   // Get the TxOut list if a pointer was supplied
-   // This list is unspent-TxOuts only if pruning enabled.  You will
-   // have to dereference each one to check spentness if not pruning
    if (hgtX.getSize() != 4) {
       LOGERR << "Cannot unserialize DB value until key is set (hgt&dup)";
-      uniqueKey.resize(0);
+      hgtX.clear();
       return;
    }
 
@@ -1886,20 +1881,6 @@ void StoredSubHistory::unserializeDBValue(BinaryRefReader& brr)
 }
 
 ////////
-void StoredSubHistory::getSummary(BinaryRefReader& brr)
-{
-   //grab subssh txioCount from DB
-   if (hgtX.getSize() != 4) {
-      LOGERR << "Cannot unserialize DB value until key is set (hgt&dup)";
-      uniqueKey.resize(0);
-      return;
-   }
-
-   BinaryData fullTxKey(8);
-   hgtX.copyTo(fullTxKey.getPtr());
-   txioCount = uint32_t(brr.get_var_int());
-}
-
 void StoredSubHistory::serializeDBValue(BinaryWriter& bw) const
 {
    size_t len = BtcUtils::calcVarIntSize(txioMap.size());
@@ -1952,12 +1933,6 @@ void StoredSubHistory::serializeDBValue(BinaryWriter& bw) const
    }
 }
 
-void StoredSubHistory::unserializeDBValue(const BinaryData& bd)
-{
-   BinaryRefReader brr(bd);
-   unserializeDBValue(brr);
-}
-
 void StoredSubHistory::unserializeDBValue(BinaryDataRef bdr)
 {
    BinaryRefReader brr(bdr);
@@ -1975,7 +1950,7 @@ void StoredSubHistory::unserializeDBKey(BinaryDataRef key, bool withPrefix)
       sz -= 1;
    }
 
-   brr.get_BinaryData(uniqueKey, sz - 4);
+   brr.advance(sz - 4);
    brr.get_BinaryData(hgtX, 4);
 
    uint8_t* hgtXptr = (uint8_t*)hgtX.getPtr();
@@ -1989,26 +1964,6 @@ void StoredSubHistory::unserializeDBKey(BinaryDataRef key, bool withPrefix)
 }
 
 ////////
-BinaryData StoredSubHistory::getDBKey(bool withPrefix) const
-{
-   BinaryWriter bw;
-   if (withPrefix) {
-      bw.put_uint8_t((uint8_t)DbPrefix::SCRIPT);
-   }
-   bw.put_BinaryData(uniqueKey);
-   bw.put_BinaryData(hgtX);
-   return bw.getData();
-}
-
-Armory::ScriptPrefix StoredSubHistory::getScriptType() const
-{
-   if (uniqueKey.empty()) {
-      return Armory::ScriptPrefix::NONSTD;
-   } else {
-      return (Armory::ScriptPrefix)uniqueKey[0];
-   }
-}
-
 uint64_t StoredSubHistory::getSubHistoryReceived(bool withMultisig) const
 {
    uint64_t bal = 0;

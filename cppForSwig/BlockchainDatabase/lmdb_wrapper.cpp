@@ -1088,8 +1088,7 @@ bool LMDBBlockDatabase::fetchStoredSubHistory(StoredScriptHistory& ssh,
    BinaryRefReader brr = getValueReader(DB_SELECT::BLKDATA, DbPrefix::SCRIPT, key);
 
    StoredSubHistory subssh;
-   subssh.uniqueKey = ssh.uniqueKey;
-   subssh.hgtX      = hgtX;
+   subssh.hgtX = hgtX;
 
    if (brr.getSize() > 0) {
       subssh.unserializeDBValue(brr);

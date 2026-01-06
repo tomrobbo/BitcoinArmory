@@ -346,13 +346,9 @@ struct StoredSubHistory
 
    void unserializeDBValue(BinaryRefReader&);
    void serializeDBValue(BinaryWriter&) const;
-   void unserializeDBValue(const BinaryData&);
    void unserializeDBValue(BinaryDataRef);
    void unserializeDBKey(BinaryDataRef, bool = true);
-   void getSummary(BinaryRefReader&);
 
-   BinaryData getDBKey(bool = true) const;
-   Armory::ScriptPrefix getScriptType(void) const;
    uint64_t getSubHistoryBalance(bool = false) const;
    uint64_t getSubHistoryReceived(bool = false) const;
 
@@ -362,7 +358,6 @@ struct StoredSubHistory
 
 public:
    //track all TxIOs for this ScrAddr at given block
-   BinaryData uniqueKey; // includes the prefix byte!
    BinaryData hgtX;
    std::map<BinaryData, TxIOPair> txioMap;
    uint32_t height;

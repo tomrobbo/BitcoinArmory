@@ -332,8 +332,8 @@ std::vector<Ledgers::Entry> ScrAddrObj::getHistoryPageById(uint32_t id)
 void ScrAddrObj::mapHistory()
 {
    //create history map
-   auto getSummary = 
-   hist_.mapHistory([this]()->std::map<uint32_t, uint32_t>
+   hist_.mapHistory(
+      [this]()->std::map<uint32_t, uint32_t>
       { return db_->getSSHSummary(this->getScrAddr()); }
    );
 }

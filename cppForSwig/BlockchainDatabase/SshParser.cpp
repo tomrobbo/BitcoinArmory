@@ -108,7 +108,7 @@ SubSshParserResult parseSubSsh(
 
                if (resolveHashes) {
                   //this is to resolve output references in transaction build from
-                  //multiple wallets (i.ei coinjoin)
+                  //multiple wallets (i.e coinjoin)
                   txnsToResolve.emplace(keyOfInput.getSliceRef(0, 6));
                }
                sshPtr->totalUnspent -= txioPair.second.getValue();
