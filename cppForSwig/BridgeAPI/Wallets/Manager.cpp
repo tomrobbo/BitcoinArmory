@@ -668,7 +668,14 @@ void WalletManager::updateStateFromDB(const std::function<void(void)>& callback,
             if (dbCache_->txMap.find(txRef.getDBKey()) == dbCache_->txMap.end()) {
                missingTxKeys.emplace(txRef.getDBKey());
             }
-            txioMap_.emplace(txio.getDBKeyOfOutput(), std::move(txio));
+
+            auto keyOfOutput = txio.getDBKeyOfOutput();
+            auto iter = txioMap_.find(keyOfOutput);
+            if (iter != txioMap_.end()) {
+               iter->second.merge(txio);
+            } else {
+               txioMap_.emplace(keyOfOutput, std::move(txio));
+            }
          }
          lastSeenBlock_ = topHeight;
       }

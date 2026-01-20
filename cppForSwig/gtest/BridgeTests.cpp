@@ -4504,9 +4504,11 @@ TEST_F(BridgeWebsocketsTests, AddBlocks)
       EXPECT_EQ(le.getTxTime(), testLe.txTime);
    }
 
-   std::this_thread::sleep_for(60s);
-
    /* block 5 */
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
+   nodePtr->notifyNewBlock();
+   ASSERT_EQ(waitOnNewBlock(), 5);
+
    balances = getBalances(bridge_, wltId, accountId);
    ASSERT_EQ(balances.size(), 4);
 

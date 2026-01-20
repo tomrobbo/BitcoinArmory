@@ -1520,26 +1520,6 @@ void CppBridge::importWallet(const std::filesystem::path& path, MessageId msgId)
 ////////////////////////////////////////////////////////////////////////////////
 const std::string& CppBridge::getLedgerDelegateId()
 {
-#if 0
-   auto promPtr = std::make_shared<std::promise<AsyncClient::LedgerDelegate>>();
-   auto fut = promPtr->get_future();
-   auto lbd = [promPtr](
-      ReturnMessage<AsyncClient::LedgerDelegate> result)->void
-   {
-      promPtr->set_value(std::move(result.get()));
-   };
-
-   bdvPtr_->getLedgerDelegate(lbd);
-   auto delegate = std::move(fut.get());
-   auto insertPair = delegateMap_.emplace(
-      delegate.getID(), std::move(delegate));
-
-   if (!insertPair.second) {
-      insertPair.first->second = std::move(delegate);
-   }
-   return insertPair.first->second.getID();
-#endif
-
    return wltManager_->getDelegateId();
 }
 
@@ -1547,30 +1527,6 @@ const std::string& CppBridge::getLedgerDelegateId()
 const std::string& CppBridge::getLedgerDelegateIdForWallet(
    const Wallets::WalletId& walletId, const Wallets::AddressAccountId& accId)
 {
-#if 0
-   auto promPtr = std::make_shared<std::promise<AsyncClient::LedgerDelegate>>();
-   auto fut = promPtr->get_future();
-   auto lbd = [promPtr](
-      ReturnMessage<AsyncClient::LedgerDelegate> result)->void
-   {
-      promPtr->set_value(std::move(result.get()));
-   };
-
-   //grab the wallet container
-   auto wltCont = wltManager_->getWalletContainer(walletId, accId);
-   auto walletObj = bdvPtr_->getWalletObj(wltCont->getDbId());
-
-   walletObj.getLedgerDelegate(lbd);
-   auto delegate = std::move(fut.get());
-   auto insertPair = delegateMap_.emplace(
-      delegate.getID(), std::move(delegate));
-
-   if (!insertPair.second) {
-      insertPair.first->second = std::move(delegate);
-   }
-   return insertPair.first->second.getID();
-#endif
-
    return wltManager_->getDelegateIdForWallet(walletId, accId);
 }
 
@@ -1579,30 +1535,6 @@ const std::string& CppBridge::getLedgerDelegateIdForScrAddr(
    const Wallets::WalletId& wltId, const Wallets::AddressAccountId& accId,
    const BinaryDataRef& addrHash)
 {
-#if 0
-   auto promPtr = std::make_shared<std::promise<AsyncClient::LedgerDelegate>>();
-   auto fut = promPtr->get_future();
-   auto lbd = [promPtr](
-      ReturnMessage<AsyncClient::LedgerDelegate> result)->void
-   {
-      promPtr->set_value(std::move(result.get()));
-   };
-
-   auto wltCont = wltManager_->getWalletContainer(wltId, accId);
-   auto walletObj = bdvPtr_->getWalletObj(wltCont->getDbId());
-
-   auto scrAddrObj = walletObj.getScrAddrObj(addrHash, 0, 0, 0, 0);
-   scrAddrObj.getLedgerDelegate(lbd);
-   auto delegate = std::move(fut.get());
-   auto insertPair = delegateMap_.emplace(
-      delegate.getID(), std::move(delegate));
-
-   if (!insertPair.second) {
-      insertPair.first->second = std::move(delegate);
-   }
-   return insertPair.first->second.getID();
-#endif
-
    return wltManager_->getDelegateIdForScrAddr(wltId, accId, addrHash);
 }
 
