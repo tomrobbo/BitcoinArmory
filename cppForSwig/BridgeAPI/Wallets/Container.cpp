@@ -7,14 +7,15 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "Container.h"
-#include "Utils/BtcUtils.h"
-#include "Utils/Cryptography.h"
+#include <Utils/BtcUtils.h>
+#include <Utils/Cryptography.h>
 
-#include "Wallets/Wallets.h"
-#include "Wallets/Addresses.h"
-#include "Wallets/Accounts/AddressAccounts.h"
-#include "Wallets/Seeds/Backups.h"
-#include "AsyncClient.h"
+#include <Wallets/Wallets.h>
+#include <Wallets/Addresses.h>
+#include <Wallets/Accounts/AddressAccounts.h>
+#include <Wallets/Seeds/Backups.h>
+#include <BlockchainDatabase/txio.h>
+#include <AsyncClient.h>
 
 using namespace Armory;
 using namespace Armory::Bridge;
@@ -456,13 +457,6 @@ bool WalletContainer::hasAddress(const std::string& addr)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void WalletContainer::getUTXOs(uint64_t val, bool zc, bool rbf,
-   const std::function<void(ReturnMessage<std::vector<UTXO>>)>& lbd)
-{
-   asyncWlt_->getUTXOs(val, zc, rbf, lbd);
-}
-
-////////////////////////////////////////////////////////////////////////////////
 const Wallets::EncryptionKeyId& WalletContainer::getDefaultEncryptionKeyId() const
 {
    return wallet_->getDefaultEncryptionKeyId();
@@ -478,4 +472,16 @@ std::filesystem::path WalletContainer::forkWatchingOnly(
    }
    auto wpd = Wallets::AssetWallet_Single::exportPublicData(wltSingle);
    return Wallets::AssetWallet_Single::forkWatchingOnly(wpd, ctrlPass);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void WalletContainer::getUTXOs(uint64_t val, bool zc, bool rbf,
+   const std::function<void(ReturnMessage<std::vector<UTXO>>)>& lbd)
+{
+   asyncWlt_->getUTXOs(val, zc, rbf, lbd);
+}
+
+const std::map<BinaryData, TxIOPair>& WalletContainer::getTxioMap() const
+{
+   return txioMap_;
 }

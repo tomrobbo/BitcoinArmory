@@ -85,5 +85,5 @@ namespace Armory
          uint32_t getBlockInVicinity(uint32_t) const;
          uint32_t getPageIdForBlockHeight(uint32_t) const;
       };
-   } //namespace Ledgers;
+   } //namespace Ledgers
 } //namespace Armory

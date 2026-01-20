@@ -23,6 +23,7 @@ template<class U> class ReturnMessage;
 class AddressEntry;
 class AddressBookEntry;
 struct UTXO;
+class TxIOPair;
 
 namespace Armory
 {
@@ -72,6 +73,7 @@ namespace Armory
          std::mutex stateMutex_;
 
          std::map<BinaryData, std::shared_ptr<AddressEntry>> updatedAddressMap_;
+         std::map<BinaryData, TxIOPair> txioMap_;
 
       private:
          WalletContainer(
@@ -107,6 +109,7 @@ namespace Armory
          void createAddressBook(
             const std::function<void(ReturnMessage<std::vector<AddressBookEntry>>)>&);
 
+         const std::map<BinaryData, TxIOPair>& getTxioMap(void) const;
          void getUTXOs(uint64_t, bool, bool,
             const std::function<void(ReturnMessage<std::vector<UTXO>>)>& lbd);
 

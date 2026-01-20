@@ -76,11 +76,14 @@ struct BdvRequest {
       goOnline                   @3 : Void;
 
       getLedgerDelegate          @4 : Void;
-      getTxByHash                @5 : List(Types.Hash);
-      getOutputsForOutpoints     @6 : OutpointRequest;
-      getOutputsForAddress       @7 : AddressOutputsRequest;
-      updateWalletsLedgerFilter  @8 : List(Types.WalletId);
-      getCombinedBalances        @9 : Void;
+      getTxsByHash               @5 : List(Types.Hash);
+      getTxsByKey                @6 : List(Types.TxKey);
+      getOutputsForOutpoints     @7 : OutpointRequest;
+      getOutputsForAddress       @8 : AddressOutputsRequest;
+      updateWalletsLedgerFilter  @9 : List(Types.WalletId);
+      getCombinedBalances        @10: Void;
+      getTxios                   @11: UInt32;
+      getBlockTimestamps         @12: List(UInt32);
    }
 }
 
@@ -96,6 +99,11 @@ struct BdvReply {
       addresses      @2 : List(AddressOutputs);
    }
 
+   struct BlockTimestamp {
+      height         @0 : UInt32;
+      timestamp      @1 : UInt32;
+   }
+
    union {
       unset                      @0 : Void;
 
@@ -104,11 +112,14 @@ struct BdvReply {
       goOnline                   @3 : Void;
 
       getLedgerDelegate          @4 : Types.DelegateId;
-      getTxByHash                @5 : List(Types.Tx);
-      getOutputsForOutpoints     @6 : List(Types.Output);
-      getOutputsForAddress       @7 : AddressOutputReply;
-      updateWalletsLedgerFilter  @8 : Void;
-      getCombinedBalances        @9 : List(Types.CombinedBalanceAndCount);
+      getTxsByHash               @5 : List(Types.Tx);
+      getTxsByKey                @6 : List(Types.Tx);
+      getOutputsForOutpoints     @7 : List(Types.Output);
+      getOutputsForAddress       @8 : AddressOutputReply;
+      updateWalletsLedgerFilter  @9 : Void;
+      getCombinedBalances        @10: List(Types.CombinedBalanceAndCount);
+      getTxios                   @11: List(Types.TxioPair);
+      getBlockTimestamps         @12: List(BlockTimestamp);
    }
 }
 

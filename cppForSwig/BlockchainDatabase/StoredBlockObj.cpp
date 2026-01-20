@@ -813,6 +813,7 @@ Tx StoredTx::getTxCopy() const
    returnTx.setRBF(rbfFlag);
    returnTx.setTxHeight(blockHeight);
    returnTx.setTxIndex(txIndex);
+   returnTx.setDupId(duplicateID);
    return returnTx;
 }
 

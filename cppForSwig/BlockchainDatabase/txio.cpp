@@ -308,8 +308,8 @@ void TxIOPair::setUTXO(bool val)
 bool TxIOPair::operator<(const TxIOPair& t2) const
 {
    auto check = std::memcmp(
-      txRefOfOutput_.dbKey6B_.getPtr(),
-      t2.txRefOfOutput_.dbKey6B_.getPtr(),
+      txRefOfOutput_.getDBKey().getPtr(),
+      t2.txRefOfOutput_.getDBKey().getPtr(),
       6);
    if (check == 0) {
       return indexOfOutput_ < t2.indexOfOutput_;
@@ -321,8 +321,8 @@ bool TxIOPair::operator<(const TxIOPair& t2) const
 bool TxIOPair::operator==(const TxIOPair& t2) const
 {
    auto check = std::memcmp(
-      txRefOfOutput_.dbKey6B_.getPtr(),
-      t2.txRefOfOutput_.dbKey6B_.getPtr(),
+      txRefOfOutput_.getDBKey().getPtr(),
+      t2.txRefOfOutput_.getDBKey().getPtr(),
       6);
    if (check != 0) {
       return false;

@@ -233,7 +233,7 @@ std::map<BinaryData, Ledgers::Entry> ScrAddrObj::updateLedgers(
    uint32_t startBlock, uint32_t endBlock) const
 {
    auto ctx = Ledgers::prepareContext(txioMap, *bc_, db_, zc_->getSnapshot());
-   return Ledgers::Entry::computeLedgerMap(txioMap,
+   return Ledgers::computeLedgerMap(txioMap,
       startBlock, endBlock, {}, ctx);
 }
 

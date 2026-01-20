@@ -92,7 +92,7 @@ namespace Armory
          bool              usesWitness(void) const;
          bool              isChainedZC(void) const;
 
-         Armory::ScriptPrefix getScriptType(void) const;
+         ScriptPrefix getScriptType(void) const;
          const std::set<BinaryData>& getScrAddrList(void) const;
 
          bool operator<(const Entry&) const;
@@ -108,10 +108,6 @@ namespace Armory
          static void purgeLedgerVectorFromHeight(
             std::vector<Entry>&,
             uint32_t);
-         static std::map<BinaryData, Entry> computeLedgerMap(
-            const std::map<BinaryData, TxIOPair>&,
-            uint32_t, uint32_t, const std::string&,
-            const Context&);
 
       private:
          std::string ID_; //holds either a scrAddr or a walletId
@@ -151,10 +147,15 @@ namespace Armory
             std::function<uint32_t(uint32_t)>,
             std::function<uint32_t(void)>);
 
-         std::vector<Entry> getHistoryPage(uint32_t);
-         uint32_t getBlockInVicinity(uint32_t);
-         uint32_t getPageIdForBlockHeight(uint32_t);
-         uint32_t getPageCount(void);
+         std::vector<Entry> getHistoryPage(uint32_t) const;
+         uint32_t getBlockInVicinity(uint32_t) const;
+         uint32_t getPageIdForBlockHeight(uint32_t) const;
+         uint32_t getPageCount(void) const;
       };
+
+      std::map<BinaryData, Entry> computeLedgerMap(
+         const std::map<BinaryData, TxIOPair>&,
+         uint32_t, uint32_t, const std::string&,
+         const Context&);
    } //namespace Ledgers
 } //namespace Armory

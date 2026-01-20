@@ -224,16 +224,15 @@ namespace {
             return builder;
          }
 
-         case BdvRequest::Which::GET_TX_BY_HASH:
+         case BdvRequest::Which::GET_TXS_BY_HASH:
          {
-
-            auto txHashList = request.getGetTxByHash();
+            auto txHashList = request.getGetTxsByHash();
             std::vector<Tx> results;
             results.reserve(txHashList.size());
             for (auto txHash : txHashList) {
-               BinaryDataRef hashBd(txHash.begin(), txHash.end());
+               BinaryDataRef hashBdr(txHash.begin(), txHash.end());
                try {
-                  auto tx = bdv->getTxByHash(hashBd);
+                  auto tx = bdv->getTxByHash(hashBdr);
                   results.emplace_back(std::move(tx));
                } catch (const std::exception&) {
                   //could not get the tx, ignore
@@ -243,17 +242,78 @@ namespace {
 
             auto builder = ReplyBuilder::getNew(bdv);
             auto bdvReply = prepareReply(builder);
-            auto txHashResults = bdvReply.initGetTxByHash(results.size());
-            for (unsigned i=0; i<results.size(); i++) {
+            auto txHashResults = bdvReply.initGetTxsByHash(results.size());
+            for (unsigned i=0; i < results.size(); i++) {
                const auto& tx = results[i];
                auto txHashResult = txHashResults[i];
                txHashResult.setBody(capnp::Data::Builder(
                   (uint8_t*)tx.getPtr(), tx.getSize()
                ));
                txHashResult.setHeight(tx.getTxHeight());
+               txHashResult.setDupId(tx.getDupId());
                txHashResult.setIndex(tx.getTxIndex());
                txHashResult.setIsChainZc(tx.isChained());
                txHashResult.setIsRbf(tx.isRBF());
+            }
+            return builder;
+         }
+
+         case BdvRequest::GET_TXS_BY_KEY:
+         {
+            auto txKeyList = request.getGetTxsByKey();
+            std::vector<Tx> results;
+            results.reserve(txKeyList.size());
+            for (auto txKey : txKeyList) {
+               BinaryDataRef keyBdr(txKey.begin(), txKey.end());
+               try {
+                  auto tx = bdv->getTxByKey(keyBdr);
+                  results.emplace_back(std::move(tx));
+               } catch (const std::exception&) {
+                  //could not get the tx, ignore
+                  continue;
+               }
+            }
+
+            auto builder = ReplyBuilder::getNew(bdv);
+            auto bdvReply = prepareReply(builder);
+            auto txKeyResults = bdvReply.initGetTxsByKey(results.size());
+            for (unsigned i=0; i < results.size(); i++) {
+               const auto& tx = results[i];
+               auto txKeyResult = txKeyResults[i];
+               txKeyResult.setBody(capnp::Data::Builder(
+                  (uint8_t*)tx.getPtr(), tx.getSize()
+               ));
+               txKeyResult.setHeight(tx.getTxHeight());
+               txKeyResult.setDupId(tx.getDupId());
+               txKeyResult.setIndex(tx.getTxIndex());
+               txKeyResult.setIsChainZc(tx.isChained());
+               txKeyResult.setIsRbf(tx.isRBF());
+            }
+            return builder;
+         }
+
+         case BdvRequest::GET_BLOCK_TIMESTAMPS:
+         {
+            auto heightList = request.getGetBlockTimestamps();
+            std::map<uint32_t, uint32_t> results;
+            const auto& bc = bdv->blockchain();
+            for (auto height : heightList) {
+               try {
+                  auto block = bc.getHeaderByHeight(height, 0xFF);
+                  results.emplace(height, block->getTimestamp());
+               } catch (const std::length_error&) {
+                  continue;
+               }
+            }
+
+            auto builder = ReplyBuilder::getNew(bdv);
+            auto bdvReply = prepareReply(builder);
+            auto capnTss = bdvReply.initGetBlockTimestamps(results.size());
+            unsigned i = 0;
+            for (const auto& blockTs : results) {
+               auto capnTs = capnTss[i++];
+               capnTs.setHeight(blockTs.first);
+               capnTs.setTimestamp(blockTs.second);
             }
             return builder;
          }
@@ -382,6 +442,38 @@ namespace {
                   capnBal.setUnconfirmed(addr.second.unconfirmed);
                   capnBal.setTxnCount(addr.second.txnCount);
                }
+            }
+            return builder;
+         }
+
+         case BdvRequest::Which::GET_TXIOS:
+         {
+            auto from = request.getGetTxios();
+            auto txioMap = bdv->getTxioForRange(from);
+
+            auto builder = ReplyBuilder::getNew(bdv);
+            auto bdvReply = prepareReply(builder);
+            auto txiosReply = bdvReply.initGetTxios(txioMap.size());
+            unsigned i=0;
+            for (const auto& txioPair : txioMap) {
+               auto capnTxio = txiosReply[i++];
+               const auto& txio = txioPair.second;
+               capnTxio.setAmount(txio.getValue());
+
+               auto outputKey = txio.getDBKeyOfOutput();
+               capnTxio.setTxOut(capnp::Data::Builder(
+                  (uint8_t*)outputKey.getPtr(), outputKey.getSize()));
+
+               if (txio.hasTxIn()) {
+                  auto inputKey = txio.getDBKeyOfInput();
+                  capnTxio.setTxIn(capnp::Data::Builder(
+                     (uint8_t*)inputKey.getPtr(), inputKey.getSize()));
+               }
+
+               capnTxio.setFromSelf(txio.isTxOutFromSelf());
+               capnTxio.setCoinbase(txio.isFromCoinbase());
+               capnTxio.setRbf(txio.isRBF());
+               capnTxio.setMultisig(txio.isMultisig());
             }
             return builder;
          }

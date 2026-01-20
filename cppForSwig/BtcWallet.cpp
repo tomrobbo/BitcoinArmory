@@ -704,7 +704,7 @@ std::map<BinaryData, Ledgers::Entry> BtcWallet::updateWalletLedgersFromTxio(
    auto ledgerContext = Ledgers::prepareContext(txioMap,
       bdvPtr_->blockchain(), bdvPtr_->getDB(),
       bdvPtr_->zcContainer()->getSnapshot());
-   return Ledgers::Entry::computeLedgerMap(
+   return Ledgers::computeLedgerMap(
       txioMap, startBlock, endBlock,
       walletID_, ledgerContext);
 }

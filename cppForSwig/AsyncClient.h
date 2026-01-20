@@ -35,6 +35,8 @@ namespace Armory
    }
 }
 
+class TxIOPair;
+
 ////
 struct OutputBatch
 {
@@ -376,6 +378,8 @@ namespace AsyncClient
       void shutdownNode(void);
 
       //ledgers
+      void getTxios(uint32_t,
+         std::function<void(ReturnMessage<std::vector<TxIOPair>>)>);
       void updateWalletsLedgerFilter(const std::vector<std::string>& wltIdVec);
       void getLedgerDelegate(
          std::function<void(ReturnMessage<LedgerDelegate>)>);
@@ -410,7 +414,12 @@ namespace AsyncClient
       void broadcastZC(const std::vector<BinaryData>& rawTxVec);
       void broadcastThroughRPC(const BinaryData& rawTx);
 
-      void getTxsByHash(
-         const std::set<BinaryData>&, const TxBatchCallback&);
+      //db cache methods
+      void getTxsByHash(const std::set<BinaryData>&,
+         const TxBatchCallback&);
+      void getTxsByKey(const std::set<BinaryData>&,
+         const std::function<void(ReturnMessage<std::vector<Tx>>)>&);
+      void getTimestampsForHeights(const std::set<uint32_t>&,
+         const std::function<void(ReturnMessage<std::map<uint32_t, uint32_t>>)>&);
    };
 } //namespace AsyncClient

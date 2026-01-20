@@ -158,7 +158,7 @@ void Callback::run(BdmNotification notif)
             pushLbd({NotifType::PUSH, serializeCapnp(message)});
          };
 
-         notifFunc_({NotifType::UPDATE, {}, lbd});
+         notifFunc_({NotifType::UPDATE, {}, lbd, notif.height});
          break;
       }
 
@@ -174,7 +174,7 @@ void Callback::run(BdmNotification notif)
             pushLbd({NotifType::PUSH, serializeCapnp(message)});
          };
 
-         notifFunc_({NotifType::UPDATE, {}, lbd});
+         notifFunc_({NotifType::UPDATE, {}, lbd, notif.height});
          break;
       }
 

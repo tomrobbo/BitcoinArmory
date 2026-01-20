@@ -676,12 +676,12 @@ BinaryData LMDBBlockDatabase::getHashForDBKey(
 }
 
 /////////////////////////////////////////////////////////////////////////////
-BinaryData LMDBBlockDatabase::getDBKeyForHash(const BinaryData& txhash,
+BinaryData LMDBBlockDatabase::getDBKeyForHash(BinaryDataRef txhash,
    uint8_t expectedDupId) const
 {
    if (txhash.getSize() < 4) {
       LOGWARN << "txhash is less than 4 bytes long";
-      return BinaryData();
+      return {};
    }
    auto hash4 = txhash.getSliceRef(0, 4);
 
@@ -690,7 +690,7 @@ BinaryData LMDBBlockDatabase::getDBKeyForHash(const BinaryData& txhash,
 
    uint32_t valSize = brrHints.getSize();
    if (valSize < 6) {
-      return BinaryData();
+      return {};
    }
    uint32_t numHints = (uint32_t)brrHints.get_var_int();
 
@@ -761,8 +761,7 @@ BinaryData LMDBBlockDatabase::getDBKeyForHash(const BinaryData& txhash,
 }
 
 /////////////////////////////////////////////////////////////////////////////
-unsigned LMDBBlockDatabase::getHeightForTxHash(
-   const BinaryDataRef& hash) const
+unsigned LMDBBlockDatabase::getHeightForTxHash(BinaryDataRef hash) const
 {
    auto dbkey = getDBKeyForHash(hash);
    if (dbkey.empty()) {
@@ -1938,7 +1937,7 @@ bool LMDBBlockDatabase::getStoredZcTx(StoredTx& stx, BinaryDataRef zcKey) const
 // when we mark a transaction/block valid, we need to make sure all the hints
 // lists have the correct one in front.  Luckily, the TXHINTS entries are tiny 
 // and the number of modifications to make for each reorg is small.
-bool LMDBBlockDatabase::getStoredTx_byHash(const BinaryData& txHash,
+bool LMDBBlockDatabase::getStoredTx_byHash(BinaryDataRef txHash,
    StoredTx* stx) const
 {
    if (stx == nullptr) {

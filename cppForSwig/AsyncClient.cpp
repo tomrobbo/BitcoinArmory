@@ -12,6 +12,7 @@
 #include <Utils/varint.h>
 #include <Utils/Cryptography.h>
 #include <Utils/ArmoryErrors.h>
+#include <BlockchainDatabase/txio.h>
 #include "WebSocketMessage.h"
 
 #include <capnp/message.h>
@@ -316,6 +317,7 @@ namespace {
          try {
             auto txObj = std::make_shared<Tx>(rawTx);
             txObj->setTxHeight(capnTx.getHeight());
+            txObj->setDupId(capnTx.getDupId());
             txObj->setTxIndex(capnTx.getIndex());
             txObj->setChainedZC(capnTx.getIsChainZc());
             txObj->setRBF(capnTx.getIsRbf());
@@ -323,7 +325,26 @@ namespace {
             result.emplace(txObj->getThisHash(), std::move(txObj));
          } catch (const BtcUtils::BlockDeserializingException&) {}
       }
+      return result;
+   }
 
+   std::vector<Tx>capnToTxVec(
+      capnp::List<Codec::Types::Tx, capnp::Kind::STRUCT>::Reader& txs)
+   {
+      std::vector<Tx> result;
+      result.reserve(txs.size());
+      for (auto capnTx : txs) {
+         auto body = capnTx.getBody();
+         BinaryDataRef rawTx(body.begin(), body.end());
+         try {
+            auto& txObj = result.emplace_back(Tx{rawTx});
+            txObj.setTxHeight(capnTx.getHeight());
+            txObj.setDupId(capnTx.getDupId());
+            txObj.setTxIndex(capnTx.getIndex());
+            txObj.setChainedZC(capnTx.getIsChainZc());
+            txObj.setRBF(capnTx.getIsRbf());
+         } catch (const BtcUtils::BlockDeserializingException&) {}
+      }
       return result;
    }
 }
@@ -594,6 +615,78 @@ void BlockDataViewer::broadcastThroughRPC(const BinaryData& rawTx)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+void BlockDataViewer::getTxios(uint32_t from,
+   std::function<void(ReturnMessage<std::vector<TxIOPair>>)> callback)
+{
+   //create capnp request
+   capnp::MallocMessageBuilder message;
+   auto payload = message.initRoot<Codec::BDV::Request>();
+
+   auto bdvRequest = payload.initBdv();
+   bdvRequest.setGetTxios(from);
+
+   //serialize and add to payload
+   auto write_payload = toWritePayload(message);
+
+   //reply handling lambda
+   auto read_payload = std::make_shared<Socket_ReadPayload>();
+   read_payload->callbackReturn_ =
+      std::make_unique<ClientCallback>([callback](const WebSocketMessagePartial& msg){
+         try {
+            //deser capnp reply
+            auto msgReader = msg.getReader();
+            auto capnReader = msgReader->getReader();
+            auto reply = capnReader->getRoot<Codec::BDV::Reply>();
+
+            //sanity checks
+            if (!reply.getSuccess()) {
+               throw ClientMessageError(reply.getError(), -1);
+            }
+
+            if (!reply.isBdv()) {
+               throw ClientMessageError("expected bdv reply", WRONG_REPLY_CLASS);
+            }
+
+            auto bdvReply = reply.getBdv();
+            if (!bdvReply.isGetTxios()) {
+               throw ClientMessageError(
+                  "expected GetTxios reply", WRONG_REPLY_TYPE);
+            }
+
+            //convert to txio vector and fire callback
+            auto capnTxios = bdvReply.getGetTxios();
+            std::vector<TxIOPair> txios;
+            txios.reserve(capnTxios.size());
+
+            for (auto capnTxio : capnTxios) {
+               auto capnTxOut = capnTxio.getTxOut();
+               BinaryData txOutKey(capnTxOut.begin(), capnTxOut.end());
+               auto amount = capnTxio.getAmount();
+               TxIOPair txio{txOutKey, amount};
+
+               if (capnTxio.hasTxIn()) {
+                  auto capnTxIn = capnTxio.getTxIn();
+                  BinaryData txInKey(capnTxIn.begin(), capnTxIn.end());
+                  txio.setTxIn(txInKey);
+               }
+
+               txio.setTxOutFromSelf(capnTxio.getFromSelf());
+               txio.setFromCoinbase(capnTxio.getCoinbase());
+               txio.setRBF(capnTxio.getRbf());
+               txio.setMultisig(capnTxio.getMultisig());
+               txios.emplace_back(std::move(txio));
+            }
+            callback(ReturnMessage<std::vector<TxIOPair>>(txios));
+         } catch (ClientMessageError& e) {
+            //something went wrong, set error message and fire callback
+            callback(ReturnMessage<std::vector<TxIOPair>>(e));
+         }
+      });
+
+   //push to server
+   sock_->pushPayload(std::move(write_payload), read_payload);
+}
+
 void BlockDataViewer::getTxsByHash(
    const std::set<BinaryData>& hashes, const TxBatchCallback& callback)
 {
@@ -602,7 +695,7 @@ void BlockDataViewer::getTxsByHash(
    auto payload = message.initRoot<Codec::BDV::Request>();
 
    auto bdvRequest = payload.initBdv();
-   auto hashReq = bdvRequest.initGetTxByHash(hashes.size());
+   auto hashReq = bdvRequest.initGetTxsByHash(hashes.size());
 
    unsigned i=0;
    for (auto& hash : hashes) {
@@ -633,18 +726,137 @@ void BlockDataViewer::getTxsByHash(
             }
 
             auto bdvReply = reply.getBdv();
-            if (!bdvReply.isGetTxByHash()) {
+            if (!bdvReply.isGetTxsByHash()) {
                throw ClientMessageError(
                   "expected GetTxByHash reply", WRONG_REPLY_TYPE);
             }
 
             //convert to utxo vector and fire callback
-            auto txns = bdvReply.getGetTxByHash();
+            auto txns = bdvReply.getGetTxsByHash();
             auto result = capnToTxBatch(txns);
             callback(ReturnMessage<TxBatchResult>(result));
          } catch (ClientMessageError& e) {
             //something went wrong, set error message and fire callback
             callback(ReturnMessage<TxBatchResult>(e));
+         }
+      });
+
+   //push to server
+   sock_->pushPayload(std::move(write_payload), read_payload);
+}
+
+void BlockDataViewer::getTxsByKey(const std::set<BinaryData>& txkeys,
+   const std::function<void(ReturnMessage<std::vector<Tx>>)>& callback)
+{
+   //create capnp request
+   capnp::MallocMessageBuilder message;
+   auto payload = message.initRoot<Codec::BDV::Request>();
+
+   auto bdvRequest = payload.initBdv();
+   auto hashReq = bdvRequest.initGetTxsByKey(txkeys.size());
+
+   unsigned i=0;
+   for (auto& key : txkeys) {
+      hashReq.set(i++, capnp::Data::Builder(
+         (uint8_t*)key.getPtr(), key.getSize()));
+   }
+
+   //serialize and add to payload
+   auto write_payload = toWritePayload(message);
+
+   //reply handling lambda
+   auto read_payload = std::make_shared<Socket_ReadPayload>();
+   read_payload->callbackReturn_ =
+      std::make_unique<ClientCallback>([callback](const WebSocketMessagePartial& msg){
+         try {
+            //deser capnp reply
+            auto msgReader = msg.getReader();
+            auto capnReader = msgReader->getReader();
+            auto reply = capnReader->getRoot<Codec::BDV::Reply>();
+
+            //sanity checks
+            if (!reply.getSuccess()) {
+               throw ClientMessageError(reply.getError(), -1);
+            }
+
+            if (!reply.isBdv()) {
+               throw ClientMessageError("expected bdv reply", WRONG_REPLY_CLASS);
+            }
+
+            auto bdvReply = reply.getBdv();
+            if (!bdvReply.isGetTxsByKey()) {
+               throw ClientMessageError(
+                  "expected GetTxByHash reply", WRONG_REPLY_TYPE);
+            }
+
+            //convert to utxo vector and fire callback
+            auto txns = bdvReply.getGetTxsByKey();
+            auto result = capnToTxVec(txns);
+            callback(ReturnMessage<std::vector<Tx>>(result));
+         } catch (ClientMessageError& e) {
+            //something went wrong, set error message and fire callback
+            callback(ReturnMessage<std::vector<Tx>>(e));
+         }
+      });
+
+   //push to server
+   sock_->pushPayload(std::move(write_payload), read_payload);
+}
+
+void BlockDataViewer::getTimestampsForHeights(
+   const std::set<uint32_t>& heights, const std::function<
+      void(ReturnMessage<std::map<uint32_t, uint32_t>>)>& callback)
+{
+   //create capnp request
+   capnp::MallocMessageBuilder message;
+   auto payload = message.initRoot<Codec::BDV::Request>();
+
+   auto bdvRequest = payload.initBdv();
+   auto tsReq = bdvRequest.initGetBlockTimestamps(heights.size());
+
+   unsigned i=0;
+   for (auto& height : heights) {
+      tsReq.set(i++, height);
+   }
+
+   //serialize and add to payload
+   auto write_payload = toWritePayload(message);
+
+   //reply handling lambda
+   auto read_payload = std::make_shared<Socket_ReadPayload>();
+   read_payload->callbackReturn_ =
+      std::make_unique<ClientCallback>([callback](const WebSocketMessagePartial& msg){
+         try {
+            //deser capnp reply
+            auto msgReader = msg.getReader();
+            auto capnReader = msgReader->getReader();
+            auto reply = capnReader->getRoot<Codec::BDV::Reply>();
+
+            //sanity checks
+            if (!reply.getSuccess()) {
+               throw ClientMessageError(reply.getError(), -1);
+            }
+
+            if (!reply.isBdv()) {
+               throw ClientMessageError("expected bdv reply", WRONG_REPLY_CLASS);
+            }
+
+            auto bdvReply = reply.getBdv();
+            if (!bdvReply.isGetBlockTimestamps()) {
+               throw ClientMessageError(
+                  "expected GetTxByHash reply", WRONG_REPLY_TYPE);
+            }
+
+            //convert to utxo vector and fire callback
+            auto capnTss = bdvReply.getGetBlockTimestamps();
+            std::map<uint32_t, uint32_t> timestamps;
+            for (auto capnTs : capnTss) {
+               timestamps.emplace(capnTs.getHeight(), capnTs.getTimestamp());
+            }
+            callback(ReturnMessage<std::map<uint32_t, uint32_t>>(timestamps));
+         } catch (ClientMessageError& e) {
+            //something went wrong, set error message and fire callback
+            callback(ReturnMessage<std::map<uint32_t, uint32_t>>(e));
          }
       });
 

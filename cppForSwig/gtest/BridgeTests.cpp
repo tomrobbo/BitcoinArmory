@@ -847,7 +847,34 @@ namespace {
                return -3;
          }
       }
-      return 0;
+      return -1;
+   }
+
+   int waitOnNewBlock()
+   {
+      auto reply = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(reply->data.getPtr()),
+         reply->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::NOTIFICATION) {
+         return -2;
+      }
+
+      auto notif = fromBridge.getNotification();
+      switch (notif.which()) {
+         case Codec::Bridge::Notification::NEW_BLOCK:
+         {
+            return notif.getNewBlock();
+         }
+
+         default:
+            std::cout << "unexpected db notif: " << notif.which() << std::endl;
+            return -3;
+      }
+      return -1;
    }
 
    std::map<BinaryData, std::vector<uint64_t>> getBalances(
@@ -913,7 +940,7 @@ namespace {
       const uint32_t height;
       const uint32_t txTime;
    };
-   std::vector<LedgerEntryValues> ledgersAt5Blocks{
+   std::vector<LedgerEntryValues> ledgerTestData{
       { 5 * COIN           , 5, 1231009513},
       { 30 * COIN          , 5, 1231009513},
       { 50 * COIN          , 5, 1231009513},
@@ -1043,11 +1070,28 @@ namespace {
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   std::map<BinaryData, std::vector<uint64_t>> testAddrBalances {
-      { TestChain::scrAddrB, { 70 * COIN, 20 * COIN, 70 * COIN } },
-      { TestChain::scrAddrC, { 20 * COIN, 20 * COIN, 20 * COIN } },
-      { TestChain::scrAddrD, { 65 * COIN, 15 * COIN, 65 * COIN } },
-      { TestChain::scrAddrE, { 30 * COIN, 30 * COIN, 30 * COIN } }
+   std::vector<std::map<BinaryData, std::vector<uint64_t>>> testAddrBalances {
+      { /* block 0 */ },
+      { /* block 1 */ },
+      { /* block 2 */ },
+      { /* block 3 */
+         { TestChain::scrAddrB, { 30 * COIN, 30 * COIN, 30 * COIN } },
+         { TestChain::scrAddrC, { 55 * COIN,  5 * COIN, 55 * COIN } },
+         { TestChain::scrAddrD, {  5 * COIN,  5 * COIN,  5 * COIN } },
+         { TestChain::scrAddrE, { 30 * COIN, 30 * COIN, 30 * COIN } }
+      },
+      { /* block 4 */
+         { TestChain::scrAddrB, { 30 * COIN, 30 * COIN, 30 * COIN } },
+         { TestChain::scrAddrC, { 10 * COIN, 10 * COIN, 10 * COIN } },
+         { TestChain::scrAddrD, { 60 * COIN, 10 * COIN, 60 * COIN } },
+         { TestChain::scrAddrE, { 30 * COIN, 30 * COIN, 30 * COIN } }
+      },
+      { /* block 5 */
+         { TestChain::scrAddrB, { 70 * COIN, 20 * COIN, 70 * COIN } },
+         { TestChain::scrAddrC, { 20 * COIN, 20 * COIN, 20 * COIN } },
+         { TestChain::scrAddrD, { 65 * COIN, 15 * COIN, 65 * COIN } },
+         { TestChain::scrAddrE, { 30 * COIN, 30 * COIN, 30 * COIN } }
+      }
    };
 }
 
@@ -1757,9 +1801,9 @@ TEST_F(WalletManagerWebsocketsTests, Connect)
       auto addrBalances = wltCont->getAddrBalanceMap();
       ASSERT_EQ(addrBalances.size(), 4);
 
-      for (const auto& addrBal : testAddrBalances) {
+      for (const auto& addrBal : testAddrBalances[5]) {
          auto mgrBal = addrBalances.at(addrBal.first);
-         for (unsigned i=0; i<3; i++) {
+         for (unsigned i = 0; i < 3; i++) {
             EXPECT_EQ(addrBal.second[i], mgrBal[i]);
          }
       }
@@ -4283,6 +4327,33 @@ TEST_F(BridgeWebsocketsTests, Connect)
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
    ASSERT_EQ(goOnline(bridge_), 5);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(BridgeWebsocketsTests, BalanceAndLedgersAt5Blocks)
+{
+   auto wltList = listWallets(bridge_);
+   ASSERT_EQ(wltList.size(), 1);
+   auto wltId = wltList.begin()->second.walletId;
+   ASSERT_FALSE(wltId.empty());
+   ASSERT_EQ(wltId, walletId_);
+   auto wallets = loadWallets(bridge_);
+   ASSERT_EQ(wallets.size(), 1);
+
+   ASSERT_EQ(wallets.begin()->second.walletId, wltId);
+   auto accountId = wallets.begin()->second.accountId;
+   ASSERT_FALSE(accountId.empty());
+
+   WebSocketServer::initAuthPeers({
+      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+   WebSocketServer::start(theBDMt_->bdm(), true);
+
+   ASSERT_TRUE(connectToDb(bridge_));
+   ASSERT_TRUE(registerWallets(bridge_));
+
+   //start db, go online and wait on ready notif
+   theBDMt_->start(Config::DBSettings::initMode());
+   ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
    auto balances = getBalances(bridge_, wltId, accountId);
@@ -4290,7 +4361,7 @@ TEST_F(BridgeWebsocketsTests, Connect)
 
    try {
       for (const auto& balPair : balances) {
-         const auto& addrBal = testAddrBalances.at(balPair.first);
+         const auto& addrBal = testAddrBalances[5].at(balPair.first);
          EXPECT_EQ(addrBal[0], balPair.second[0]);
          EXPECT_EQ(addrBal[1], balPair.second[1]);
          EXPECT_EQ(addrBal[2], balPair.second[2]);
@@ -4304,17 +4375,166 @@ TEST_F(BridgeWebsocketsTests, Connect)
    ASSERT_FALSE(delegateId.empty());
 
    auto pageCount = getLedgersPageCount(bridge_, delegateId);
-   ASSERT_EQ(pageCount, 1);
+   EXPECT_EQ(pageCount, 1);
 
    auto ledgers = getLedgersPage(bridge_, delegateId, 0);
    ASSERT_EQ(ledgers.size(), 15);
 
-   auto leAt5BlocksIter = ledgersAt5Blocks.begin();
-   for (const auto& le : ledgers) {
-      EXPECT_EQ(le.getValue(), leAt5BlocksIter->balance);
-      EXPECT_EQ(le.getBlockNum(), leAt5BlocksIter->height);
-      EXPECT_EQ(le.getTxTime(), leAt5BlocksIter->txTime);
-      ++leAt5BlocksIter;
+   for (unsigned i = 0; i < ledgers.size(); i++) {
+      const auto& le = ledgers[i];
+      const auto& testLe = ledgerTestData[i];
+      EXPECT_EQ(le.getValue(), testLe.balance);
+      EXPECT_EQ(le.getBlockNum(), testLe.height);
+      EXPECT_EQ(le.getTxTime(), testLe.txTime);
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(BridgeWebsocketsTests, AddBlocks)
+{
+   /* need to start at block 3 */
+   theBDMt_->shutdown();
+   delete theBDMt_;
+   theBDMt_ = nullptr;
+
+   FileUtils::removeDirectory(blkdir_);
+   FileUtils::removeDirectory(ldbdir_);
+   FileUtils::createDirectory(blkdir_ / "blocks");
+   FileUtils::createDirectory(ldbdir_);
+
+   blk0dat_ = FileUtils::getBlkFilename(blkdir_ / "blocks", 0);
+   TestUtils::setBlocks({ "0", "1", "2", "3" }, blk0dat_);
+
+   initBDM();
+   auto nodePtr = std::dynamic_pointer_cast<NodeUnitTest>(
+      Config::NetworkSettings::bitcoinNodes().first);
+   nodePtr->setIface(theBDMt_->bdm()->getIFace());
+
+   //connect to db
+   auto wltList = listWallets(bridge_);
+   ASSERT_EQ(wltList.size(), 1);
+   auto wltId = wltList.begin()->second.walletId;
+   ASSERT_FALSE(wltId.empty());
+   ASSERT_EQ(wltId, walletId_);
+   auto wallets = loadWallets(bridge_);
+   ASSERT_EQ(wallets.size(), 1);
+
+   ASSERT_EQ(wallets.begin()->second.walletId, wltId);
+   auto accountId = wallets.begin()->second.accountId;
+   ASSERT_FALSE(accountId.empty());
+
+   WebSocketServer::initAuthPeers({
+      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+   WebSocketServer::start(theBDMt_->bdm(), true);
+
+   ASSERT_TRUE(connectToDb(bridge_));
+   ASSERT_TRUE(registerWallets(bridge_));
+
+   //start db, go online and wait on ready notif
+   theBDMt_->start(Config::DBSettings::initMode());
+   ASSERT_EQ(goOnline(bridge_), 3);
+
+   /* block 3 */
+
+   //balances
+   auto balances = getBalances(bridge_, wltId, accountId);
+   ASSERT_EQ(balances.size(), 4);
+
+   try {
+      for (const auto& balPair : balances) {
+         const auto& addrBal = testAddrBalances[3].at(balPair.first);
+         EXPECT_EQ(addrBal[0], balPair.second[0]);
+         EXPECT_EQ(addrBal[1], balPair.second[1]);
+         EXPECT_EQ(addrBal[2], balPair.second[2]);
+      }
+   } catch (const std::exception&) {
+      ASSERT_TRUE(false);
+   }
+
+   //ledgers
+   auto delegateId = getLedgerDelegateId(bridge_);
+   ASSERT_FALSE(delegateId.empty());
+
+   auto pageCount = getLedgersPageCount(bridge_, delegateId);
+   EXPECT_EQ(pageCount, 1);
+
+   auto ledgersAt3Blocks = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgersAt3Blocks.size(), 9);
+
+   for (unsigned i = 0; i < ledgersAt3Blocks.size(); i++) {
+      const auto& le = ledgersAt3Blocks[i];
+      const auto& testLe = ledgerTestData[i+6];
+      EXPECT_EQ(le.getValue(), testLe.balance);
+      EXPECT_EQ(le.getBlockNum(), testLe.height);
+      EXPECT_EQ(le.getTxTime(), testLe.txTime);
+   }
+
+   /* block 4 */
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4" }, blk0dat_);
+   nodePtr->notifyNewBlock();
+   ASSERT_EQ(waitOnNewBlock(), 4);
+
+   balances = getBalances(bridge_, wltId, accountId);
+   ASSERT_EQ(balances.size(), 4);
+
+   //balances
+   try {
+      for (const auto& balPair : balances) {
+         const auto& addrBal = testAddrBalances[4].at(balPair.first);
+         EXPECT_EQ(addrBal[0], balPair.second[0]);
+         EXPECT_EQ(addrBal[1], balPair.second[1]);
+         EXPECT_EQ(addrBal[2], balPair.second[2]);
+      }
+   } catch (const std::exception&) {
+      ASSERT_TRUE(false);
+   }
+
+   //ledgers
+   pageCount = getLedgersPageCount(bridge_, delegateId);
+   EXPECT_EQ(pageCount, 1);
+
+   auto ledgersAt4Blocks = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgersAt4Blocks.size(), 12);
+
+   for (unsigned i = 0; i < ledgersAt4Blocks.size(); i++) {
+      const auto& le = ledgersAt4Blocks[i];
+      const auto& testLe = ledgerTestData[i + 3];
+      EXPECT_EQ(le.getValue(), testLe.balance);
+      EXPECT_EQ(le.getBlockNum(), testLe.height);
+      EXPECT_EQ(le.getTxTime(), testLe.txTime);
+   }
+
+   std::this_thread::sleep_for(60s);
+
+   /* block 5 */
+   balances = getBalances(bridge_, wltId, accountId);
+   ASSERT_EQ(balances.size(), 4);
+
+   //balances
+   try {
+      for (const auto& balPair : balances) {
+         const auto& addrBal = testAddrBalances[5].at(balPair.first);
+         EXPECT_EQ(addrBal[0], balPair.second[0]);
+         EXPECT_EQ(addrBal[1], balPair.second[1]);
+         EXPECT_EQ(addrBal[2], balPair.second[2]);
+      }
+   } catch (const std::exception&) {
+      ASSERT_TRUE(false);
+   }
+
+   //ledgers
+   pageCount = getLedgersPageCount(bridge_, delegateId);
+   EXPECT_EQ(pageCount, 1);
+
+   auto ledgersAt5Blocks = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgersAt5Blocks.size(), 15);
+
+   for (unsigned i = 0; i < ledgersAt5Blocks.size(); i++) {
+      const auto& le = ledgersAt5Blocks[i];
+      const auto& testLe = ledgerTestData[i];
+      EXPECT_EQ(le.getValue(), testLe.balance);
+      EXPECT_EQ(le.getBlockNum(), testLe.height);
+      EXPECT_EQ(le.getTxTime(), testLe.txTime);
    }
 }
 
@@ -4359,7 +4579,7 @@ TEST_F(BridgeWebsocketsTests, DeleteWallet)
    ASSERT_EQ(balances.size(), 4);
    try {
       for (const auto& balPair : balances) {
-         const auto& addrBal = testAddrBalances.at(balPair.first);
+         const auto& addrBal = testAddrBalances[5].at(balPair.first);
          EXPECT_EQ(addrBal[0], balPair.second[0]);
          EXPECT_EQ(addrBal[1], balPair.second[1]);
          EXPECT_EQ(addrBal[2], balPair.second[2]);
@@ -4446,7 +4666,7 @@ TEST_F(BridgeWebsocketsTests, ExtendAddressChain)
    ASSERT_EQ(balances.size(), 4);
    try {
       for (const auto& balPair : balances) {
-         const auto& addrBal = testAddrBalances.at(balPair.first);
+         const auto& addrBal = testAddrBalances[5].at(balPair.first);
          EXPECT_EQ(addrBal[0], balPair.second[0]);
          EXPECT_EQ(addrBal[1], balPair.second[1]);
          EXPECT_EQ(addrBal[2], balPair.second[2]);
@@ -4525,7 +4745,7 @@ TEST_F(BridgeWebsocketsTests, AddNewAddress)
    ASSERT_EQ(balances.size(), 4);
    try {
       for (const auto& balPair : balances) {
-         const auto& addrBal = testAddrBalances.at(balPair.first);
+         const auto& addrBal = testAddrBalances[5].at(balPair.first);
          EXPECT_EQ(addrBal[0], balPair.second[0]);
          EXPECT_EQ(addrBal[1], balPair.second[1]);
          EXPECT_EQ(addrBal[2], balPair.second[2]);
@@ -4767,7 +4987,7 @@ TEST_F(BridgeWebsocketsAutoDB, Connect)
 
    try {
       for (const auto& balPair : balances) {
-         const auto& addrBal = testAddrBalances.at(balPair.first);
+         const auto& addrBal = testAddrBalances[5].at(balPair.first);
          EXPECT_EQ(addrBal[0], balPair.second[0]);
          EXPECT_EQ(addrBal[1], balPair.second[1]);
          EXPECT_EQ(addrBal[2], balPair.second[2]);

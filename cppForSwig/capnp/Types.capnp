@@ -5,6 +5,7 @@ $Cxx.namespace("Armory::Codec::Types");
 
 ## base types ##
 using Hash        = Data;
+using TxKey       = Data;
 using Header      = Data;
 using ScrAddr     = Data;
 
@@ -37,9 +38,10 @@ struct Outpoint {
 struct Tx {
    body        @0 : Data;
    height      @1 : UInt32;
-   index       @2 : UInt32;
-   isChainZc   @3 : Bool;
-   isRbf       @4 : Bool;
+   dupId       @2 : UInt8;
+   index       @3 : UInt32;
+   isChainZc   @4 : Bool;
+   isRbf       @5 : Bool;
 }
 
 ## bitcoin node & db status ##
@@ -122,6 +124,18 @@ struct TxLedger {
    }
 
    ledgers           @0 : List(LedgerEntry);
+}
+
+struct TxioPair {
+   amount   @0 : UInt64;
+   txOut    @1 : Data;
+   txIn     @2 : Data;
+   txTime   @3 : UInt32;
+
+   fromSelf @4 : Bool;
+   coinbase @5 : Bool;
+   rbf      @6 : Bool;
+   multisig @7 : Bool;
 }
 
 ## balances ##

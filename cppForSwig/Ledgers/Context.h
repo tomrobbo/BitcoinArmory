@@ -28,6 +28,12 @@ namespace Armory
 
    namespace Ledgers
    {
+      struct DBCache
+      {
+         std::map<BinaryData, Tx> txMap;
+         std::map<uint32_t, uint32_t> timestamps;
+      };
+
       class Context
       {
       private:
@@ -39,7 +45,7 @@ namespace Armory
 
       public:
          Context(
-            std::map<uint32_t, uint32_t>&,
+            std::map<uint32_t, uint32_t>,
             std::map<BinaryData, Tx>&,
             std::map<BinaryData, std::map<uint32_t, BinaryData>>&
          );
@@ -54,6 +60,12 @@ namespace Armory
       Context prepareContext(
          const std::map<BinaryData, TxIOPair>&,
          const Blockchain&, LMDBBlockDatabase*,
+         std::shared_ptr<const ZeroConf::MempoolSnapshot>
+      );
+
+      Context prepareContext(
+         const std::map<BinaryData, TxIOPair>&,
+         std::shared_ptr<const DBCache>,
          std::shared_ptr<const ZeroConf::MempoolSnapshot>
       );
    }

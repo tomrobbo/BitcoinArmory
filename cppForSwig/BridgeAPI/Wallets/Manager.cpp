@@ -8,27 +8,51 @@
 
 #include <filesystem>
 #include <string_view>
+#include <algorithm>
 
 #include "Manager.h"
-#include "Utils/BtcUtils.h"
-#include "Utils/DBUtils.h"
+#include <Utils/BtcUtils.h>
+#include <Utils/DBUtils.h>
+#include <Ledgers/LedgerEntry.h>
+#include <Ledgers/Context.h>
+#include <AsyncClient.h>
+#include <BlockchainDatabase/txio.h>
 
-#include "Wallets/Wallets.h"
-#include "Wallets/IOHeader.h"
-#include "Wallets/Accounts/AddressAccounts.h"
-#include "Wallets/Seeds/Backups.h"
-#include "Wallets/Seeds/Seeds.h"
+#include <Wallets/Wallets.h>
+#include <Wallets/IOHeader.h>
+#include <Wallets/Accounts/AddressAccounts.h>
+#include <Wallets/Seeds/Backups.h>
+#include <Wallets/Seeds/Seeds.h>
 
 #include "Notifications.h"
 #include "../PassphrasePrompt.h"
-#include "AsyncClient.h"
+#include "capnp/Bridge.capnp.h"
 
 using namespace Armory;
 using namespace Armory::Bridge;
 using namespace std::string_view_literals;
 using namespace std::chrono_literals;
 
-#include "capnp/Bridge.capnp.h"
+namespace
+{
+   const std::string mainDelegateId = "mainDelegateId";
+
+   std::vector<Ledgers::Entry> getPageForId(WalletManager* mgr, uint32_t pageId)
+   {
+      auto context = Ledgers::prepareContext(mgr->getTxioMap(),
+         mgr->getDbCache(), nullptr);
+      auto ledgers = Ledgers::computeLedgerMap(mgr->getTxioMap(),
+         0, UINT32_MAX, {}, context);
+
+      std::vector<Ledgers::Entry> result;
+      result.reserve(ledgers.size());
+      for (auto& ledgerPair : ledgers) {
+         result.emplace_back(std::move(ledgerPair.second));
+      }
+      std::sort(result.begin(), result.end(), Ledgers::DescendingOrder{});
+      return result;
+   }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ////
@@ -43,6 +67,15 @@ WalletManager::WalletManager(const std::filesystem::path& path) :
       LOGERR << err;
       throw std::runtime_error(err);
    }
+
+   //setup primary ledger delegate
+   dbCache_ = std::make_shared<Ledgers::DBCache>();
+   delegateMap_.emplace(mainDelegateId, Ledgers::Delegate{
+      [this](uint32_t pageId)->std::vector<Ledgers::Entry>{
+         return getPageForId(this, pageId);
+      }, nullptr, nullptr,
+      []()->uint32_t { return 1; }
+   });
 }
 
 ////
@@ -143,7 +176,7 @@ void WalletManager::setupBdvCallback(
             if (notif.lbd == nullptr) {
                throw std::runtime_error("notif lbd is not set!");
             }
-            updateStateFromDB(notif.lbd);
+            updateStateFromDB(notif.lbd, notif.height);
             return;
          }
 
@@ -193,10 +226,9 @@ void WalletManager::registerWallet(const Wallets::WalletId& wltId,
    try {
       callbackPtr_->registerRefreshCallback(dbId,
          [this, dbId]() {
-            updateStateFromDB(
-               [this, dbId]() {
-                  callbackPtr_->notifyRefresh({dbId});
-               });
+            updateStateFromDB([this, dbId]() {
+               callbackPtr_->notifyRefresh({dbId});
+            }, UINT32_MAX);
          });
       container->registerWithBDV(isNew);
    } catch (const OfflineException& e) {
@@ -331,7 +363,7 @@ std::filesystem::path WalletManager::unloadWallet(
    return path;
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////
 void WalletManager::deleteWallet(const Wallets::WalletId& wltId)
 {
    ReentrantLock lock(this);
@@ -350,7 +382,7 @@ void WalletManager::loadWallet(const Wallets::IO::ReadOnlyFileParams& params)
    addAllAccounts(wltPtr);
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 void WalletManager::loadAFile(const std::filesystem::path& path)
 {
    ReentrantLock lock(this);
@@ -582,13 +614,12 @@ void WalletManager::loadWallets()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void WalletManager::updateStateFromDB(const std::function<void(void)>& callback)
+void WalletManager::updateStateFromDB(const std::function<void(void)>& callback,
+   uint32_t topHeight)
 {
-   auto lbd = [this, callback](void)->void
+   auto lbd = [this, callback, topHeight](void)->void
    {
-      ReentrantLock lock(this);
-
-      //grab wallet balances
+      //0. grab wallet balances
       auto promBal = std::make_shared<std::promise<std::map<
          std::string, AsyncClient::CombinedBalances>>>();
       auto futBal = promBal->get_future();
@@ -601,16 +632,79 @@ void WalletManager::updateStateFromDB(const std::function<void(void)>& callback)
       auto balances = std::move(futBal.get());
 
       //update wallet balances
-      for (const auto& wltBalance : balances) {
-         auto wltContIter = walletsByDbId_.find(wltBalance.first);
-         if (wltContIter == walletsByDbId_.end()) {
-            continue;
+      {
+         ReentrantLock lock(this);
+         for (const auto& wltBalance : balances) {
+            auto wltContIter = walletsByDbId_.find(wltBalance.first);
+            if (wltContIter == walletsByDbId_.end()) {
+               continue;
+            }
+            wltContIter->second->updateWalletBalanceState(wltBalance.second);
+            wltContIter->second->updateAddressCountState(wltBalance.second);
          }
-         wltContIter->second->updateWalletBalanceState(wltBalance.second);
-         wltContIter->second->updateAddressCountState(wltBalance.second);
       }
 
-      //fire the lambda
+      //1. get txios, build set of missing txs
+      auto height = lastSeenBlock_ == UINT32_MAX ? 0 : lastSeenBlock_ + 1;
+      auto promTxios = std::make_shared<std::promise<std::vector<TxIOPair>>>();
+      auto futTxios = promTxios->get_future();
+
+      bdvPtr_->getTxios(height, [prom = promTxios]
+         (ReturnMessage<std::vector<TxIOPair>> result) {
+            prom->set_value(result.get());
+      });
+      auto txios = std::move(futTxios.get());
+
+      std::set<BinaryData> missingTxKeys;
+      std::set<uint32_t> missingHeights;
+      {
+         ReentrantLock lock(this);
+         for (auto& txio : txios) {
+            const auto& txRef = txio.getTxRefOfOutput();
+            auto height = DBUtils::hgtxToHeight(txRef.getDBKey().getSliceRef(0, 4));
+            if (dbCache_->timestamps.find(height) == dbCache_->timestamps.end()) {
+               missingHeights.emplace(height);
+            }
+            if (dbCache_->txMap.find(txRef.getDBKey()) == dbCache_->txMap.end()) {
+               missingTxKeys.emplace(txRef.getDBKey());
+            }
+            txioMap_.emplace(txio.getDBKeyOfOutput(), std::move(txio));
+         }
+         lastSeenBlock_ = topHeight;
+      }
+
+      //2. missing txs
+      auto promTxs = std::make_shared<std::promise<std::vector<Tx>>>();
+      auto futTxs = promTxs->get_future();
+      bdvPtr_->getTxsByKey(missingTxKeys, [prom = promTxs]
+         (ReturnMessage<std::vector<Tx>> result) {
+            prom->set_value(result.get());
+      });
+
+      //3. missing heights
+      auto promHeights = std::make_shared<
+         std::promise<std::map<uint32_t, uint32_t>>>();
+      auto futHeights = promHeights->get_future();
+      bdvPtr_->getTimestampsForHeights(missingHeights, [prom = promHeights]
+         (ReturnMessage<std::map<uint32_t, uint32_t>> result) {
+            prom->set_value(result.get());
+         }
+      );
+
+      //4. commit it all to the cache
+      auto txs = std::move(futTxs.get());
+      auto heights = std::move(futHeights.get());
+      {
+         ReentrantLock lock(this);
+         for (auto& tx : txs) {
+            dbCache_->txMap.emplace(tx.getDBKey(), std::move(tx));
+         }
+         for (auto& hgtPair : heights) {
+            dbCache_->timestamps.emplace(hgtPair);
+         }
+      }
+
+      //5. fire the ready callback
       callback();
    };
 
@@ -700,4 +794,96 @@ std::shared_ptr<AddressEntry> WalletManager::getNewAddress(
       }
    }
    return addrPtr;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ledger stuff
+std::shared_ptr<const Ledgers::DBCache> WalletManager::getDbCache() const
+{
+   return std::const_pointer_cast<const Ledgers::DBCache>(dbCache_);
+}
+
+const std::map<BinaryData, TxIOPair>& WalletManager::getTxioMap() const
+{
+   return txioMap_;
+}
+
+const std::string& WalletManager::getDelegateId()
+{
+   return mainDelegateId;
+}
+
+const std::string& WalletManager::getDelegateIdForWallet(
+   const Wallets::WalletId& wltId, const Wallets::AddressAccountId& accId)
+{
+   auto iter = delegateMap_.emplace(
+      Cryptography::PRNG::fortuna.generateRandom(5).toHexStr(),
+      Ledgers::Delegate{ [this, wltId, accId](uint32_t pageId)->
+         std::vector<Ledgers::Entry> {
+         auto wltCont = this->getWalletContainer(wltId, accId);
+         const auto& txioMap = wltCont->getTxioMap();
+         auto context = Ledgers::prepareContext(txioMap,
+            this->getDbCache(), nullptr);
+         auto ledgers = Ledgers::computeLedgerMap(txioMap,
+            0, UINT32_MAX, wltId, context);
+
+         std::vector<Ledgers::Entry> result;
+         result.reserve(ledgers.size());
+         for (auto& ledger : ledgers) {
+            result.emplace_back(std::move(ledger.second));
+         }
+         std::sort(result.begin(), result.end());
+         return result;
+      }, nullptr, nullptr,
+      []()->uint32_t { return 1; }
+   });
+   return iter.first->first;
+}
+
+const std::string& WalletManager::getDelegateIdForScrAddr(
+   const Wallets::WalletId& wltId, const Wallets::AddressAccountId& accId,
+   const BinaryData& scrAddr)
+{
+   auto iter = delegateMap_.emplace(
+      Cryptography::PRNG::fortuna.generateRandom(5).toHexStr(),
+      Ledgers::Delegate{ [this, wltId, accId, scrAddr](uint32_t pageId)->
+         std::vector<Ledgers::Entry> {
+         auto wltCont = this->getWalletContainer(wltId, accId);
+         const auto& txioMap = wltCont->getTxioMap();
+         auto context = Ledgers::prepareContext(txioMap,
+            this->getDbCache(), nullptr /*, scrAddr as filter*/);
+         auto ledgers = Ledgers::computeLedgerMap(txioMap,
+            0, UINT32_MAX, wltId, context /*, scrAddr as filter*/);
+
+         std::vector<Ledgers::Entry> result;
+         result.reserve(ledgers.size());
+         for (auto& ledger : ledgers) {
+            result.emplace_back(std::move(ledger.second));
+         }
+         std::sort(result.begin(), result.end());
+         return result;
+      }, nullptr, nullptr,
+      []()->uint32_t { return 1; }
+   });
+   return iter.first->first;
+}
+
+////////
+uint32_t WalletManager::getPageCountForDelegate(const std::string& id) const
+{
+   auto iter = delegateMap_.find(id);
+   if (iter == delegateMap_.end()) {
+      throw std::runtime_error(std::string{"invalid delegate id: " + id});
+   }
+   return iter->second.getPageCount();
+}
+
+std::vector<Ledgers::Entry> WalletManager::getPageForDelegate(
+   const std::string& id, uint32_t pageId) const
+{
+   auto iter = delegateMap_.find(id);
+   if (iter == delegateMap_.end()) {
+      throw std::runtime_error(std::string{"invalid delegate id: " + id});
+   }
+   return iter->second.getHistoryPage(pageId);
 }

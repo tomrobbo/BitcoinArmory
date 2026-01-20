@@ -269,7 +269,7 @@ void Entry::purgeLedgerVectorFromHeight(
 }
 
 //////////////////////////////////////////////////////////////////////////////
-std::map<BinaryData, Entry> Entry::computeLedgerMap(
+std::map<BinaryData, Entry> Ledgers::computeLedgerMap(
    const std::map<BinaryData, TxIOPair>& txioMap,
    uint32_t startBlock, uint32_t endBlock, const std::string& id,
    const Context& ctx)
@@ -281,6 +281,9 @@ std::map<BinaryData, Entry> Entry::computeLedgerMap(
    std::map<BinaryData, Entry> leMap;
    for (auto& txnPair : txnTxIOMap) {
       auto& txnData = txnPair.second;
+      if (txnData.blockNum == 1) {
+         int abc=0;
+      }
       if (txnData.blockNum < startBlock || txnData.blockNum > endBlock) {
          continue;
       }
@@ -375,22 +378,22 @@ Delegate::Delegate(
 {}
 
 ////////
-std::vector<Entry> Delegate::getHistoryPage(uint32_t id)
+std::vector<Entry> Delegate::getHistoryPage(uint32_t id) const
 {
    return getHistoryPage_(id);
 }
 
-uint32_t Delegate::getBlockInVicinity(uint32_t blk)
+uint32_t Delegate::getBlockInVicinity(uint32_t blk) const
 {
    return getBlockInVicinity_(blk);
 }
 
-uint32_t Delegate::getPageIdForBlockHeight(uint32_t blk)
+uint32_t Delegate::getPageIdForBlockHeight(uint32_t blk) const
 {
    return getPageIdForBlockHeight_(blk);
 }
 
-uint32_t Delegate::getPageCount()
+uint32_t Delegate::getPageCount() const
 {
    return getPageCount_();
 }

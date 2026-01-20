@@ -432,29 +432,27 @@ public:
    /////////////////////////////////////////////////////////////////////////////
    // Get value using BinaryData object.  If you have a string, you can use
    // BinaryData key(string(theStr));
-   BinaryDataRef getValueNoCopy(DB_SELECT db, BinaryDataRef keyWithPrefix) const;
+   BinaryDataRef getValueNoCopy(DB_SELECT, BinaryDataRef) const;
 
    /////////////////////////////////////////////////////////////////////////////
    // Get value using BinaryDataRef object.  The data from the get* call is 
    // actually stored in a member variable, and thus the refs are valid only 
    // until the next get* call.
-   BinaryDataRef getValueRef(DB_SELECT db, DbPrefix prefix, BinaryDataRef key) const;
+   BinaryDataRef getValueRef(DB_SELECT, DbPrefix, BinaryDataRef) const;
 
    /////////////////////////////////////////////////////////////////////////////
    // Same as the getValueRef, in that they are only valid until the next get*
    // call.  These are convenience methods which basically just save us 
-   BinaryRefReader getValueReader(DB_SELECT db, BinaryDataRef keyWithPrefix) const;
-   BinaryRefReader getValueReader(DB_SELECT db, DbPrefix prefix, BinaryDataRef key) const;
+   BinaryRefReader getValueReader(DB_SELECT, BinaryDataRef) const;
+   BinaryRefReader getValueReader(DB_SELECT, DbPrefix, BinaryDataRef) const;
 
-   BinaryData getDBKeyForHash(const BinaryData& txhash,
-      uint8_t dupId = UINT8_MAX) const;
+   BinaryData getDBKeyForHash(BinaryDataRef, uint8_t = UINT8_MAX) const;
    BinaryData getHashForDBKey(BinaryData dbkey) const;
-   BinaryData getHashForDBKey(uint32_t hgt,
-      uint8_t  dup,
-      uint16_t txi = UINT16_MAX,
-      uint16_t txo = UINT16_MAX) const;
-
-   unsigned getHeightForTxHash(const BinaryDataRef& hash) const;
+   BinaryData getHashForDBKey(uint32_t,
+      uint8_t,
+      uint16_t = UINT16_MAX,
+      uint16_t = UINT16_MAX) const;
+   unsigned getHeightForTxHash(BinaryDataRef) const;
 
    /////////////////////////////////////////////////////////////////////////////
    // Put value based on BinaryDataRefs key and value
@@ -515,7 +513,7 @@ public:
    bool getStoredZcTx(StoredTx&, BinaryDataRef) const;
    bool getStoredTx(StoredTx&, BinaryData&) const;
    bool getStoredTx_byDBKey(StoredTx&, BinaryDataRef) const;
-   bool getStoredTx_byHash(const BinaryData&, StoredTx* = nullptr) const;
+   bool getStoredTx_byHash(BinaryDataRef, StoredTx* = nullptr) const;
    bool getStoredTx(StoredTx&, uint32_t, uint16_t, bool=true) const;
    bool getStoredTx(StoredTx&, uint32_t, uint8_t, uint16_t, bool=true) const;
 

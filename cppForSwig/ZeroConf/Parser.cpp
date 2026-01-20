@@ -185,23 +185,7 @@ Tx ZeroConfContainer::getTxByHash(const BinaryData& txHash) const
    }
 
    //copy base tx, add txhash map
-   Tx txCopy = parsedTxPtr->getTxObj();
-
-   //get zc outpoints id
-   for (unsigned i=0; i<txCopy.getNumTxIn(); i++) {
-      auto txin = txCopy.getTxInCopy(i);
-      auto op = txin.getOutPoint();
-      auto opKey = ss->getKeyForHash(op.getTxHashRef());
-      if (opKey.empty()) {
-         txCopy.pushBackOpId(0);
-         continue;
-      }
-
-      BinaryRefReader brr(opKey);
-      brr.advance(2);
-      txCopy.pushBackOpId(brr.get_uint32_t(BE));
-   }
-   return txCopy;
+   return parsedTxPtr->getTxObj();
 }
 
 bool ZeroConfContainer::hasTxByHash(const BinaryData& txHash) const

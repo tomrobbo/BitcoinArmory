@@ -5,7 +5,7 @@
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
 //                                                                            //
-//  Copyright (C) 2016, goatpig                                               //
+//  Copyright (C) 2016-2025, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -18,16 +18,14 @@
 ////////////////////////////////////////////////////////////////////////////////
 class TxRef
 {
-   friend class BlockDataManager;
-   friend class Tx;
-   friend class TxIOPair;
+private:
+   BinaryData dbKey6B_;
 
 public:
    TxRef(void);
    TxRef(BinaryDataRef);
 
    bool isInitialized(void) const;
-
    const BinaryData& getDBKey(void) const;
    BinaryDataRef getDBKeyRef(void) const;
    BinaryData getDBKeyOfChild(uint16_t) const;
@@ -38,9 +36,6 @@ public:
    bool operator==(const BinaryData&) const;
    bool operator==(const TxRef&) const;
    bool operator>=(const BinaryData&) const;
-
-protected:
-   BinaryData dbKey6B_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -106,7 +101,6 @@ private:
    TxRef txRefOfInput_;
    uint32_t indexOfInput_;
 
-   // Zero-conf data isn't on disk, yet, so can't use TxRef
    bool isTxOutFromSelf_ = false;
    bool isFromCoinbase_ = false;
    bool isMultisig_ = false;
@@ -118,7 +112,7 @@ private:
    whether a subSSH entry with only a TxOut DBkey is spent.
 
    To allow for partial parsing of ssh history, all txouts need to be visible at
-   the height they appeared, amd spent txouts need to be visible at the
+   the height they appeared, and spent txouts need to be visible at the
    spending txin's height as well.
 
    While spent txouts at txin height are unique, spent txouts at txout height

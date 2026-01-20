@@ -276,20 +276,23 @@ void BlockDataViewer::registerAddresses(WalletRegistrationRequest& request)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-Tx BlockDataViewer::getTxByHash(const BinaryData& txhash) const
+Tx BlockDataViewer::getTxByHash(BinaryDataRef txhash) const
 {
    StoredTx stx;
    if (db_->getStoredTx_byHash(txhash, &stx)) {
-      auto tx = stx.getTxCopy();
-      for (unsigned i=0; i<tx.getNumTxIn(); i++) {
-         auto txin = tx.getTxInCopy(i);
-         auto op = txin.getOutPoint();
-         tx.pushBackOpId(db_->getHeightForTxHash(op.getTxHashRef()));
-      }
-      return tx;
+      return stx.getTxCopy();
    } else {
       return zeroConfCont_->getTxByHash(txhash);
    }
+}
+
+Tx BlockDataViewer::getTxByKey(BinaryDataRef dbKey) const
+{
+   StoredTx stx;
+   if (!db_->getStoredTx_byDBKey(stx, dbKey)) {
+      throw std::runtime_error("invalid tx dbkey");
+   }
+   return stx.getTxCopy();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -454,7 +457,7 @@ size_t BlockDataViewer::getWalletsPageCount() const
 vector<Ledgers::Entry> BlockDataViewer::getWalletsHistoryPage(uint32_t pageId,
    bool rebuildLedger, bool remapWallets)
 {
-   return groups_[group_wallet].getHistoryPage(pageId, 
+   return groups_[group_wallet].getHistoryPage(pageId,
       updateID_, rebuildLedger, remapWallets);
 }
 
@@ -1243,6 +1246,12 @@ ScrAddrFilter* BlockDataViewer::getSAF()
    return saf_;
 }
 
+std::map<BinaryData, TxIOPair> BlockDataViewer::getTxioForRange(uint32_t from) const
+{
+   auto height = getTopBlockHeight();
+   return groups_[group_wallet].getTxioForRange(from, height);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // ReadWriteLock
 void ReadWriteLock::lockRead()
@@ -1533,14 +1542,17 @@ std::vector<Ledgers::Entry> WalletGroup::getHistoryPage(
 {
    unique_lock<mutex> mu(globalLedgerLock_);
 
-   if (pageId >= hist_.getPageCount())
+   if (pageId >= hist_.getPageCount()) {
       throw std::range_error("pageId out of range");
+   }
 
-   if (order_ == order_ascending)
+   if (order_ == order_ascending) {
       pageId = hist_.getPageCount() - pageId - 1;
+   }
 
-   if (rebuildLedger || remapWallets)
+   if (rebuildLedger || remapWallets) {
       pageHistory(remapWallets, false);
+   }
 
    if (rebuildLedger || remapWallets) {
       updateID = UINT32_MAX;
@@ -1567,9 +1579,7 @@ std::vector<Ledgers::Entry> WalletGroup::getHistoryPage(
 
       auto getTxio = [&localWalletMap](
          uint32_t, uint32_t)->std::map<BinaryData, TxIOPair>
-      {
-         return {};
-      };
+      { return {}; };
 
       auto buildLedgers = [&localWalletMap](
          const map<BinaryData, TxIOPair>&,
@@ -1682,4 +1692,16 @@ uint32_t WalletGroup::getPageIdForBlockHeight(uint32_t blk) const
 {
    //same as above
    return hist_.getPageIdForBlockHeight(blk);
+}
+
+std::map<BinaryData, TxIOPair> WalletGroup::getTxioForRange(
+   uint32_t from, uint32_t to) const
+{
+   std::map<BinaryData, TxIOPair> result;
+   ReadWriteLock::ReadLock rl(lock_);
+   for (auto& wlt : wallets_) {
+      auto txioRange = wlt.second->getTxioForRange(from, to);
+      result.insert(txioRange.begin(), txioRange.end());
+   }
+   return result;
 }

@@ -695,7 +695,7 @@ namespace DBTestUtils
       auto payload = message.initRoot<Codec::BDV::Request>();
 
       auto bdvRequest = payload.initBdv();
-      auto hashReq = bdvRequest.initGetTxByHash(1);
+      auto hashReq = bdvRequest.initGetTxsByHash(1);
       hashReq.set(0, capnp::Data::Builder(
          (uint8_t*)txHash.getPtr(), txHash.getSize()));
 
@@ -706,7 +706,7 @@ namespace DBTestUtils
       capnp::FlatArrayMessageReader reader(words);
       auto reply = reader.getRoot<Codec::BDV::Reply>();
       auto bdvReply = reply.getBdv();
-      auto capnTxs = bdvReply.getGetTxByHash();
+      auto capnTxs = bdvReply.getGetTxsByHash();
       auto capnTx = capnTxs[0];
       auto body = capnTx.getBody();
       BinaryDataRef rawTx(body.begin(), body.end());

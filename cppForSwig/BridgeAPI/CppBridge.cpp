@@ -15,6 +15,8 @@
 #include <Utils/DBUtils.h>
 #include <Signer/Signer.h>
 #include <Signer/ResolverFeed_Wallets.h>
+#include <Ledgers/LedgerEntry.h>
+#include <BlockchainDatabase/txio.h>
 
 #include <Wallets/Seeds/Backups.h>
 #include <Wallets/IOHeader.h>
@@ -1518,6 +1520,7 @@ void CppBridge::importWallet(const std::filesystem::path& path, MessageId msgId)
 ////////////////////////////////////////////////////////////////////////////////
 const std::string& CppBridge::getLedgerDelegateId()
 {
+#if 0
    auto promPtr = std::make_shared<std::promise<AsyncClient::LedgerDelegate>>();
    auto fut = promPtr->get_future();
    auto lbd = [promPtr](
@@ -1535,12 +1538,16 @@ const std::string& CppBridge::getLedgerDelegateId()
       insertPair.first->second = std::move(delegate);
    }
    return insertPair.first->second.getID();
+#endif
+
+   return wltManager_->getDelegateId();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 const std::string& CppBridge::getLedgerDelegateIdForWallet(
    const Wallets::WalletId& walletId, const Wallets::AddressAccountId& accId)
 {
+#if 0
    auto promPtr = std::make_shared<std::promise<AsyncClient::LedgerDelegate>>();
    auto fut = promPtr->get_future();
    auto lbd = [promPtr](
@@ -1562,6 +1569,9 @@ const std::string& CppBridge::getLedgerDelegateIdForWallet(
       insertPair.first->second = std::move(delegate);
    }
    return insertPair.first->second.getID();
+#endif
+
+   return wltManager_->getDelegateIdForWallet(walletId, accId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1569,6 +1579,7 @@ const std::string& CppBridge::getLedgerDelegateIdForScrAddr(
    const Wallets::WalletId& wltId, const Wallets::AddressAccountId& accId,
    const BinaryDataRef& addrHash)
 {
+#if 0
    auto promPtr = std::make_shared<std::promise<AsyncClient::LedgerDelegate>>();
    auto fut = promPtr->get_future();
    auto lbd = [promPtr](
@@ -1590,76 +1601,96 @@ const std::string& CppBridge::getLedgerDelegateIdForScrAddr(
       insertPair.first->second = std::move(delegate);
    }
    return insertPair.first->second.getID();
+#endif
+
+   return wltManager_->getDelegateIdForScrAddr(wltId, accId, addrHash);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 void CppBridge::getHistoryPageForDelegate(const std::string& id,
    unsigned from, unsigned to, MessageId msgId)
 {
-   auto iter = delegateMap_.find(id);
-   if (iter == delegateMap_.end()) {
-      capnp::MallocMessageBuilder message;
-      auto fromBridge = message.initRoot<FromBridge>();
-      auto reply = fromBridge.initReply();
-      reply.setReferenceId(msgId);
-      reply.setSuccess(false);
-      reply.setError(std::string{"unknown delegate id: "} + id);
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   reply.setReferenceId(msgId);
 
+   if (from > to) {
+      reply.setSuccess(false);
+      reply.setError("from > to");
       auto payload = serializeCapnp(message);
       this->writeToClient(payload);
       return;
    }
 
-   auto lbd = [this, msgId](
-      ReturnMessage<std::vector<DBClientClasses::HistoryPage>> result)->void
-   {
-      auto histVec = result.get();
-
-      capnp::MallocMessageBuilder message;
-      auto fromBridge = message.initRoot<FromBridge>();
-      auto reply = fromBridge.initReply();
-      reply.setReferenceId(msgId);
+   try {
       auto delegate = reply.initDelegate();
-      auto pages = delegate.initGetPages(histVec.size());
-      ledgersToCapnp(histVec, pages);
-      reply.setSuccess(true);
+      auto pages = delegate.initGetPages(to - from + 1);
 
-      auto payload = serializeCapnp(message);
-      this->writeToClient(payload);
-   };
-   iter->second.getHistoryPages(from, to, lbd);
+      for (unsigned i = from; i <= to; i++) {
+         auto ledgers = wltManager_->getPageForDelegate(id, i);
+
+         auto capnPage = pages[i - from];
+         auto capnLedgers = capnPage.initLedgers(ledgers.size());
+         unsigned y = 0;
+         for (const auto& ledger : ledgers) {
+            auto capnLedger = capnLedgers[y++];
+            capnLedger.setBalance(ledger.getValue());
+            capnLedger.setTxHeight(ledger.getBlockNum());
+            capnLedger.setTxOutIndex(ledger.getIndex());
+            capnLedger.setTxTime(ledger.getTxTime());
+            capnLedger.setIsCoinbase(ledger.isCoinbase());
+            capnLedger.setIsSTS(ledger.isSentToSelf());
+            capnLedger.setIsOptInRBF(ledger.isOptInRBF());
+            capnLedger.setIsChainedZC(ledger.isChainedZC());
+            capnLedger.setIsWitness(ledger.usesWitness());
+
+            auto txHash = ledger.getTxHash();
+            capnLedger.setTxHash(capnp::Data::Builder(
+               (uint8_t*)txHash.getPtr(), txHash.getSize()
+            ));
+
+            capnLedger.setWalletId(ledger.getWalletID());
+
+            auto scrAddrList = ledger.getScrAddrList();
+            auto capnAddrs = capnLedger.initScrAddrs(scrAddrList.size());
+            unsigned i=0;
+            for (const auto& scrAddr : scrAddrList) {
+               capnAddrs.set(i++, capnp::Data::Builder(
+                  (uint8_t*)scrAddr.getPtr(), scrAddr.getSize()
+               ));
+            }
+         }
+      }
+      reply.setSuccess(true);
+   } catch (const std::exception& e) {
+      reply.setSuccess(false);
+      reply.setError(e.what());
+   }
+
+   auto payload = serializeCapnp(message);
+   this->writeToClient(payload);
 }
 
 void CppBridge::getPageCountForDelegate(const std::string& id, MessageId msgId)
 {
-   auto iter = delegateMap_.find(id);
-   if (iter == delegateMap_.end()) {
-      capnp::MallocMessageBuilder message;
-      auto fromBridge = message.initRoot<FromBridge>();
-      auto reply = fromBridge.initReply();
-      reply.setReferenceId(msgId);
-      reply.setSuccess(false);
-      reply.setError(std::string{"unknown delegate id: "} + id);
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   reply.setReferenceId(msgId);
 
-      auto payload = serializeCapnp(message);
-      this->writeToClient(payload);
-      return;
+   try {
+      auto pageCount = wltManager_->getPageCountForDelegate(id);
+      auto delegate = reply.initDelegate();
+      delegate.setGetPageCount(pageCount);
+      reply.setSuccess(true);
+   } catch (const std::exception& e) {
+      reply.setSuccess(false);
+      reply.setError(e.what());
    }
 
-   auto lbd = [this, msgId](ReturnMessage<uint64_t> result)->void
-   {
-      capnp::MallocMessageBuilder message;
-      auto fromBridge = message.initRoot<FromBridge>();
-      auto reply = fromBridge.initReply();
-      reply.setReferenceId(msgId);
-      auto delegate = reply.initDelegate();
-      delegate.setGetPageCount(result.get());
-      reply.setSuccess(true);
-
-      auto payload = serializeCapnp(message);
-      this->writeToClient(payload);
-   };
-   iter->second.getPageCount(lbd);
+   auto payload = serializeCapnp(message);
+   this->writeToClient(payload);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

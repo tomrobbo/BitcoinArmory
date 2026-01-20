@@ -14,7 +14,7 @@
 #include <set>
 #include <string>
 
-#include "../DBClientClasses.h"
+#include <DBClientClasses.h>
 
 namespace Armory
 {
@@ -35,6 +35,7 @@ namespace Armory
 
          //set when type is UPDATE
          std::function<void(void)> lbd;
+         uint32_t height = UINT32_MAX;
       };
       typedef std::function<void(NotifStruct)> NotifFunc;
 
@@ -58,10 +59,9 @@ namespace Armory
          //virtuals
          void run(BdmNotification) override;
          void progress(
-            BDMPhase phase,
-            const std::vector<std::string> &walletIdVec,
-            float progress, unsigned secondsRem,
-            unsigned progressNumeric
+            BDMPhase,
+            const std::vector<std::string>&,
+            float, unsigned, unsigned
          ) override;
          void disconnected(void) override;
 

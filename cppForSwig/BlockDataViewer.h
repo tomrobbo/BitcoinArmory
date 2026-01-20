@@ -125,7 +125,8 @@ public:
 
    void scanWallets(std::shared_ptr<BDV_Notification>);
    bool hasWallet(const std::string&) const;
-   Tx getTxByHash(const BinaryData&) const;
+   Tx getTxByHash(BinaryDataRef) const;
+   Tx getTxByKey(BinaryDataRef) const;
 
    std::tuple<uint32_t, uint32_t, std::vector<unsigned>>
    getTxMetaData(const BinaryDataRef&, bool) const;
@@ -209,6 +210,8 @@ public:
    std::vector<std::pair<StoredTxOut, BinaryDataRef>> getOutputsForOutpoints(
       const std::map<BinaryDataRef, std::set<unsigned>>&, bool) const;
    CombinedBalances getCombinedBalances(void) const;
+
+   std::map<BinaryData, TxIOPair> getTxioForRange(uint32_t) const;
 
 protected:
    static void unregisterAddresses(
@@ -331,6 +334,8 @@ public:
    std::vector<Armory::Ledgers::Entry> getHistoryPage(
       uint32_t pageId, unsigned updateID,
       bool rebuildLedger, bool remapWallets);
+
+   std::map<BinaryData, TxIOPair> getTxioForRange(uint32_t, uint32_t) const;
 
 private:
    std::map<uint32_t, uint32_t> computeWalletsSSHSummary(

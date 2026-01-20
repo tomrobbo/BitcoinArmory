@@ -20,7 +20,7 @@ using namespace Armory::Ledgers;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Context
-Context::Context(std::map<uint32_t, uint32_t>& timestamps,
+Context::Context(std::map<uint32_t, uint32_t> timestamps,
    std::map<BinaryData, Tx>& txMap,
    std::map<BinaryData, std::map<uint32_t, BinaryData>>& txioKeyToScrAddr) :
    timestamps_(std::move(timestamps)),
@@ -146,4 +146,50 @@ Context Ledgers::prepareContext(
       iterOut->second.emplace(indexOut, outTx.getScrAddrForTxOut(indexOut));
    }
    return Context{timestamps, txMap, txioKeyToScrAddr};
+}
+
+Context Ledgers::prepareContext(
+   const std::map<BinaryData, TxIOPair>& txioMap,
+   std::shared_ptr<const DBCache> dbCache,
+   std::shared_ptr<const ZeroConf::MempoolSnapshot> zcSs)
+{
+   std::set<BinaryData> txKeys;
+
+   /* 1. gather all tx keys */
+   for (const auto& txioPair : txioMap) {
+      const auto& txKeyOut = txioPair.second.getTxRefOfOutput().getDBKey();
+      txKeys.emplace(txKeyOut);
+      BinaryDataRef txInKeyRef;
+      if (txioPair.second.hasTxIn()) {
+         txInKeyRef = txioPair.second.getTxRefOfInput().getDBKeyRef();
+         txKeys.emplace(BinaryData{txInKeyRef});
+      }
+   }
+
+   /* 2. grab all txs */
+   std::map<BinaryData, Tx> txMap;
+   for (const auto& txKey : txKeys) {
+      if (!txKey.startsWith(DBUtils::ZCPrefix)) {
+         txMap.emplace(txKey, dbCache->txMap.at(txKey));
+      } else {
+         auto ptx = zcSs->getTxByKey(txKey);
+         txMap.emplace(txKey, ptx->getTxObj());
+      }
+   }
+
+   /* 3. resolve output addresses */
+   std::map<BinaryData, std::map<uint32_t, BinaryData>> txioKeyToScrAddr;
+   for (const auto& txioPair : txioMap) {
+      //output
+      const auto& txKeyOut = txioPair.second.getTxRefOfOutput().getDBKey();
+      const auto& outTx = txMap.at(txKeyOut);
+      auto iterOut = txioKeyToScrAddr.find(txKeyOut);
+      if (iterOut == txioKeyToScrAddr.end()) {
+         iterOut = txioKeyToScrAddr.emplace(
+            txKeyOut, std::map<uint32_t, BinaryData>{}).first;
+      }
+      auto indexOut = txioPair.second.getIndexOfOutput();
+      iterOut->second.emplace(indexOut, outTx.getScrAddrForTxOut(indexOut));
+   }
+   return Context{dbCache->timestamps, txMap, txioKeyToScrAddr};
 }
