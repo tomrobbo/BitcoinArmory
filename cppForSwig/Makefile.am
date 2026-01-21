@@ -82,6 +82,7 @@ CPPBRIDGE_SOURCE_FILES = BridgeAPI/CppBridge.cpp \
 	BridgeAPI/Wallets/Loader.cpp \
 	BridgeAPI/Wallets/Manager.cpp \
 	BridgeAPI/Wallets/Notifications.cpp \
+	BridgeAPI/Wallets/TxIOCache.cpp \
 	BridgeAPI/BlockchainDbClient.cpp
 
 LIBTREZORCRYPTO_SOURCE_FILES = $(LIBBTC_LIBDIR)/src/trezor-crypto/bip39.c \

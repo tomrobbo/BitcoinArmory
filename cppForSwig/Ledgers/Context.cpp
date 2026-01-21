@@ -150,8 +150,7 @@ Context Ledgers::prepareContext(
 
 Context Ledgers::prepareContext(
    const std::map<BinaryData, TxIOPair>& txioMap,
-   std::shared_ptr<const DBCache> dbCache,
-   std::shared_ptr<const ZeroConf::MempoolSnapshot> zcSs)
+   std::shared_ptr<const DBCache> dbCache)
 {
    std::set<BinaryData> txKeys;
 
@@ -169,12 +168,7 @@ Context Ledgers::prepareContext(
    /* 2. grab all txs */
    std::map<BinaryData, Tx> txMap;
    for (const auto& txKey : txKeys) {
-      if (!txKey.startsWith(DBUtils::ZCPrefix)) {
-         txMap.emplace(txKey, dbCache->txMap.at(txKey));
-      } else {
-         auto ptx = zcSs->getTxByKey(txKey);
-         txMap.emplace(txKey, ptx->getTxObj());
-      }
+      txMap.emplace(txKey, dbCache->txMap.at(txKey));
    }
 
    /* 3. resolve output addresses */

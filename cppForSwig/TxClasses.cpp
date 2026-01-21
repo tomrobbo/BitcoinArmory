@@ -768,8 +768,14 @@ const BinaryData& Tx::getThisHash() const
 
 BinaryData Tx::getScrAddrForTxOut(uint32_t txOutIndex) const
 {
-   TxOut txout = getTxOutCopy(txOutIndex);
-   return BtcUtils::getTxOutScrAddr(txout.getScript());
+   BinaryDataRef txOutRef{
+      dataCopy_.getPtr() + offsetsTxOut_[txOutIndex],
+      offsetsTxOut_[txOutIndex + 1] - offsetsTxOut_[txOutIndex]
+   };
+   auto scriptOffset = 8 + BtcUtils::readVarIntLength(txOutRef.getPtr() + 8);
+   auto scriptRef = txOutRef.getSliceRef(
+      scriptOffset, txOutRef.getSize() - scriptOffset);
+   return BtcUtils::getTxOutScrAddr(scriptRef);
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -799,7 +805,6 @@ TxOut Tx::getTxOutCopy(uint32_t i) const
       throw std::range_error(errStr);
    }
 
-   uint32_t txoutSize = offsetsTxOut_[i + 1] - offsetsTxOut_[i];
    return {
       dataCopy_.getPtr() + offsetsTxOut_[i],
       offsetsTxOut_[i + 1] - offsetsTxOut_[i], i

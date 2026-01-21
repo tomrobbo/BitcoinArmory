@@ -789,28 +789,18 @@ BinaryData CppBridge::createWalletsPacket(MessageId msgId)
    auto mgrReply = reply.initWalletManager();
 
    //grab wallet map
-   auto accountIdMap = wltManager_->getAccountIdMap();
-   size_t count = 0;
-   for (const auto& idIt : accountIdMap) {
-      if (idIt.first.empty() || idIt.second.empty()) {
-         continue;
-      }
-      count += idIt.second.size();
-   }
-   auto wltPackets = mgrReply.initLoadWallets(count);
+   auto wltContMap = wltManager_->getWalletContainerMap();
+   auto wltPackets = mgrReply.initLoadWallets(wltContMap.size());
 
    unsigned i=0;
-   for (const auto& idIt : accountIdMap) {
-      if (idIt.first.empty() || idIt.second.empty()) {
-         continue;
-      }
-
-      for (const auto& accId : idIt.second) {
-         auto capnWallet = wltPackets[i++];
-         auto firstCont = wltManager_->getWalletContainer(idIt.first, accId);
-         auto wltPtr = firstCont->getWalletPtr();
-         walletToCapnp(wltPtr, accId, firstCont->getDbId(), capnWallet);
-      }
+   for (const auto& wltContPair : wltContMap) {
+      auto capnWallet = wltPackets[i++];
+      walletToCapnp(
+         wltContPair.second->getWalletPtr(),
+         wltContPair.second->getAccountId(),
+         wltContPair.first,
+         capnWallet
+      );
    }
 
    reply.setReferenceId(msgId);

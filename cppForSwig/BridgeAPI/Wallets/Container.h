@@ -44,6 +44,7 @@ namespace Armory
 
    namespace Bridge
    {
+      class TxIOCache;
       struct OfflineException
       {};
 
@@ -54,6 +55,9 @@ namespace Armory
       private:
          const Wallets::WalletId wltId_;
          const Wallets::AddressAccountId accountId_;
+         std::shared_ptr<TxIOCache> cache_;
+         std::map<BinaryData, TxIOPair> txioMap_;
+
          std::string dbId_;
          std::shared_ptr<Wallets::AssetWallet> wallet_;
 
@@ -73,12 +77,12 @@ namespace Armory
          std::mutex stateMutex_;
 
          std::map<BinaryData, std::shared_ptr<AddressEntry>> updatedAddressMap_;
-         std::map<BinaryData, TxIOPair> txioMap_;
 
       private:
          WalletContainer(
             const Wallets::WalletId&,
-            const Wallets::AddressAccountId&);
+            const Wallets::AddressAccountId&,
+            const std::shared_ptr<TxIOCache>);
 
          void resetCache(void);
          void setBdvPtr(std::shared_ptr<AsyncClient::BlockDataViewer>);
@@ -110,6 +114,7 @@ namespace Armory
             const std::function<void(ReturnMessage<std::vector<AddressBookEntry>>)>&);
 
          const std::map<BinaryData, TxIOPair>& getTxioMap(void) const;
+         void resolveTxios(uint32_t);
          void getUTXOs(uint64_t, bool, bool,
             const std::function<void(ReturnMessage<std::vector<UTXO>>)>& lbd);
 

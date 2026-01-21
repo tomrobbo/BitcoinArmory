@@ -65,8 +65,7 @@ namespace Armory
 
       Context prepareContext(
          const std::map<BinaryData, TxIOPair>&,
-         std::shared_ptr<const DBCache>,
-         std::shared_ptr<const ZeroConf::MempoolSnapshot>
+         std::shared_ptr<const DBCache>
       );
    }
 }

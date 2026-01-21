@@ -16,6 +16,7 @@
 #include <Wallets/Seeds/Backups.h>
 #include <BlockchainDatabase/txio.h>
 #include <AsyncClient.h>
+#include "TxIOCache.h"
 
 using namespace Armory;
 using namespace Armory::Bridge;
@@ -25,9 +26,11 @@ using namespace Armory::Bridge;
 //// WalletContainer
 ////
 ////////////////////////////////////////////////////////////////////////////////
-WalletContainer::WalletContainer(const Wallets::WalletId& wltId,
-   const Armory::Wallets::AddressAccountId& accId) :
-   wltId_(wltId), accountId_(accId)
+WalletContainer::WalletContainer(
+   const Wallets::WalletId& wltId,
+   const Armory::Wallets::AddressAccountId& accId,
+   std::shared_ptr<TxIOCache> cache) :
+   wltId_(wltId), accountId_(accId), cache_(cache)
 {
    dbId_ = Cryptography::PRNG::fortuna.generateRandom(6).toHexStr();
 }
@@ -481,7 +484,17 @@ void WalletContainer::getUTXOs(uint64_t val, bool zc, bool rbf,
    asyncWlt_->getUTXOs(val, zc, rbf, lbd);
 }
 
+////////
 const std::map<BinaryData, TxIOPair>& WalletContainer::getTxioMap() const
 {
    return txioMap_;
+}
+
+void WalletContainer::resolveTxios(uint32_t fromHeight)
+{
+   txioMap_ = cache_->resolve(
+      [this](const BinaryData& scrAddr)->bool
+         { return this->hasAddress(scrAddr); },
+      fromHeight
+   );
 }

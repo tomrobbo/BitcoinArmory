@@ -1811,6 +1811,109 @@ TEST_F(BlockUtilsFull, Load5Blocks_CheckWalletFilters)
    EXPECT_EQ(wlt2_count, 0U);
 }
 
+TEST_F(BlockUtilsFull, DISABLED_PPrintTestChain)
+{
+   clients_->init();
+   theBDMt_->start(Config::DBSettings::initMode());
+   auto bdvID = DBTestUtils::registerBDV(
+      clients_, Config::BitcoinSettings::getMagicBytes());
+
+   DBTestUtils::goOnline(clients_, bdvID);
+   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
+   auto db = bdvPtr->getDB();
+
+   std::map<BinaryData, std::string> knownAddrs{
+      { TestChain::scrAddrA, "scrAddrA" },
+      { TestChain::scrAddrB, "scrAddrB" },
+      { TestChain::scrAddrC, "scrAddrC" },
+      { TestChain::scrAddrD, "scrAddrD" },
+      { TestChain::scrAddrE, "scrAddrE" },
+      { TestChain::scrAddrF, "scrAddrF" }
+   };
+
+   struct IdAndAmounts
+   {
+      std::string id;
+      std::vector<std::pair<uint64_t, std::string>> amounts;
+   };
+   std::map<BinaryData, IdAndAmounts> knownTxHashes;
+   for (unsigned i = 0; i <= 5; i++) {
+      StoredHeader block;
+      ASSERT_TRUE(db->getStoredHeader(block, i, 0, true));
+
+      //header
+      auto header = block.getBlockHeaderCopy();
+      std::cout << "Block #" << i << ", " << header.getThisHash().toHexStr() << std::endl;
+      std::cout << "   Prev: " << header.getPrevHash().toHexStr() << std::endl;
+      std::cout << "   Txs: " << block.getNumTx() << std::endl << std::endl;
+
+      //transactions
+      for (unsigned y = 0; y < block.getNumTx(); y++) {
+         auto tx = block.getTxCopy(y);
+         std::string txId = std::to_string(i) + ":" + std::to_string(y);
+         std::cout << "   * Tx [" << txId << "], " <<
+            tx.getThisHash().toHexStr() << std::endl;
+         std::cout << "      inputs: " << tx.getNumTxIn() <<
+            ", outputs: " << tx.getNumTxOut() << std::endl << std::endl;
+
+         //inputs
+         if (y == 0) {
+            std::cout << "      + Coinbase" << std::endl;
+            std::cout << "         amount: 50" << std::endl;
+         } else {
+            for (unsigned z = 0; z < tx.getNumTxIn(); z++) {
+               auto txIn = tx.getTxInCopy(z);
+               std::cout << "      + TxIn #" << z << std::endl;
+
+               auto outpoint = txIn.getOutPoint();
+               auto opHash = outpoint.getTxHash();
+               std::cout << "         Outpoint: ";
+               try {
+                  auto idAndAmounts = knownTxHashes.at(opHash);
+                  auto index = outpoint.getTxOutIndex();
+                  std::cout << "[" << idAndAmounts.id << "-" << index << "]" << std::endl;
+                  std::cout << "         amount: " << idAndAmounts.amounts[index].first << std::endl;
+                  std::cout << "         addr: " << idAndAmounts.amounts[index].second << std::endl;
+               } catch (const std::out_of_range&) {
+                  std::cout << opHash.toHexStr() << ", index: " << outpoint.getTxOutIndex() << std::endl;
+                  std::cout << "         amount: N/A" << std::endl;
+                  std::cout << "         addr: N/A" << std::endl;
+               }
+            }
+         }
+
+         //outputs
+         std::cout << std::endl;
+         std::vector<std::pair<uint64_t, std::string>> txAmounts;
+         for (unsigned z = 0; z < tx.getNumTxOut(); z++) {
+            auto txOut = tx.getTxOutCopy(z);
+            std::string txOutId = txId + "-" + std::to_string(z);
+            std::cout << "      - TxOut [" << txOutId << "]" << std::endl;
+
+            auto scrAddr = txOut.getScrAddressStr();
+            std::string addrStr;
+            try {
+               addrStr = knownAddrs.at(scrAddr);
+            } catch (const std::out_of_range&) {
+               addrStr = BtcUtils::scrAddrToBase58(scrAddr);
+            }
+
+            std::cout << "         dest: " << addrStr << std::endl;
+            auto value = txOut.getValue() / COIN;
+            std::cout << "         amount: " << value << std::endl;
+            txAmounts.emplace_back(std::make_pair(value, addrStr));
+         }
+
+         std::cout << std::endl;
+         knownTxHashes.emplace(tx.getThisHash(),
+            IdAndAmounts{txId, txAmounts});
+      }
+
+      std::cout << std::endl;
+   }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 class WebSocketTests_1Way : public ::testing::Test
 {

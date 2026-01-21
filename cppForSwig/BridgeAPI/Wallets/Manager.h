@@ -57,6 +57,8 @@ namespace Armory
    namespace Bridge
    {
       class Callback;
+      class TxIOCache;
+
       class WalletManager : public Lockable
       {
       private:
@@ -72,9 +74,7 @@ namespace Armory
          std::shared_ptr<AsyncClient::BlockDataViewer> bdvPtr_;
 
          //history
-         uint32_t lastSeenBlock_ = UINT32_MAX;
-         std::map<BinaryData, TxIOPair> txioMap_;
-         std::shared_ptr<Ledgers::DBCache> dbCache_;
+         std::shared_ptr<TxIOCache> txioCache_;
          std::map<std::string, Ledgers::Delegate> delegateMap_;
 
       private:
@@ -119,8 +119,8 @@ namespace Armory
             const Wallets::WalletId&) const;
          std::shared_ptr<WalletContainer> getWalletContainer(
             const Wallets::WalletId&, const Wallets::AddressAccountId&) const;
-         std::map<Wallets::WalletId, std::set<Wallets::AddressAccountId>>
-            getAccountIdMap(void) const;
+         const std::map<std::string, std::shared_ptr<WalletContainer>>&
+         getWalletContainerMap(void) const;
 
          /* wallet add/create/delete */
          void loadWallet(const Wallets::IO::ReadOnlyFileParams&);
@@ -145,7 +145,6 @@ namespace Armory
 
          /* ledgers */
          std::shared_ptr<const Ledgers::DBCache> getDbCache(void) const;
-         const std::map<BinaryData, TxIOPair>& getTxioMap(void) const;
          const std::string& getDelegateId(void);
          const std::string& getDelegateIdForWallet(
             const Wallets::WalletId&, const Wallets::AddressAccountId&);
