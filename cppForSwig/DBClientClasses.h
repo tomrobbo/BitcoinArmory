@@ -20,10 +20,6 @@
 
 #define FILTER_CHANGE_FLAG "wallet_filter_changed"
 
-namespace AsyncClient {
-   class BlockDataViewer;
-};
-
 namespace capnp {
    class MessageReader;
 }
@@ -77,9 +73,7 @@ namespace DBClientClasses
       }
 
    public:
-
-      BlockHeader(void) {}
-      BlockHeader(const BinaryData&, unsigned);
+      BlockHeader(BinaryDataRef, uint32_t, uint8_t);
 
       uint32_t           getVersion(void) const { return READ_UINT32_LE(getPtr()); }
       BinaryData const & getThisHash(void) const { return thisHash_; }
@@ -89,6 +83,7 @@ namespace DBClientClasses
       uint32_t           getTimestamp(void) const { return READ_UINT32_LE(getPtr() + 68); }
       uint32_t           getNonce(void) const { return READ_UINT32_LE(getPtr() + 76); }
       uint32_t           getBlockHeight(void) const { return blockHeight_; }
+      uint8_t            getDupId(void) const { return duplicateId_; }
 
       //////////////////////////////////////////////////////////////////////////
       BinaryDataRef  getThisHashRef(void) const { return thisHash_.getRef(); }
@@ -116,6 +111,7 @@ namespace DBClientClasses
       bool           isInitialized_ = false;
       // Specific to the DB storage
       uint32_t       blockHeight_ = UINT32_MAX;
+      uint8_t        duplicateId_ = 0xFF;
 
       // Derived properties - we expect these to be set after construct/copy
       BinaryData     thisHash_;
@@ -220,12 +216,26 @@ struct BDV_Error_Struct
    void deserialize(const BinaryData&);
 };
 
+class NewBlockNotif
+{
+private:
+   uint32_t height_;
+   uint32_t branchHeight_;
+
+public:
+   NewBlockNotif(uint32_t = UINT32_MAX, uint32_t = UINT32_MAX);
+
+   bool isValid(void) const;
+   bool isReorg(void) const;
+   uint32_t getHeight(void) const;
+   uint32_t getBranchHeight(void) const;
+};
+
 struct BdmNotification
 {
    const BDMAction action;
 
-   unsigned height;
-   unsigned branchHeight = UINT32_MAX;
+   NewBlockNotif newBlock;
 
    std::set<BinaryData> invalidatedZc;
    std::vector<std::shared_ptr<DBClientClasses::LedgerEntry>> ledgers;

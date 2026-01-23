@@ -1813,6 +1813,11 @@ TEST_F(BlockUtilsFull, Load5Blocks_CheckWalletFilters)
 
 TEST_F(BlockUtilsFull, DISABLED_PPrintTestChain)
 {
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4", "4A", "5", "5A" }, blk0dat_);
+   std::vector<std::pair<uint32_t, uint8_t>> blockIds {
+      { 0, 0 }, { 1, 0 }, { 2, 0 }, { 3, 0 }, { 4, 1 }, { 5, 1 }
+   };
+
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
    auto bdvID = DBTestUtils::registerBDV(
@@ -1838,20 +1843,21 @@ TEST_F(BlockUtilsFull, DISABLED_PPrintTestChain)
       std::vector<std::pair<uint64_t, std::string>> amounts;
    };
    std::map<BinaryData, IdAndAmounts> knownTxHashes;
-   for (unsigned i = 0; i <= 5; i++) {
+   for (const auto& blockId : blockIds) {
       StoredHeader block;
-      ASSERT_TRUE(db->getStoredHeader(block, i, 0, true));
+      ASSERT_TRUE(db->getStoredHeader(block, blockId.first, blockId.second, true));
 
       //header
       auto header = block.getBlockHeaderCopy();
-      std::cout << "Block #" << i << ", " << header.getThisHash().toHexStr() << std::endl;
+      std::string hgtx = std::to_string(blockId.first) + "|" + std::to_string(blockId.second);
+      std::cout << "Block #" << hgtx << ", " << header.getThisHash().toHexStr() << std::endl;
       std::cout << "   Prev: " << header.getPrevHash().toHexStr() << std::endl;
       std::cout << "   Txs: " << block.getNumTx() << std::endl << std::endl;
 
       //transactions
       for (unsigned y = 0; y < block.getNumTx(); y++) {
          auto tx = block.getTxCopy(y);
-         std::string txId = std::to_string(i) + ":" + std::to_string(y);
+         std::string txId = hgtx + ":" + std::to_string(y);
          std::cout << "   * Tx [" << txId << "], " <<
             tx.getThisHash().toHexStr() << std::endl;
          std::cout << "      inputs: " << tx.getNumTxIn() <<

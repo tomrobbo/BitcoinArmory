@@ -35,7 +35,7 @@ namespace Armory
 
          //set when type is UPDATE
          std::function<void(void)> lbd;
-         uint32_t height = UINT32_MAX;
+         NewBlockNotif blockNotif;
       };
       typedef std::function<void(NotifStruct)> NotifFunc;
 

@@ -8,8 +8,9 @@
 
 #pragma once
 
-#include <map>
 #include <memory>
+#include <vector>
+#include <map>
 #include <stdint.h>
 
 class BinaryData;
@@ -18,6 +19,11 @@ class Blockchain;
 class TxIOPair;
 class LMDBBlockDatabase;
 class Tx;
+
+namespace DBClientClasses
+{
+   class BlockHeader;
+};
 
 namespace Armory
 {
@@ -30,8 +36,17 @@ namespace Armory
    {
       struct DBCache
       {
+         struct Blocks
+         {
+            uint8_t mainChain = 0;
+            std::map<uint8_t, DBClientClasses::BlockHeader> blocks;
+         };
+
          std::map<BinaryData, Tx> txMap;
-         std::map<uint32_t, uint32_t> timestamps;
+         std::map<uint32_t, Blocks> blocks;
+
+         void addBlocks(std::vector<DBClientClasses::BlockHeader>&);
+         bool isHeightValid(uint32_t, uint8_t) const;
       };
 
       class Context

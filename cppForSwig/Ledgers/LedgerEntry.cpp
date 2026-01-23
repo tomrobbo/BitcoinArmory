@@ -32,7 +32,7 @@ namespace
       uint32_t txTime;
       uint16_t txIndex;
       BinaryData txHash;
-      std::vector<const TxIOPair*> txios;
+      std::map<BinaryData, const TxIOPair*> txios;
    };
 
    std::map<TxDbKey, TxData> sortByTx(
@@ -46,7 +46,8 @@ namespace
          if (txOutIter == txnTxIOMap.end()) {
             txOutIter = txnTxIOMap.emplace(txOutDBKey, TxData{}).first;
          }
-         txOutIter->second.txios.emplace_back(&txio.second);
+         txOutIter->second.txios.emplace(
+            txio.second.getDBKeyOfOutput(), &txio.second);
 
          //txin
          if (!txio.second.hasTxIn()) {
@@ -57,7 +58,11 @@ namespace
          if (txInIter == txnTxIOMap.end()) {
             txInIter = txnTxIOMap.emplace(txInDBKey, TxData{}).first;
          }
-         txInIter->second.txios.emplace_back(&txio.second);
+         auto insertResult = txInIter->second.txios.emplace(
+            txio.second.getDBKeyOfOutput(), &txio.second);
+         if (!insertResult.second) {
+            insertResult.first->second = &txio.second;
+         }
       }
       return txnTxIOMap;
    }
@@ -83,7 +88,7 @@ namespace
                LOGWARN << "have a tx with no attached txios";
             } else {
                auto txioIter = txPair.second.txios.begin();
-               txPair.second.txTime = (*txioIter)->getTxTime();
+               txPair.second.txTime = txioIter->second->getTxTime();
             }
          }
          txPair.second.txHash = ctx.getTxHash(txPair.first);
@@ -174,13 +179,16 @@ bool Entry::isChainedZC() const
 ////////
 bool Entry::operator<(const Entry& le2) const
 {
-   if (blockNum_ != le2.blockNum_) {
-      return blockNum_ < le2.blockNum_;
-   } else if (index_ != le2.index_) {
-      return index_ < le2.index_;
-   } else {
-      return false;
+   if (blockNum_ < le2.blockNum_) {
+      return true;
+   } else if (blockNum_ == le2.blockNum_) {
+      if (index_ < le2.index_) {
+         return true;
+      } else if (index_ == le2.index_) {
+         return value_ < le2.value_;
+      }
    }
+   return false;
 }
 
 bool Entry::operator==(const Entry& le2) const
@@ -190,13 +198,16 @@ bool Entry::operator==(const Entry& le2) const
 
 bool Entry::operator>(const Entry& le2) const
 {
-   if (blockNum_ != le2.blockNum_) {
-      return blockNum_ > le2.blockNum_;
-   } else if (index_ != le2.index_) {
-      return index_ > le2.index_;
-   } else {
-      return false;
+   if (blockNum_ > le2.blockNum_) {
+      return true;
+   } else if (blockNum_ == le2.blockNum_) {
+      if (index_ > le2.index_) {
+         return true;
+      } else if (index_ == le2.index_) {
+         return value_ > le2.value_;
+      }
    }
+   return false;
 }
 
 ScriptPrefix Entry::getScriptType() const
@@ -281,9 +292,6 @@ std::map<BinaryData, Entry> Ledgers::computeLedgerMap(
    std::map<BinaryData, Entry> leMap;
    for (auto& txnPair : txnTxIOMap) {
       auto& txnData = txnPair.second;
-      if (txnData.blockNum == 1) {
-         int abc=0;
-      }
       if (txnData.blockNum < startBlock || txnData.blockNum > endBlock) {
          continue;
       }
@@ -299,8 +307,8 @@ std::map<BinaryData, Entry> Ledgers::computeLedgerMap(
       uint32_t nTxInAreOurs = 0, nTxOutAreOurs = 0;
 
       std::set<BinaryData> scrAddrSet;
-      for (auto txioPtr : txnData.txios) {
-         const auto& txio = *txioPtr;
+      for (const auto& txioPair : txnData.txios) {
+         const auto& txio = *txioPair.second;
          if (txnData.blockNum == UINT32_MAX) {
             if (txio.isRBF()) {
                isRBF = true;

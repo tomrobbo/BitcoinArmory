@@ -102,10 +102,10 @@ void initLibrary()
 //
 ///////////////////////////////////////////////////////////////////////////////
 BlockHeader::BlockHeader(
-   const BinaryData& rawheader, unsigned height)
+   BinaryDataRef rawheader, uint32_t height, uint8_t dupId) :
+   blockHeight_{height}, duplicateId_{dupId}
 {
-   unserialize(rawheader.getRef());
-   blockHeight_ = height;
+   unserialize(rawheader);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -119,7 +119,6 @@ void BlockHeader::unserialize(uint8_t const * ptr, uint32_t size)
    difficultyDbl_ = BtcUtils::convertDiffBitsToDouble(
       BinaryDataRef(dataCopy_.getPtr() + 72, 4));
    isInitialized_ = true;
-   blockHeight_ = UINT32_MAX;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -260,9 +259,8 @@ bool RemoteCallback::processNotifications(
             if (height != 0)
             {
                BdmNotification bdmNotif(BDMAction_NewBlock);
-
-               bdmNotif.height = height;
-               bdmNotif.branchHeight = newblock.getBranchHeight();
+               bdmNotif.newBlock = NewBlockNotif{
+                  height, newblock.getBranchHeight()};
                run(std::move(bdmNotif));
             }
 
@@ -319,8 +317,8 @@ bool RemoteCallback::processNotifications(
          {
             BdmNotification bdmNotif(BDMAction_Ready);
             auto newBlock = notif.getReady();
-            bdmNotif.height = newBlock.getHeight();
-
+            bdmNotif.newBlock = NewBlockNotif{
+               newBlock.getHeight(), newBlock.getBranchHeight()};
             run(std::move(bdmNotif));
             break;
          }
@@ -491,4 +489,36 @@ void BDV_Error_Struct::deserialize(const BinaryData& data)
 
    len = brr.get_var_int();
    errorStr_ = brr.get_String(len);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// NewBlockNotif
+NewBlockNotif::NewBlockNotif(uint32_t hgt, uint32_t branch) :
+   height_(hgt), branchHeight_(branch)
+{}
+
+bool NewBlockNotif::isValid() const
+{
+   return height_ != UINT32_MAX;
+}
+
+bool NewBlockNotif::isReorg() const
+{
+   return isValid() && branchHeight_ != UINT32_MAX;
+}
+
+uint32_t NewBlockNotif::getHeight() const
+{
+   if (!isValid()) {
+      throw std::runtime_error("invalid block notif");
+   }
+   return height_;
+}
+
+uint32_t NewBlockNotif::getBranchHeight() const
+{
+   if (!isReorg()) {
+      throw std::runtime_error("not a reorg!");
+   }
+   return branchHeight_;
 }

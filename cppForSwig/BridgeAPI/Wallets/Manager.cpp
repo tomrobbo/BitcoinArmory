@@ -179,7 +179,7 @@ void WalletManager::setupBdvCallback(
             if (notif.lbd == nullptr) {
                throw std::runtime_error("notif lbd is not set!");
             }
-            updateStateFromDB(notif.lbd, notif.height);
+            updateStateFromDB(notif.lbd, notif.blockNotif);
             return;
          }
 
@@ -231,7 +231,7 @@ void WalletManager::registerWallet(const Wallets::WalletId& wltId,
          [this, dbId]() {
             updateStateFromDB([this, dbId]() {
                callbackPtr_->notifyRefresh({dbId});
-            }, UINT32_MAX);
+            }, {});
          });
       container->registerWithBDV(isNew);
    } catch (const OfflineException& e) {
@@ -618,10 +618,10 @@ void WalletManager::loadWallets()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void WalletManager::updateStateFromDB(const std::function<void(void)>& callback,
-   uint32_t topHeight)
+void WalletManager::updateStateFromDB(
+   const std::function<void(void)>& callback, const NewBlockNotif& blockNotif)
 {
-   auto lbd = [this, callback, topHeight](void)->void
+   auto lbd = [this, callback, blockNotif](void)->void
    {
       //0. grab wallet balances
       auto promBal = std::make_shared<std::promise<std::map<
@@ -649,7 +649,7 @@ void WalletManager::updateStateFromDB(const std::function<void(void)>& callback,
       }
 
       //update txio cache
-      auto checkFromHeight = txioCache_->update(bdvPtr_, topHeight);
+      auto checkFromHeight = txioCache_->update(bdvPtr_, blockNotif);
 
       //resolve wallets
       {

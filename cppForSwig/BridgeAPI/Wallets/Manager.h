@@ -18,6 +18,7 @@
 #include "Container.h"
 
 class Tx;
+class NewBlockNotif;
 
 namespace Armory
 {
@@ -111,7 +112,8 @@ namespace Armory
 
          /* utils */
          const std::filesystem::path& getWalletDir(void) const;
-         void updateStateFromDB(const std::function<void(void)>&, uint32_t);
+         void updateStateFromDB(const std::function<void(void)>&,
+            const NewBlockNotif&);
 
          /* loaded wallet getters */
          bool hasWallet(const Wallets::WalletId&);

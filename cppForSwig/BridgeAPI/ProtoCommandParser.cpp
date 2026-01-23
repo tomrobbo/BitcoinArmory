@@ -174,10 +174,9 @@ namespace
          case BlockchainServiceRequest::GET_HEADERS_BY_HEIGHT:
          {
             auto capnHeights = request.getGetHeadersByHeight();
-            std::vector<unsigned> heights;
-            heights.reserve(capnHeights.size());
+            std::set<unsigned> heights;
             for (const auto& height : capnHeights) {
-               heights.emplace_back(height);
+               heights.emplace(height);
             }
             bridge->getHeadersByHeight(heights, referenceId);
             break;

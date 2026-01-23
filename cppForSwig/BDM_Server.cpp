@@ -292,32 +292,6 @@ namespace {
             return builder;
          }
 
-         case BdvRequest::GET_BLOCK_TIMESTAMPS:
-         {
-            auto heightList = request.getGetBlockTimestamps();
-            std::map<uint32_t, uint32_t> results;
-            const auto& bc = bdv->blockchain();
-            for (auto height : heightList) {
-               try {
-                  auto block = bc.getHeaderByHeight(height, 0xFF);
-                  results.emplace(height, block->getTimestamp());
-               } catch (const std::length_error&) {
-                  continue;
-               }
-            }
-
-            auto builder = ReplyBuilder::getNew(bdv);
-            auto bdvReply = prepareReply(builder);
-            auto capnTss = bdvReply.initGetBlockTimestamps(results.size());
-            unsigned i = 0;
-            for (const auto& blockTs : results) {
-               auto capnTs = capnTss[i++];
-               capnTs.setHeight(blockTs.first);
-               capnTs.setTimestamp(blockTs.second);
-            }
-            return builder;
-         }
-
          case BdvRequest::Which::GET_OUTPUTS_FOR_OUTPOINTS:
          {
             auto opReq = request.getGetOutputsForOutpoints();
@@ -979,19 +953,21 @@ namespace {
             headers.reserve(headersRequest.size());
             for (const auto height : headersRequest) {
                try {
-                  auto header = bcPtr->getHeaderByHeight(height, 0);
+                  auto header = bcPtr->getHeaderByHeight(height, 0xFF);
                   headers.emplace_back(std::move(header));
                } catch (const std::exception&) {
                   continue;
                }
             }
 
-            auto result = staticReply.initGetHeadersByHeight(headers.size());
-            unsigned i=0;
+            auto capnHeaders = staticReply.initGetHeadersByHeight(headers.size());
+            unsigned i = 0;
             for (const auto& header : headers) {
-               result.set(i++, capnp::Data::Builder(
-                  (uint8_t*)header->getPtr(), header->getSize()
-               ));
+               auto capnHeader = capnHeaders[i++];
+               capnHeader.setRawData(capnp::Data::Builder(
+                  (uint8_t*)header->getPtr(), header->getSize()));
+               capnHeader.setHeight(header->getBlockHeight());
+               capnHeader.setDupId(header->getDuplicateID());
             }
             break;
          }
@@ -1293,6 +1269,8 @@ void BDV_Server_Object::processNotification(
          if (!payload->reorgState.prevTopStillValid) {
             blockData.setBranchHeight(
                payload->reorgState.reorgBranchPoint->getBlockHeight());
+         } else {
+            blockData.setBranchHeight(UINT32_MAX);
          }
 
          //invalidated zc ids

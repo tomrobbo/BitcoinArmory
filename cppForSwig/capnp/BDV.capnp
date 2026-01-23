@@ -119,7 +119,6 @@ struct BdvReply {
       updateWalletsLedgerFilter  @9 : Void;
       getCombinedBalances        @10: List(Types.CombinedBalanceAndCount);
       getTxios                   @11: List(Types.TxioPair);
-      getBlockTimestamps         @12: List(BlockTimestamp);
    }
 }
 
@@ -236,10 +235,6 @@ struct Reply {
 
 ##### notifications #####
 struct Notification {
-   struct BlockData {
-      height            @0 : UInt32;
-      branchHeight      @1 : UInt32;
-   }
 
    struct ServerError {
       code              @0 : Int32;
@@ -256,8 +251,8 @@ struct Notification {
    union {
       terminate         @1 : Void;
       continuePolling   @2 : Void;
-      ready             @3 : BlockData;
-      newBlock          @4 : BlockData;
+      ready             @3 : Types.NewBlockNotif;
+      newBlock          @4 : Types.NewBlockNotif;
       zc                @5 : Types.TxLedger;
       invalidatedZc     @6 : List(Data);
       refresh           @7 : Refresh;

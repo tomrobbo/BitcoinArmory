@@ -148,7 +148,7 @@ void Callback::run(BdmNotification notif)
    {
       case BDMAction_NewBlock:
       {
-         auto lbd = [pushLbd = notifFunc_, height = notif.height]()
+         auto lbd = [pushLbd = notifFunc_, height = notif.newBlock.getHeight()]()
          {
             capnp::MallocMessageBuilder message;
             auto fromBridge = message.initRoot<FromBridge>();
@@ -158,13 +158,13 @@ void Callback::run(BdmNotification notif)
             pushLbd({NotifType::PUSH, serializeCapnp(message)});
          };
 
-         notifFunc_({NotifType::UPDATE, {}, lbd, notif.height});
+         notifFunc_({NotifType::UPDATE, {}, lbd, notif.newBlock});
          break;
       }
 
       case BDMAction_Ready:
       {
-         auto lbd = [pushLbd = notifFunc_, height = notif.height]()
+         auto lbd = [pushLbd = notifFunc_, height = notif.newBlock.getHeight()]()
          {
             capnp::MallocMessageBuilder message;
             auto fromBridge = message.initRoot<FromBridge>();
@@ -174,7 +174,7 @@ void Callback::run(BdmNotification notif)
             pushLbd({NotifType::PUSH, serializeCapnp(message)});
          };
 
-         notifFunc_({NotifType::UPDATE, {}, lbd, notif.height});
+         notifFunc_({NotifType::UPDATE, {}, lbd, notif.newBlock});
          break;
       }
 

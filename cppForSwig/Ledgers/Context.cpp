@@ -14,6 +14,7 @@
 #include <BlockchainDatabase/txio.h>
 #include <BlockchainDatabase/lmdb_wrapper.h>
 #include <ZeroConf/Utils.h>
+#include <DBClientClasses.h>
 
 using namespace Armory;
 using namespace Armory::Ledgers;
@@ -59,6 +60,31 @@ const BinaryData& Context::getScrAddrForTxOut(const TxIOPair& txio) const
 {
    return txioKeyToScrAddr_.at(txio.getTxRefOfOutput().getDBKey()).at(
       txio.getIndexOfOutput());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// DBCache
+void DBCache::addBlocks(std::vector<DBClientClasses::BlockHeader>& blkVec)
+{
+   for (auto& blk : blkVec) {
+      auto iter = blocks.find(blk.getBlockHeight());
+      if (iter == blocks.end()) {
+         iter = blocks.emplace(blk.getBlockHeight(), Blocks{}).first;
+      }
+
+      auto dupId = blk.getDupId();
+      iter->second.mainChain = dupId;
+      iter->second.blocks.emplace(dupId, std::move(blk));
+   }
+}
+
+bool DBCache::isHeightValid(uint32_t height, uint8_t dupId) const
+{
+   auto iter = blocks.find(height);
+   if (iter == blocks.end()) {
+      return false;
+   }
+   return dupId == iter->second.mainChain;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -185,5 +211,18 @@ Context Ledgers::prepareContext(
       auto indexOut = txioPair.second.getIndexOfOutput();
       iterOut->second.emplace(indexOut, outTx.getScrAddrForTxOut(indexOut));
    }
-   return Context{dbCache->timestamps, txMap, txioKeyToScrAddr};
+
+   /* 4. timestamps */
+   std::map<uint32_t, uint32_t> timestamps;
+   for (const auto& blockPair : dbCache->blocks) {
+      try {
+         const auto& block = blockPair.second.blocks.at(blockPair.second.mainChain);
+         timestamps.emplace(blockPair.first, block.getTimestamp());
+      } catch (const std::out_of_range&) {
+         LOGWARN << "missing block: " <<
+            blockPair.first << "|" << blockPair.second.mainChain;
+         continue;
+      }
+   }
+   return Context{timestamps, txMap, txioKeyToScrAddr};
 }

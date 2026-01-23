@@ -6,7 +6,6 @@ $Cxx.namespace("Armory::Codec::Types");
 ## base types ##
 using Hash        = Data;
 using TxKey       = Data;
-using Header      = Data;
 using ScrAddr     = Data;
 
 using WalletId    = Text;
@@ -18,6 +17,18 @@ using CallbackId  = Text;
 
 using Height      = UInt32;
 using CoinAmount  = UInt64;
+
+## block data ##
+struct Header {
+   rawData     @0 : Data;
+   height      @1 : UInt32;
+   dupId       @2 : UInt8;
+}
+
+struct NewBlockNotif {
+   height            @0 : UInt32;
+   branchHeight      @1 : UInt32;
+}
 
 ## tx data ##
 struct Output {

@@ -803,67 +803,6 @@ void BlockDataViewer::getTxsByKey(const std::set<BinaryData>& txkeys,
    sock_->pushPayload(std::move(write_payload), read_payload);
 }
 
-void BlockDataViewer::getTimestampsForHeights(
-   const std::set<uint32_t>& heights, const std::function<
-      void(ReturnMessage<std::map<uint32_t, uint32_t>>)>& callback)
-{
-   //create capnp request
-   capnp::MallocMessageBuilder message;
-   auto payload = message.initRoot<Codec::BDV::Request>();
-
-   auto bdvRequest = payload.initBdv();
-   auto tsReq = bdvRequest.initGetBlockTimestamps(heights.size());
-
-   unsigned i=0;
-   for (auto& height : heights) {
-      tsReq.set(i++, height);
-   }
-
-   //serialize and add to payload
-   auto write_payload = toWritePayload(message);
-
-   //reply handling lambda
-   auto read_payload = std::make_shared<Socket_ReadPayload>();
-   read_payload->callbackReturn_ =
-      std::make_unique<ClientCallback>([callback](const WebSocketMessagePartial& msg){
-         try {
-            //deser capnp reply
-            auto msgReader = msg.getReader();
-            auto capnReader = msgReader->getReader();
-            auto reply = capnReader->getRoot<Codec::BDV::Reply>();
-
-            //sanity checks
-            if (!reply.getSuccess()) {
-               throw ClientMessageError(reply.getError(), -1);
-            }
-
-            if (!reply.isBdv()) {
-               throw ClientMessageError("expected bdv reply", WRONG_REPLY_CLASS);
-            }
-
-            auto bdvReply = reply.getBdv();
-            if (!bdvReply.isGetBlockTimestamps()) {
-               throw ClientMessageError(
-                  "expected GetTxByHash reply", WRONG_REPLY_TYPE);
-            }
-
-            //convert to utxo vector and fire callback
-            auto capnTss = bdvReply.getGetBlockTimestamps();
-            std::map<uint32_t, uint32_t> timestamps;
-            for (auto capnTs : capnTss) {
-               timestamps.emplace(capnTs.getHeight(), capnTs.getTimestamp());
-            }
-            callback(ReturnMessage<std::map<uint32_t, uint32_t>>(timestamps));
-         } catch (ClientMessageError& e) {
-            //something went wrong, set error message and fire callback
-            callback(ReturnMessage<std::map<uint32_t, uint32_t>>(e));
-         }
-      });
-
-   //push to server
-   sock_->pushPayload(std::move(write_payload), read_payload);
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 void BlockDataViewer::updateWalletsLedgerFilter(
    const std::vector<std::string>& wltIdVec)
@@ -1693,8 +1632,7 @@ AsyncClient::Blockchain::Blockchain(const BlockDataViewer& bdv) :
 ///////////////////////////////////////////////////////////////////////////////
 void AsyncClient::Blockchain::getHeadersByHash(
    const std::set<BinaryDataRef>& hashes,
-   std::function<void(ReturnMessage<
-      std::vector<DBClientClasses::BlockHeader>>)> callback)
+   const std::function<void(ReturnMessage<HeaderVec>)>& callback)
 {
    //create capnp request
    capnp::MallocMessageBuilder message;
@@ -1733,25 +1671,26 @@ void AsyncClient::Blockchain::getHeadersByHash(
             }
 
             auto staticReply = reply.getStatic();
-            if (!staticReply.isGetHeadersByHeight()) {
+            if (!staticReply.isGetHeadersByHash()) {
                throw ClientMessageError(
-                  "expected getHeadersByHeight reply", WRONG_REPLY_TYPE);
+                  "expected getHeadersByHash reply", WRONG_REPLY_TYPE);
             }
 
             //convert to header
-            auto headersReply = staticReply.getGetHeadersByHeight();
-            std::vector<DBClientClasses::BlockHeader> result;
-            result.reserve(headersReply.size());
+            auto capnHeaders = staticReply.getGetHeadersByHash();
+            HeaderVec result;
+            result.reserve(capnHeaders.size());
 
-            for (auto headerData : headersReply) {
+            for (auto capnHeader : capnHeaders) {
+               auto headerData = capnHeader.getRawData();
                BinaryDataRef headerBdr(headerData.begin(), headerData.size());
-               result.emplace_back(DBClientClasses::BlockHeader{headerBdr, UINT32_MAX});
+               result.emplace_back(DBClientClasses::BlockHeader{
+                  headerBdr, capnHeader.getHeight(), capnHeader.getDupId()});
             }
-            callback(ReturnMessage<
-               std::vector<DBClientClasses::BlockHeader>>{std::move(result)});
+            callback(ReturnMessage<HeaderVec>{std::move(result)});
          } catch (ClientMessageError& e) {
             //something went wrong, set error message and fire callback
-            callback(ReturnMessage<std::vector<DBClientClasses::BlockHeader>>(e));
+            callback(ReturnMessage<HeaderVec>(e));
          }
       });
 
@@ -1761,9 +1700,8 @@ void AsyncClient::Blockchain::getHeadersByHash(
 
 ///////////////////////////////////////////////////////////////////////////////
 void AsyncClient::Blockchain::getHeadersByHeight(
-   std::vector<unsigned> heights,
-   std::function<void(ReturnMessage<
-      std::vector<DBClientClasses::BlockHeader>>)> callback)
+   const std::set<unsigned>& heights,
+   const std::function<void(ReturnMessage<HeaderVec>)>& callback)
 {
    //create capnp request
    capnp::MallocMessageBuilder message;
@@ -1771,8 +1709,9 @@ void AsyncClient::Blockchain::getHeadersByHeight(
 
    auto staticRequest = payload.initStatic();
    auto getHeaders = staticRequest.initGetHeadersByHeight(heights.size());
-   for (unsigned i=0; i<heights.size(); i++) {
-      getHeaders.set(i, heights[i]);
+   unsigned i = 0;
+   for (const auto& height : heights) {
+      getHeaders.set(i++, height);
    }
 
    //serialize and add to payload
@@ -1805,20 +1744,20 @@ void AsyncClient::Blockchain::getHeadersByHeight(
             }
 
             //convert to header
-            auto headersReply = staticReply.getGetHeadersByHeight();
-            std::vector<DBClientClasses::BlockHeader> result;
-            result.reserve(headersReply.size());
+            auto capnHeaders = staticReply.getGetHeadersByHeight();
+            HeaderVec result;
+            result.reserve(capnHeaders.size());
 
-            for (unsigned i=0; i<headersReply.size(); i++) {
-               auto headerData = headersReply[i];
+            for (auto capnHeader : capnHeaders) {
+               auto headerData = capnHeader.getRawData();
                BinaryDataRef headerBdr(headerData.begin(), headerData.size());
-               result.emplace_back(DBClientClasses::BlockHeader{headerBdr, heights[i]});
+               result.emplace_back(DBClientClasses::BlockHeader{
+                  headerBdr, capnHeader.getHeight(), capnHeader.getDupId()});
             }
-            callback(ReturnMessage<
-               std::vector<DBClientClasses::BlockHeader>>(std::move(result)));
+            callback(ReturnMessage<HeaderVec>(std::move(result)));
          } catch (ClientMessageError& e) {
             //something went wrong, set error message and fire callback
-            callback(ReturnMessage<std::vector<DBClientClasses::BlockHeader>>(e));
+            callback(ReturnMessage<HeaderVec>(e));
          }
       });
 

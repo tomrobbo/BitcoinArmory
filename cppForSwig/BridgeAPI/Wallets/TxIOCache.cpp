@@ -32,24 +32,75 @@ std::map<BinaryData, TxIOPair> TxIOCache::resolve(
    const std::function<bool(const BinaryData&)>& filter,
    uint32_t fromHeight) const
 {
+   //run through unspent txios first
    std::map<BinaryData, TxIOPair> result;
-   for (const auto& txio : txioMap_) {
+   for (const auto& txio : unspentTxios_) {
       const auto& txKey = txio.second.getTxRefOfOutput().getDBKey();
+
+      //skip txios that are not on the main chain
+      if (!txKeyIsValid(txKey)) {
+         continue;
+      }
+
+      //does this txout trigger our filter
       const auto& tx = dbCache_->txMap.at(txKey);
       auto scrAddr = tx.getScrAddrForTxOut(txio.second.getIndexOfOutput());
       if (filter(scrAddr)) {
          result.emplace(txio);
       }
    }
+
+   //check spent txios now
+   for (const auto& txio : spentTxios_) {
+      //is output on mainchain?
+      const auto& txKeyOutput = txio.second.getTxRefOfOutput().getDBKey();
+      if (!txKeyIsValid(txKeyOutput)) {
+         continue;
+      }
+
+      //is input on mainchain?
+      const auto& txKeyInput = txio.second.getTxRefOfInput().getDBKey();
+      if (!txKeyIsValid(txKeyInput)) {
+         continue;
+      }
+
+      //do we have an unspent txio in the result map?
+      auto txioKey = txio.second.getDBKeyOfOutput();
+      auto iter = result.find(txioKey);
+      if (iter != result.end()) {
+         //we do, merge in the txin
+         iter->second.merge(txio.second);
+         continue;
+      }
+
+      //we don't, is the txout relevant then?
+      const auto& tx = dbCache_->txMap.at(txKeyOutput);
+      auto scrAddr = tx.getScrAddrForTxOut(txio.second.getIndexOfOutput());
+      if (filter(scrAddr)) {
+         result.emplace(txioKey, txio.second);
+      }
+   }
    return result;
+}
+
+bool TxIOCache::txKeyIsValid(const BinaryData& txKey) const
+{
+   auto height = DBUtils::hgtxToHeight(txKey.getSliceRef(0, 4));
+   auto dupId = DBUtils::hgtxToDupID(txKey.getSliceRef(0, 4));
+   return dbCache_->isHeightValid(height, dupId);
 }
 
 ////////
 uint32_t TxIOCache::update(
    std::shared_ptr<AsyncClient::BlockDataViewer> bdvPtr,
-   uint32_t topHeight)
+   const NewBlockNotif& blockNotif)
 {
-   uint32_t fromHeight = lastKnownBlock_ == UINT32_MAX ? 0 : lastKnownBlock_ + 1;
+   uint32_t fromHeight = 0;
+   if (blockNotif.isReorg()) {
+      fromHeight = blockNotif.getBranchHeight() + 1;
+   } else if (blockNotif.isValid() && lastKnownBlock_ != UINT32_MAX) {
+      fromHeight = lastKnownBlock_ + 1;
+   }
 
    //1. txios
    auto promTxios = std::make_shared<std::promise<std::vector<TxIOPair>>>();
@@ -61,9 +112,18 @@ uint32_t TxIOCache::update(
    });
    auto txios = std::move(futTxios.get());
 
-   auto missingStuff = addTxios(txios, topHeight);
+   auto fetchedHeight = blockNotif.isValid() ?
+      blockNotif.getHeight() : UINT32_MAX;
+   auto missingStuff = addTxios(txios, fetchedHeight);
    auto missingTxKeys = std::move(missingStuff.first);
    auto missingHeights = std::move(missingStuff.second);
+   if (blockNotif.isReorg()) {
+      missingHeights.clear();
+      for (unsigned i = blockNotif.getBranchHeight() + 1;
+         i <= blockNotif.getHeight(); i++) {
+         missingHeights.emplace(i);
+      }
+   }
 
    //2. missing txs
    auto promTxs = std::make_shared<std::promise<std::vector<Tx>>>();
@@ -73,27 +133,26 @@ uint32_t TxIOCache::update(
          prom->set_value(result.get());
    });
 
-   //3. missing heights
-   auto promHeights = std::make_shared<
-      std::promise<std::map<uint32_t, uint32_t>>>();
-   auto futHeights = promHeights->get_future();
-   bdvPtr->getTimestampsForHeights(missingHeights, [prom = promHeights]
-      (ReturnMessage<std::map<uint32_t, uint32_t>> result) {
+   //3. missing blocks
+   auto promBlocks = std::make_shared<
+      std::promise<std::vector<DBClientClasses::BlockHeader>>>();
+   auto futBlocks = promBlocks->get_future();
+   AsyncClient::Blockchain bc{*bdvPtr};
+   bc.getHeadersByHeight(missingHeights, [prom = promBlocks]
+      (ReturnMessage<std::vector<DBClientClasses::BlockHeader>> result) {
          prom->set_value(result.get());
       }
    );
 
    //4. commit it all to the cache
    auto txs = std::move(futTxs.get());
-   auto heights = std::move(futHeights.get());
+   auto blocks = std::move(futBlocks.get());
 
    ReentrantLock lock(this);
    for (auto& tx : txs) {
       dbCache_->txMap.emplace(tx.getDBKey(), std::move(tx));
    }
-   for (auto& ts : heights) {
-      dbCache_->timestamps.emplace(ts);
-   }
+   dbCache_->addBlocks(blocks);
    return fromHeight;
 }
 
@@ -107,22 +166,22 @@ std::pair<std::set<BinaryData>, std::set<uint32_t>> TxIOCache::addTxios(
    for (auto& txio : txios) {
       const auto& txRef = txio.getTxRefOfOutput();
       auto height = DBUtils::hgtxToHeight(txRef.getDBKey().getSliceRef(0, 4));
-      if (dbCache_->timestamps.find(height) == dbCache_->timestamps.end()) {
+      if (dbCache_->blocks.find(height) == dbCache_->blocks.end()) {
          missingHeights.emplace(height);
       }
       if (dbCache_->txMap.find(txRef.getDBKey()) == dbCache_->txMap.end()) {
          missingTxKeys.emplace(txRef.getDBKey());
       }
 
-      auto keyOfOutput = txio.getDBKeyOfOutput();
-      auto iter = txioMap_.find(keyOfOutput);
-      if (iter != txioMap_.end()) {
-         iter->second.merge(txio);
+      if (txio.hasTxIn()) {
+         spentTxios_.emplace(txio.getDBKeyOfInput(), std::move(txio));
       } else {
-         txioMap_.emplace(keyOfOutput, std::move(txio));
+         unspentTxios_.emplace(txio.getDBKeyOfOutput(), std::move(txio));
       }
    }
 
-   lastKnownBlock_ = fetchedHeight;
+   if (fetchedHeight != UINT32_MAX) {
+      lastKnownBlock_ = fetchedHeight;
+   }
    return {std::move(missingTxKeys), std::move(missingHeights)};
 }

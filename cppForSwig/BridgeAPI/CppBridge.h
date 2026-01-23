@@ -201,7 +201,7 @@ namespace Armory
 
          //txs & headers
          void getTxsByHash(const std::set<BinaryData>&, MessageId);
-         void getHeadersByHeight(const std::vector<unsigned>&, MessageId);
+         void getHeadersByHeight(const std::set<unsigned>&, MessageId);
 
          //utxos
          void getUTXOs(const Wallets::WalletId&,

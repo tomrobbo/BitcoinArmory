@@ -263,7 +263,11 @@ namespace DBTestUtils
                }
             }
          } else if (bdmNotif.action == BDMAction_NewBlock) {
-            notif->reorgHeight = bdmNotif.branchHeight;
+            if (bdmNotif.newBlock.isReorg()) {
+               notif->reorgHeight = bdmNotif.newBlock.getBranchHeight();
+            } else {
+               notif->reorgHeight = UINT32_MAX;
+            }
          } else if (bdmNotif.action == BDMAction_BDV_Error) {
             notif->error = bdmNotif.error;
          }

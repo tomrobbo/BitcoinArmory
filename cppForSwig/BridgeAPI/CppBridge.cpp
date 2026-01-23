@@ -2180,7 +2180,7 @@ BinaryData CppBridge::setAddressTypeFor(const Wallets::WalletId& wltId,
 
 ////////////////////////////////////////////////////////////////////////////////
 void CppBridge::getHeadersByHeight(
-  const std::vector<unsigned>& heights, MessageId msgId)
+  const std::set<unsigned>& heights, MessageId msgId)
 {
    auto lbd = [this, msgId](
       ReturnMessage<std::vector<DBClientClasses::BlockHeader>> result)->void
@@ -2195,10 +2195,15 @@ void CppBridge::getHeadersByHeight(
 
       auto service = reply.initService();
       auto capnHeaders = service.initGetHeadersByHeight(headers.size());
-      for (unsigned i=0; i<headers.size(); i++) {
-         capnHeaders.set(i, capnp::Data::Builder(
-            (uint8_t*)headers[i].getPtr(), headers[i].getSize()
+      for (unsigned i = 0; i < headers.size(); i++) {
+         auto capnHeader = capnHeaders[i];
+         const auto& header = headers[i];
+
+         capnHeader.setRawData(capnp::Data::Builder(
+            (uint8_t*)header.getPtr(), header.getSize()
          ));
+         capnHeader.setHeight(header.getBlockHeight());
+         capnHeader.setDupId(header.getDupId());
       }
 
       auto serialized = serializeCapnp(message);

@@ -311,15 +311,14 @@ namespace AsyncClient
    {
    private:
       const std::shared_ptr<SocketPrototype> sock_;
+      using HeaderVec = std::vector<DBClientClasses::BlockHeader>;
 
    public:
       Blockchain(const BlockDataViewer&);
-      void getHeadersByHash(const std::set<BinaryDataRef>& hash,
-         std::function<void(
-            ReturnMessage<std::vector<DBClientClasses::BlockHeader>>)>);
-      void getHeadersByHeight(const std::vector<unsigned> heights,
-         std::function<void(
-            ReturnMessage<std::vector<DBClientClasses::BlockHeader>>)>);
+      void getHeadersByHash(const std::set<BinaryDataRef>&,
+         const std::function<void(ReturnMessage<HeaderVec>)>&);
+      void getHeadersByHeight(const std::set<unsigned>&,
+         const std::function<void(ReturnMessage<HeaderVec>)>&);
    };
 
    /////////////////////////////////////////////////////////////////////////////
@@ -419,7 +418,5 @@ namespace AsyncClient
          const TxBatchCallback&);
       void getTxsByKey(const std::set<BinaryData>&,
          const std::function<void(ReturnMessage<std::vector<Tx>>)>&);
-      void getTimestampsForHeights(const std::set<uint32_t>&,
-         const std::function<void(ReturnMessage<std::map<uint32_t, uint32_t>>)>&);
    };
 } //namespace AsyncClient

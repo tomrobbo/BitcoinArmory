@@ -19,6 +19,7 @@
 
 class TxIOPair;
 class Tx;
+class NewBlockNotif;
 
 namespace AsyncClient
 {
@@ -37,7 +38,8 @@ namespace Armory
       class TxIOCache : public Lockable
       {
       private:
-         std::map<BinaryData, TxIOPair> txioMap_;
+         std::map<BinaryData, TxIOPair> unspentTxios_;
+         std::map<BinaryData, TxIOPair> spentTxios_;
          std::shared_ptr<Ledgers::DBCache> dbCache_;
          uint32_t lastKnownBlock_ = UINT32_MAX;
 
@@ -45,13 +47,15 @@ namespace Armory
          void initAfterLock(void) override {}
          void cleanUpBeforeUnlock(void) override {}
 
+         bool txKeyIsValid(const BinaryData&) const;
          std::pair<std::set<BinaryData>, std::set<uint32_t>> addTxios(
             std::vector<TxIOPair>&, uint32_t);
 
       public:
          TxIOCache(void);
 
-         uint32_t update(std::shared_ptr<AsyncClient::BlockDataViewer>, uint32_t);
+         uint32_t update(std::shared_ptr<AsyncClient::BlockDataViewer>,
+            const NewBlockNotif&);
          std::shared_ptr<const Ledgers::DBCache> getDBCache(void) const;
          std::map<BinaryData, TxIOPair> resolve(
             const std::function<bool(const BinaryData&)>&,
