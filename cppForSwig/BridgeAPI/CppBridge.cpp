@@ -9,6 +9,7 @@
 #include "CppBridge.h"
 #include "BridgeSocket.h"
 #include "./Wallets/Manager.h"
+#include "./Wallets/Notifications.h"
 
 #include <Utils/ArmoryConfig.h>
 #include <Utils/BtcUtils.h>
@@ -454,7 +455,7 @@ namespace
    {
       return [bridgePtr, callbackId, priv]()->std::unique_ptr<Passphrase::Params>
       {
-         auto counterBd = bridgePtr->generateRandom(4);
+         auto counterBd = fortuna.generateRandom(4);
          auto notifCounter = *(uint32_t*)counterBd.getPtr();
 
          //create set passphrase notif
@@ -491,6 +492,25 @@ namespace
          }
          return std::make_unique<Passphrase::Params>(reply.passParams);
       };
+   }
+
+   std::pair<std::string, std::string> getIpAndPortFromPeerName(
+      const std::string& peerName)
+   {
+      //TODO: flesh this out
+      std::stringstream ss(peerName);
+      std::pair<std::string, std::string> output;
+
+      //ip
+      std::getline(ss, output.first, ':');
+
+      //port
+      if (ss.good()) {
+         std::getline(ss, output.second);
+      } else {
+         output.second = Config::NetworkSettings::dbPort();
+      }
+      return output;
    }
 }
 
@@ -832,12 +852,106 @@ bool CppBridge::deleteWallet(const Wallets::WalletId& wltId)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void CppBridge::setupDB(MessageId refId)
+// peers db stuff
+std::shared_ptr<Wallets::AuthorizedPeers> CppBridge::getPeersDb()
+{
+   if (peersDb_ != nullptr) {
+      return peersDb_;
+   }
+
+   try {
+      peersDb_ = std::make_shared<Wallets::AuthorizedPeers>(
+         Wallets::IO::ReadOnlyFileParams{
+            path_ / CLIENT_AUTH_PEER_FILENAME,
+            TerminalPassphrasePrompt::getLambda("db identification key")
+      });
+   } catch (const Wallets::PeerFileMissing&) {
+      //NOTE (SHORT TERM SOLUTION): auto generation of auth peer db
+      Wallets::IO::CreateFileParams parms{
+         path_ / CLIENT_AUTH_PEER_FILENAME, {}};
+      peersDb_ = Wallets::AuthorizedPeers::createWallet(
+         Wallets::IO::CreateFileParams{
+            path_ / CLIENT_AUTH_PEER_FILENAME, {}
+      });
+   }
+   return peersDb_;
+}
+
+void CppBridge::listPeers(MessageId refId)
+{
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   reply.setReferenceId(refId);
+
+   try {
+      auto peers = getPeersDb();
+      std::map<std::string, std::set<std::string>> keyNameMap;
+      for (const auto& namePair : peers->getPeerNameMap()) {
+         BinaryDataRef keyRef{namePair.second.pubkey, BIP151PUBKEYSIZE};
+         auto keyHex = keyRef.toHexStr();
+         auto iter = keyNameMap.find(keyHex);
+         if (iter == keyNameMap.end()) {
+            iter = keyNameMap.emplace(keyHex, std::set<std::string>{}).first;
+         }
+         iter->second.emplace(namePair.first);
+      }
+
+      auto setupReply = reply.initSetup();
+      auto peersCapnp = setupReply.initListPeers(keyNameMap.size());
+      unsigned i = 0;
+      for (const auto& keyNames : keyNameMap) {
+         auto peerCapnp = peersCapnp[i++];
+         peerCapnp.setPublicKey(keyNames.first);
+
+         auto namesCapnp = peerCapnp.initNames(keyNames.second.size());
+         unsigned y = 0;
+         for (const auto& name : keyNames.second) {
+            namesCapnp.set(y++, name);
+         }
+      }
+      reply.setSuccess(true);
+   } catch (const std::exception& e) {
+      reply.setError(std::string{"failed to list peers with error: "} + e.what());
+      reply.setSuccess(false);
+   }
+
+   auto response = serializeCapnp(message);
+   this->writeToClient(response);
+}
+
+void CppBridge::addPeer(SecureBinaryData& pubkey,
+   std::vector<std::string>& names, MessageId refId)
+{
+   LOGINFO << "adding peer";
+
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   reply.setReferenceId(refId);
+
+   try {
+      auto peers = getPeersDb();
+      peers->addPeer(pubkey, names);
+      reply.setSuccess(true);
+   } catch (const std::exception& e) {
+      reply.setError(std::string{"failed to add peer with error: "} + e.what());
+      reply.setSuccess(false);
+   }
+
+   auto response = serializeCapnp(message);
+   this->writeToClient(response);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// db connection routines
+void CppBridge::connectToIp(const std::string& ip, const std::string& port,
+   bool oneWayAuth, MessageId refId)
 {
    /*
    * should call this method from a dedicated thread
    */
-   LOGINFO << "connecting to ArmoryDB";
+   LOGINFO << "connecting to ip";
 
    capnp::MallocMessageBuilder message;
    auto fromBridge = message.initRoot<FromBridge>();
@@ -862,47 +976,131 @@ void CppBridge::setupDB(MessageId refId)
       return;
    }
 
-   if (wltManager_ == nullptr) {
-      LOGERR << "null wallet manager!";
-      reply.setError("null wallet manager!");
+   //connect to db
+   try {
+      auto peers = getPeersDb();
+      bdvPtr_ = setupClientConnection(peers,
+         ip, port, oneWayAuth, true,
+         wltManager_->getBdvCallback());
+      if (bdvPtr_ == nullptr) {
+         throw std::runtime_error("failed to instantiate bdv object");
+      }
+      wltManager_->setBdvPtr(bdvPtr_);
+
+      //reply to caller
+      reply.setSuccess(true);
+   } catch (const std::exception& e) {
+      reply.setSuccess(false);
+      reply.setError(e.what());
+   }
+
+   auto response = serializeCapnp(message);
+   this->writeToClient(response);
+}
+
+void CppBridge::connectToPeer(const std::string& peerName,
+   bool oneWayAuth, MessageId refId)
+{
+   /*
+   * should call this method from a dedicated thread
+   */
+   LOGINFO << "connecting to peer";
+
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   reply.setReferenceId(refId);
+
+   if (dbOffline_) {
+      LOGWARN << "attempt to connect to DB in offline mode, ignoring";
+      reply.setError("cannot setup db offline mode");
       reply.setSuccess(false);
       auto response = serializeCapnp(message);
       this->writeToClient(response);
       return;
    }
 
-   //do we have to spawn the db?
-   std::shared_ptr<Wallets::AuthorizedPeers> peers = nullptr;
-   if (Config::NetworkSettings::automateDb()) {
-      peers = spawnDb();
-   } else {
-      try {
-         peers = std::make_shared<Wallets::AuthorizedPeers>(
-            Wallets::IO::ReadOnlyFileParams{
-               path_ / CLIENT_AUTH_PEER_FILENAME,
-               TerminalPassphrasePrompt::getLambda("db identification key")
-         });
-      } catch (const Wallets::PeerFileMissing&) {
-         //NOTE (SHORT TERM SOLUTION): auto generation of auth peer db
-         Wallets::IO::CreateFileParams parms{
-            path_ / CLIENT_AUTH_PEER_FILENAME, {}};
-         peers = Wallets::AuthorizedPeers::createWallet(
-            Wallets::IO::CreateFileParams{
-               path_ / CLIENT_AUTH_PEER_FILENAME, {}
-         });
-      }
+   if (bdvPtr_ != nullptr) {
+      LOGWARN << "already connected to db!";
+      reply.setError("already connected to db!");
+      reply.setSuccess(false);
+      auto response = serializeCapnp(message);
+      this->writeToClient(response);
+      return;
    }
 
    //connect to db
    try {
-      if (peers == nullptr) {
-         throw std::runtime_error("failed to setup client peers db");
+      auto peers = getPeersDb();
+      const auto& peerMap = peers->getPeerNameMap();
+      if (peerMap.find(peerName) == peerMap.end()) {
+         throw std::runtime_error("unknown peer: " + peerName);
       }
+      auto ipAndPort = getIpAndPortFromPeerName(peerName);
 
-      bdvPtr_ = setupClientConnection(peers, wltManager_);
+      bdvPtr_ = setupClientConnection(peers,
+         ipAndPort.first, ipAndPort.second, oneWayAuth, false,
+         wltManager_->getBdvCallback());
       if (bdvPtr_ == nullptr) {
          throw std::runtime_error("failed to instantiate bdv object");
       }
+      wltManager_->setBdvPtr(bdvPtr_);
+
+      //reply to caller
+      reply.setSuccess(true);
+   } catch (const std::exception& e) {
+      reply.setSuccess(false);
+      reply.setError(e.what());
+   }
+
+   auto response = serializeCapnp(message);
+   this->writeToClient(response);
+}
+
+void CppBridge::automateDb(MessageId refId)
+{
+   /*
+   * should call this method from a dedicated thread
+   */
+   LOGINFO << "automating ArmoryDB";
+
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   reply.setReferenceId(refId);
+
+   if (dbOffline_) {
+      LOGWARN << "attempt to connect to DB in offline mode, ignoring";
+      reply.setError("cannot setup db offline mode");
+      reply.setSuccess(false);
+      auto response = serializeCapnp(message);
+      this->writeToClient(response);
+      return;
+   }
+
+   if (bdvPtr_ != nullptr) {
+      LOGWARN << "already connected to db!";
+      reply.setError("already connected to db!");
+      reply.setSuccess(false);
+      auto response = serializeCapnp(message);
+      this->writeToClient(response);
+      return;
+   }
+
+   auto result = spawnDb();
+   auto peers = result.first;
+   auto port = std::to_string(result.second);
+
+   //connect to db
+   try {
+      bdvPtr_ = setupClientConnection(peers,
+         "127.0.0.1", port,
+         false, false,
+         wltManager_->getBdvCallback());
+      if (bdvPtr_ == nullptr) {
+         throw std::runtime_error("failed to instantiate bdv object");
+      }
+      wltManager_->setBdvPtr(bdvPtr_);
 
       //reply to caller
       reply.setSuccess(true);
@@ -923,10 +1121,7 @@ void CppBridge::cleanupDb(MessageId refId)
    auto reply = fromBridge.initReply();
    reply.setReferenceId(refId);
 
-   if (!Config::NetworkSettings::automateDb()) {
-      reply.setSuccess(false);
-      reply.setError("db is not automated");
-   } else if (bdvPtr_ == nullptr) {
+   if (bdvPtr_ == nullptr) {
       reply.setSuccess(false);
       reply.setError("no connection to db");
    } else if (!isDbRunning()) {
@@ -941,9 +1136,17 @@ void CppBridge::cleanupDb(MessageId refId)
    this->writeToClient(response);
 }
 
+void CppBridge::disconnect()
+{
+   bdvPtr_->unregisterFromDB();
+}
+
 ////
 void CppBridge::goOnline()
 {
+   if (bdvPtr_ == nullptr) {
+      throw std::runtime_error("have to connect to db first!");
+   }
    bdvPtr_->goOnline();
 }
 
@@ -2541,12 +2744,6 @@ CallbackHandler CppBridge::getCallbackHandler(uint32_t id)
    auto handler = std::move(handlerIter->second);
    callbackHandlers_.erase(handlerIter);
    return handler;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-SecureBinaryData CppBridge::generateRandom(size_t count) const
-{
-   return fortuna.generateRandom(count);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

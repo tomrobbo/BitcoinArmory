@@ -48,6 +48,7 @@ namespace Armory
       class WalletId;
       class AddressAccountId;
       class AssetWallet;
+      class AuthorizedPeers;
 
       namespace IO
       {
@@ -94,8 +95,9 @@ namespace Armory
          //datadir
          const std::filesystem::path path_;
 
-         //armorydb config
+         //armorydb stuff
          const bool dbOffline_;
+         std::shared_ptr<Wallets::AuthorizedPeers> peersDb_;
 
          //to write to the bridge client
          std::function<void(std::unique_ptr<WritePayload_Bridge>)> writeLambda_;
@@ -115,11 +117,13 @@ namespace Armory
          std::mutex callbackHandlerMu_;
          std::map<uint32_t, CallbackHandler> callbackHandlers_;
 
-      public:
-         std::shared_ptr<AsyncClient::BlockDataViewer> bdvPtr(void) const;
-         void reset(void);
+      private:
+         std::shared_ptr<Wallets::AuthorizedPeers> getPeersDb(void);
 
       public:
+         void reset(void);
+         std::shared_ptr<AsyncClient::BlockDataViewer> bdvPtr(void) const;
+
          //wallet manager init methods
          BinaryData listWallets(MessageId);
          void unlockControlHeader(const std::string&, const std::string&,
@@ -138,9 +142,17 @@ namespace Armory
             Wallets::AddressAccountId, MessageId) const;
 
          //db setup
-         void setupDB(MessageId);
+         void connectToIp(
+            const std::string&, const std::string&,
+            bool, MessageId);
+         void connectToPeer(const std::string&, bool, MessageId);
+         void automateDb(MessageId);
          void cleanupDb(MessageId);
          void goOnline(void);
+         void disconnect(void);
+
+         void listPeers(MessageId);
+         void addPeer(SecureBinaryData&, std::vector<std::string>&, MessageId);
 
          //wallet registration
          void registerWallets(void);
@@ -257,7 +269,6 @@ namespace Armory
          void writeToClient(BinaryData&) const;
          void setWriteLambda(
             const std::function<void(std::unique_ptr<WritePayload_Bridge>)>&);
-         SecureBinaryData generateRandom(size_t) const;
       };
    } //namespace Bridge
 } //namespace Armory

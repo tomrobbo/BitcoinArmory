@@ -101,6 +101,11 @@ struct UTXO {
    scrAddr  @1 : Types.ScrAddr;
 }
 
+struct Peer {
+   publicKey   @0 : Text; #in hexits
+   names       @1 : List(Text);
+}
+
 ################################################################################
 ## Notifications
 struct Notification {
@@ -202,6 +207,45 @@ struct NotificationReply {
 }
 
 ################################################################################
+## DB Setup
+struct DbSetupRequest {
+   struct IpRequest {
+      ip             @0 : Text;
+      port           @1 : Text;
+      oneWayAuth     @2 : Bool;
+   }
+
+   struct PeerRequest {
+      peerName       @0 : Text; #peer name
+      oneWayAuth     @1 : Bool;
+   }
+
+   union {
+      unset          @0 : Void;
+
+      connectToIp    @1 : IpRequest;
+      connectToPeer  @2 : PeerRequest;
+      automateDb     @3 : Void;
+      goOnline       @4 : Void;
+      disconnect     @5 : Void;
+      cleanupDb      @6 : Void;
+      shutdown       @7 : Void;
+
+      listPeers      @8 : Void;
+      addPeer        @9 : Peer;
+      removePeer     @10 : Peer;
+   }
+}
+
+struct DbSetupReply {
+   union {
+      unset          @0 : Void;
+
+      listPeers      @1 : List(Peer);
+   }
+}
+
+################################################################################
 ## Blockchain Service
 struct BlockchainServiceRequest {
    struct RegisterWallet {
@@ -213,22 +257,18 @@ struct BlockchainServiceRequest {
    union {
       unset                         @0 : Void;
 
-      shutdown                      @1 : Void;
-      setupDb                       @2 : Void;
-      cleanupDb                     @3 : Void;
-      goOnline                      @4 : Void;
-      getNodeStatus                 @5 : Void;
-      registerWallets               @6 : Void;
+      getNodeStatus                 @1 : Void;
+      registerWallets               @2 : Void;
 
-      registerWallet                @7 : RegisterWallet;
-      broadcastTx                   @8 : List(Data);
-      getTxsByHash                  @9 : List(Types.Hash);
-      getHeadersByHeight            @10: List(Types.Height);
-      getBlockTimeByHeight          @11: UInt32;
-      getFeeSchedule                @12: Text;
+      registerWallet                @3 : RegisterWallet;
+      broadcastTx                   @4 : List(Data);
+      getTxsByHash                  @5 : List(Types.Hash);
+      getHeadersByHeight            @6 : List(Types.Height);
+      getBlockTimeByHeight          @7 : UInt32;
+      getFeeSchedule                @8 : Text;
 
-      getLedgerDelegateId           @13: Void;
-      updateWalletsLedgerFilter     @14: List(Types.WalletId);
+      getLedgerDelegateId           @9 : Void;
+      updateWalletsLedgerFilter     @10: List(Types.WalletId);
    }
 }
 
@@ -713,15 +753,16 @@ struct ToBridge {
    union {
       unset          @1 : Void;
 
-      service        @2 : BlockchainServiceRequest;
-      walletManager  @3 : WalletManagerRequest;
-      wallet         @4 : WalletRequest;
-      coinSelection  @5 : CoinSelectionRequest;
-      signer         @6 : SignerRequest;
-      utils          @7 : UtilsRequest;
-      scriptUtils    @8 : ScriptUtilsRequest;
-      delegate       @9 : LedgerDelegateRequest;
-      notification   @10: NotificationReply;
+      setup          @2 : DbSetupRequest;
+      service        @3 : BlockchainServiceRequest;
+      walletManager  @4 : WalletManagerRequest;
+      wallet         @5 : WalletRequest;
+      coinSelection  @6 : CoinSelectionRequest;
+      signer         @7 : SignerRequest;
+      utils          @8 : UtilsRequest;
+      scriptUtils    @9 : ScriptUtilsRequest;
+      delegate       @10: LedgerDelegateRequest;
+      notification   @11: NotificationReply;
    }
 }
 
@@ -734,14 +775,15 @@ struct RpcReply {
    union {
       unset          @3 : Void;
 
-      service        @4 : BlockchainServiceReply;
-      walletManager  @5 : WalletManagerReply;
-      wallet         @6 : WalletReply;
-      coinSelection  @7 : CoinSelectionReply;
-      signer         @8 : SignerReply;
-      utils          @9 : UtilsReply;
-      scriptUtils    @10: ScriptUtilsReply;
-      delegate       @11: LedgerDelegateReply;
+      setup          @4 : DbSetupReply;
+      service        @5 : BlockchainServiceReply;
+      walletManager  @6 : WalletManagerReply;
+      wallet         @7 : WalletReply;
+      coinSelection  @8 : CoinSelectionReply;
+      signer         @9 : SignerReply;
+      utils          @10: UtilsReply;
+      scriptUtils    @11: ScriptUtilsReply;
+      delegate       @12: LedgerDelegateReply;
    }
 }
 

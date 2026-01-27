@@ -31,6 +31,7 @@ using namespace std::chrono_literals;
 namespace
 {
    using namespace Codec::Bridge;
+   Cryptography::PRNG::Fortuna fortuna;
 
    // helpers //
    BinaryData serializeCapnp(capnp::MallocMessageBuilder& msg)
@@ -73,6 +74,107 @@ namespace
    }
 
    // switchers //
+   bool processDbSetupCommands(
+      std::shared_ptr<CppBridge> bridge, MessageId referenceId,
+      Codec::Bridge::DbSetupRequest::Reader& request)
+   {
+      BinaryData response;
+      switch (request.which())
+      {
+         case DbSetupRequest::AUTOMATE_DB:
+         {
+            std::thread thr([bridge, referenceId]{
+               bridge->automateDb(referenceId);});
+            if (thr.joinable()) {
+               thr.detach();
+            }
+            return true;
+         }
+
+         case DbSetupRequest::CONNECT_TO_IP:
+         {
+            auto connectReq = request.getConnectToIp();
+            std::string ip = connectReq.getIp();
+            std::string port = connectReq.getPort();
+            bool oneWay = connectReq.getOneWayAuth();
+
+            std::thread thr([bridge, ip, port, oneWay, referenceId]{
+               bridge->connectToIp(ip, port, oneWay, referenceId);});
+            if (thr.joinable()) {
+               thr.detach();
+            }
+            return true;
+         }
+
+         case DbSetupRequest::CONNECT_TO_PEER:
+         {
+            auto connectReq = request.getConnectToPeer();
+            std::string peerName = connectReq.getPeerName();
+            bool oneWay = connectReq.getOneWayAuth();
+
+            std::thread thr([bridge, peerName, oneWay, referenceId]{
+               bridge->connectToPeer(peerName, oneWay, referenceId);});
+            if (thr.joinable()) {
+               thr.detach();
+            }
+            return true;
+         }
+
+         case DbSetupRequest::CLEANUP_DB:
+         {
+            std::thread thr([bridge, referenceId]{
+               bridge->cleanupDb(referenceId);});
+            if (thr.joinable()) {
+               thr.detach();
+            }
+            return true;
+         }
+
+         case DbSetupRequest::GO_ONLINE:
+         {
+            bridge->goOnline();
+            break;
+         }
+
+         case DbSetupRequest::DISCONNECT:
+         {
+            bridge->disconnect();
+            break;
+         }
+
+         case DbSetupRequest::SHUTDOWN:
+         {
+            bridge->reset();
+            return false;
+         }
+
+         case DbSetupRequest::LIST_PEERS:
+         {
+            bridge->listPeers(referenceId);
+            return true;
+         }
+
+         case DbSetupRequest::ADD_PEER:
+         {
+            auto peerReq = request.getAddPeer();
+            auto key = SecureBinaryData{READHEX(peerReq.getPublicKey())};
+            std::vector<std::string> names;
+            for (auto capnName : peerReq.getNames()) {
+               names.emplace_back(std::string(capnName));
+            }
+            bridge->addPeer(key, names, referenceId);
+            return true;
+         }
+      }
+
+      if (!response.empty()) {
+         //write response to socket
+         bridge->writeToClient(response);
+      }
+
+      return true;
+   }
+
    bool processBlockchainServiceCommands(
       std::shared_ptr<CppBridge> bridge, MessageId referenceId,
       Codec::Bridge::BlockchainServiceRequest::Reader& request)
@@ -85,38 +187,6 @@ namespace
             auto strat = request.getGetFeeSchedule();
             bridge->getFeeSchedule(strat, referenceId);
             break;
-         }
-
-         case BlockchainServiceRequest::SETUP_DB:
-         {
-            std::thread thr([bridge, referenceId]{
-               bridge->setupDB(referenceId);});
-            if (thr.joinable()) {
-               thr.detach();
-            }
-            return true;
-         }
-
-         case BlockchainServiceRequest::CLEANUP_DB:
-         {
-            std::thread thr([bridge, referenceId]{
-               bridge->cleanupDb(referenceId);});
-            if (thr.joinable()) {
-               thr.detach();
-            }
-            return true;
-         }
-
-         case BlockchainServiceRequest::GO_ONLINE:
-         {
-            bridge->goOnline();
-            break;
-         }
-
-         case BlockchainServiceRequest::SHUTDOWN:
-         {
-            bridge->reset();
-            return false;
          }
 
          case BlockchainServiceRequest::REGISTER_WALLETS:
@@ -1145,7 +1215,7 @@ namespace
 
          case UtilsRequest::GENERATE_RANDOM_HEX:
          {
-            auto str = bridge->generateRandom(
+            auto str = fortuna.generateRandom(
                request.getGenerateRandomHex()).toHexStr();
 
             capnp::MallocMessageBuilder message;
@@ -1362,6 +1432,13 @@ bool ProtoCommandParser::processData(
 
    switch (toBridge.which())
    {
+      case Codec::Bridge::ToBridge::SETUP:
+      {
+         auto setup = toBridge.getSetup();
+         return processDbSetupCommands(
+            bridge, referenceId, setup);
+      }
+
       case Codec::Bridge::ToBridge::SERVICE:
       {
          auto service = toBridge.getService();

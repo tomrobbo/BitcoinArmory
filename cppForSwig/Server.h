@@ -89,7 +89,7 @@ struct PendingMessage
 };
 
 ///////////////////////////////////////////////////////////////////////////////
-struct ClientConnection
+class ClientConnection
 {
 public:
    struct lws *wsiPtr_ = nullptr;
@@ -114,6 +114,7 @@ public:
 
    void closeConnection(void);
    void processReadQueue(std::shared_ptr<Clients>);
+   bool isMaster(void) const;
 };
 
 ///////////////////////////////////////////////////////////////////////////////

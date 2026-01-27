@@ -171,6 +171,7 @@ void WalletManager::setBdvPtr(
          accIt.second->setBdvPtr(bdvPtr);
       }
    }
+   callbackPtr_->notifySetupDone();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

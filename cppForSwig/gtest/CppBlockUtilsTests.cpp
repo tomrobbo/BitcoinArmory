@@ -540,7 +540,6 @@ protected:
          "--datadir=./fakehomedir",
          "--dbdir=./ldbtestdir",
          "--satoshi-datadir=./blkfiletest",
-         "--public",
          "--db-type=DB_FULL",
          "--thread-count=3",
          "--public"},

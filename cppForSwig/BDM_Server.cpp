@@ -1581,7 +1581,9 @@ std::unique_ptr<BDV_Notification_ZC> BDV_Server_Object::createZcNotification(
 // Clients
 Clients::Clients(std::shared_ptr<BlockDataManager> bdm) :
    bdm_(bdm)
-{}
+{
+   masterIsConnected_.store(false, std::memory_order_relaxed);
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<BlockDataManager> Clients::bdm() const
@@ -1635,6 +1637,21 @@ void Clients::init()
 
    auto callbackPtr = std::make_unique<ZeroConf::ZeroConfCallbacks_BDV>(this);
    bdm_->registerZcCallbacks(std::move(callbackPtr));
+
+   if (Config::NetworkSettings::ephemeralPeers()) {
+      //shutdown within 5sec of starting an ephemeral db if the master client
+      //has yet to connect
+      auto masterCheckThr = std::thread([this](){
+         std::this_thread::sleep_for(5s);
+         if (masterIsConnected_.load(std::memory_order_relaxed) == false) {
+            LOGERR << "master client did not connect within imparted time, exiting";
+            WebSocketServer::shutdown();
+         }
+      });
+      if (masterCheckThr.joinable()) {
+         masterCheckThr.detach();
+      }
+   }
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1747,6 +1764,21 @@ void Clients::shutdown()
    for (auto& thr : controlThreads_) {
       if (thr.joinable()) {
          thr.join();
+      }
+   }
+}
+
+void Clients::setMasterIsConnected(bool isConnected)
+{
+   if (isConnected) {
+      masterIsConnected_.store(true, std::memory_order_relaxed);
+   } else if (masterIsConnected_.load(std::memory_order_relaxed) == true &&
+      Config::NetworkSettings::ephemeralPeers()) {
+      //master disconnected from ephemeral db, time to shut it down
+      masterIsConnected_.store(false, std::memory_order_relaxed);
+      std::thread shutdownThr([]{ WebSocketServer::shutdown(); });
+      if (shutdownThr.joinable()) {
+         shutdownThr.detach();
       }
    }
 }
@@ -1912,7 +1944,7 @@ void Clients::parseStandAlonePayload(std::shared_ptr<BDV_Payload> payloadPtr)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-void Clients::messageParserThread(void)
+void Clients::messageParserThread()
 {
    while (true) {
       std::shared_ptr<BDV_Payload> payloadPtr;

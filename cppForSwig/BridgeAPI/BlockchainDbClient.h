@@ -18,6 +18,7 @@ namespace AsyncClient
 }
 
 class BinaryData;
+class RemoteCallback;
 
 namespace Armory
 {
@@ -28,7 +29,6 @@ namespace Armory
 
    namespace Bridge
    {
-      class WalletManager;
       using BdvPtr = std::shared_ptr<AsyncClient::BlockDataViewer>;
    #ifdef _WIN32
       extern void* autoDbHandle;
@@ -37,12 +37,14 @@ namespace Armory
    #endif
 
       ////////
-      std::shared_ptr<Wallets::AuthorizedPeers> spawnDb(void);
+      std::pair<std::shared_ptr<Wallets::AuthorizedPeers>, uint32_t> spawnDb(void);
       bool isDbRunning(void);
 
       BdvPtr setupClientConnection(
          std::shared_ptr<Wallets::AuthorizedPeers>,
-         std::shared_ptr<WalletManager>
+         const std::string&, const std::string&,
+         bool, bool,
+         std::shared_ptr<RemoteCallback>
       );
    }
 }

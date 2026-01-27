@@ -122,7 +122,7 @@ int WebSocketServer::callback(struct lws *wsi,
             break;
          }
 
-         //pending write queue iterator is always set entering the 
+         //pending write queue iterator is always set entering the
          //lws callback unless the pending write set is empty
          if (instance->pendingWritesIter_ != instance->pendingWrites_.end() &&
             *instance->pendingWritesIter_ == wsi) {
@@ -226,6 +226,10 @@ void WebSocketServer::initAuthPeers(const IO::ReadOnlyFileParams& params)
       instance->authorizedPeers_ = std::make_shared<AuthorizedPeers>();
 
       //grab caller pubkey
+      auto callerKeyPtr = std::getenv("CALLER_PUBKEY");
+      if (callerKeyPtr == nullptr) {
+         throw std::runtime_error("caller key is not set");
+      }
       std::string callerPubKeyStr{std::getenv("CALLER_PUBKEY")};
       auto callerPubKey = SecureBinaryData::CreateFromHex(callerPubKeyStr);
 
@@ -651,7 +655,7 @@ void WebSocketServer::addId(const uint64_t& id, struct lws* ptr)
 ///////////////////////////////////////////////////////////////////////////////
 void WebSocketServer::eraseId(const uint64_t& id, struct lws* ptr)
 {
-   clientStateMap_.erase(id);
+   closeClientConnection(id);
    writeMap_.erase(ptr);
 }
 
@@ -690,6 +694,10 @@ void WebSocketServer::closeClientConnection(uint64_t id)
 
    auto cc = const_cast<ClientConnection*>(&iter->second);
    cc->closeConnection();
+   if (cc->isMaster()) {
+      clients_->setMasterIsConnected(false);
+   }
+   clientStateMap_.erase(id);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -842,6 +850,10 @@ void ClientConnection::processReadQueue(std::shared_ptr<Clients> clients)
          packetData.getRef());
       if (msgType > ArmoryAEAD::BIP151_PayloadType::Threshold_Begin) {
          processAEADHandshake(std::move(packetData));
+         if (bip151Connection_->getBIP150State() == BIP150State::SUCCESS &&
+            isMaster()) {
+            clients->setMasterIsConnected(true);
+         }
          continue;
       }
 
@@ -939,4 +951,13 @@ void ClientConnection::processAEADHandshake(BinaryData msg)
 void ClientConnection::closeConnection()
 {
    run_->store(-1, std::memory_order_relaxed);
+}
+
+bool ClientConnection::isMaster() const
+{
+   if (!bip151Connection_ || bip151Connection_->isOneWayAuth() ||
+      bip151Connection_->getBIP150State() != BIP150State::SUCCESS) {
+      false;
+   }
+   return WebSocketServer::isMasterKey(bip151Connection_->getChosenAuthPeerKey());
 }

@@ -5369,8 +5369,7 @@ protected:
          "--satoshi-datadir=./blkfiletest",
          "--db-type=DB_SUPER",
          "--thread-count=3",
-         "--public",
-         "--cookie"},
+         "--public"},
          Config::ProcessType::DB);
 
       //setup auth peers for server and client
