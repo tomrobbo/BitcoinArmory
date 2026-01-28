@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2017-2021, goatpig                                          //
+//  Copyright (C) 2017-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -28,6 +28,7 @@ namespace Armory
    {
       enum class DerivationSchemeType : int;
       class DerivationScheme;
+      class Asset_PrivateKey;
    };
 
    namespace Wallets
@@ -190,10 +191,8 @@ namespace Armory
          bool isAssetInUse(const Wallets::AssetId&) const;
          AssetPtr getLastAssetWithPrivateKey(void) const;
 
-         AssetPtr getAssetForID(
-            const Wallets::AssetId&) const;
-         AssetPtr getAssetForKey(
-            const Wallets::AssetKeyType&) const;
+         AssetPtr getAssetForID(const Wallets::AssetId&) const;
+         AssetPtr getAssetForKey(const Wallets::AssetKeyType&) const;
          bool isAssetIDValid(const Wallets::AssetId&) const;
 
          virtual void updateAddressHashMap(const std::set<AddressEntryType>&);
@@ -278,7 +277,12 @@ namespace Armory
          Wallets::AssetId importPublicKey(
             std::shared_ptr<Wallets::IO::WalletDBInterface>,
             SecureBinaryData&);
-         Wallets::AssetId importAddressHash(const SecureBinaryData&);
+         Wallets::AssetId importScriptHash(
+            std::shared_ptr<Wallets::IO::WalletDBInterface>,
+            const BinaryData&);
+         Wallets::AssetId importRawScript(
+            std::shared_ptr<Wallets::IO::WalletDBInterface>,
+            const BinaryData&);
       };
 
    }; //namespace Accounts

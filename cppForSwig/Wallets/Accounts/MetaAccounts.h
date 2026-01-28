@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2017-2025, goatpig                                          //
+//  Copyright (C) 2017-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -11,8 +11,8 @@
 #include <memory>
 #include <map>
 
-#include "Utils/ReentrantLock.h"
-#include "Utils/SecureBinaryData.h"
+#include <Utils/ReentrantLock.h>
+#include <Utils/SecureBinaryData.h>
 #include "AccountTypes.h"
 
 #define META_ACCOUNT_COMMENTS    0x000000C0
@@ -30,6 +30,12 @@ namespace Armory
          class WalletDBInterface;
       };
    };
+
+   namespace Assets
+   {
+      class MetaData;
+      class CommentData;
+   }
 
    namespace Accounts
    {

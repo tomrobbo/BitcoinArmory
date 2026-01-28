@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2020 - 2025, goatpig                                        //
+//  Copyright (C) 2020 - 2026, goatpig                                        //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -9,11 +9,13 @@
 #include "Backups.h"
 #include <Utils/Cryptography.h>
 #include <Utils/BtcUtils.h>
-#include "WalletIdTypes.h"
-#include "KDF.h"
+#include "../KDF.h"
+#include "../WalletIdTypes.h"
+#include "../Wallets.h"
+#include "../IOHeader.h"
+#include "../Assets.h"
 #include "Seeds.h"
-#include "Wallets.h"
-#include "IOHeader.h"
+
 
 #include <btc/aes256_cbc.h>
 

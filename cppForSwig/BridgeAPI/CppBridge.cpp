@@ -78,10 +78,17 @@ namespace
       auto asset = addrAcc->getAssetForID(assetID);
 
       //address hash
-      const auto& addrHash = addrPtr->getPrefixedHash();
-      capnAddress.setPrefixedHash(capnp::Data::Builder(
-         (uint8_t*)addrHash.getPtr(), addrHash.getSize()
-      ));
+      try {
+         const auto& addrHash = addrPtr->getPrefixedHash();
+         capnAddress.setPrefixedHash(capnp::Data::Builder(
+            (uint8_t*)addrHash.getPtr(), addrHash.getSize()
+         ));
+      } catch (const AddressException&) {
+         const auto& rawScript = addrPtr->getScript();
+         capnAddress.setRawScript(capnp::Data::Builder(
+            (uint8_t*)rawScript.getPtr(), rawScript.getSize()
+         ));
+      }
 
       //type & pubkey
       BinaryDataRef pubKeyRef;
@@ -92,17 +99,29 @@ namespace
       if (addrNested != nullptr) {
          addrType |= (uint32_t)addrNested->getPredecessor()->getType();
          auto pred = addrNested->getPredecessor();
-         pubKeyRef = pred->getPreimage().getRef();
+         try {
+            pubKeyRef = pred->getPreimage().getRef();
+         } catch (const AddressException&) {
+            // nothing to do, the underlying asset does not carry a
+            // preimage (likely a nested raw script)
+         }
          addrWithAssetPtr = std::dynamic_pointer_cast<AddressEntry_WithAsset>(pred);
       } else {
-         pubKeyRef = addrPtr->getPreimage().getRef();
+         try {
+            pubKeyRef = addrPtr->getPreimage().getRef();
+         } catch (const AddressException&) {
+            // nothing to do, the underlying asset does not carry a
+            // preimage (likely an imported p2pkh lacking the pubkey)
+         }
          addrWithAssetPtr = std::dynamic_pointer_cast<AddressEntry_WithAsset>(addrPtr);
       }
 
       capnAddress.setAddrType(addrType);
-      capnAddress.setPublicKey(capnp::Data::Builder(
-         (uint8_t*)pubKeyRef.getPtr(), pubKeyRef.getSize()
-      ));
+      if (!pubKeyRef.empty()) {
+         capnAddress.setPublicKey(capnp::Data::Builder(
+            (uint8_t*)pubKeyRef.getPtr(), pubKeyRef.getSize()
+         ));
+      }
 
       //index
       capnAddress.setIndex(asset->getIndex());
@@ -113,7 +132,12 @@ namespace
 
 
       //address string, used flag, change flag
-      capnAddress.setAddressString(addrPtr->getAddress());
+      try {
+         capnAddress.setAddressString(addrPtr->getAddress());
+      } catch (const AddressException&) {
+         //nothing to do, address type does not yield human
+         //readable strings
+      }
       capnAddress.setIsUsed(addrAcc->isAssetInUse(addrPtr->getID()));
       capnAddress.setIsChange(addrAcc->isAssetChange(addrPtr->getID()));
 
@@ -144,10 +168,14 @@ namespace
          return;
       }
 
-      const auto& precursor = addrNested->getPredecessor()->getScript();
-      capnAddress.setPrecursorScript(capnp::Data::Builder(
-         (uint8_t*)precursor.getPtr(), precursor.getSize()
-      ));
+      try {
+         const auto& precursor = addrNested->getPredecessor()->getScript();
+         capnAddress.setPrecursorScript(capnp::Data::Builder(
+            (uint8_t*)precursor.getPtr(), precursor.getSize()
+         ));
+      } catch (const AddressException&) {
+         // no precursor script, nothing to do
+      }
    }
 
    void walletToCapnp(std::shared_ptr<Wallets::AssetWallet> wallet,

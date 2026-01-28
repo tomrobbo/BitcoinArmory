@@ -1213,6 +1213,7 @@ void BDV_Server_Object::init()
    auto notif = notifList[0];
    auto readyNotif = notif.initReady();
    readyNotif.setHeight(blockchain().top()->getBlockHeight());
+   readyNotif.setBranchHeight(UINT32_MAX);
 
    //we expect this message to be smaller than our scratchpad
    auto flat = capnp::messageToFlatArray(message);

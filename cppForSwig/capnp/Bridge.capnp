@@ -47,6 +47,7 @@ struct WalletData {
       precursorScript   @8 : Data;
 
       addressString     @9 : Text;
+      rawScript         @10: Data;
    }
 
    struct Comment {

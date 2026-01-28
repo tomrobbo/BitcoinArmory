@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2016-2025, goatpig                                          //
+//  Copyright (C) 2016-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -354,7 +354,8 @@ namespace Armory
          const AddressAccountId& setupImportAccount(void);
          AssetId importPublicKey(SecureBinaryData&, AddressEntryType);
          AssetId importPrivateKey(SecureBinaryData&);
-         AssetId importAddressHash(SecureBinaryData&);
+         AssetId importScrAddr(const BinaryData&);
+         AssetId importRawScript(const BinaryData&);
 
          //virtual
          const SecureBinaryData& getDecryptedValue(

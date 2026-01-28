@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2017-2025, goatpig                                          //
+//  Copyright (C) 2017-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -9,12 +9,14 @@
 #include <Utils/BinaryData.h>
 #include <Utils/SecureBinaryData.h>
 #include <Utils/Cryptography.h>
+#include <Signer/ResolverFeed.h>
 #include "AccountTypes.h"
 #include "Assets.h"
 #include "AddressAccounts.h"
 #include "../EncryptedDB.h"
 #include "../WalletFileInterface.h"
 #include "../DecryptedDataContainer.h"
+#include "../BIP32_Node.h"
 
 using namespace Armory::Assets;
 using namespace Armory::Accounts;

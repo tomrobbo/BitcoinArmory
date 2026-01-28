@@ -13,6 +13,7 @@
 #include <Utils/BtcUtils.h>
 #include <Utils/BitcoinSettings.h>
 #include <Wallets/Wallets.h>
+#include "ScriptRecipient.h"
 
 using namespace Armory;
 using namespace Armory::CoinSelection;

@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2016-2025, goatpig                                          //
+//  Copyright (C) 2016-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -2229,6 +2229,76 @@ AssetId AssetWallet_Single::importPublicKey(SecureBinaryData& pubkey,
    auto tx = iface_->beginWriteTransaction(dbName_);
    auto assetId = importAcc->importPublicKey(iface_, pubkey);
    addrAcc->updateInstantiatedAddressType(iface_, assetId, aeType);
+   return assetId;
+}
+
+AssetId AssetWallet_Single::importScrAddr(const BinaryData& scrAddr)
+{
+   //need to determine scrAddr type & extract the hash
+   AddressEntryType aeType;
+   BinaryData scriptHash;
+   switch (BtcUtils::getScriptTypeForScrAddr(scrAddr))
+   {
+      case TxOutScriptType::STDHASH160:
+         aeType = AddressEntryType::P2PKH;
+         scriptHash = scrAddr.getSliceCopy(1, 20);
+         break;
+
+      case TxOutScriptType::P2WPKH:
+         aeType = AddressEntryType::P2WPKH;
+         scriptHash = scrAddr.getSliceCopy(1, 20);
+         break;
+
+      case TxOutScriptType::P2SH:
+         aeType = AddressEntryType(
+            AddressEntryType::P2SH | AddressEntryType::ScriptHash);
+         scriptHash = scrAddr.getSliceCopy(1, 20);
+         break;
+
+      case TxOutScriptType::P2WSH:
+         aeType = AddressEntryType(
+            AddressEntryType::P2WSH | AddressEntryType::ScriptHash);
+         scriptHash = scrAddr.getSliceCopy(1, 32);
+         break;
+
+      default:
+         throw AddressException("unsupported scrAddr format");
+   }
+
+   //lock
+   ReentrantLock lock(this);
+
+   //grab WO import account
+   auto addrAcc = getAccountForID({IMPORTS_ACCOUNT_PUB});
+   auto assetAcc = addrAcc->getOuterAccount();
+   auto importAcc = dynamic_cast<AssetAccount_ImportsWO*>(assetAcc.get());
+   if (importAcc == nullptr) {
+      throw WalletException("invalid WO import account");
+   }
+
+   auto tx = iface_->beginWriteTransaction(dbName_);
+   auto assetId = importAcc->importScriptHash(iface_, scriptHash);
+   addrAcc->updateInstantiatedAddressType(iface_, assetId, aeType);
+   return assetId;
+}
+
+AssetId AssetWallet_Single::importRawScript(const BinaryData& script)
+{
+   //lock
+   ReentrantLock lock(this);
+
+   //grab WO import account
+   auto addrAcc = getAccountForID({IMPORTS_ACCOUNT_PUB});
+   auto assetAcc = addrAcc->getOuterAccount();
+   auto importAcc = dynamic_cast<AssetAccount_ImportsWO*>(assetAcc.get());
+   if (importAcc == nullptr) {
+      throw WalletException("invalid WO import account");
+   }
+
+   auto tx = iface_->beginWriteTransaction(dbName_);
+   auto assetId = importAcc->importRawScript(iface_, script);
+   addrAcc->updateInstantiatedAddressType(
+      iface_, assetId, AddressEntryType::RawScript);
    return assetId;
 }
 

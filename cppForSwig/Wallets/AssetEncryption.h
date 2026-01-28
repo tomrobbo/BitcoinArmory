@@ -46,7 +46,7 @@ namespace Armory
 
       namespace Encryption
       {
-         struct ClearTextEncryptionKey;
+         class ClearTextEncryptionKey;
          class ClearTextAssetData;
          class KeyDerivationFunction;
 

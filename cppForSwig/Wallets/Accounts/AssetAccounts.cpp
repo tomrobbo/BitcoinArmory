@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2017-2025, goatpig                                          //
+//  Copyright (C) 2017-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -966,6 +966,50 @@ AssetId AssetAccount_ImportsWO::importPublicKey(
    return assetId;
 }
 
+AssetId AssetAccount_ImportsWO::importScriptHash(
+   std::shared_ptr<IO::WalletDBInterface> iface,
+   const BinaryData& scriptHash)
+{
+   //get last key
+   AssetKeyType keyId = 0;
+   auto lastEntry = data_->assets_.rbegin();
+   if (lastEntry != data_->assets_.rend()) {
+      keyId = lastEntry->first+1;
+   }
+
+   SecureBinaryData scrHashSBD{scriptHash};
+   AssetId assetId{data_->id_, keyId};
+   auto assetPtr = std::make_shared<AssetEntry_ScriptHash>(
+      assetId, scrHashSBD);
+   data_->assets_.emplace(keyId, assetPtr);
+   ++data_->lastUsedIndex_;
+
+   commit(iface);
+   return assetId;
+}
+
+AssetId AssetAccount_ImportsWO::importRawScript(
+   std::shared_ptr<IO::WalletDBInterface> iface,
+   const BinaryData& script)
+{
+   //get last key
+   AssetKeyType keyId = 0;
+   auto lastEntry = data_->assets_.rbegin();
+   if (lastEntry != data_->assets_.rend()) {
+      keyId = lastEntry->first+1;
+   }
+
+   SecureBinaryData scrHashSBD{script};
+   AssetId assetId{data_->id_, keyId};
+   auto assetPtr = std::make_shared<AssetEntry_RawScript>(
+      assetId, scrHashSBD);
+   data_->assets_.emplace(keyId, assetPtr);
+   ++data_->lastUsedIndex_;
+
+   commit(iface);
+   return assetId;
+}
+
 /////////
 void AssetAccount_ImportsWO::updateAddressHashMap(
    const std::set<AddressEntryType>&)
@@ -995,6 +1039,7 @@ void AssetAccount_ImportsWO::updateAddressHashMap(
       AssetId assetId{data_->id_, assetIter->first};
       auto typeIter = addrTypeMap.find(assetId);
       if (typeIter == addrTypeMap.end()) {
+         ++assetIter;
          continue;
       }
 
@@ -1005,17 +1050,21 @@ void AssetAccount_ImportsWO::updateAddressHashMap(
             assetId,
             std::map<AddressEntryType, BinaryData>{}
          ).first;
-      }
-
-      //skip if we already have a hash for this address type
-      if (hashMapiter->second.find(typeIter->second) !=
+      } else if (hashMapiter->second.find(typeIter->second) !=
          hashMapiter->second.end()) {
+         //skip if we already have a hash for this address type
+         ++assetIter;
          continue;
       }
 
       auto addrPtr = AddressEntry::instantiate(
          assetIter->second, typeIter->second);
-      auto& addrHash = addrPtr->getPrefixedHash();
+      BinaryData addrHash;
+      if (typeIter->second != AddressEntryType::RawScript) {
+         addrHash = addrPtr->getPrefixedHash();
+      } else {
+         addrHash = addrPtr->getScript();
+      }
       data_->addrHashMap_[assetIter->second->getID()].emplace(
          typeIter->second, addrHash);
       data_->lastHashedAsset_ = assetIter->first;

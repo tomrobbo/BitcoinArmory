@@ -21,6 +21,7 @@
 #include <Wallets/Seeds/Seeds.h>
 #include <Wallets/WalletFileInterface.h>
 #include <Wallets/KDF.h>
+#include <Wallets/Addresses.h>
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
@@ -211,6 +212,37 @@ TEST_F(AddressTests, bech32_Tests)
    } catch (const std::runtime_error& e) {
       EXPECT_EQ(e.what(), std::string("failed to decode sw address!"));
    }
+}
+
+TEST_F(AddressTests, OddAddressTypes)
+{
+   //raw script
+   SecureBinaryData lb1SBD{TestChain::lb1ScrAddr};
+   auto asset1 = std::make_shared<Assets::AssetEntry_RawScript>(
+      Wallets::AssetId{}, lb1SBD);
+   auto address1 = AddressEntry::instantiate(asset1, AddressEntryType::RawScript);
+   EXPECT_EQ(address1->getScript(), TestChain::lb1ScrAddr);
+
+   SecureBinaryData lbd2SBD{TestChain::lb2ScrAddr};
+   auto asset2 = std::make_shared<Assets::AssetEntry_RawScript>(
+      Wallets::AssetId{},  lbd2SBD);
+   auto address2 = AddressEntry::instantiate(asset2, AddressEntryType::RawScript);
+   EXPECT_EQ(address2->getScript(), TestChain::lb2ScrAddr);
+
+   //script hash
+   SecureBinaryData lb1PS2H{TestChain::lb1ScrAddrP2SH.getSliceRef(1, 20)};
+   auto asset1sh = std::make_shared<Assets::AssetEntry_ScriptHash>(
+      Wallets::AssetId{}, lb1PS2H);
+   auto address1_p2sh = AddressEntry::instantiate(asset1sh, AddressEntryType(
+      AddressEntryType::P2SH | AddressEntryType::ScriptHash));
+   EXPECT_EQ(address1_p2sh->getPrefixedHash(), TestChain::lb1ScrAddrP2SH);
+
+   SecureBinaryData lb2PS2H{TestChain::lb2ScrAddrP2SH.getSliceRef(1, 20)};
+   auto asset2sh = std::make_shared<Assets::AssetEntry_ScriptHash>(
+      Wallets::AssetId{}, lb2PS2H);
+   auto address2_p2sh = AddressEntry::instantiate(asset2sh, AddressEntryType(
+      AddressEntryType::P2SH | AddressEntryType::ScriptHash));
+   EXPECT_EQ(address2_p2sh->getPrefixedHash(), TestChain::lb2ScrAddrP2SH);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -8657,6 +8689,129 @@ TEST_F(WalletsTest, ImportPublicKeys)
       auto keyE = wltWO->importPublicKey(pubKeyE, AddressEntryType(
          AddressEntryType::P2PKH | AddressEntryType::Uncompressed));
       keyToAddrMap.emplace(TestChain::scrAddrE, keyE);
+   }
+   ASSERT_TRUE(checkAddresses(wltWO));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(WalletsTest, ImportScrAddr)
+{
+   IO::CreateWalletParams params{
+      homedir_,
+      Passphrase::SetNew{1ms, 0, {}},
+      Passphrase::SetNew{1ms, 0, {}},
+      nullptr, 0
+   };
+
+   //create a blank WO wallet
+   auto wltWO = AssetWallet_Single::createBlank("walletWO1"sv, params);
+
+   try {
+      //setup the import account
+      auto importAccId = wltWO->setupImportAccount();
+      ASSERT_EQ(importAccId.toHexStr(), "00001201");
+
+      auto importAddrAcc = wltWO->getAccountForID(importAccId);
+      ASSERT_NE(importAddrAcc, nullptr);
+
+      auto outerAcc = importAddrAcc->getOuterAccount();
+      auto importAcc = dynamic_cast<Accounts::AssetAccount_ImportsWO*>(outerAcc.get());
+      ASSERT_NE(importAcc, nullptr);
+   } catch (const std::exception& e) {
+      std::cout << e.what() << std::endl;
+      ASSERT_TRUE(false);
+   }
+
+   std::map<BinaryData, AssetId> keyToAddrMap;
+   auto checkAddresses = [&keyToAddrMap]
+   (std::shared_ptr<AssetWallet_Single> wlt)->bool
+   {
+      auto addrMap = wlt->getUsedAddressMap();
+      if (addrMap.size() != keyToAddrMap.size()) {
+         return false;
+      }
+
+      for (const auto& addrPair : addrMap) {
+         BinaryDataRef addrHash;
+         try {
+            addrHash = addrPair.second->getPrefixedHash();
+         } catch (const AddressException&) {
+            addrHash = addrPair.second->getScript();
+         }
+         auto iter = keyToAddrMap.find(addrHash);
+         if (iter == keyToAddrMap.end()) {
+            return false;
+         }
+         if (iter->second != addrPair.first) {
+            return false;
+         }
+      }
+
+      //grab address hashes from wallet, should match our map
+      auto addrHashSet = wlt->getAddrHashSet();
+      if (addrHashSet.size() != keyToAddrMap.size()) {
+         return false;
+      }
+      for (const auto& addrHash : addrHashSet) {
+         if (keyToAddrMap.find(addrHash) == keyToAddrMap.end()) {
+            return false;
+         }
+      }
+
+      return true;
+   };
+
+   //import addr B & C
+   {
+      //B
+      auto keyB = wltWO->importScrAddr(TestChain::scrAddrB);
+      keyToAddrMap.emplace(TestChain::scrAddrB, keyB);
+
+      //C
+      auto keyC = wltWO->importScrAddr(TestChain::scrAddrC);
+      keyToAddrMap.emplace(TestChain::scrAddrC, keyC);
+
+      //LB1 PS2H
+      auto keyLB1_P2SH = wltWO->importScrAddr(TestChain::lb1ScrAddrP2SH);
+      keyToAddrMap.emplace(TestChain::lb1ScrAddrP2SH, keyLB1_P2SH);
+
+      //LB1
+      auto keyLB1 = wltWO->importRawScript(TestChain::lb1ScrAddr);
+      keyToAddrMap.emplace(TestChain::lb1ScrAddr, keyLB1);
+   }
+   ASSERT_TRUE(checkAddresses(wltWO));
+
+   //import addr D
+   {
+      auto keyD = wltWO->importScrAddr(TestChain::scrAddrD);
+      keyToAddrMap.emplace(TestChain::scrAddrD, keyD);
+   }
+   ASSERT_TRUE(checkAddresses(wltWO));
+
+   /* shutdown the wallet, reload and check addresses again */
+   const auto wltPath = wltWO->getDbFilename();
+   wltWO.reset();
+   ASSERT_EQ(wltWO, nullptr);
+
+   {
+      auto wlt = AssetWallet::loadMainWalletFromFile({wltPath, nullptr});
+      wltWO = std::dynamic_pointer_cast<AssetWallet_Single>(wlt);
+      ASSERT_NE(wltWO, nullptr);
+   }
+   ASSERT_TRUE(checkAddresses(wltWO));
+
+   //import addr E
+   {
+      auto keyE = wltWO->importScrAddr(TestChain::scrAddrE);
+      keyToAddrMap.emplace(TestChain::scrAddrE, keyE);
+
+      //LB2 PS2H
+      auto keyLB2_P2SH = wltWO->importScrAddr(TestChain::lb2ScrAddrP2SH);
+      keyToAddrMap.emplace(TestChain::lb2ScrAddrP2SH, keyLB2_P2SH);
+
+      //LB1
+      auto keyLB2 = wltWO->importRawScript(TestChain::lb2ScrAddr);
+      keyToAddrMap.emplace(TestChain::lb2ScrAddr, keyLB2);
    }
    ASSERT_TRUE(checkAddresses(wltWO));
 }

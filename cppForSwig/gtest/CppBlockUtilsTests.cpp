@@ -1811,7 +1811,7 @@ TEST_F(BlockUtilsFull, Load5Blocks_CheckWalletFilters)
    EXPECT_EQ(wlt2_count, 0U);
 }
 
-TEST_F(BlockUtilsFull, DISABLED_PPrintTestChain)
+TEST_F(BlockUtilsFull, PPrintTestChain)
 {
    TestUtils::setBlocks({ "0", "1", "2", "3", "4", "4A", "5", "5A" }, blk0dat_);
    std::vector<std::pair<uint32_t, uint8_t>> blockIds {
@@ -1834,7 +1834,12 @@ TEST_F(BlockUtilsFull, DISABLED_PPrintTestChain)
       { TestChain::scrAddrC, "scrAddrC" },
       { TestChain::scrAddrD, "scrAddrD" },
       { TestChain::scrAddrE, "scrAddrE" },
-      { TestChain::scrAddrF, "scrAddrF" }
+      { TestChain::scrAddrF, "scrAddrF" },
+      { TestChain::lb1ScrAddr, "lb1" },
+      { TestChain::lb1ScrAddrP2SH, "lb1P2SH" },
+      { TestChain::lb2ScrAddr, "lb2" },
+      { TestChain::lb2ScrAddrP2SH, "lb2P2SH" },
+
    };
 
    struct IdAndAmounts
@@ -1852,7 +1857,8 @@ TEST_F(BlockUtilsFull, DISABLED_PPrintTestChain)
       std::string hgtx = std::to_string(blockId.first) + "|" + std::to_string(blockId.second);
       std::cout << "Block #" << hgtx << ", " << header.getThisHash().toHexStr() << std::endl;
       std::cout << "   Prev: " << header.getPrevHash().toHexStr() << std::endl;
-      std::cout << "   Txs: " << block.getNumTx() << std::endl << std::endl;
+      std::cout << "   Txs: " << header.getNumTx() << std::endl;
+      std::cout << "   Timestamp: " << header.getTimestamp() << std::endl << std::endl;
 
       //transactions
       for (unsigned y = 0; y < block.getNumTx(); y++) {

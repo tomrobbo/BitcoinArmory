@@ -200,7 +200,10 @@ namespace {
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   std::string initWOWallet(const std::filesystem::path& homedir)
+   std::string createWOWallet(
+      const std::filesystem::path& homedir,
+      const std::vector<SecureBinaryData>& pubkeys,
+      const std::vector<BinaryData>& scrAddrs = {})
    {
       Wallets::IO::CreateWalletParams params{
          homedir, {}, {},
@@ -215,63 +218,19 @@ namespace {
          {std::string_view{walletId}}, params);
       wltWO->setupImportAccount();
 
-      auto pubKeyB = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrB);
-      wltWO->importPublicKey(pubKeyB, AddressEntryType(
-         AddressEntryType::P2PKH | AddressEntryType::Uncompressed));
+      for (auto pubkey : pubkeys) {
+         wltWO->importPublicKey(pubkey, AddressEntryType(
+            AddressEntryType::P2PKH | AddressEntryType::Uncompressed));
+      }
 
-      auto pubKeyC = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrC);
-      wltWO->importPublicKey(pubKeyC, AddressEntryType(
-         AddressEntryType::P2PKH | AddressEntryType::Uncompressed));
-
-      auto pubKeyD = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrD);
-      wltWO->importPublicKey(pubKeyD, AddressEntryType(
-         AddressEntryType::P2PKH | AddressEntryType::Uncompressed));
-
-      auto pubKeyE = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrE);
-      wltWO->importPublicKey(pubKeyE, AddressEntryType(
-         AddressEntryType::P2PKH | AddressEntryType::Uncompressed));
-
+      for (auto scrAddr : scrAddrs) {
+         try {
+            wltWO->importScrAddr(scrAddr);
+         } catch (const AddressException&) {
+            wltWO->importRawScript(scrAddr);
+         }
+      }
       return walletId;
-   }
-
-   std::pair<std::string, std::string> init2WOWallets(
-      const std::filesystem::path& homedir)
-   {
-      Wallets::IO::CreateWalletParams params{
-         homedir, {}, {},
-         nullptr, 0
-      };
-
-      auto walletId1 = std::string{"walletWO_" +
-         Cryptography::PRNG::fortuna.generateRandom(3).toHexStr()};
-      auto walletId2 = std::string{"walletWO_" +
-         Cryptography::PRNG::fortuna.generateRandom(3).toHexStr()};
-
-      //create empty WO wallet
-      auto wltWO1 = Wallets::AssetWallet_Single::createBlank(
-         {std::string_view{walletId1}}, params);
-      wltWO1->setupImportAccount();
-      auto wltWO2 = Wallets::AssetWallet_Single::createBlank(
-         {std::string_view{walletId2}}, params);
-      wltWO2->setupImportAccount();
-
-      auto pubKeyB = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrB);
-      wltWO1->importPublicKey(pubKeyB, AddressEntryType(
-         AddressEntryType::P2PKH | AddressEntryType::Uncompressed));
-
-      auto pubKeyC = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrC);
-      wltWO1->importPublicKey(pubKeyC, AddressEntryType(
-         AddressEntryType::P2PKH | AddressEntryType::Uncompressed));
-
-      auto pubKeyD = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrD);
-      wltWO2->importPublicKey(pubKeyD, AddressEntryType(
-         AddressEntryType::P2PKH | AddressEntryType::Uncompressed));
-
-      auto pubKeyE = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrE);
-      wltWO2->importPublicKey(pubKeyE, AddressEntryType(
-         AddressEntryType::P2PKH | AddressEntryType::Uncompressed));
-
-      return { walletId1, walletId2 };
    }
 
    std::string createWallet(const std::filesystem::path& homedir)
@@ -817,13 +776,12 @@ namespace {
 
       auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
       if (fromBridge.which() != Codec::Bridge::FromBridge::NOTIFICATION) {
-         std::cout << "..1" << std::endl;
          return false;
       }
 
       auto notif = fromBridge.getNotification();
       if (notif.which() != Codec::Bridge::Notification::SETUP_DONE) {
-         std::cout << "..2" << std::endl;
+         std::cout << "expected setup done notif, got: " << notif.which() << std::endl;
          return false;
       }
 
@@ -837,13 +795,11 @@ namespace {
       fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
 
       if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
-         std::cout << "..3" << std::endl;
          return false;
       }
 
       auto repCapnp = fromBridge.getReply();
       if (!repCapnp.getSuccess()) {
-         std::cout << "..4" << std::endl;
          return false;
       }
       return true;
@@ -1005,6 +961,7 @@ namespace {
          iter->second.emplace_back(balCapn.getFull());
          iter->second.emplace_back(balCapn.getSpendable());
          iter->second.emplace_back(balCapn.getUnconfirmed());
+         iter->second.emplace_back(balCapn.getTxnCount());
       }
       return result;
    }
@@ -1161,16 +1118,42 @@ namespace {
 
    bool checkLedgers(const Ledgers::Entry& lhs, const TestChain::LedgerEntryValue& rhs)
    {
-      /*std::cout << "amount: " << lhs.getValue();
-      std::cout << ", height: " << lhs.getBlockNum();
-      std::cout << ", index: " << lhs.getIndex();
-      std::cout << ", time: " << lhs.getTxTime();
-      std::cout << ", sts: " << lhs.isSentToSelf() << std::endl;*/
       return lhs.getValue() == rhs.balance &&
          lhs.getBlockNum() == rhs.height &&
          lhs.getIndex() == rhs.index &&
          lhs.getTxTime() == rhs.txTime &&
-         lhs.getTxHash() == rhs.txHash;
+         lhs.getTxHash() == rhs.txHash &&
+         lhs.isSentToSelf() == rhs.sts;
+   }
+
+   void checkBalances(
+      const std::map<BinaryData, std::vector<uint64_t>>& balances,
+      uint32_t height, bool reorg)
+   {
+      const auto& addrMap = reorg ?
+         TestChain::testAddrBalances_Reorg[height] :
+         TestChain::testAddrBalances[height];
+      try {
+         for (const auto& balPair : balances) {
+            const auto& addrBal = addrMap.at(balPair.first);
+            EXPECT_EQ(addrBal[0], balPair.second[0]);
+            EXPECT_EQ(addrBal[1], balPair.second[1]);
+            EXPECT_EQ(addrBal[2], balPair.second[2]);
+         }
+      } catch (const std::exception&) {
+         ASSERT_TRUE(false);
+      }
+   }
+
+   void printLedgers(const std::vector<Ledgers::Entry>& vec)
+   {
+      for (const auto& lhs : vec) {
+         std::cout << "amount: " << lhs.getValue();
+         std::cout << ", height: " << lhs.getBlockNum();
+         std::cout << ", index: " << lhs.getIndex();
+         std::cout << ", time: " << lhs.getTxTime();
+         std::cout << ", sts: " << lhs.isSentToSelf() << std::endl;
+      }
    }
 }
 
@@ -1709,9 +1692,6 @@ protected:
          "--public"},
          Config::ProcessType::DB);
 
-      startupBIP151CTX();
-      startupBIP150CTX(4);
-
       //setup auth peers for server and client
       authPeersPassLbd_ = [](const std::set<Wallets::EncryptionKeyId>&)
       ->Passphrase::Result
@@ -1880,13 +1860,14 @@ TEST_F(WalletManagerWebsocketsTests, Connect)
       auto addrBalances = wltCont->getAddrBalanceMap();
       ASSERT_EQ(addrBalances.size(), 4);
 
-      for (const auto& addrBal : TestChain::testAddrBalances[5]) {
-         auto mgrBal = addrBalances.at(addrBal.first);
+      for (const auto& mgrBal : addrBalances) {
+         auto addrBal = TestChain::testAddrBalances[5].at(mgrBal.first);
          for (unsigned i = 0; i < 3; i++) {
-            EXPECT_EQ(addrBal.second[i], mgrBal[i]);
+            EXPECT_EQ(addrBal[i], mgrBal.second[i]);
          }
       }
-   } catch (const std::exception&) {
+   } catch (const std::exception& e) {
+      std::cout << e.what() << std::endl;
       ASSERT_TRUE(false);
    }
 
@@ -4226,7 +4207,6 @@ TEST_F(BridgeTests, ForkWO)
 
 ////////////////////////////////////////////////////////////////////////////////
 // BridgeWebsocketsTests
-////////////////////////////////////////////////////////////////////////////////
 class BridgeWebsocketsTests : public ::testing::Test
 {
 protected:
@@ -4234,6 +4214,18 @@ protected:
    {
       theBDMt_ = new BlockDataManagerThread();
       iface_ = theBDMt_->bdm()->getIFace();
+   }
+
+   void prepareWallets()
+   {
+      auto pubKeyB = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrB);
+      auto pubKeyC = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrC);
+      auto pubKeyD = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrD);
+      auto pubKeyE = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrE);
+
+      walletId_ = createWOWallet(homedir_, {
+         pubKeyB, pubKeyC, pubKeyD, pubKeyE}
+      );
    }
 
    /////////////////////////////////////////////////////////////////////////////
@@ -4261,9 +4253,7 @@ protected:
          "--thread-count=3",
          "--public"},
          Config::ProcessType::DB);
-
-      startupBIP151CTX();
-      startupBIP150CTX(4);
+      prepareWallets();
 
       //setup auth peers for server and client
       authPeersPassLbd_ = [](const std::set<Wallets::EncryptionKeyId>&)
@@ -4306,7 +4296,6 @@ protected:
          commsCV.notify_all();
       });
 
-      walletId_ = initWOWallet(homedir_);
       initBDM();
       auto nodePtr = std::dynamic_pointer_cast<NodeUnitTest>(
          Config::NetworkSettings::bitcoinNodes().first);
@@ -4373,993 +4362,6 @@ TEST_F(BridgeWebsocketsTests, Connect)
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
    ASSERT_EQ(goOnline(bridge_), 5);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeWebsocketsTests, BalanceAndLedgersAt5Blocks)
-{
-   auto wltList = listWallets(bridge_);
-   ASSERT_EQ(wltList.size(), 1);
-   auto wltId = wltList.begin()->second.walletId;
-   ASSERT_FALSE(wltId.empty());
-   ASSERT_EQ(wltId, walletId_);
-   auto wallets = loadWallets(bridge_);
-   ASSERT_EQ(wallets.size(), 1);
-
-   ASSERT_EQ(wallets.begin()->second.walletId, wltId);
-   auto accountId = wallets.begin()->second.accountId;
-   ASSERT_FALSE(accountId.empty());
-
-   WebSocketServer::initAuthPeers({
-      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
-   WebSocketServer::start(theBDMt_->bdm(), true);
-
-   ASSERT_TRUE(connectToDb(bridge_));
-   ASSERT_TRUE(registerWallets(bridge_));
-
-   //start db, go online and wait on ready notif
-   theBDMt_->start(Config::DBSettings::initMode());
-   ASSERT_EQ(goOnline(bridge_), 5);
-
-   //check balances
-   auto balances = getBalances(bridge_, wltId, accountId);
-   ASSERT_EQ(balances.size(), 4);
-
-   try {
-      for (const auto& balPair : balances) {
-         const auto& addrBal = TestChain::testAddrBalances[5].at(balPair.first);
-         EXPECT_EQ(addrBal[0], balPair.second[0]);
-         EXPECT_EQ(addrBal[1], balPair.second[1]);
-         EXPECT_EQ(addrBal[2], balPair.second[2]);
-      }
-   } catch (const std::exception&) {
-      ASSERT_TRUE(false);
-   }
-
-   //check ledgers
-   auto delegateId = getLedgerDelegateId(bridge_);
-   ASSERT_FALSE(delegateId.empty());
-
-   auto pageCount = getLedgersPageCount(bridge_, delegateId);
-   EXPECT_EQ(pageCount, 1);
-
-   auto ledgers = getLedgersPage(bridge_, delegateId, 0);
-   ASSERT_EQ(ledgers.size(), 15);
-
-   for (unsigned i = 0; i < ledgers.size(); i++) {
-      EXPECT_TRUE(checkLedgers(ledgers[i], TestChain::ledgersBCDE[i])) << i;
-   }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeWebsocketsTests, AddBlocks)
-{
-   /* need to start at block 3 */
-   theBDMt_->shutdown();
-   delete theBDMt_;
-   theBDMt_ = nullptr;
-
-   FileUtils::removeDirectory(blkdir_);
-   FileUtils::removeDirectory(ldbdir_);
-   FileUtils::createDirectory(blkdir_ / "blocks");
-   FileUtils::createDirectory(ldbdir_);
-
-   blk0dat_ = FileUtils::getBlkFilename(blkdir_ / "blocks", 0);
-   TestUtils::setBlocks({ "0", "1", "2", "3" }, blk0dat_);
-
-   initBDM();
-   auto nodePtr = std::dynamic_pointer_cast<NodeUnitTest>(
-      Config::NetworkSettings::bitcoinNodes().first);
-   nodePtr->setIface(theBDMt_->bdm()->getIFace());
-
-   //connect to db
-   auto wltList = listWallets(bridge_);
-   ASSERT_EQ(wltList.size(), 1);
-   auto wltId = wltList.begin()->second.walletId;
-   ASSERT_FALSE(wltId.empty());
-   ASSERT_EQ(wltId, walletId_);
-   auto wallets = loadWallets(bridge_);
-   ASSERT_EQ(wallets.size(), 1);
-
-   ASSERT_EQ(wallets.begin()->second.walletId, wltId);
-   auto accountId = wallets.begin()->second.accountId;
-   ASSERT_FALSE(accountId.empty());
-
-   WebSocketServer::initAuthPeers({
-      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
-   WebSocketServer::start(theBDMt_->bdm(), true);
-
-   ASSERT_TRUE(connectToDb(bridge_));
-   ASSERT_TRUE(registerWallets(bridge_));
-
-   //start db, go online and wait on ready notif
-   theBDMt_->start(Config::DBSettings::initMode());
-   ASSERT_EQ(goOnline(bridge_), 3);
-
-   /* block 3 */
-
-   //balances
-   auto balances = getBalances(bridge_, wltId, accountId);
-   ASSERT_EQ(balances.size(), 4);
-
-   try {
-      for (const auto& balPair : balances) {
-         const auto& addrBal = TestChain::testAddrBalances[3].at(balPair.first);
-         EXPECT_EQ(addrBal[0], balPair.second[0]);
-         EXPECT_EQ(addrBal[1], balPair.second[1]);
-         EXPECT_EQ(addrBal[2], balPair.second[2]);
-      }
-   } catch (const std::exception&) {
-      ASSERT_TRUE(false);
-   }
-
-   //ledgers
-   auto delegateId = getLedgerDelegateId(bridge_);
-   ASSERT_FALSE(delegateId.empty());
-
-   auto pageCount = getLedgersPageCount(bridge_, delegateId);
-   EXPECT_EQ(pageCount, 1);
-
-   auto ledgersAt3Blocks = getLedgersPage(bridge_, delegateId, 0);
-   ASSERT_EQ(ledgersAt3Blocks.size(), 9);
-
-   for (unsigned i = 0; i < ledgersAt3Blocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAt3Blocks[i],
-         TestChain::ledgersBCDE[i + 6]));
-   }
-
-   /* block 4 */
-   TestUtils::setBlocks({ "0", "1", "2", "3", "4" }, blk0dat_);
-   nodePtr->notifyNewBlock();
-   ASSERT_EQ(waitOnNewBlock(), 4);
-
-   balances = getBalances(bridge_, wltId, accountId);
-   ASSERT_EQ(balances.size(), 4);
-
-   //balances
-   try {
-      for (const auto& balPair : balances) {
-         const auto& addrBal = TestChain::testAddrBalances[4].at(balPair.first);
-         EXPECT_EQ(addrBal[0], balPair.second[0]);
-         EXPECT_EQ(addrBal[1], balPair.second[1]);
-         EXPECT_EQ(addrBal[2], balPair.second[2]);
-      }
-   } catch (const std::exception&) {
-      ASSERT_TRUE(false);
-   }
-
-   //ledgers
-   pageCount = getLedgersPageCount(bridge_, delegateId);
-   EXPECT_EQ(pageCount, 1);
-
-   auto ledgersAt4Blocks = getLedgersPage(bridge_, delegateId, 0);
-   ASSERT_EQ(ledgersAt4Blocks.size(), 12);
-
-   for (unsigned i = 0; i < ledgersAt4Blocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAt4Blocks[i],
-         TestChain::ledgersBCDE[i + 3]));
-   }
-
-   /* block 5 */
-   TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
-   nodePtr->notifyNewBlock();
-   ASSERT_EQ(waitOnNewBlock(), 5);
-
-   balances = getBalances(bridge_, wltId, accountId);
-   ASSERT_EQ(balances.size(), 4);
-
-   //balances
-   try {
-      for (const auto& balPair : balances) {
-         const auto& addrBal = TestChain::testAddrBalances[5].at(balPair.first);
-         EXPECT_EQ(addrBal[0], balPair.second[0]);
-         EXPECT_EQ(addrBal[1], balPair.second[1]);
-         EXPECT_EQ(addrBal[2], balPair.second[2]);
-      }
-   } catch (const std::exception&) {
-      ASSERT_TRUE(false);
-   }
-
-   //ledgers
-   pageCount = getLedgersPageCount(bridge_, delegateId);
-   EXPECT_EQ(pageCount, 1);
-
-   auto ledgersAt5Blocks = getLedgersPage(bridge_, delegateId, 0);
-   ASSERT_EQ(ledgersAt5Blocks.size(), 15);
-
-   for (unsigned i = 0; i < ledgersAt5Blocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAt5Blocks[i],
-         TestChain::ledgersBCDE[i]));
-   }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeWebsocketsTests, AddBlocks_2Wallets)
-{
-   // create the 2 wallets
-   auto wltIds = init2WOWallets(homedir_);
-   auto wltId1 = wltIds.first;
-   auto wltId2 = wltIds.second;
-
-   /* need to start at block 3 */
-   theBDMt_->shutdown();
-   delete theBDMt_;
-   theBDMt_ = nullptr;
-
-   FileUtils::removeDirectory(blkdir_);
-   FileUtils::removeDirectory(ldbdir_);
-   FileUtils::createDirectory(blkdir_ / "blocks");
-   FileUtils::createDirectory(ldbdir_);
-
-   blk0dat_ = FileUtils::getBlkFilename(blkdir_ / "blocks", 0);
-   TestUtils::setBlocks({ "0", "1", "2", "3" }, blk0dat_);
-
-   initBDM();
-   auto nodePtr = std::dynamic_pointer_cast<NodeUnitTest>(
-      Config::NetworkSettings::bitcoinNodes().first);
-   nodePtr->setIface(theBDMt_->bdm()->getIFace());
-
-   //list wallets, unstage the primary test wallet & load
-   auto wltList = listWallets(bridge_);
-   ASSERT_EQ(wltList.size(), 3);
-   stageWallet(bridge_, walletId_, false);
-   auto wallets = loadWallets(bridge_);
-   ASSERT_EQ(wallets.size(), 2);
-
-   std::string accId1, accId2;
-   for (const auto& wltData : wallets) {
-      if (wltData.second.walletId == wltId1) {
-         accId1 = wltData.second.accountId;
-      } else if (wltData.second.walletId == wltId2) {
-         accId2 = wltData.second.accountId;
-      }
-   }
-   ASSERT_FALSE(accId1.empty());
-   ASSERT_FALSE(accId2.empty());
-
-   //connect to db
-   WebSocketServer::initAuthPeers({
-      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
-   WebSocketServer::start(theBDMt_->bdm(), true);
-
-   ASSERT_TRUE(connectToDb(bridge_));
-   ASSERT_TRUE(registerWallets(bridge_));
-
-   //start db, go online and wait on ready notif
-   theBDMt_->start(Config::DBSettings::initMode());
-   ASSERT_EQ(goOnline(bridge_), 3);
-
-   /* block 3 */
-
-   //balances
-   auto balances1 = getBalances(bridge_, wltId1, accId1);
-   ASSERT_EQ(balances1.size(), 2);
-   auto balances2 = getBalances(bridge_, wltId2, accId2);
-   ASSERT_EQ(balances2.size(), 2);
-
-   try {
-      for (const auto& balPair : balances1) {
-         const auto& addrBal = TestChain::testAddrBalances[3].at(balPair.first);
-         EXPECT_EQ(addrBal[0], balPair.second[0]);
-         EXPECT_EQ(addrBal[1], balPair.second[1]);
-         EXPECT_EQ(addrBal[2], balPair.second[2]);
-      }
-
-      for (const auto& balPair : balances2) {
-         const auto& addrBal = TestChain::testAddrBalances[3].at(balPair.first);
-         EXPECT_EQ(addrBal[0], balPair.second[0]);
-         EXPECT_EQ(addrBal[1], balPair.second[1]);
-         EXPECT_EQ(addrBal[2], balPair.second[2]);
-      }
-   } catch (const std::exception&) {
-      ASSERT_TRUE(false);
-   }
-
-   //ledgers
-   auto deletegateId = getLedgerDelegateId(bridge_);
-   auto delegateIdWlt1 = getLedgerDelegateIdForWallet(
-      bridge_, wltId1, accId1);
-   auto delegateIdWlt2 = getLedgerDelegateIdForWallet(
-      bridge_, wltId2, accId2);
-   ASSERT_FALSE(delegateIdWlt1.empty());
-   ASSERT_FALSE(delegateIdWlt2.empty());
-
-   auto pageCount = getLedgersPageCount(bridge_, deletegateId);
-   EXPECT_EQ(pageCount, 1);
-   pageCount = getLedgersPageCount(bridge_, delegateIdWlt1);
-   EXPECT_EQ(pageCount, 1);
-   pageCount = getLedgersPageCount(bridge_, delegateIdWlt2);
-   EXPECT_EQ(pageCount, 1);
-
-   //wlt1 ledgers
-   auto ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt1, 0);
-   ASSERT_EQ(ledgersAtBlocks.size(), 7);
-
-   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAtBlocks[i],
-            TestChain::ledgersBC[i + 3]));
-   }
-
-   //wlt2 ledgers
-   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt2, 0);
-   ASSERT_EQ(ledgersAtBlocks.size(), 3);
-
-   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAtBlocks[i],
-            TestChain::ledgersDE[i + 3]));
-   }
-
-   //combined ledgers
-   ledgersAtBlocks = getLedgersPage(bridge_, deletegateId, 0);
-   ASSERT_EQ(ledgersAtBlocks.size(), 10);
-
-   std::vector<TestChain::LedgerEntryValue> combinedLedgers;
-   combinedLedgers.insert(combinedLedgers.end(),
-      TestChain::ledgersBC.begin() + 3, TestChain::ledgersBC.end());
-   combinedLedgers.insert(combinedLedgers.end(),
-      TestChain::ledgersDE.begin() + 3, TestChain::ledgersDE.end());
-   ASSERT_EQ(combinedLedgers.size(), 10);
-   std::sort(combinedLedgers.begin(), combinedLedgers.end());
-
-   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAtBlocks[i],
-         combinedLedgers[i])) << i;
-   }
-
-   /* block 4 */
-   TestUtils::setBlocks({ "0", "1", "2", "3", "4" }, blk0dat_);
-   nodePtr->notifyNewBlock();
-   ASSERT_EQ(waitOnNewBlock(), 4);
-
-   //balances
-   balances1 = getBalances(bridge_, wltId1, accId1);
-   ASSERT_EQ(balances1.size(), 2);
-   balances2 = getBalances(bridge_, wltId2, accId2);
-   ASSERT_EQ(balances2.size(), 2);
-
-   try {
-      for (const auto& balPair : balances1) {
-         const auto& addrBal = TestChain::testAddrBalances[4].at(balPair.first);
-         EXPECT_EQ(addrBal[0], balPair.second[0]);
-         EXPECT_EQ(addrBal[1], balPair.second[1]);
-         EXPECT_EQ(addrBal[2], balPair.second[2]);
-      }
-
-      for (const auto& balPair : balances2) {
-         const auto& addrBal = TestChain::testAddrBalances[4].at(balPair.first);
-         EXPECT_EQ(addrBal[0], balPair.second[0]);
-         EXPECT_EQ(addrBal[1], balPair.second[1]);
-         EXPECT_EQ(addrBal[2], balPair.second[2]);
-      }
-   } catch (const std::exception&) {
-      ASSERT_TRUE(false);
-   }
-
-   //wlt1 ledgers
-   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt1, 0);
-   ASSERT_EQ(ledgersAtBlocks.size(), 8);
-
-   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAtBlocks[i],
-            TestChain::ledgersBC[i + 2]));
-   }
-
-   //wlt2 ledgers
-   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt2, 0);
-   ASSERT_EQ(ledgersAtBlocks.size(), 5);
-
-   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAtBlocks[i],
-            TestChain::ledgersDE[i + 1]));
-   }
-
-   //combined ledgers
-   ledgersAtBlocks = getLedgersPage(bridge_, deletegateId, 0);
-   ASSERT_EQ(ledgersAtBlocks.size(), 13);
-
-   combinedLedgers.clear();
-   combinedLedgers.insert(combinedLedgers.end(),
-      TestChain::ledgersBC.begin() + 2, TestChain::ledgersBC.end());
-   combinedLedgers.insert(combinedLedgers.end(),
-      TestChain::ledgersDE.begin() + 1, TestChain::ledgersDE.end());
-   ASSERT_EQ(combinedLedgers.size(), 13);
-   std::sort(combinedLedgers.begin(), combinedLedgers.end());
-
-   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAtBlocks[i],
-            combinedLedgers[i])) << i;
-   }
-
-   /* block 5 */
-   TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
-   nodePtr->notifyNewBlock();
-   ASSERT_EQ(waitOnNewBlock(), 5);
-
-   //balances
-   balances1 = getBalances(bridge_, wltId1, accId1);
-   ASSERT_EQ(balances1.size(), 2);
-   balances2 = getBalances(bridge_, wltId2, accId2);
-   ASSERT_EQ(balances2.size(), 2);
-
-   try {
-      for (const auto& balPair : balances1) {
-         const auto& addrBal = TestChain::testAddrBalances[5].at(balPair.first);
-         EXPECT_EQ(addrBal[0], balPair.second[0]);
-         EXPECT_EQ(addrBal[1], balPair.second[1]);
-         EXPECT_EQ(addrBal[2], balPair.second[2]);
-      }
-
-      for (const auto& balPair : balances2) {
-         const auto& addrBal = TestChain::testAddrBalances[5].at(balPair.first);
-         EXPECT_EQ(addrBal[0], balPair.second[0]);
-         EXPECT_EQ(addrBal[1], balPair.second[1]);
-         EXPECT_EQ(addrBal[2], balPair.second[2]);
-      }
-   } catch (const std::exception&) {
-      ASSERT_TRUE(false);
-   }
-
-   //wlt1 ledgers
-   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt1, 0);
-   ASSERT_EQ(ledgersAtBlocks.size(), 10);
-
-   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAtBlocks[i],
-            TestChain::ledgersBC[i]));
-   }
-
-   //wlt2 ledgers
-   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt2, 0);
-   ASSERT_EQ(ledgersAtBlocks.size(), 6);
-
-   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAtBlocks[i],
-            TestChain::ledgersDE[i]));
-   }
-
-   //combined ledgers
-   ledgersAtBlocks = getLedgersPage(bridge_, deletegateId, 0);
-   ASSERT_EQ(ledgersAtBlocks.size(), 16);
-
-   combinedLedgers.clear();
-   combinedLedgers.insert(combinedLedgers.end(),
-      TestChain::ledgersBC.begin(), TestChain::ledgersBC.end());
-   combinedLedgers.insert(combinedLedgers.end(),
-      TestChain::ledgersDE.begin(), TestChain::ledgersDE.end());
-   ASSERT_EQ(combinedLedgers.size(), 16);
-   std::sort(combinedLedgers.begin(), combinedLedgers.end());
-
-   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAtBlocks[i],
-            combinedLedgers[i])) << i;
-   }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeWebsocketsTests, Reorg)
-{
-   /* need to start at block 3 */
-   theBDMt_->shutdown();
-   delete theBDMt_;
-   theBDMt_ = nullptr;
-
-   FileUtils::removeDirectory(blkdir_);
-   FileUtils::removeDirectory(ldbdir_);
-   FileUtils::createDirectory(blkdir_ / "blocks");
-   FileUtils::createDirectory(ldbdir_);
-
-   blk0dat_ = FileUtils::getBlkFilename(blkdir_ / "blocks", 0);
-   TestUtils::setBlocks({ "0", "1", "2", "3" }, blk0dat_);
-
-   initBDM();
-   auto nodePtr = std::dynamic_pointer_cast<NodeUnitTest>(
-      Config::NetworkSettings::bitcoinNodes().first);
-   nodePtr->setIface(theBDMt_->bdm()->getIFace());
-
-   //connect to db
-   auto wltList = listWallets(bridge_);
-   ASSERT_EQ(wltList.size(), 1);
-   auto wltId = wltList.begin()->second.walletId;
-   ASSERT_FALSE(wltId.empty());
-   ASSERT_EQ(wltId, walletId_);
-   auto wallets = loadWallets(bridge_);
-   ASSERT_EQ(wallets.size(), 1);
-
-   ASSERT_EQ(wallets.begin()->second.walletId, wltId);
-   auto accountId = wallets.begin()->second.accountId;
-   ASSERT_FALSE(accountId.empty());
-
-   WebSocketServer::initAuthPeers({
-      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
-   WebSocketServer::start(theBDMt_->bdm(), true);
-
-   ASSERT_TRUE(connectToDb(bridge_));
-   ASSERT_TRUE(registerWallets(bridge_));
-
-   //start db, go online and wait on ready notif
-   theBDMt_->start(Config::DBSettings::initMode());
-   ASSERT_EQ(goOnline(bridge_), 3);
-
-   /* block 3 */
-
-   //balances
-   auto balances = getBalances(bridge_, wltId, accountId);
-   ASSERT_EQ(balances.size(), 4);
-
-   try {
-      for (const auto& balPair : balances) {
-         const auto& addrBal = TestChain::testAddrBalances[3].at(balPair.first);
-         EXPECT_EQ(addrBal[0], balPair.second[0]);
-         EXPECT_EQ(addrBal[1], balPair.second[1]);
-         EXPECT_EQ(addrBal[2], balPair.second[2]);
-      }
-   } catch (const std::exception&) {
-      ASSERT_TRUE(false);
-   }
-
-   //ledgers
-   auto delegateId = getLedgerDelegateId(bridge_);
-   ASSERT_FALSE(delegateId.empty());
-
-   auto pageCount = getLedgersPageCount(bridge_, delegateId);
-   EXPECT_EQ(pageCount, 1);
-
-   auto ledgersAt3Blocks = getLedgersPage(bridge_, delegateId, 0);
-   ASSERT_EQ(ledgersAt3Blocks.size(), 9);
-
-   for (unsigned i = 0; i < ledgersAt3Blocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAt3Blocks[i],
-         TestChain::ledgersBCDE[i + 6]));
-   }
-
-   /* block 4A */
-   TestUtils::setBlocks({ "0", "1", "2", "3", "4A" }, blk0dat_);
-   nodePtr->notifyNewBlock();
-   ASSERT_EQ(waitOnNewBlock(), 4);
-
-   balances = getBalances(bridge_, wltId, accountId);
-   ASSERT_EQ(balances.size(), 4);
-
-   //balances
-   try {
-      for (const auto& balPair : balances) {
-         const auto& addrBal = TestChain::testAddrBalances_Reorg[4].at(balPair.first);
-         EXPECT_EQ(addrBal[0], balPair.second[0]);
-         EXPECT_EQ(addrBal[1], balPair.second[1]);
-         EXPECT_EQ(addrBal[2], balPair.second[2]);
-      }
-   } catch (const std::exception&) {
-      ASSERT_TRUE(false);
-   }
-
-   //ledgers
-   pageCount = getLedgersPageCount(bridge_, delegateId);
-   EXPECT_EQ(pageCount, 1);
-
-   auto ledgersAt4Blocks = getLedgersPage(bridge_, delegateId, 0);
-   ASSERT_EQ(ledgersAt4Blocks.size(), 9);
-
-   for (unsigned i = 0; i < ledgersAt4Blocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAt4Blocks[i],
-         TestChain::ledgersBCDE_Reorg[i + 2]));
-   }
-
-   /* block 5 */
-   TestUtils::setBlocks({ "0", "1", "2", "3", "4A", "4", "5" }, blk0dat_);
-   nodePtr->notifyNewBlock();
-   ASSERT_EQ(waitOnNewBlock(), 5);
-
-   balances = getBalances(bridge_, wltId, accountId);
-   ASSERT_EQ(balances.size(), 4);
-
-   //balances
-   try {
-      for (const auto& balPair : balances) {
-         const auto& addrBal = TestChain::testAddrBalances[5].at(balPair.first);
-         EXPECT_EQ(addrBal[0], balPair.second[0]);
-         EXPECT_EQ(addrBal[1], balPair.second[1]);
-         EXPECT_EQ(addrBal[2], balPair.second[2]);
-      }
-   } catch (const std::exception&) {
-      ASSERT_TRUE(false);
-   }
-
-   //ledgers
-   pageCount = getLedgersPageCount(bridge_, delegateId);
-   EXPECT_EQ(pageCount, 1);
-
-   auto ledgersAt5Blocks = getLedgersPage(bridge_, delegateId, 0);
-   ASSERT_EQ(ledgersAt5Blocks.size(), 15);
-
-   for (unsigned i = 0; i < ledgersAt5Blocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAt5Blocks[i],
-         TestChain::ledgersBCDE[i]));
-   }
-
-   /* block 5A */
-   TestUtils::setBlocks({ "0", "1", "2", "3", "4A", "4", "5", "5A" }, blk0dat_);
-   nodePtr->notifyNewBlock();
-   ASSERT_EQ(waitOnNewBlock(), 5);
-
-   balances = getBalances(bridge_, wltId, accountId);
-   ASSERT_EQ(balances.size(), 4);
-
-   //balances
-   try {
-      for (const auto& balPair : balances) {
-         const auto& addrBal = TestChain::testAddrBalances_Reorg[5].at(balPair.first);
-         EXPECT_EQ(addrBal[0], balPair.second[0]);
-         EXPECT_EQ(addrBal[1], balPair.second[1]);
-         EXPECT_EQ(addrBal[2], balPair.second[2]);
-      }
-   } catch (const std::exception&) {
-      ASSERT_TRUE(false);
-   }
-
-   //ledgers
-   pageCount = getLedgersPageCount(bridge_, delegateId);
-   EXPECT_EQ(pageCount, 1);
-
-   ledgersAt5Blocks = getLedgersPage(bridge_, delegateId, 0);
-   ASSERT_EQ(ledgersAt5Blocks.size(), 11);
-
-   for (unsigned i = 0; i < ledgersAt5Blocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAt5Blocks[i],
-         TestChain::ledgersBCDE_Reorg[i]));
-   }
-}
-
-TEST_F(BridgeWebsocketsTests, Reorg_2Wallets)
-{
-   // create the 2 wallets
-   auto wltIds = init2WOWallets(homedir_);
-   auto wltId1 = wltIds.first;
-   auto wltId2 = wltIds.second;
-
-   /* need to start at block 3 */
-   theBDMt_->shutdown();
-   delete theBDMt_;
-   theBDMt_ = nullptr;
-
-   FileUtils::removeDirectory(blkdir_);
-   FileUtils::removeDirectory(ldbdir_);
-   FileUtils::createDirectory(blkdir_ / "blocks");
-   FileUtils::createDirectory(ldbdir_);
-
-   blk0dat_ = FileUtils::getBlkFilename(blkdir_ / "blocks", 0);
-   TestUtils::setBlocks({ "0", "1", "2", "3" }, blk0dat_);
-
-   initBDM();
-   auto nodePtr = std::dynamic_pointer_cast<NodeUnitTest>(
-      Config::NetworkSettings::bitcoinNodes().first);
-   nodePtr->setIface(theBDMt_->bdm()->getIFace());
-
-   //list wallets, unstage the primary test wallet & load
-   auto wltList = listWallets(bridge_);
-   ASSERT_EQ(wltList.size(), 3);
-   stageWallet(bridge_, walletId_, false);
-   auto wallets = loadWallets(bridge_);
-   ASSERT_EQ(wallets.size(), 2);
-
-   std::string accId1, accId2;
-   for (const auto& wltData : wallets) {
-      if (wltData.second.walletId == wltId1) {
-         accId1 = wltData.second.accountId;
-      } else if (wltData.second.walletId == wltId2) {
-         accId2 = wltData.second.accountId;
-      }
-   }
-   ASSERT_FALSE(accId1.empty());
-   ASSERT_FALSE(accId2.empty());
-
-   //connect to db
-   WebSocketServer::initAuthPeers({
-      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
-   WebSocketServer::start(theBDMt_->bdm(), true);
-
-   ASSERT_TRUE(connectToDb(bridge_));
-   ASSERT_TRUE(registerWallets(bridge_));
-
-   //start db, go online and wait on ready notif
-   theBDMt_->start(Config::DBSettings::initMode());
-   ASSERT_EQ(goOnline(bridge_), 3);
-
-   /* block 3 */
-
-   //balances
-   auto balances1 = getBalances(bridge_, wltId1, accId1);
-   ASSERT_EQ(balances1.size(), 2);
-   auto balances2 = getBalances(bridge_, wltId2, accId2);
-   ASSERT_EQ(balances2.size(), 2);
-
-   try {
-      for (const auto& balPair : balances1) {
-         const auto& addrBal = TestChain::testAddrBalances[3].at(balPair.first);
-         EXPECT_EQ(addrBal[0], balPair.second[0]);
-         EXPECT_EQ(addrBal[1], balPair.second[1]);
-         EXPECT_EQ(addrBal[2], balPair.second[2]);
-      }
-
-      for (const auto& balPair : balances2) {
-         const auto& addrBal = TestChain::testAddrBalances[3].at(balPair.first);
-         EXPECT_EQ(addrBal[0], balPair.second[0]);
-         EXPECT_EQ(addrBal[1], balPair.second[1]);
-         EXPECT_EQ(addrBal[2], balPair.second[2]);
-      }
-   } catch (const std::exception&) {
-      ASSERT_TRUE(false);
-   }
-
-   //ledgers
-   auto deletegateId = getLedgerDelegateId(bridge_);
-   auto delegateIdWlt1 = getLedgerDelegateIdForWallet(
-      bridge_, wltId1, accId1);
-   auto delegateIdWlt2 = getLedgerDelegateIdForWallet(
-      bridge_, wltId2, accId2);
-   ASSERT_FALSE(delegateIdWlt1.empty());
-   ASSERT_FALSE(delegateIdWlt2.empty());
-
-   auto pageCount = getLedgersPageCount(bridge_, deletegateId);
-   EXPECT_EQ(pageCount, 1);
-   pageCount = getLedgersPageCount(bridge_, delegateIdWlt1);
-   EXPECT_EQ(pageCount, 1);
-   pageCount = getLedgersPageCount(bridge_, delegateIdWlt2);
-   EXPECT_EQ(pageCount, 1);
-
-   //wlt1 ledgers
-   auto ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt1, 0);
-   ASSERT_EQ(ledgersAtBlocks.size(), 7);
-
-   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAtBlocks[i],
-            TestChain::ledgersBC[i + 3]));
-   }
-
-   //wlt2 ledgers
-   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt2, 0);
-   ASSERT_EQ(ledgersAtBlocks.size(), 3);
-
-   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAtBlocks[i],
-            TestChain::ledgersDE[i + 3]));
-   }
-
-   //combined ledgers
-   ledgersAtBlocks = getLedgersPage(bridge_, deletegateId, 0);
-   ASSERT_EQ(ledgersAtBlocks.size(), 10);
-
-   std::vector<TestChain::LedgerEntryValue> combinedLedgers;
-   combinedLedgers.insert(combinedLedgers.end(),
-      TestChain::ledgersBC.begin() + 3, TestChain::ledgersBC.end());
-   combinedLedgers.insert(combinedLedgers.end(),
-      TestChain::ledgersDE.begin() + 3, TestChain::ledgersDE.end());
-   ASSERT_EQ(combinedLedgers.size(), 10);
-   std::sort(combinedLedgers.begin(), combinedLedgers.end());
-
-   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAtBlocks[i],
-         combinedLedgers[i])) << i;
-   }
-
-   /* block 4A */
-   TestUtils::setBlocks({ "0", "1", "2", "3", "4A" }, blk0dat_);
-   nodePtr->notifyNewBlock();
-   ASSERT_EQ(waitOnNewBlock(), 4);
-
-   //balances
-   balances1 = getBalances(bridge_, wltId1, accId1);
-   ASSERT_EQ(balances1.size(), 2);
-   balances2 = getBalances(bridge_, wltId2, accId2);
-   ASSERT_EQ(balances2.size(), 2);
-
-   try {
-      for (const auto& balPair : balances1) {
-         const auto& addrBal = TestChain::testAddrBalances_Reorg[4].at(balPair.first);
-         EXPECT_EQ(addrBal[0], balPair.second[0]);
-         EXPECT_EQ(addrBal[1], balPair.second[1]);
-         EXPECT_EQ(addrBal[2], balPair.second[2]);
-      }
-
-      for (const auto& balPair : balances2) {
-         const auto& addrBal = TestChain::testAddrBalances_Reorg[4].at(balPair.first);
-         EXPECT_EQ(addrBal[0], balPair.second[0]);
-         EXPECT_EQ(addrBal[1], balPair.second[1]);
-         EXPECT_EQ(addrBal[2], balPair.second[2]);
-      }
-   } catch (const std::exception&) {
-      ASSERT_TRUE(false);
-   }
-
-   //wlt1 ledgers
-   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt1, 0);
-   ASSERT_EQ(ledgersAtBlocks.size(), 7);
-
-   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAtBlocks[i],
-            TestChain::ledgersBC_Reorg[i]));
-   }
-
-   //wlt2 ledgers
-   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt2, 0);
-   ASSERT_EQ(ledgersAtBlocks.size(), 3);
-
-   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAtBlocks[i],
-            TestChain::ledgersDE_Reorg[i + 2]));
-   }
-
-   //combined ledgers
-   ledgersAtBlocks = getLedgersPage(bridge_, deletegateId, 0);
-   ASSERT_EQ(ledgersAtBlocks.size(), 10);
-
-   combinedLedgers.clear();
-   combinedLedgers.insert(combinedLedgers.end(),
-      TestChain::ledgersBC_Reorg.begin(), TestChain::ledgersBC_Reorg.end());
-   combinedLedgers.insert(combinedLedgers.end(),
-      TestChain::ledgersDE_Reorg.begin() + 2, TestChain::ledgersDE_Reorg.end());
-   ASSERT_EQ(combinedLedgers.size(), 10);
-   std::sort(combinedLedgers.begin(), combinedLedgers.end());
-
-   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAtBlocks[i],
-            combinedLedgers[i])) << i;
-   }
-
-   /* block 5 */
-   TestUtils::setBlocks({ "0", "1", "2", "3", "4A", "4", "5" }, blk0dat_);
-   nodePtr->notifyNewBlock();
-   ASSERT_EQ(waitOnNewBlock(), 5);
-
-   //balances
-   balances1 = getBalances(bridge_, wltId1, accId1);
-   ASSERT_EQ(balances1.size(), 2);
-   balances2 = getBalances(bridge_, wltId2, accId2);
-   ASSERT_EQ(balances2.size(), 2);
-
-   try {
-      for (const auto& balPair : balances1) {
-         const auto& addrBal = TestChain::testAddrBalances[5].at(balPair.first);
-         EXPECT_EQ(addrBal[0], balPair.second[0]);
-         EXPECT_EQ(addrBal[1], balPair.second[1]);
-         EXPECT_EQ(addrBal[2], balPair.second[2]);
-      }
-
-      for (const auto& balPair : balances2) {
-         const auto& addrBal = TestChain::testAddrBalances[5].at(balPair.first);
-         EXPECT_EQ(addrBal[0], balPair.second[0]);
-         EXPECT_EQ(addrBal[1], balPair.second[1]);
-         EXPECT_EQ(addrBal[2], balPair.second[2]);
-      }
-   } catch (const std::exception&) {
-      ASSERT_TRUE(false);
-   }
-
-   //wlt1 ledgers
-   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt1, 0);
-   ASSERT_EQ(ledgersAtBlocks.size(), 10);
-
-   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAtBlocks[i],
-            TestChain::ledgersBC[i]));
-   }
-
-   //wlt2 ledgers
-   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt2, 0);
-   ASSERT_EQ(ledgersAtBlocks.size(), 6);
-
-   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAtBlocks[i],
-            TestChain::ledgersDE[i]));
-   }
-
-   //combined ledgers
-   ledgersAtBlocks = getLedgersPage(bridge_, deletegateId, 0);
-   ASSERT_EQ(ledgersAtBlocks.size(), 16);
-
-   combinedLedgers.clear();
-   combinedLedgers.insert(combinedLedgers.end(),
-      TestChain::ledgersBC.begin(), TestChain::ledgersBC.end());
-   combinedLedgers.insert(combinedLedgers.end(),
-      TestChain::ledgersDE.begin(), TestChain::ledgersDE.end());
-   ASSERT_EQ(combinedLedgers.size(), 16);
-   std::sort(combinedLedgers.begin(), combinedLedgers.end());
-
-   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAtBlocks[i],
-            combinedLedgers[i])) << i;
-   }
-
-   /* block 5A */
-   TestUtils::setBlocks({ "0", "1", "2", "3", "4A", "4", "5", "5A" }, blk0dat_);
-   nodePtr->notifyNewBlock();
-   ASSERT_EQ(waitOnNewBlock(), 5);
-
-   //balances
-   balances1 = getBalances(bridge_, wltId1, accId1);
-   ASSERT_EQ(balances1.size(), 2);
-   balances2 = getBalances(bridge_, wltId2, accId2);
-   ASSERT_EQ(balances2.size(), 2);
-
-   try {
-      for (const auto& balPair : balances1) {
-         const auto& addrBal = TestChain::testAddrBalances_Reorg[5].at(balPair.first);
-         EXPECT_EQ(addrBal[0], balPair.second[0]);
-         EXPECT_EQ(addrBal[1], balPair.second[1]);
-         EXPECT_EQ(addrBal[2], balPair.second[2]);
-      }
-
-      for (const auto& balPair : balances2) {
-         const auto& addrBal = TestChain::testAddrBalances_Reorg[5].at(balPair.first);
-         EXPECT_EQ(addrBal[0], balPair.second[0]);
-         EXPECT_EQ(addrBal[1], balPair.second[1]);
-         EXPECT_EQ(addrBal[2], balPair.second[2]);
-      }
-   } catch (const std::exception&) {
-      ASSERT_TRUE(false);
-   }
-
-   //wlt1 ledgers
-   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt1, 0);
-   ASSERT_EQ(ledgersAtBlocks.size(), 7);
-
-   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAtBlocks[i],
-            TestChain::ledgersBC_Reorg[i]));
-   }
-
-   //wlt2 ledgers
-   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt2, 0);
-   ASSERT_EQ(ledgersAtBlocks.size(), 5);
-
-   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAtBlocks[i],
-            TestChain::ledgersDE_Reorg[i])) << i;
-   }
-
-   //combined ledgers
-   ledgersAtBlocks = getLedgersPage(bridge_, deletegateId, 0);
-   ASSERT_EQ(ledgersAtBlocks.size(), 12);
-
-   combinedLedgers.clear();
-   combinedLedgers.insert(combinedLedgers.end(),
-      TestChain::ledgersBC_Reorg.begin(), TestChain::ledgersBC_Reorg.end());
-   combinedLedgers.insert(combinedLedgers.end(),
-      TestChain::ledgersDE_Reorg.begin(), TestChain::ledgersDE_Reorg.end());
-   ASSERT_EQ(combinedLedgers.size(), 12);
-   std::sort(combinedLedgers.begin(), combinedLedgers.end());
-
-   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
-      EXPECT_TRUE(
-         checkLedgers(ledgersAtBlocks[i],
-            combinedLedgers[i])) << i;
-   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -5668,11 +4670,1280 @@ TEST_F(BridgeWebsocketsTests, AddNewAddress)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// BridgeWebsocketsAutoDB
+// BridgeLedgerTests
+class BridgeLedgerTests : public ::testing::Test
+{
+protected:
+   void initBDM()
+   {
+      theBDMt_ = new BlockDataManagerThread();
+      iface_ = theBDMt_->bdm()->getIFace();
+   }
+
+   void prepareWallets()
+   {
+      auto pubKeyB = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrB);
+      auto pubKeyC = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrC);
+      auto pubKeyD = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrD);
+      auto pubKeyE = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrE);
+      auto pubKeyF = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrF);
+
+      walletId_BCDE_ = createWOWallet(homedir_,
+         { pubKeyB, pubKeyC, pubKeyD, pubKeyE }
+      );
+      walletId_BC_ = createWOWallet(homedir_,
+         { pubKeyB, pubKeyC }
+      );
+      walletId_DE_ = createWOWallet(homedir_,
+         { pubKeyD, pubKeyE }
+      );
+      walletId_AFLB_ = createWOWallet(homedir_,
+         { pubKeyF }, {
+            TestChain::scrAddrA,
+            TestChain::lb1ScrAddr, TestChain::lb1ScrAddrP2SH,
+            TestChain::lb2ScrAddr, TestChain::lb2ScrAddrP2SH
+         }
+      );
+   }
+
+   void loadWallets(const std::set<std::string>& walletIds)
+   {
+      ASSERT_FALSE(walletId_BCDE_.empty());
+      ASSERT_FALSE(walletId_BC_.empty());
+      ASSERT_FALSE(walletId_DE_.empty());
+      ASSERT_FALSE(walletId_AFLB_.empty());
+
+      auto wltList = listWallets(bridge_);
+      ASSERT_EQ(wltList.size(), 4);
+
+      for (auto& wltData : wltList) {
+         auto iter = walletIds.find(wltData.second.walletId);
+         if (iter == walletIds.end()) {
+            stageWallet(bridge_, wltData.second.walletId, false);
+         }
+
+         if (wltData.second.walletId == walletId_BCDE_) {
+            accountId_BCDE_ = *wltData.second.accountIds.begin();
+         } else if (wltData.second.walletId == walletId_BC_) {
+            accountId_BC_ = *wltData.second.accountIds.begin();
+         } else if (wltData.second.walletId == walletId_DE_) {
+            accountId_DE_ = *wltData.second.accountIds.begin();
+         } else if (wltData.second.walletId == walletId_AFLB_) {
+            accountId_AFLB_ = *wltData.second.accountIds.begin();
+         }
+      }
+
+      auto wallets = ::loadWallets(bridge_);
+      ASSERT_EQ(wallets.size(), walletIds.size());
+      ASSERT_FALSE(accountId_BCDE_.empty());
+      ASSERT_FALSE(accountId_BC_.empty());
+      ASSERT_FALSE(accountId_DE_.empty());
+      ASSERT_FALSE(accountId_AFLB_.empty());
+   }
+
+   /////////////////////////////////////////////////////////////////////////////
+   virtual void SetUp()
+   {
+      FileUtils::removeDirectory(blkdir_);
+      FileUtils::removeDirectory(homedir_);
+      FileUtils::removeDirectory(ldbdir_);
+
+      FileUtils::createDirectory(blkdir_ / "blocks");
+      FileUtils::createDirectory(homedir_);
+      FileUtils::createDirectory(ldbdir_);
+
+      Config::DBSettings::setServiceType(SERVICE_UNITTEST_WITHWS);
+
+      // Put the first 5 blocks into the blkdir
+      blk0dat_ = FileUtils::getBlkFilename(blkdir_ / "blocks", 0);
+      TestUtils::setBlocks({ "0", "1", "2", "3" }, blk0dat_);
+
+      Config::parseArgs({
+         "--datadir=./fakehomedir",
+         "--dbdir=./ldbtestdir",
+         "--satoshi-datadir=./blkfiletest",
+         "--db-type=DB_FULL",
+         "--thread-count=3",
+         "--public"},
+         Config::ProcessType::DB);
+      prepareWallets();
+
+      //setup auth peers for server and client
+      authPeersPassLbd_ = [](const std::set<Wallets::EncryptionKeyId>&)
+      ->Passphrase::Result
+      {
+         return { {}, true };
+      };
+
+      auto createWltLbd = []()->std::unique_ptr<Passphrase::Params>
+      {
+         return std::make_unique<Passphrase::Params>(
+            1ms, 0, SecureBinaryData{});
+      };
+
+      Wallets::AuthorizedPeers::createWallet({
+         homedir_ / SERVER_AUTH_PEER_FILENAME, {createWltLbd}});
+      Wallets::AuthorizedPeers serverPeers(
+         {homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+
+      Wallets::AuthorizedPeers::createWallet({
+         homedir_ / CLIENT_AUTH_PEER_FILENAME, {createWltLbd}});
+      Wallets::AuthorizedPeers clientPeers(
+         {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_});
+
+      //share public keys between client and server
+      auto& serverPubkey = serverPeers.getOwnPublicKey();
+
+      std::stringstream serverAddr;
+      serverAddr << "127.0.0.1:" << Config::NetworkSettings::dbPort();
+      clientPeers.addPeer(serverPubkey, serverAddr.str());
+
+      serverPubkey_ = BinaryData(serverPubkey.pubkey, 33);
+      serverAddr_ = serverAddr.str();
+
+      replyQueue.clear();
+      bridge_ = std::make_shared<Bridge::CppBridge>();
+      bridge_->setWriteLambda([](MsgPtr payload) {
+         std::unique_lock<std::mutex> lock(commsMutex);
+         replyQueue.emplace_back(std::move(payload));
+         commsCV.notify_all();
+      });
+
+      initBDM();
+      nodePtr_ = std::dynamic_pointer_cast<NodeUnitTest>(
+         Config::NetworkSettings::bitcoinNodes().first);
+      nodePtr_->setIface(theBDMt_->bdm()->getIFace());
+      hexMagicBytes = Config::BitcoinSettings::getMagicBytes().toHexStr();
+   }
+
+   /////////////////////////////////////////////////////////////////////////////
+   virtual void TearDown()
+   {
+      bridge_.reset();
+      WebSocketServer::shutdown();
+      WebSocketServer::waitOnShutdown();
+      theBDMt_->shutdown();
+
+      delete theBDMt_;
+      theBDMt_ = nullptr;
+
+      FileUtils::removeDirectory(blkdir_);
+      FileUtils::removeDirectory(homedir_);
+      FileUtils::removeDirectory(ldbdir_);
+      Config::reset();
+   }
+
+protected:
+   BlockDataManagerThread *theBDMt_;
+   Passphrase::UnlockFunc authPeersPassLbd_;
+   LMDBBlockDatabase* iface_;
+
+   std::filesystem::path blkdir_{"./blkfiletest"sv};
+   std::filesystem::path homedir_{"./fakehomedir"sv};
+   std::filesystem::path ldbdir_{"./ldbtestdir"sv};
+   std::filesystem::path blk0dat_;
+
+   BinaryData serverPubkey_;
+   std::string serverAddr_;
+   std::string hexMagicBytes;
+   std::shared_ptr<Bridge::CppBridge> bridge_;
+   std::shared_ptr<NodeUnitTest> nodePtr_;
+
+   std::string walletId_BCDE_;
+   std::string walletId_BC_;
+   std::string walletId_DE_;
+   std::string walletId_AFLB_;
+
+   std::string accountId_BCDE_;
+   std::string accountId_BC_;
+   std::string accountId_DE_;
+   std::string accountId_AFLB_;
+};
+
 ////////////////////////////////////////////////////////////////////////////////
+TEST_F(BridgeLedgerTests, Check5Blocks_BCDE)
+{
+   loadWallets({walletId_BCDE_});
+
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
+   WebSocketServer::initAuthPeers({
+      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+   WebSocketServer::start(theBDMt_->bdm(), true);
+
+   ASSERT_TRUE(connectToDb(bridge_));
+   ASSERT_TRUE(registerWallets(bridge_));
+
+   //start db, go online and wait on ready notif
+   theBDMt_->start(Config::DBSettings::initMode());
+   ASSERT_EQ(goOnline(bridge_), 5);
+
+   //check balances
+   auto balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   checkBalances(balances, 5, false);
+
+   //check ledgers
+   auto delegateId = getLedgerDelegateId(bridge_);
+   ASSERT_FALSE(delegateId.empty());
+
+   auto pageCount = getLedgersPageCount(bridge_, delegateId);
+   EXPECT_EQ(pageCount, 1);
+
+   auto ledgers = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgers.size(), 15);
+
+   for (unsigned i = 0; i < ledgers.size(); i++) {
+      EXPECT_TRUE(checkLedgers(ledgers[i], TestChain::ledgersBCDE[i])) << i;
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(BridgeLedgerTests, AddBlocks_BCDE)
+{
+   loadWallets({walletId_BCDE_});
+
+   WebSocketServer::initAuthPeers({
+      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+   WebSocketServer::start(theBDMt_->bdm(), true);
+
+   //connect to db
+   ASSERT_TRUE(connectToDb(bridge_));
+   ASSERT_TRUE(registerWallets(bridge_));
+
+   //start db, go online and wait on ready notif
+   theBDMt_->start(Config::DBSettings::initMode());
+   ASSERT_EQ(goOnline(bridge_), 3);
+
+   /* block 3 */
+
+   //balances
+   auto balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   checkBalances(balances, 3, false);
+
+   //ledgers
+   auto delegateId = getLedgerDelegateId(bridge_);
+   ASSERT_FALSE(delegateId.empty());
+
+   auto pageCount = getLedgersPageCount(bridge_, delegateId);
+   EXPECT_EQ(pageCount, 1);
+
+   auto ledgersAt3Blocks = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgersAt3Blocks.size(), 9);
+
+   for (unsigned i = 0; i < ledgersAt3Blocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAt3Blocks[i],
+         TestChain::ledgersBCDE[i + 6]));
+   }
+
+   /* block 4 */
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4" }, blk0dat_);
+   nodePtr_->notifyNewBlock();
+   ASSERT_EQ(waitOnNewBlock(), 4);
+
+   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   checkBalances(balances, 4, false);
+
+   //ledgers
+   pageCount = getLedgersPageCount(bridge_, delegateId);
+   EXPECT_EQ(pageCount, 1);
+
+   auto ledgersAt4Blocks = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgersAt4Blocks.size(), 12);
+
+   for (unsigned i = 0; i < ledgersAt4Blocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAt4Blocks[i],
+         TestChain::ledgersBCDE[i + 3]));
+   }
+
+   /* block 5 */
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
+   nodePtr_->notifyNewBlock();
+   ASSERT_EQ(waitOnNewBlock(), 5);
+
+   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   checkBalances(balances, 5, false);
+
+   //ledgers
+   pageCount = getLedgersPageCount(bridge_, delegateId);
+   EXPECT_EQ(pageCount, 1);
+
+   auto ledgersAt5Blocks = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgersAt5Blocks.size(), 15);
+
+   for (unsigned i = 0; i < ledgersAt5Blocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAt5Blocks[i],
+         TestChain::ledgersBCDE[i]));
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(BridgeLedgerTests, AddBlocks_BC_DE)
+{
+   // load the 2 wallets
+   loadWallets({walletId_BC_, walletId_DE_});
+
+   //connect to db
+   WebSocketServer::initAuthPeers({
+      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+   WebSocketServer::start(theBDMt_->bdm(), true);
+
+   ASSERT_TRUE(connectToDb(bridge_));
+   ASSERT_TRUE(registerWallets(bridge_));
+
+   //start db, go online and wait on ready notif
+   theBDMt_->start(Config::DBSettings::initMode());
+   ASSERT_EQ(goOnline(bridge_), 3);
+
+   /* block 3 */
+
+   //balances
+   auto balances1 = getBalances(bridge_, walletId_BC_, accountId_BC_);
+   ASSERT_EQ(balances1.size(), 2);
+   checkBalances(balances1, 3, false);
+   auto balances2 = getBalances(bridge_, walletId_DE_, accountId_DE_);
+   ASSERT_EQ(balances2.size(), 2);
+   checkBalances(balances2, 3, false);
+
+   //ledgers
+   auto deletegateId = getLedgerDelegateId(bridge_);
+   auto delegateIdWlt1 = getLedgerDelegateIdForWallet(
+      bridge_, walletId_BC_, accountId_BC_);
+   auto delegateIdWlt2 = getLedgerDelegateIdForWallet(
+      bridge_, walletId_DE_, accountId_DE_);
+   ASSERT_FALSE(delegateIdWlt1.empty());
+   ASSERT_FALSE(delegateIdWlt2.empty());
+
+   auto pageCount = getLedgersPageCount(bridge_, deletegateId);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateIdWlt1);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateIdWlt2);
+   EXPECT_EQ(pageCount, 1);
+
+   //wlt1 ledgers
+   auto ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 7);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersBC[i + 3]));
+   }
+
+   //wlt2 ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 3);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersDE[i + 3]));
+   }
+
+   //combined ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, deletegateId, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 10);
+
+   std::vector<TestChain::LedgerEntryValue> combinedLedgers;
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersBC.begin() + 3, TestChain::ledgersBC.end());
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersDE.begin() + 3, TestChain::ledgersDE.end());
+   ASSERT_EQ(combinedLedgers.size(), 10);
+   std::sort(combinedLedgers.begin(), combinedLedgers.end());
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+         combinedLedgers[i])) << i;
+   }
+
+   /* block 4 */
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4" }, blk0dat_);
+   nodePtr_->notifyNewBlock();
+   ASSERT_EQ(waitOnNewBlock(), 4);
+
+   //balances
+   balances1 = getBalances(bridge_, walletId_BC_, accountId_BC_);
+   ASSERT_EQ(balances1.size(), 2);
+   checkBalances(balances1, 4, false);
+   balances2 = getBalances(bridge_, walletId_DE_, accountId_DE_);
+   ASSERT_EQ(balances2.size(), 2);
+   checkBalances(balances2, 4, false);
+
+   //wlt1 ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 8);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersBC[i + 2]));
+   }
+
+   //wlt2 ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 5);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersDE[i + 1]));
+   }
+
+   //combined ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, deletegateId, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 13);
+
+   combinedLedgers.clear();
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersBC.begin() + 2, TestChain::ledgersBC.end());
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersDE.begin() + 1, TestChain::ledgersDE.end());
+   ASSERT_EQ(combinedLedgers.size(), 13);
+   std::sort(combinedLedgers.begin(), combinedLedgers.end());
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            combinedLedgers[i])) << i;
+   }
+
+   /* block 5 */
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
+   nodePtr_->notifyNewBlock();
+   ASSERT_EQ(waitOnNewBlock(), 5);
+
+   //balances
+   balances1 = getBalances(bridge_, walletId_BC_, accountId_BC_);
+   ASSERT_EQ(balances1.size(), 2);
+   checkBalances(balances1, 5, false);
+   balances2 = getBalances(bridge_, walletId_DE_, accountId_DE_);
+   ASSERT_EQ(balances2.size(), 2);
+   checkBalances(balances2, 5, false);
+
+   //wlt1 ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 10);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersBC[i]));
+   }
+
+   //wlt2 ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 6);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersDE[i]));
+   }
+
+   //combined ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, deletegateId, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 16);
+
+   combinedLedgers.clear();
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersBC.begin(), TestChain::ledgersBC.end());
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersDE.begin(), TestChain::ledgersDE.end());
+   ASSERT_EQ(combinedLedgers.size(), 16);
+   std::sort(combinedLedgers.begin(), combinedLedgers.end());
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            combinedLedgers[i])) << i;
+   }
+}
+
+TEST_F(BridgeLedgerTests, AddBlocks_BCDE_AFLB)
+{
+   // load the 2 wallets
+   loadWallets({walletId_BCDE_, walletId_AFLB_});
+
+   //connect to db
+   WebSocketServer::initAuthPeers({
+      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+   WebSocketServer::start(theBDMt_->bdm(), true);
+
+   ASSERT_TRUE(connectToDb(bridge_));
+   ASSERT_TRUE(registerWallets(bridge_));
+
+   //start db, go online and wait on ready notif
+   theBDMt_->start(Config::DBSettings::initMode());
+   ASSERT_EQ(goOnline(bridge_), 3);
+
+   /* block 3 */
+
+   //balances
+   auto balances1 = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances1.size(), 4);
+   checkBalances(balances1, 3, false);
+   auto balances2 = getBalances(bridge_, walletId_AFLB_, accountId_AFLB_);
+   ASSERT_EQ(balances2.size(), 6);
+   checkBalances(balances2, 3, false);
+
+   //ledgers
+   auto deletegateId = getLedgerDelegateId(bridge_);
+   auto delegateIdWlt1 = getLedgerDelegateIdForWallet(
+      bridge_, walletId_BCDE_, accountId_BCDE_);
+   auto delegateIdWlt2 = getLedgerDelegateIdForWallet(
+      bridge_, walletId_AFLB_, accountId_AFLB_);
+   ASSERT_FALSE(delegateIdWlt1.empty());
+   ASSERT_FALSE(delegateIdWlt2.empty());
+
+   auto pageCount = getLedgersPageCount(bridge_, deletegateId);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateIdWlt1);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateIdWlt2);
+   EXPECT_EQ(pageCount, 1);
+
+   //wlt1 ledgers
+   auto ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 9);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersBCDE[i + 6]));
+   }
+
+   //wlt2 ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 7);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersAFLB[i + 4]));
+   }
+
+   //combined ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, deletegateId, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 16);
+
+   std::vector<TestChain::LedgerEntryValue> combinedLedgers;
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersBCDE.begin() + 6, TestChain::ledgersBCDE.end());
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersAFLB.begin() + 4, TestChain::ledgersAFLB.end());
+   ASSERT_EQ(combinedLedgers.size(), 16);
+   std::sort(combinedLedgers.begin(), combinedLedgers.end());
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+         combinedLedgers[i])) << i;
+   }
+
+   /* block 4 */
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4" }, blk0dat_);
+   nodePtr_->notifyNewBlock();
+   ASSERT_EQ(waitOnNewBlock(), 4);
+
+   //balances
+   balances1 = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances1.size(), 4);
+   checkBalances(balances1, 4, false);
+   balances2 = getBalances(bridge_, walletId_AFLB_, accountId_AFLB_);
+   ASSERT_EQ(balances2.size(), 6);
+   checkBalances(balances2, 4, false);
+
+   //wlt1 ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 12);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersBCDE[i + 3]));
+   }
+
+   //wlt2 ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 10);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersAFLB[i + 1]));
+   }
+
+   //combined ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, deletegateId, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 22);
+
+   combinedLedgers.clear();
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersBCDE.begin() + 3, TestChain::ledgersBCDE.end());
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersAFLB.begin() + 1, TestChain::ledgersAFLB.end());
+   ASSERT_EQ(combinedLedgers.size(), 22);
+   std::sort(combinedLedgers.begin(), combinedLedgers.end());
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            combinedLedgers[i])) << i;
+   }
+
+   /* block 5 */
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
+   nodePtr_->notifyNewBlock();
+   ASSERT_EQ(waitOnNewBlock(), 5);
+
+   //balances
+   balances1 = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances1.size(), 4);
+   checkBalances(balances1, 5, false);
+   balances2 = getBalances(bridge_, walletId_AFLB_, accountId_AFLB_);
+   ASSERT_EQ(balances2.size(), 6);
+   checkBalances(balances2, 5, false);
+
+   //wlt1 ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 15);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersBCDE[i]));
+   }
+
+   //wlt2 ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 11);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersAFLB[i]));
+   }
+
+   //combined ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, deletegateId, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 26);
+
+   combinedLedgers.clear();
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersBCDE.begin(), TestChain::ledgersBCDE.end());
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersAFLB.begin(), TestChain::ledgersAFLB.end());
+   ASSERT_EQ(combinedLedgers.size(), 26);
+   std::sort(combinedLedgers.begin(), combinedLedgers.end());
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            combinedLedgers[i])) << i;
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(BridgeLedgerTests, Reorg_BCDE)
+{
+   loadWallets({walletId_BCDE_});
+
+   //connect to db
+   WebSocketServer::initAuthPeers({
+      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+   WebSocketServer::start(theBDMt_->bdm(), true);
+
+   ASSERT_TRUE(connectToDb(bridge_));
+   ASSERT_TRUE(registerWallets(bridge_));
+
+   //start db, go online and wait on ready notif
+   theBDMt_->start(Config::DBSettings::initMode());
+   ASSERT_EQ(goOnline(bridge_), 3);
+
+   /* block 3 */
+
+   //balances
+   auto balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   checkBalances(balances, 3, false);
+
+   //ledgers
+   auto delegateId = getLedgerDelegateId(bridge_);
+   ASSERT_FALSE(delegateId.empty());
+
+   auto pageCount = getLedgersPageCount(bridge_, delegateId);
+   EXPECT_EQ(pageCount, 1);
+
+   auto ledgersAt3Blocks = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgersAt3Blocks.size(), 9);
+
+   for (unsigned i = 0; i < ledgersAt3Blocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAt3Blocks[i],
+         TestChain::ledgersBCDE[i + 6]));
+   }
+
+   /* block 4A */
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4A" }, blk0dat_);
+   nodePtr_->notifyNewBlock();
+   ASSERT_EQ(waitOnNewBlock(), 4);
+
+   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   checkBalances(balances, 4, true);
+
+   //ledgers
+   pageCount = getLedgersPageCount(bridge_, delegateId);
+   EXPECT_EQ(pageCount, 1);
+
+   auto ledgersAt4Blocks = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgersAt4Blocks.size(), 9);
+
+   for (unsigned i = 0; i < ledgersAt4Blocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAt4Blocks[i],
+         TestChain::ledgersBCDE_Reorg[i + 2]));
+   }
+
+   /* block 5 */
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4A", "4", "5" }, blk0dat_);
+   nodePtr_->notifyNewBlock();
+   ASSERT_EQ(waitOnNewBlock(), 5);
+
+   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   checkBalances(balances, 5, false);
+
+   //ledgers
+   pageCount = getLedgersPageCount(bridge_, delegateId);
+   EXPECT_EQ(pageCount, 1);
+
+   auto ledgersAt5Blocks = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgersAt5Blocks.size(), 15);
+
+   for (unsigned i = 0; i < ledgersAt5Blocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAt5Blocks[i],
+         TestChain::ledgersBCDE[i]));
+   }
+
+   /* block 5A */
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4A", "4", "5", "5A" }, blk0dat_);
+   nodePtr_->notifyNewBlock();
+   ASSERT_EQ(waitOnNewBlock(), 5);
+
+   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   checkBalances(balances, 5, true);
+
+   //ledgers
+   pageCount = getLedgersPageCount(bridge_, delegateId);
+   EXPECT_EQ(pageCount, 1);
+
+   ledgersAt5Blocks = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgersAt5Blocks.size(), 11);
+
+   for (unsigned i = 0; i < ledgersAt5Blocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAt5Blocks[i],
+         TestChain::ledgersBCDE_Reorg[i]));
+   }
+}
+
+TEST_F(BridgeLedgerTests, Reorg_BC_DE)
+{
+   loadWallets({walletId_BC_, walletId_DE_});
+
+   //connect to db
+   WebSocketServer::initAuthPeers({
+      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+   WebSocketServer::start(theBDMt_->bdm(), true);
+
+   ASSERT_TRUE(connectToDb(bridge_));
+   ASSERT_TRUE(registerWallets(bridge_));
+
+   //start db, go online and wait on ready notif
+   theBDMt_->start(Config::DBSettings::initMode());
+   ASSERT_EQ(goOnline(bridge_), 3);
+
+   /* block 3 */
+
+   //balances
+   auto balances1 = getBalances(bridge_, walletId_BC_, accountId_BC_);
+   ASSERT_EQ(balances1.size(), 2);
+   checkBalances(balances1, 3, false);
+   auto balances2 = getBalances(bridge_, walletId_DE_, accountId_DE_);
+   ASSERT_EQ(balances2.size(), 2);
+   checkBalances(balances2, 3, false);
+
+   //ledgers
+   auto deletegateId = getLedgerDelegateId(bridge_);
+   auto delegateIdWlt1 = getLedgerDelegateIdForWallet(
+      bridge_, walletId_BC_, accountId_BC_);
+   auto delegateIdWlt2 = getLedgerDelegateIdForWallet(
+      bridge_, walletId_DE_, accountId_DE_);
+   ASSERT_FALSE(delegateIdWlt1.empty());
+   ASSERT_FALSE(delegateIdWlt2.empty());
+
+   auto pageCount = getLedgersPageCount(bridge_, deletegateId);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateIdWlt1);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateIdWlt2);
+   EXPECT_EQ(pageCount, 1);
+
+   //wlt1 ledgers
+   auto ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 7);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersBC[i + 3]));
+   }
+
+   //wlt2 ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 3);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersDE[i + 3]));
+   }
+
+   //combined ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, deletegateId, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 10);
+
+   std::vector<TestChain::LedgerEntryValue> combinedLedgers;
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersBC.begin() + 3, TestChain::ledgersBC.end());
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersDE.begin() + 3, TestChain::ledgersDE.end());
+   ASSERT_EQ(combinedLedgers.size(), 10);
+   std::sort(combinedLedgers.begin(), combinedLedgers.end());
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+         combinedLedgers[i])) << i;
+   }
+
+   /* block 4A */
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4A" }, blk0dat_);
+   nodePtr_->notifyNewBlock();
+   ASSERT_EQ(waitOnNewBlock(), 4);
+
+   //balances
+   balances1 = getBalances(bridge_, walletId_BC_, accountId_BC_);
+   ASSERT_EQ(balances1.size(), 2);
+   checkBalances(balances1, 4, true);
+   balances2 = getBalances(bridge_, walletId_DE_, accountId_DE_);
+   ASSERT_EQ(balances2.size(), 2);
+   checkBalances(balances2, 4, true);
+
+   //wlt1 ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 7);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersBC_Reorg[i]));
+   }
+
+   //wlt2 ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 3);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersDE_Reorg[i + 2]));
+   }
+
+   //combined ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, deletegateId, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 10);
+
+   combinedLedgers.clear();
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersBC_Reorg.begin(), TestChain::ledgersBC_Reorg.end());
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersDE_Reorg.begin() + 2, TestChain::ledgersDE_Reorg.end());
+   ASSERT_EQ(combinedLedgers.size(), 10);
+   std::sort(combinedLedgers.begin(), combinedLedgers.end());
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            combinedLedgers[i])) << i;
+   }
+
+   /* block 5 */
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4A", "4", "5" }, blk0dat_);
+   nodePtr_->notifyNewBlock();
+   ASSERT_EQ(waitOnNewBlock(), 5);
+
+   //balances
+   balances1 = getBalances(bridge_, walletId_BC_, accountId_BC_);
+   ASSERT_EQ(balances1.size(), 2);
+   checkBalances(balances1, 5, false);
+   balances2 = getBalances(bridge_, walletId_DE_, accountId_DE_);
+   ASSERT_EQ(balances2.size(), 2);
+   checkBalances(balances2, 5, false);
+
+   //wlt1 ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 10);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersBC[i]));
+   }
+
+   //wlt2 ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 6);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersDE[i]));
+   }
+
+   //combined ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, deletegateId, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 16);
+
+   combinedLedgers.clear();
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersBC.begin(), TestChain::ledgersBC.end());
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersDE.begin(), TestChain::ledgersDE.end());
+   ASSERT_EQ(combinedLedgers.size(), 16);
+   std::sort(combinedLedgers.begin(), combinedLedgers.end());
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            combinedLedgers[i])) << i;
+   }
+
+   /* block 5A */
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4A", "4", "5", "5A" }, blk0dat_);
+   nodePtr_->notifyNewBlock();
+   ASSERT_EQ(waitOnNewBlock(), 5);
+
+   //balances
+   balances1 = getBalances(bridge_, walletId_BC_, accountId_BC_);
+   ASSERT_EQ(balances1.size(), 2);
+   checkBalances(balances1, 5, true);
+   balances2 = getBalances(bridge_, walletId_DE_, accountId_DE_);
+   ASSERT_EQ(balances2.size(), 2);
+   checkBalances(balances2, 5, true);
+
+   //wlt1 ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 7);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersBC_Reorg[i]));
+   }
+
+   //wlt2 ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 5);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersDE_Reorg[i])) << i;
+   }
+
+   //combined ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, deletegateId, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 12);
+
+   combinedLedgers.clear();
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersBC_Reorg.begin(), TestChain::ledgersBC_Reorg.end());
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersDE_Reorg.begin(), TestChain::ledgersDE_Reorg.end());
+   ASSERT_EQ(combinedLedgers.size(), 12);
+   std::sort(combinedLedgers.begin(), combinedLedgers.end());
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            combinedLedgers[i])) << i;
+   }
+}
+
+TEST_F(BridgeLedgerTests, Reorg_BCDE_AFLB)
+{
+   loadWallets({walletId_BCDE_, walletId_AFLB_});
+
+   //connect to db
+   WebSocketServer::initAuthPeers({
+      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+   WebSocketServer::start(theBDMt_->bdm(), true);
+
+   ASSERT_TRUE(connectToDb(bridge_));
+   ASSERT_TRUE(registerWallets(bridge_));
+
+   //start db, go online and wait on ready notif
+   theBDMt_->start(Config::DBSettings::initMode());
+   ASSERT_EQ(goOnline(bridge_), 3);
+
+   /* block 3 */
+
+   //balances
+   auto balances1 = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances1.size(), 4);
+   checkBalances(balances1, 3, false);
+   auto balances2 = getBalances(bridge_, walletId_AFLB_, accountId_AFLB_);
+   ASSERT_EQ(balances2.size(), 6);
+   checkBalances(balances2, 3, false);
+
+   //ledgers
+   auto deletegateId = getLedgerDelegateId(bridge_);
+   auto delegateIdWlt1 = getLedgerDelegateIdForWallet(
+      bridge_, walletId_BCDE_, accountId_BCDE_);
+   auto delegateIdWlt2 = getLedgerDelegateIdForWallet(
+      bridge_, walletId_AFLB_, accountId_AFLB_);
+   ASSERT_FALSE(delegateIdWlt1.empty());
+   ASSERT_FALSE(delegateIdWlt2.empty());
+
+   auto pageCount = getLedgersPageCount(bridge_, deletegateId);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateIdWlt1);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateIdWlt2);
+   EXPECT_EQ(pageCount, 1);
+
+   //wlt1 ledgers
+   auto ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 9);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersBCDE[i + 6]));
+   }
+
+   //wlt2 ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 7);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersAFLB[i + 4]));
+   }
+
+   //combined ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, deletegateId, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 16);
+
+   std::vector<TestChain::LedgerEntryValue> combinedLedgers;
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersBCDE.begin() + 6, TestChain::ledgersBCDE.end());
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersAFLB.begin() + 4, TestChain::ledgersAFLB.end());
+   ASSERT_EQ(combinedLedgers.size(), 16);
+   std::sort(combinedLedgers.begin(), combinedLedgers.end());
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+         combinedLedgers[i])) << i;
+   }
+
+   /* block 4A */
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4A" }, blk0dat_);
+   nodePtr_->notifyNewBlock();
+   ASSERT_EQ(waitOnNewBlock(), 4);
+
+   //balances
+   balances1 = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances1.size(), 4);
+   checkBalances(balances1, 4, true);
+   balances2 = getBalances(bridge_, walletId_AFLB_, accountId_AFLB_);
+   ASSERT_EQ(balances2.size(), 6);
+   checkBalances(balances2, 4, true);
+
+   //wlt1 ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 9);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersBCDE_Reorg[i + 2]));
+   }
+
+   //wlt2 ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 8);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersAFLB_Reorg[i + 2]));
+   }
+
+   //combined ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, deletegateId, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 17);
+
+   combinedLedgers.clear();
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersBCDE_Reorg.begin() + 2, TestChain::ledgersBCDE_Reorg.end());
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersAFLB_Reorg.begin() + 2, TestChain::ledgersAFLB_Reorg.end());
+   ASSERT_EQ(combinedLedgers.size(), 17);
+   std::sort(combinedLedgers.begin(), combinedLedgers.end());
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            combinedLedgers[i])) << i;
+   }
+
+   /* block 5 */
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4A", "4", "5" }, blk0dat_);
+   nodePtr_->notifyNewBlock();
+   ASSERT_EQ(waitOnNewBlock(), 5);
+
+   //balances
+   balances1 = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances1.size(), 4);
+   checkBalances(balances1, 5, false);
+   balances2 = getBalances(bridge_, walletId_AFLB_, accountId_AFLB_);
+   ASSERT_EQ(balances2.size(), 6);
+   checkBalances(balances2, 5, false);
+
+   //wlt1 ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 15);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersBCDE[i]));
+   }
+
+   //wlt2 ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 11);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersAFLB[i]));
+   }
+
+   //combined ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, deletegateId, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 26);
+
+   combinedLedgers.clear();
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersBCDE.begin(), TestChain::ledgersBCDE.end());
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersAFLB.begin(), TestChain::ledgersAFLB.end());
+   ASSERT_EQ(combinedLedgers.size(), 26);
+   std::sort(combinedLedgers.begin(), combinedLedgers.end());
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            combinedLedgers[i])) << i;
+   }
+
+   /* block 5A */
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4A", "4", "5", "5A" }, blk0dat_);
+   nodePtr_->notifyNewBlock();
+   ASSERT_EQ(waitOnNewBlock(), 5);
+
+   //balances
+   balances1 = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances1.size(), 4);
+   checkBalances(balances1, 5, true);
+   balances2 = getBalances(bridge_, walletId_AFLB_, accountId_AFLB_);
+   ASSERT_EQ(balances2.size(), 6);
+   checkBalances(balances2, 5, true);
+
+   //wlt1 ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 11);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersBCDE_Reorg[i]));
+   }
+
+   //wlt2 ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateIdWlt2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 10);
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersAFLB_Reorg[i])) << i;
+   }
+
+   //combined ledgers
+   ledgersAtBlocks = getLedgersPage(bridge_, deletegateId, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 21);
+
+   combinedLedgers.clear();
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersBCDE_Reorg.begin(), TestChain::ledgersBCDE_Reorg.end());
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersAFLB_Reorg.begin(), TestChain::ledgersAFLB_Reorg.end());
+   ASSERT_EQ(combinedLedgers.size(), 21);
+   std::sort(combinedLedgers.begin(), combinedLedgers.end());
+
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            combinedLedgers[i])) << i;
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// BridgeWebsocketsAutoDB
 class BridgeWebsocketsAutoDB : public ::testing::Test
 {
 protected:
+
+   void prepareWallets()
+   {
+      auto pubKeyB = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrB);
+      auto pubKeyC = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrC);
+      auto pubKeyD = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrD);
+      auto pubKeyE = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrE);
+
+      walletId_ = createWOWallet(homedir_, {
+         pubKeyB, pubKeyC, pubKeyD, pubKeyE}
+      );
+   }
+
    virtual void SetUp()
    {
       FileUtils::removeDirectory(blkdir_);
@@ -5704,9 +5975,7 @@ protected:
          (char*)"--thread-count=3"sv.data()
       };
       Config::parseArgs(7, argv, Config::ProcessType::Bridge);
-
-      startupBIP151CTX();
-      startupBIP150CTX(4);
+      prepareWallets();
 
       replyQueue.clear();
       bridge_ = std::make_shared<Bridge::CppBridge>();
@@ -5715,8 +5984,6 @@ protected:
          replyQueue.emplace_back(std::move(payload));
          commsCV.notify_all();
       });
-
-      walletId_ = initWOWallet(homedir_);
    }
 
    virtual void TearDown()
@@ -5834,6 +6101,8 @@ GTEST_API_ int main(int argc, char **argv)
 
    srand(time(0));
    std::cout << "Running main() from gtest_main.cc\n";
+   startupBIP151CTX();
+   startupBIP150CTX(4);
 
    SETLOGLEVEL(LogLvlDebug);
    LOGENABLESTDOUT();

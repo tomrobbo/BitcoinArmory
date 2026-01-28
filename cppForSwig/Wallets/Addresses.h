@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2017-2025, goatpig                                          //
+//  Copyright (C) 2017-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -9,10 +9,7 @@
 #pragma once
 
 #include <memory>
-
-#include "Utils/BinaryData.h"
-#include "Assets.h"
-#include "ScriptRecipient.h"
+#include <Utils/BinaryData.h>
 
 class AddressException : public std::runtime_error
 {
@@ -31,6 +28,8 @@ enum AddressEntryType
    P2PK = 2,
    P2WPKH = 3,
    Multisig = 4,
+   ScriptHash = 5,
+   RawScript = 6,
    Uncompressed = 0x10000000,
    P2SH = 0x40000000,
    P2WSH = 0x80000000
@@ -46,6 +45,21 @@ enum AddressEntryType
 namespace Armory
 {
    std::string getNameForAddrType(int);
+
+   namespace Wallets
+   {
+      class AssetId;
+   }
+
+   namespace Assets
+   {
+      class AssetEntry;
+   }
+
+   namespace Signing
+   {
+      class ScriptRecipient;
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -70,7 +84,7 @@ public:
    //virtual
    virtual const Armory::Wallets::AssetId& getID(void) const = 0;
 
-   virtual const std::string& getAddress() const = 0;
+   virtual const std::string& getAddress(void) const = 0;
    virtual std::shared_ptr<Armory::Signing::ScriptRecipient> getRecipient(
       uint64_t) const = 0;
 
@@ -205,6 +219,46 @@ public:
    const BinaryData& getScript(void) const override;
 
    //size (accounts for outpoint and sequence)
+   size_t getInputSize(void) const override;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+class AddressEntry_ScriptHash : public AddressEntry, public AddressEntry_WithAsset
+{
+public:
+   AddressEntry_ScriptHash(std::shared_ptr<Armory::Assets::AssetEntry>);
+
+   const Armory::Wallets::AssetId& getID(void) const override;
+
+   const std::string& getAddress(void) const override;
+   std::shared_ptr<Armory::Signing::ScriptRecipient> getRecipient(
+      uint64_t) const override;
+
+   const BinaryData& getHash(void) const override;
+   const BinaryData& getPrefixedHash(void) const override;
+   const BinaryData& getPreimage(void) const override;
+
+   const BinaryData& getScript(void) const override;
+   size_t getInputSize(void) const override;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+class AddressEntry_RawScript : public AddressEntry, public AddressEntry_WithAsset
+{
+public:
+   AddressEntry_RawScript(std::shared_ptr<Armory::Assets::AssetEntry>);
+
+   const Armory::Wallets::AssetId& getID(void) const override;
+
+   const std::string& getAddress(void) const override;
+   std::shared_ptr<Armory::Signing::ScriptRecipient> getRecipient(
+      uint64_t) const override;
+
+   const BinaryData& getHash(void) const override;
+   const BinaryData& getPrefixedHash(void) const override;
+   const BinaryData& getPreimage(void) const override;
+
+   const BinaryData& getScript(void) const override;
    size_t getInputSize(void) const override;
 };
 

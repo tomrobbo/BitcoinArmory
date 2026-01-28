@@ -70,22 +70,40 @@ static const std::vector<std::map<BinaryData, std::vector<uint64_t>>> testAddrBa
    { /* block 1 */ },
    { /* block 2 */ },
    { /* block 3 */
-      { TestChain::scrAddrB, { 30 * COIN, 30 * COIN, 30 * COIN } },
-      { TestChain::scrAddrC, { 55 * COIN,  5 * COIN, 55 * COIN } },
-      { TestChain::scrAddrD, {  5 * COIN,  5 * COIN,  5 * COIN } },
-      { TestChain::scrAddrE, { 30 * COIN, 30 * COIN, 30 * COIN } }
+      { TestChain::scrAddrA,        { 50 * COIN,  0 * COIN, 50 * COIN, 1 } },
+      { TestChain::scrAddrB,        { 30 * COIN, 30 * COIN, 30 * COIN, 5 } },
+      { TestChain::scrAddrC,        { 55 * COIN,  5 * COIN, 55 * COIN, 2 } },
+      { TestChain::scrAddrD,        {  5 * COIN,  5 * COIN,  5 * COIN, 1 } },
+      { TestChain::scrAddrE,        { 30 * COIN, 30 * COIN, 30 * COIN, 2 } },
+      { TestChain::scrAddrF,        {  5 * COIN,  5 * COIN,  5 * COIN, 3 } },
+      { TestChain::lb1ScrAddr,      { 10 * COIN, 10 * COIN, 10 * COIN, 1 } },
+      { TestChain::lb1ScrAddrP2SH,  {  0 * COIN,  0 * COIN,  0 * COIN, 2 } },
+      { TestChain::lb2ScrAddr,      { 10 * COIN, 10 * COIN, 10 * COIN, 3 } },
+      { TestChain::lb2ScrAddrP2SH,  {  5 * COIN,  5 * COIN,  5 * COIN, 1 } },
    },
    { /* block 4 */
-      { TestChain::scrAddrB, { 30 * COIN, 30 * COIN, 30 * COIN } },
-      { TestChain::scrAddrC, { 10 * COIN, 10 * COIN, 10 * COIN } },
-      { TestChain::scrAddrD, { 60 * COIN, 10 * COIN, 60 * COIN } },
-      { TestChain::scrAddrE, { 30 * COIN, 30 * COIN, 30 * COIN } }
+      { TestChain::scrAddrA,        { 50 * COIN,  0 * COIN, 50 * COIN, 1 } },
+      { TestChain::scrAddrB,        { 30 * COIN, 30 * COIN, 30 * COIN, 5 } },
+      { TestChain::scrAddrC,        { 10 * COIN, 10 * COIN, 10 * COIN, 3 } },
+      { TestChain::scrAddrD,        { 60 * COIN, 10 * COIN, 60 * COIN, 3 } },
+      { TestChain::scrAddrE,        { 30 * COIN, 30 * COIN, 30 * COIN, 2 } },
+      { TestChain::scrAddrF,        { 10 * COIN, 10 * COIN, 10 * COIN, 4 } },
+      { TestChain::lb1ScrAddr,      {  5 * COIN,  5 * COIN,  5 * COIN, 2 } },
+      { TestChain::lb1ScrAddrP2SH,  { 25 * COIN, 25 * COIN, 25 * COIN, 3 } },
+      { TestChain::lb2ScrAddr,      { 30 * COIN, 30 * COIN, 30 * COIN, 4 } },
+      { TestChain::lb2ScrAddrP2SH,  {  0 * COIN,  0 * COIN,  0 * COIN, 2 } },
    },
    { /* block 5 */
-      { TestChain::scrAddrB, { 70 * COIN, 20 * COIN, 70 * COIN } },
-      { TestChain::scrAddrC, { 20 * COIN, 20 * COIN, 20 * COIN } },
-      { TestChain::scrAddrD, { 65 * COIN, 15 * COIN, 65 * COIN } },
-      { TestChain::scrAddrE, { 30 * COIN, 30 * COIN, 30 * COIN } }
+      { TestChain::scrAddrA,        { 50 * COIN,  0 * COIN, 50 * COIN, 1 } },
+      { TestChain::scrAddrB,        { 70 * COIN, 20 * COIN, 70 * COIN, 7 } },
+      { TestChain::scrAddrC,        { 20 * COIN, 20 * COIN, 20 * COIN, 5 } },
+      { TestChain::scrAddrD,        { 65 * COIN, 15 * COIN, 65 * COIN, 4 } },
+      { TestChain::scrAddrE,        { 30 * COIN, 30 * COIN, 30 * COIN, 2 } },
+      { TestChain::scrAddrF,        {  5 * COIN,  5 * COIN,  5 * COIN, 5 } },
+      { TestChain::lb1ScrAddr,      {  5 * COIN,  5 * COIN,  5 * COIN, 2 } },
+      { TestChain::lb1ScrAddrP2SH,  { 25 * COIN, 25 * COIN, 25 * COIN, 3 } },
+      { TestChain::lb2ScrAddr,      { 30 * COIN, 30 * COIN, 30 * COIN, 4 } },
+      { TestChain::lb2ScrAddrP2SH,  {  0 * COIN,  0 * COIN,  0 * COIN, 2 } },
    }
 };
 
@@ -94,17 +112,29 @@ static const std::vector<std::map<BinaryData, std::vector<uint64_t>>> testAddrBa
    { /* block 1 */ },
    { /* block 2 */ },
    { /* block 3 */ },
-   { /* block 4 */
-      { TestChain::scrAddrB, { 30 * COIN, 30 * COIN, 30 * COIN } },
-      { TestChain::scrAddrC, { 55 * COIN,  5 * COIN, 55 * COIN } },
-      { TestChain::scrAddrD, {  5 * COIN,  5 * COIN,  5 * COIN } },
-      { TestChain::scrAddrE, { 30 * COIN, 30 * COIN, 30 * COIN } }
+   { /* block 4A */
+      { TestChain::scrAddrA,        { 50 * COIN,  0 * COIN, 50 * COIN, 1 } },
+      { TestChain::scrAddrB,        { 30 * COIN, 30 * COIN, 30 * COIN, 5 } },
+      { TestChain::scrAddrC,        { 55 * COIN,  5 * COIN, 55 * COIN, 2 } },
+      { TestChain::scrAddrD,        {  5 * COIN,  5 * COIN,  5 * COIN, 1 } },
+      { TestChain::scrAddrE,        { 30 * COIN, 30 * COIN, 30 * COIN, 2 } },
+      { TestChain::scrAddrF,        { 55 * COIN,  5 * COIN, 55 * COIN, 4 } },
+      { TestChain::lb1ScrAddr,      { 10 * COIN, 10 * COIN, 10 * COIN, 2 } },
+      { TestChain::lb1ScrAddrP2SH,  {  0 * COIN,  0 * COIN,  0 * COIN, 2 } },
+      { TestChain::lb2ScrAddr,      { 10 * COIN, 10 * COIN, 10 * COIN, 3 } },
+      { TestChain::lb2ScrAddrP2SH,  {  5 * COIN,  5 * COIN,  5 * COIN, 2 } },
    },
-   { /* block 5 */
-      { TestChain::scrAddrB, { 30 * COIN, 30 * COIN, 30 * COIN } },
-      { TestChain::scrAddrC, { 55 * COIN,  5 * COIN, 55 * COIN } },
-      { TestChain::scrAddrD, { 60 * COIN, 10 * COIN, 60 * COIN } },
-      { TestChain::scrAddrE, { 30 * COIN, 30 * COIN, 30 * COIN } }
+   { /* block 5A */
+      { TestChain::scrAddrA,        { 50 * COIN,  0 * COIN, 50 * COIN, 1 } },
+      { TestChain::scrAddrB,        { 30 * COIN, 30 * COIN, 30 * COIN, 5 } },
+      { TestChain::scrAddrC,        { 55 * COIN,  5 * COIN, 55 * COIN, 2 } },
+      { TestChain::scrAddrD,        { 60 * COIN, 10 * COIN, 60 * COIN, 3 } },
+      { TestChain::scrAddrE,        { 30 * COIN, 30 * COIN, 30 * COIN, 2 } },
+      { TestChain::scrAddrF,        { 60 * COIN, 10 * COIN, 60 * COIN, 5 } },
+      { TestChain::lb1ScrAddr,      {  5 * COIN,  5 * COIN,  5 * COIN, 3 } },
+      { TestChain::lb1ScrAddrP2SH,  {  0 * COIN,  0 * COIN,  0 * COIN, 2 } },
+      { TestChain::lb2ScrAddr,      { 10 * COIN, 10 * COIN, 10 * COIN, 3 } },
+      { TestChain::lb2ScrAddrP2SH,  {  0 * COIN,  0 * COIN,  0 * COIN, 3 } },
    }
 };
 
@@ -116,6 +146,7 @@ struct LedgerEntryValue
    uint32_t index;
    uint32_t txTime;
    BinaryData txHash;
+   bool sts = false;
 
    bool operator<(const LedgerEntryValue& rhs) const
    {
@@ -139,6 +170,7 @@ struct LedgerEntryValue
       index = rhs.index;
       txTime = rhs.txTime;
       txHash = rhs.txHash;
+      sts = rhs.sts;
       return *this;
    }
 
@@ -152,14 +184,138 @@ struct LedgerEntryValue
    }
 };
 
+/* address ledgers */
+
+//A
+static const std::vector<LedgerEntryValue> ledgersA{
+   { 50 * COIN          , 0, 0, 1231006505, READHEX("3ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4a")},
+};
+
+static const std::vector<LedgerEntryValue> ledgersA_Reorg = ledgersA;
+
+//B
+static const std::vector<LedgerEntryValue> ledgersB{
+   { -10 * (int64_t)COIN, 5, 1, 1231009513, READHEX("b6b6f145742a9072fd85f96772e63a00eb4101709aa34ec5dd59e8fc904191a7")},
+   { 50 * COIN          , 5, 0, 1231009513, READHEX("dc62ffa88e123ee99aa38ac5e73a65994e9332fbc0c554ebde7885900f5c06cb")},
+   { -25 * (int64_t)COIN, 3, 4, 1231008309, READHEX("36d958de246b7e422376803e4eb26cac9c82606a315a523f0b5c9f8c07a44677")},
+   { -20 * (int64_t)COIN, 2, 2, 1231007708, READHEX("9ca7f69284d0e8b0ea5ad7915b50d65817fb5c592fdfc351e473b1291690c76b")},
+   { -25 * (int64_t)COIN, 2, 1, 1231007708, READHEX("b46699df740c38435c0430e2595c0a61733658ab923121d8a2edeac3895ae541")},
+   { 50 * COIN          , 2, 0, 1231007708, READHEX("63a471e560a4a4d3b956173c84175c39eece33dbae2c7987f1edf3bda1fb420c")},
+   { 50 * COIN          , 1, 0, 1231007105, READHEX("ec6ee10ddb21cc8b21524f890e8dd8aed0b7e020032eed9e167a566c8659f35c")},
+};
+
+static const std::vector<LedgerEntryValue> ledgersB_Reorg{
+   { -25 * (int64_t)COIN, 3, 4, 1231008309, READHEX("36d958de246b7e422376803e4eb26cac9c82606a315a523f0b5c9f8c07a44677")},
+   { -20 * (int64_t)COIN, 2, 2, 1231007708, READHEX("9ca7f69284d0e8b0ea5ad7915b50d65817fb5c592fdfc351e473b1291690c76b")},
+   { -25 * (int64_t)COIN, 2, 1, 1231007708, READHEX("b46699df740c38435c0430e2595c0a61733658ab923121d8a2edeac3895ae541")},
+   { 50 * COIN          , 2, 0, 1231007708, READHEX("63a471e560a4a4d3b956173c84175c39eece33dbae2c7987f1edf3bda1fb420c")},
+   { 50 * COIN          , 1, 0, 1231007105, READHEX("ec6ee10ddb21cc8b21524f890e8dd8aed0b7e020032eed9e167a566c8659f35c")},
+};
+
+//C
+static const std::vector<LedgerEntryValue> ledgersC{
+   { 10 * COIN          , 5, 1, 1231009513, READHEX("b6b6f145742a9072fd85f96772e63a00eb4101709aa34ec5dd59e8fc904191a7")},
+   { -45 * (int64_t)COIN, 4, 3, 1231008909, READHEX("6705262a37294c4e99890418668cfb97738b51b253ac86fcbee599a19fe15cea")},
+   { 5 * COIN           , 3, 3, 1231008309, READHEX("91c1d6c4eb074ce3570641e615a0ab7f6ca81f91186492b79e4118086ab047b6")},
+   { 50 * COIN          , 3, 0, 1231008309, READHEX("feac40d88e7931cfb01fd4aee8a0fae1481c2df357e0b9c7f6db33379d8bbc6f")},
+};
+
+static const std::vector<LedgerEntryValue> ledgersC_Reorg{
+   { 5 * COIN           , 3, 3, 1231008309, READHEX("91c1d6c4eb074ce3570641e615a0ab7f6ca81f91186492b79e4118086ab047b6")},
+   { 50 * COIN          , 3, 0, 1231008309, READHEX("feac40d88e7931cfb01fd4aee8a0fae1481c2df357e0b9c7f6db33379d8bbc6f")},
+};
+
+//D
+static const std::vector<LedgerEntryValue> ledgersD{
+   { 5 * COIN           , 5, 2, 1231009513, READHEX("55501098859122d73e3e360d90574b468b8299f578738ce293789a7eeeb678b4")},
+   { 5 * COIN           , 4, 2, 1231008909, READHEX("1fb865e8cf2e430cca3a80adf8375bea5fddb0080e326b8df668373dfe599c07")},
+   { 50 * COIN          , 4, 0, 1231008909, READHEX("d5fcc32ccb7e4c01049df1458c628253298f78c74a7cdd8df8f40125fbbf4f42")},
+   { 5 * COIN           , 3, 1, 1231008309, READHEX("d3f38cb8a7e9294db20b67bd99e64bfb6320cfe286f7f77170b33e685a2827a3")},
+};
+
+static const std::vector<LedgerEntryValue> ledgersD_Reorg{
+   { 5 * COIN           , 5, 2, 1231009510, READHEX("1fb865e8cf2e430cca3a80adf8375bea5fddb0080e326b8df668373dfe599c07")},
+   { 50 * COIN          , 5, 0, 1231009510, READHEX("9bce56a46508c1ddfb4d8495c8c8eecc1735dcfe61631533ed85d3908bfa33f3")},
+   { 5 * COIN           , 3, 1, 1231008309, READHEX("d3f38cb8a7e9294db20b67bd99e64bfb6320cfe286f7f77170b33e685a2827a3")},
+};
+
+//E
+static const std::vector<LedgerEntryValue> ledgersE{
+   { 25 * COIN          , 3, 4, 1231008309, READHEX("36d958de246b7e422376803e4eb26cac9c82606a315a523f0b5c9f8c07a44677")},
+   { 5 * COIN           , 3, 2, 1231008309, READHEX("42551f6cb5674bdad8850a4a423101e42e17559568080f7dcd3d2c9480ae53ea")},
+};
+
+static const std::vector<LedgerEntryValue> ledgersE_Reorg = ledgersE;
+
+//F
+static const std::vector<LedgerEntryValue> ledgersF{
+   { -5 * (int64_t)COIN , 5, 2, 1231009513, READHEX("55501098859122d73e3e360d90574b468b8299f578738ce293789a7eeeb678b4")},
+   { 5 * COIN           , 4, 1, 1231008909, READHEX("2564950008ae20c57bd2d5ffb2ceca67a33e003dc69f0d5b7c31c03a16e78071")},
+   { -10 * (int64_t)COIN, 3, 5, 1231008309, READHEX("9ec8177ca0a4f7aa21ec88a324f236a4d1dce6c610812a90e16febef4603a438")},
+   { -5 * (int64_t)COIN , 3, 1, 1231008309, READHEX("d3f38cb8a7e9294db20b67bd99e64bfb6320cfe286f7f77170b33e685a2827a3")},
+   { 20 * COIN          , 2, 2, 1231007708, READHEX("9ca7f69284d0e8b0ea5ad7915b50d65817fb5c592fdfc351e473b1291690c76b")},
+};
+
+static const std::vector<LedgerEntryValue> ledgersF_Reorg{
+   { 5 * COIN           , 5, 1, 1231009510, READHEX("2564950008ae20c57bd2d5ffb2ceca67a33e003dc69f0d5b7c31c03a16e78071")},
+   { 50 * COIN          , 4, 0, 1231008909, READHEX("45aa44ebb8bc87ad006abad80d0f246172289e92a863cca9be10470d05c6de4d")},
+   { -10 * (int64_t)COIN, 3, 5, 1231008309, READHEX("9ec8177ca0a4f7aa21ec88a324f236a4d1dce6c610812a90e16febef4603a438")},
+   { -5 * (int64_t)COIN , 3, 1, 1231008309, READHEX("d3f38cb8a7e9294db20b67bd99e64bfb6320cfe286f7f77170b33e685a2827a3")},
+   { 20 * COIN          , 2, 2, 1231007708, READHEX("9ca7f69284d0e8b0ea5ad7915b50d65817fb5c592fdfc351e473b1291690c76b")},
+};
+
+//LB1
+static const std::vector<LedgerEntryValue> ledgersLB1{
+   { -5 * (int64_t)COIN , 4, 1, 1231008909, READHEX("2564950008ae20c57bd2d5ffb2ceca67a33e003dc69f0d5b7c31c03a16e78071")},
+   { 10 * COIN          , 3, 2, 1231008309, READHEX("42551f6cb5674bdad8850a4a423101e42e17559568080f7dcd3d2c9480ae53ea")},
+};
+
+static const std::vector<LedgerEntryValue> ledgersLB1_Reorg{
+   { -5 * (int64_t)COIN , 5, 1, 1231009510, READHEX("2564950008ae20c57bd2d5ffb2ceca67a33e003dc69f0d5b7c31c03a16e78071")},
+   { 10 * COIN          , 3, 2, 1231008309, READHEX("42551f6cb5674bdad8850a4a423101e42e17559568080f7dcd3d2c9480ae53ea")},
+};
+
+static const std::vector<LedgerEntryValue> ledgersLB1_P2SH{
+   { 25 * COIN          , 4, 3, 1231008909, READHEX("6705262a37294c4e99890418668cfb97738b51b253ac86fcbee599a19fe15cea")},
+   { -15 * (int64_t)COIN, 3, 2, 1231008309, READHEX("42551f6cb5674bdad8850a4a423101e42e17559568080f7dcd3d2c9480ae53ea")},
+   { 15 * COIN          , 2, 1, 1231007708, READHEX("b46699df740c38435c0430e2595c0a61733658ab923121d8a2edeac3895ae541")},
+};
+
+static const std::vector<LedgerEntryValue> ledgersLB1_P2SH_Reorg{
+   { -15 * (int64_t)COIN, 3, 2, 1231008309, READHEX("42551f6cb5674bdad8850a4a423101e42e17559568080f7dcd3d2c9480ae53ea")},
+   { 15 * COIN          , 2, 1, 1231007708, READHEX("b46699df740c38435c0430e2595c0a61733658ab923121d8a2edeac3895ae541")},
+};
+
+//LB2
+static const std::vector<LedgerEntryValue> ledgersLB2{
+   { 20 * COIN          , 4, 3, 1231008309, READHEX("6705262a37294c4e99890418668cfb97738b51b253ac86fcbee599a19fe15cea")},
+   { 10 * COIN          , 3, 5, 1231008309, READHEX("9ec8177ca0a4f7aa21ec88a324f236a4d1dce6c610812a90e16febef4603a438")},
+   { -10 * (int64_t)COIN, 3, 3, 1231008309, READHEX("91c1d6c4eb074ce3570641e615a0ab7f6ca81f91186492b79e4118086ab047b6")},
+};
+
+static const std::vector<LedgerEntryValue> ledgersLB2_Reorg{
+   { 10 * COIN          , 3, 2, 1231008309, READHEX("42551f6cb5674bdad8850a4a423101e42e17559568080f7dcd3d2c9480ae53ea")},
+};
+
+static const std::vector<LedgerEntryValue> ledgersLB2_P2SH{
+   { -5 * (int64_t)COIN , 4, 2, 1231008909, READHEX("1fb865e8cf2e430cca3a80adf8375bea5fddb0080e326b8df668373dfe599c07")},
+   { 5 * COIN           , 3, 3, 1231008309, READHEX("91c1d6c4eb074ce3570641e615a0ab7f6ca81f91186492b79e4118086ab047b6")},
+};
+
+static const std::vector<LedgerEntryValue> ledgersLB2_P2SH_Reorg{
+   { -5 * (int64_t)COIN , 5, 2, 1231009510, READHEX("1fb865e8cf2e430cca3a80adf8375bea5fddb0080e326b8df668373dfe599c07")},
+   { 5 * COIN           , 3, 3, 1231008309, READHEX("91c1d6c4eb074ce3570641e615a0ab7f6ca81f91186492b79e4118086ab047b6")},
+};
+
+// wallet ledgers
 static const std::vector<LedgerEntryValue> ledgersBCDE{
    { 5 * COIN           , 5, 2, 1231009513, READHEX("55501098859122d73e3e360d90574b468b8299f578738ce293789a7eeeb678b4")},
-   { 30 * COIN          , 5, 1, 1231009513, READHEX("b6b6f145742a9072fd85f96772e63a00eb4101709aa34ec5dd59e8fc904191a7")},
+   { 30 * COIN          , 5, 1, 1231009513, READHEX("b6b6f145742a9072fd85f96772e63a00eb4101709aa34ec5dd59e8fc904191a7"), true},
    { 50 * COIN          , 5, 0, 1231009513, READHEX("dc62ffa88e123ee99aa38ac5e73a65994e9332fbc0c554ebde7885900f5c06cb")},
    { -45 * (int64_t)COIN, 4, 3, 1231008909, READHEX("6705262a37294c4e99890418668cfb97738b51b253ac86fcbee599a19fe15cea")},
    { 5 * COIN           , 4, 2, 1231008909, READHEX("1fb865e8cf2e430cca3a80adf8375bea5fddb0080e326b8df668373dfe599c07")},
    { 50 * COIN          , 4, 0, 1231008909, READHEX("d5fcc32ccb7e4c01049df1458c628253298f78c74a7cdd8df8f40125fbbf4f42")},
-   { 55 * COIN          , 3, 4, 1231008309, READHEX("36d958de246b7e422376803e4eb26cac9c82606a315a523f0b5c9f8c07a44677")},
+   { 55 * COIN          , 3, 4, 1231008309, READHEX("36d958de246b7e422376803e4eb26cac9c82606a315a523f0b5c9f8c07a44677"), true},
    { 5 * COIN           , 3, 3, 1231008309, READHEX("91c1d6c4eb074ce3570641e615a0ab7f6ca81f91186492b79e4118086ab047b6")},
    { 5 * COIN           , 3, 2, 1231008309, READHEX("42551f6cb5674bdad8850a4a423101e42e17559568080f7dcd3d2c9480ae53ea")},
    { 5 * COIN           , 3, 1, 1231008309, READHEX("d3f38cb8a7e9294db20b67bd99e64bfb6320cfe286f7f77170b33e685a2827a3")},
@@ -173,7 +329,7 @@ static const std::vector<LedgerEntryValue> ledgersBCDE{
 static const std::vector<LedgerEntryValue> ledgersBCDE_Reorg{
    { 5 * COIN           , 5, 2, 1231009510, READHEX("1fb865e8cf2e430cca3a80adf8375bea5fddb0080e326b8df668373dfe599c07")},
    { 50 * COIN          , 5, 0, 1231009510, READHEX("9bce56a46508c1ddfb4d8495c8c8eecc1735dcfe61631533ed85d3908bfa33f3")},
-   { 55 * COIN          , 3, 4, 1231008309, READHEX("36d958de246b7e422376803e4eb26cac9c82606a315a523f0b5c9f8c07a44677")},
+   { 55 * COIN          , 3, 4, 1231008309, READHEX("36d958de246b7e422376803e4eb26cac9c82606a315a523f0b5c9f8c07a44677"), true},
    { 5 * COIN           , 3, 3, 1231008309, READHEX("91c1d6c4eb074ce3570641e615a0ab7f6ca81f91186492b79e4118086ab047b6")},
    { 5 * COIN           , 3, 2, 1231008309, READHEX("42551f6cb5674bdad8850a4a423101e42e17559568080f7dcd3d2c9480ae53ea")},
    { 5 * COIN           , 3, 1, 1231008309, READHEX("d3f38cb8a7e9294db20b67bd99e64bfb6320cfe286f7f77170b33e685a2827a3")},
@@ -185,7 +341,7 @@ static const std::vector<LedgerEntryValue> ledgersBCDE_Reorg{
 };
 
 static const std::vector<LedgerEntryValue> ledgersBC{
-   { 30 * COIN          , 5, 1, 1231009513, READHEX("b6b6f145742a9072fd85f96772e63a00eb4101709aa34ec5dd59e8fc904191a7")},
+   { 30 * COIN          , 5, 1, 1231009513, READHEX("b6b6f145742a9072fd85f96772e63a00eb4101709aa34ec5dd59e8fc904191a7"), true},
    { 50 * COIN          , 5, 0, 1231009513, READHEX("dc62ffa88e123ee99aa38ac5e73a65994e9332fbc0c554ebde7885900f5c06cb")},
    { -45 * (int64_t)COIN, 4, 3, 1231008909, READHEX("6705262a37294c4e99890418668cfb97738b51b253ac86fcbee599a19fe15cea")},
    { -25 * (int64_t)COIN, 3, 4, 1231008309, READHEX("36d958de246b7e422376803e4eb26cac9c82606a315a523f0b5c9f8c07a44677")},
@@ -223,12 +379,42 @@ static const std::vector<LedgerEntryValue> ledgersDE_Reorg{
    { 5 * COIN           , 3, 2, 1231008309, READHEX("42551f6cb5674bdad8850a4a423101e42e17559568080f7dcd3d2c9480ae53ea")},
    { 5 * COIN           , 3, 1, 1231008309, READHEX("d3f38cb8a7e9294db20b67bd99e64bfb6320cfe286f7f77170b33e685a2827a3")},
 };
+
+static const std::vector<LedgerEntryValue> ledgersAFLB{
+   { -5 * (int64_t)COIN , 5, 2, 1231009513, READHEX("55501098859122d73e3e360d90574b468b8299f578738ce293789a7eeeb678b4")},
+   { 45 * COIN          , 4, 3, 1231008909, READHEX("6705262a37294c4e99890418668cfb97738b51b253ac86fcbee599a19fe15cea")},
+   { -5 * (int64_t)COIN , 4, 2, 1231008909, READHEX("1fb865e8cf2e430cca3a80adf8375bea5fddb0080e326b8df668373dfe599c07")},
+   { 10 * COIN          , 4, 1, 1231008909, READHEX("2564950008ae20c57bd2d5ffb2ceca67a33e003dc69f0d5b7c31c03a16e78071"), true},
+   { 15 * COIN          , 3, 5, 1231008309, READHEX("9ec8177ca0a4f7aa21ec88a324f236a4d1dce6c610812a90e16febef4603a438"), true},
+   { -5 * (int64_t)COIN , 3, 3, 1231008309, READHEX("91c1d6c4eb074ce3570641e615a0ab7f6ca81f91186492b79e4118086ab047b6")},
+   { -5 * (int64_t)COIN , 3, 2, 1231008309, READHEX("42551f6cb5674bdad8850a4a423101e42e17559568080f7dcd3d2c9480ae53ea")},
+   { -5 * (int64_t)COIN , 3, 1, 1231008309, READHEX("d3f38cb8a7e9294db20b67bd99e64bfb6320cfe286f7f77170b33e685a2827a3")},
+   { 20 * COIN          , 2, 2, 1231007708, READHEX("9ca7f69284d0e8b0ea5ad7915b50d65817fb5c592fdfc351e473b1291690c76b")},
+   { 25 * COIN          , 2, 1, 1231007708, READHEX("b46699df740c38435c0430e2595c0a61733658ab923121d8a2edeac3895ae541")},
+   { 50 * COIN          , 0, 0, 1231006505, READHEX("3ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4a")},
+};
+
+static const std::vector<LedgerEntryValue> ledgersAFLB_Reorg{
+   { -5 * (int64_t)COIN , 5, 2, 1231009510, READHEX("1fb865e8cf2e430cca3a80adf8375bea5fddb0080e326b8df668373dfe599c07")},
+   { 10 * COIN          , 5, 1, 1231009510, READHEX("2564950008ae20c57bd2d5ffb2ceca67a33e003dc69f0d5b7c31c03a16e78071"), true},
+   { 50 * COIN          , 4, 0, 1231008909, READHEX("45aa44ebb8bc87ad006abad80d0f246172289e92a863cca9be10470d05c6de4d")},
+   { 15 * COIN          , 3, 5, 1231008309, READHEX("9ec8177ca0a4f7aa21ec88a324f236a4d1dce6c610812a90e16febef4603a438"), true},
+   { -5 * (int64_t)COIN , 3, 3, 1231008309, READHEX("91c1d6c4eb074ce3570641e615a0ab7f6ca81f91186492b79e4118086ab047b6")},
+   { -5 * (int64_t)COIN , 3, 2, 1231008309, READHEX("42551f6cb5674bdad8850a4a423101e42e17559568080f7dcd3d2c9480ae53ea")},
+   { -5 * (int64_t)COIN , 3, 1, 1231008309, READHEX("d3f38cb8a7e9294db20b67bd99e64bfb6320cfe286f7f77170b33e685a2827a3")},
+   { 20 * COIN          , 2, 2, 1231007708, READHEX("9ca7f69284d0e8b0ea5ad7915b50d65817fb5c592fdfc351e473b1291690c76b")},
+   { 25 * COIN          , 2, 1, 1231007708, READHEX("b46699df740c38435c0430e2595c0a61733658ab923121d8a2edeac3895ae541")},
+   { 50 * COIN          , 0, 0, 1231006505, READHEX("3ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4a")},
+};
 }
 
 /***
+blocks 0 to 5
+
 Block #0|0, 6fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000
    Prev: 0000000000000000000000000000000000000000000000000000000000000000
    Txs: 1
+   Timestamp: 1231006505
 
    * Tx [0|0:0], 3ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4a
       inputs: 1, outputs: 1
@@ -244,6 +430,7 @@ Block #0|0, 6fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000
 Block #1|0, fefba729db13850ba6ecc29a7dd41d80fb4bf7e063d5e093f48f0c5d00000000
    Prev: 6fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000
    Txs: 1
+   Timestamp: 1231007105
 
    * Tx [1|0:0], ec6ee10ddb21cc8b21524f890e8dd8aed0b7e020032eed9e167a566c8659f35c
       inputs: 1, outputs: 1
@@ -259,6 +446,7 @@ Block #1|0, fefba729db13850ba6ecc29a7dd41d80fb4bf7e063d5e093f48f0c5d00000000
 Block #2|0, 3641abc766dcc85643af42ad0999c2370ef1a5e521547fa4b55f5735449021ee
    Prev: fefba729db13850ba6ecc29a7dd41d80fb4bf7e063d5e093f48f0c5d00000000
    Txs: 3
+   Timestamp: 1231007708
 
    * Tx [2|0:0], 63a471e560a4a4d3b956173c84175c39eece33dbae2c7987f1edf3bda1fb420c
       inputs: 1, outputs: 1
@@ -279,10 +467,10 @@ Block #2|0, 3641abc766dcc85643af42ad0999c2370ef1a5e521547fa4b55f5735449021ee
          addr: scrAddrB
 
       - TxOut [2|0:1-0]
-         dest: 3HaHxKtpHmj2ADdJfjSsiadKv8kdrdA1bz
+         dest: lb1P2SH
          amount: 15
       - TxOut [2|0:1-1]
-         dest: 37SVrXUCEvteC4jj8uBFCHyJFsPo4x2b98DxLpn41mCCYWYLKE47sAia2fZPRybVK
+         dest: lb2
          amount: 10
       - TxOut [2|0:1-2]
          dest: scrAddrB
@@ -307,6 +495,7 @@ Block #2|0, 3641abc766dcc85643af42ad0999c2370ef1a5e521547fa4b55f5735449021ee
 Block #3|0, 23c0558cccfdbce453814beb4c5b0f6fa0625e1c0895df55ed810fbabfe04c65
    Prev: 3641abc766dcc85643af42ad0999c2370ef1a5e521547fa4b55f5735449021ee
    Txs: 6
+   Timestamp: 1231008309
 
    * Tx [3|0:0], feac40d88e7931cfb01fd4aee8a0fae1481c2df357e0b9c7f6db33379d8bbc6f
       inputs: 1, outputs: 1
@@ -339,13 +528,13 @@ Block #3|0, 23c0558cccfdbce453814beb4c5b0f6fa0625e1c0895df55ed810fbabfe04c65
       + TxIn #0
          Outpoint: [2|0:1-0]
          amount: 15
-         addr: 3HaHxKtpHmj2ADdJfjSsiadKv8kdrdA1bz
+         addr: lb1P2SH
 
       - TxOut [3|0:2-0]
          dest: scrAddrE
          amount: 5
       - TxOut [3|0:2-1]
-         dest: 37SPXt1EegMHw91FX1waQXUjyygC7LxPNk2ijn5tZsR2cjsJ38hyYg6aCeVzFKxkV
+         dest: lb1
          amount: 10
 
    * Tx [3|0:3], 91c1d6c4eb074ce3570641e615a0ab7f6ca81f91186492b79e4118086ab047b6
@@ -354,13 +543,13 @@ Block #3|0, 23c0558cccfdbce453814beb4c5b0f6fa0625e1c0895df55ed810fbabfe04c65
       + TxIn #0
          Outpoint: [2|0:1-1]
          amount: 10
-         addr: 37SVrXUCEvteC4jj8uBFCHyJFsPo4x2b98DxLpn41mCCYWYLKE47sAia2fZPRybVK
+         addr: lb2
 
       - TxOut [3|0:3-0]
          dest: scrAddrC
          amount: 5
       - TxOut [3|0:3-1]
-         dest: 3MxJxCsbBtposzYCvQxKDvKicte2sdfwWt
+         dest: lb2P2SH
          amount: 5
 
    * Tx [3|0:4], 36d958de246b7e422376803e4eb26cac9c82606a315a523f0b5c9f8c07a44677
@@ -391,7 +580,7 @@ Block #3|0, 23c0558cccfdbce453814beb4c5b0f6fa0625e1c0895df55ed810fbabfe04c65
          addr: scrAddrF
 
       - TxOut [3|0:5-0]
-         dest: 37SVrXUCEvteC4jj8uBFCHyJFsPo4x2b98DxLpn41mCCYWYLKE47sAia2fZPRybVK
+         dest: lb2
          amount: 10
       - TxOut [3|0:5-1]
          dest: scrAddrF
@@ -401,6 +590,7 @@ Block #3|0, 23c0558cccfdbce453814beb4c5b0f6fa0625e1c0895df55ed810fbabfe04c65
 Block #4|0, 7f640833c553582959a144f2738c8683a601ab67a80f3b040cc92d5200000000
    Prev: 23c0558cccfdbce453814beb4c5b0f6fa0625e1c0895df55ed810fbabfe04c65
    Txs: 4
+   Timestamp: 1231008909
 
    * Tx [4|0:0], d5fcc32ccb7e4c01049df1458c628253298f78c74a7cdd8df8f40125fbbf4f42
       inputs: 1, outputs: 1
@@ -418,13 +608,13 @@ Block #4|0, 7f640833c553582959a144f2738c8683a601ab67a80f3b040cc92d5200000000
       + TxIn #0
          Outpoint: [3|0:2-1]
          amount: 10
-         addr: 37SPXt1EegMHw91FX1waQXUjyygC7LxPNk2ijn5tZsR2cjsJ38hyYg6aCeVzFKxkV
+         addr: lb1
 
       - TxOut [4|0:1-0]
          dest: scrAddrF
          amount: 5
       - TxOut [4|0:1-1]
-         dest: 37SPXt1EegMHw91FX1waQXUjyygC7LxPNk2ijn5tZsR2cjsJ38hyYg6aCeVzFKxkV
+         dest: lb1
          amount: 5
 
    * Tx [4|0:2], 1fb865e8cf2e430cca3a80adf8375bea5fddb0080e326b8df668373dfe599c07
@@ -433,7 +623,7 @@ Block #4|0, 7f640833c553582959a144f2738c8683a601ab67a80f3b040cc92d5200000000
       + TxIn #0
          Outpoint: [3|0:3-1]
          amount: 5
-         addr: 3MxJxCsbBtposzYCvQxKDvKicte2sdfwWt
+         addr: lb2P2SH
 
       - TxOut [4|0:2-0]
          dest: scrAddrD
@@ -452,34 +642,20 @@ Block #4|0, 7f640833c553582959a144f2738c8683a601ab67a80f3b040cc92d5200000000
          addr: scrAddrC
 
       - TxOut [4|0:3-0]
-         dest: 3HaHxKtpHmj2ADdJfjSsiadKv8kdrdA1bz
+         dest: lb1P2SH
          amount: 25
       - TxOut [4|0:3-1]
-         dest: 37SVrXUCEvteC4jj8uBFCHyJFsPo4x2b98DxLpn41mCCYWYLKE47sAia2fZPRybVK
+         dest: lb2
          amount: 20
       - TxOut [4|0:3-2]
          dest: scrAddrC
          amount: 10
 
 
-Block #4|1, fb97af2c706d9410d90651d171f8e728d228fbfe7a14b58d475cb55800000000
-   Prev: 23c0558cccfdbce453814beb4c5b0f6fa0625e1c0895df55ed810fbabfe04c65
-   Txs: 1
-
-   * Tx [4|1:0], 45aa44ebb8bc87ad006abad80d0f246172289e92a863cca9be10470d05c6de4d
-      inputs: 1, outputs: 1
-
-      + Coinbase
-         amount: 50
-
-      - TxOut [4|1:0-0]
-         dest: scrAddrF
-         amount: 50
-
-
 Block #5|0, e4b8313bec211633992fde8b9bb9727f56cb0413e2108ceab280fc7e00000000
    Prev: 7f640833c553582959a144f2738c8683a601ab67a80f3b040cc92d5200000000
    Txs: 3
+   Timestamp: 1231009513
 
    * Tx [5|0:0], dc62ffa88e123ee99aa38ac5e73a65994e9332fbc0c554ebde7885900f5c06cb
       inputs: 1, outputs: 1
@@ -517,10 +693,31 @@ Block #5|0, e4b8313bec211633992fde8b9bb9727f56cb0413e2108ceab280fc7e00000000
       - TxOut [5|0:2-0]
          dest: scrAddrD
          amount: 5
+***/
+
+/***
+blocks 4A, 5A
+
+Block #4|1, fb97af2c706d9410d90651d171f8e728d228fbfe7a14b58d475cb55800000000
+   Prev: 23c0558cccfdbce453814beb4c5b0f6fa0625e1c0895df55ed810fbabfe04c65
+   Txs: 1
+   Timestamp: 1231008909
+
+   * Tx [4|1:0], 45aa44ebb8bc87ad006abad80d0f246172289e92a863cca9be10470d05c6de4d
+      inputs: 1, outputs: 1
+
+      + Coinbase
+         amount: 50
+
+      - TxOut [4|1:0-0]
+         dest: scrAddrF
+         amount: 50
+
 
 Block #5|1, 3a6a8a8a1b0a64d28c07b680e3a079530c5997894aafd31684b5f83500000000
    Prev: fb97af2c706d9410d90651d171f8e728d228fbfe7a14b58d475cb55800000000
    Txs: 3
+   Timestamp: 1231009510
 
    * Tx [5|1:0], 9bce56a46508c1ddfb4d8495c8c8eecc1735dcfe61631533ed85d3908bfa33f3
       inputs: 1, outputs: 1
@@ -538,13 +735,13 @@ Block #5|1, 3a6a8a8a1b0a64d28c07b680e3a079530c5997894aafd31684b5f83500000000
       + TxIn #0
          Outpoint: [3|0:2-1]
          amount: 10
-         addr: 37SPXt1EegMHw91FX1waQXUjyygC7LxPNk2ijn5tZsR2cjsJ38hyYg6aCeVzFKxkV
+         addr: lb1
 
       - TxOut [5|1:1-0]
          dest: scrAddrF
          amount: 5
       - TxOut [5|1:1-1]
-         dest: 37SPXt1EegMHw91FX1waQXUjyygC7LxPNk2ijn5tZsR2cjsJ38hyYg6aCeVzFKxkV
+         dest: lb1
          amount: 5
 
    * Tx [5|1:2], 1fb865e8cf2e430cca3a80adf8375bea5fddb0080e326b8df668373dfe599c07
@@ -553,7 +750,7 @@ Block #5|1, 3a6a8a8a1b0a64d28c07b680e3a079530c5997894aafd31684b5f83500000000
       + TxIn #0
          Outpoint: [3|0:3-1]
          amount: 5
-         addr: 3MxJxCsbBtposzYCvQxKDvKicte2sdfwWt
+         addr: lb2P2SH
 
       - TxOut [5|1:2-0]
          dest: scrAddrD

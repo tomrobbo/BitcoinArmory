@@ -21,6 +21,7 @@
 #include <Wallets/AuthorizedPeers.h>
 #include <Wallets/Seeds/Seeds.h>
 #include <Wallets/IOHeader.h>
+#include <Wallets/Assets.h>
 #include <Signer/ScriptSpender.h>
 #include <ZeroConf/Parser.h>
 
