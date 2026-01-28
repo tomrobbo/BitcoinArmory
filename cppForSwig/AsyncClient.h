@@ -355,7 +355,7 @@ namespace AsyncClient
       //BIP15x
       std::pair<unsigned, unsigned> getRekeyCount(void) const;
       void setCheckServerKeyPromptLambda(
-         std::function<bool(const BinaryData&, const std::string&)>);
+         const std::function<bool(const BinaryData&)>&);
       void addPublicKey(const SecureBinaryData&);
 
       //connectivity

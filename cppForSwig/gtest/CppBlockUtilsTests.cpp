@@ -2173,12 +2173,9 @@ TEST_F(WebSocketTests_1Way, WebSocketStack_Reconnect)
    WebSocketServer::start(theBDMt_->bdm(), true);
 
 
-   auto pubkeyPrompt = [this](const BinaryData& pubkey, const std::string& name)->bool
+   auto pubkeyPrompt = [this](const BinaryData& pubkey)->bool
    {
-      if (pubkey != serverPubkey_ || name != serverAddr_) {
-         return false;
-      }
-      return true;
+      return pubkey == serverPubkey_;
    };
 
    auto createNAddresses = [](unsigned count)->std::vector<BinaryData>

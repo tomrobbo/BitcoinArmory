@@ -37,13 +37,19 @@ namespace Armory
    #endif
 
       ////////
-      std::pair<std::shared_ptr<Wallets::AuthorizedPeers>, uint32_t> spawnDb(void);
+      std::pair<std::shared_ptr<Wallets::AuthorizedPeers>, uint32_t> spawnDb(
+         const std::filesystem::path&, const std::filesystem::path&);
       bool isDbRunning(void);
 
       BdvPtr setupClientConnection(
          std::shared_ptr<Wallets::AuthorizedPeers>,
-         const std::string&, const std::string&,
-         bool, bool,
+         const std::string&, const std::string&, bool,
+         const std::function<bool(const BinaryData&)>&,
+         std::shared_ptr<RemoteCallback>
+      );
+      BdvPtr setupClientConnection(
+         std::shared_ptr<Wallets::AuthorizedPeers>,
+         const std::string&, bool,
          std::shared_ptr<RemoteCallback>
       );
    }

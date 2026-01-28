@@ -180,6 +180,7 @@ struct Notification {
       walletProgress @15: WalletProgress;
       setPassphrase  @16: SetPassphraseRequest;
       restore        @17: RestorePrompt;
+      presentPubkey  @18: Text; #hexit public key
    }
 }
 
@@ -203,6 +204,7 @@ struct NotificationReply {
       unlockRequest  @2 : Text;
       restore        @3 : RestoreMode;
       setPassphrase  @4 : SetPassphraseReply;
+      presentPubkey  @5 : Void;
    }
 }
 
@@ -212,7 +214,7 @@ struct DbSetupRequest {
    struct IpRequest {
       ip             @0 : Text;
       port           @1 : Text;
-      oneWayAuth     @2 : Bool;
+      callbackId     @2 : Text;
    }
 
    struct PeerRequest {
@@ -220,20 +222,26 @@ struct DbSetupRequest {
       oneWayAuth     @1 : Bool;
    }
 
+   struct AutoDbRequest {
+      satoshiPath    @0 : Text;
+      dbDir          @1 : Text;
+   }
+
    union {
       unset          @0 : Void;
 
       connectToIp    @1 : IpRequest;
       connectToPeer  @2 : PeerRequest;
-      automateDb     @3 : Void;
+      automateDb     @3 : AutoDbRequest;
       goOnline       @4 : Void;
       disconnect     @5 : Void;
       cleanupDb      @6 : Void;
       shutdown       @7 : Void;
 
-      listPeers      @8 : Void;
-      addPeer        @9 : Peer;
-      removePeer     @10 : Peer;
+      loadPeersDb    @8 : Text; #callbackId
+      listPeers      @9 : Void;
+      addPeer        @10 : Peer;
+      removePeer     @11 : Peer;
    }
 }
 

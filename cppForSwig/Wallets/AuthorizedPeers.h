@@ -77,7 +77,9 @@ namespace Armory
 
       private:
          AuthorizedPeers(std::shared_ptr<AssetWallet>);
+         AuthorizedPeers(SecureBinaryData&);
 
+         void setOwnPrivateKey(SecureBinaryData&);
          void loadWallet(const IO::ReadOnlyFileParams&);
          void initFromWallet(void);
          void addPeer(const SecureBinaryData&,
@@ -93,6 +95,7 @@ namespace Armory
          const std::map<std::string, btc_pubkey>& getPeerNameMap(void) const;
          const std::set<SecureBinaryData>& getPublicKeySet(void) const;
          const SecureBinaryData& getPrivateKey(const BinaryDataRef&) const;
+         std::shared_ptr<AuthorizedPeers> getNarrowSet(const std::string&) const;
 
          /* addPeer:
          input:

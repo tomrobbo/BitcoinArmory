@@ -54,13 +54,34 @@ namespace {
       return buf.st_size;
    }
 #endif
+
+   std::pair<std::string, std::string> getIpAndPortFromPeerName(
+      const std::string& peerName)
+   {
+      //TODO: flesh this out
+      std::stringstream ss(peerName);
+      std::pair<std::string, std::string> output;
+
+      //ip
+      std::getline(ss, output.first, ':');
+
+      //port
+      if (ss.good()) {
+         std::getline(ss, output.second);
+      } else {
+         output.second = Config::NetworkSettings::dbPort();
+      }
+      return output;
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 #ifdef _WIN32
 void* Armory::Bridge::autoDbHandle = INVALID_HANDLE_VALUE;
 
-std::pair<std::shared_ptr<Wallets::AuthorizedPeers>, uint32_t> Bridge::spawnDb()
+std::pair<std::shared_ptr<Wallets::AuthorizedPeers>, uint32_t>
+Bridge::spawnDb(const std::filesystem::path& satoshiPath,
+   const std::filesystem::path& dbDir)
 {
    //sanity check
    if (autoDbHandle != INVALID_HANDLE_VALUE) {
@@ -81,7 +102,7 @@ std::pair<std::shared_ptr<Wallets::AuthorizedPeers>, uint32_t> Bridge::spawnDb()
    std::wstring dbPortStr{ L"--armorydb-port=" + std::to_wstring(port) };
 
    //db paths
-   std::wstring dbDir{ L"--dbdir=" + Config::Pathing::dbDir().wstring() };
+   std::wstring dbDirWStr{ L"--dbdir=" + dbDir.wstring() };
    std::wstring dataDir{ L"--datadir=" + Config::getDataDir().wstring() };
 
    //btc network
@@ -102,7 +123,7 @@ std::pair<std::shared_ptr<Wallets::AuthorizedPeers>, uint32_t> Bridge::spawnDb()
 
    //core settings
    std::wstring satoshiDir{
-      L"--satoshi-datadir=" + Config::Pathing::blkFilePath().wstring() };
+      L"--satoshi-datadir=" + satoshiPath.wstring() };
    std::wstring satoshiPort{
       L"--satoshi-port=" + Config::NetworkSettings::btcPortW() };
 
@@ -144,7 +165,7 @@ std::pair<std::shared_ptr<Wallets::AuthorizedPeers>, uint32_t> Bridge::spawnDb()
 
    //2. use CreateProcess to spawn ArmoryDB, and have it inherit the file handle
    std::wstring commandLine{ armoryDbPath.wstring() + L" " +
-      L"--ephemeral " + dbPortStr + L" " + dataDir + L" " + dbDir + L" " +
+      L"--ephemeral " + dbPortStr + L" " + dataDir + L" " + dbDirWStr + L" " +
       network + L" " + satoshiDir + L" " + satoshiPort + L" " + rpcPort
    };
 
@@ -228,7 +249,9 @@ std::pair<std::shared_ptr<Wallets::AuthorizedPeers>, uint32_t> Bridge::spawnDb()
 #else
 int Armory::Bridge::autoDbPid = -1;
 
-std::pair<std::shared_ptr<Wallets::AuthorizedPeers>, uint32_t> Bridge::spawnDb()
+std::pair<std::shared_ptr<Wallets::AuthorizedPeers>, uint32_t>
+Bridge::spawnDb(const std::filesystem::path& satoshiPath,
+   const std::filesystem::path& dbDir)
 {
    /*
    Use posix_spawn, which wraps around fork() & execve() to spawn an instance
@@ -281,7 +304,7 @@ std::pair<std::shared_ptr<Wallets::AuthorizedPeers>, uint32_t> Bridge::spawnDb()
    Armory::Config::NetworkSettings::setDbPort(portStr);
 
    //db paths
-   std::string dbDir{ "--dbdir=" + Config::Pathing::dbDir().string() };
+   std::string dbDirStr{ "--dbdir=" + dbDir.string() };
    std::string dataDir{ "--datadir=" + Config::getDataDir().string() };
 
    //btc network
@@ -302,7 +325,7 @@ std::pair<std::shared_ptr<Wallets::AuthorizedPeers>, uint32_t> Bridge::spawnDb()
 
    //core settings
    std::string satoshiDir{
-      "--satoshi-datadir=" + Config::Pathing::blkFilePath().string() };
+      "--satoshi-datadir=" + satoshiPath.string() };
    std::string satoshiPort{
       "--satoshi-port=" + Config::NetworkSettings::btcPort() };
    std::string rpcPort{
@@ -316,7 +339,7 @@ std::pair<std::shared_ptr<Wallets::AuthorizedPeers>, uint32_t> Bridge::spawnDb()
       //ephemeral mode, custom port to listen to
       (char*)"--ephemeral"sv.data(), dbPortStr.data(),
       //datadir, dbdir
-      dataDir.data(), dbDir.data(),
+      dataDir.data(), dbDirStr.data(),
       //network & core settings
       network.data(), satoshiDir.data(), satoshiPort.data(), rpcPort.data(),
       (char*)nullptr
@@ -441,8 +464,8 @@ bool Armory::Bridge::isDbRunning()
 ////////////////////////////////////////////////////////////////////////////////
 BdvPtr Armory::Bridge::setupClientConnection(
    std::shared_ptr<Wallets::AuthorizedPeers> peers,
-   const std::string& ip, const std::string& port,
-   bool oneWayAuth, bool promptOnUnknownServerKey,
+   const std::string& ip, const std::string& port, bool oneWayAuth,
+   const std::function<bool(const BinaryData&)>& presentPubKeyFunc,
    std::shared_ptr<RemoteCallback> cbPtr)
 {
    //sanity check
@@ -457,12 +480,8 @@ BdvPtr Armory::Bridge::setupClientConnection(
       cbPtr
    );
 
-   if (promptOnUnknownServerKey) {
-      //TODO: set gui prompt to accept server pubkeys
-      bdvPtr->setCheckServerKeyPromptLambda(
-         [](const BinaryData&, const std::string&)->bool
-         { return true; }
-      );
+   if (presentPubKeyFunc) {
+      bdvPtr->setCheckServerKeyPromptLambda(presentPubKeyFunc);
    }
 
    //connect to db
@@ -474,4 +493,18 @@ BdvPtr Armory::Bridge::setupClientConnection(
 
    //notify setup is done
    return bdvPtr;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+BdvPtr Armory::Bridge::setupClientConnection(
+   std::shared_ptr<Wallets::AuthorizedPeers> peers,
+   const std::string& peerName, bool oneWayAuth,
+   std::shared_ptr<RemoteCallback> cbPtr)
+{
+   auto ipAndPort = getIpAndPortFromPeerName(peerName);
+   return setupClientConnection(peers,
+      ipAndPort.first, ipAndPort.second,
+      oneWayAuth, {},
+      cbPtr
+   );
 }

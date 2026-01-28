@@ -83,8 +83,12 @@ namespace
       {
          case DbSetupRequest::AUTOMATE_DB:
          {
-            std::thread thr([bridge, referenceId]{
-               bridge->automateDb(referenceId);});
+            auto autoDbReq = request.getAutomateDb();
+            std::filesystem::path satoshiPath{autoDbReq.getSatoshiPath()};
+            std::filesystem::path dbDir{autoDbReq.getDbDir()};
+
+            std::thread thr([bridge, satoshiPath, dbDir, referenceId]{
+               bridge->automateDb(satoshiPath, dbDir, referenceId);});
             if (thr.joinable()) {
                thr.detach();
             }
@@ -96,10 +100,10 @@ namespace
             auto connectReq = request.getConnectToIp();
             std::string ip = connectReq.getIp();
             std::string port = connectReq.getPort();
-            bool oneWay = connectReq.getOneWayAuth();
+            std::string callbackId = connectReq.getCallbackId();
 
-            std::thread thr([bridge, ip, port, oneWay, referenceId]{
-               bridge->connectToIp(ip, port, oneWay, referenceId);});
+            std::thread thr([bridge, ip, port, callbackId, referenceId]{
+               bridge->connectToIp(ip, port, callbackId, referenceId);});
             if (thr.joinable()) {
                thr.detach();
             }
@@ -146,6 +150,18 @@ namespace
          {
             bridge->reset();
             return false;
+         }
+
+         case DbSetupRequest::LOAD_PEERS_DB:
+         {
+            std::string callbackId(request.getLoadPeersDb());
+            std::thread thr([bridge, callbackId, referenceId]() {
+               bridge->loadPeersDb(callbackId, referenceId);
+            });
+            if (thr.joinable()) {
+               thr.detach();
+            }
+            return true;
          }
 
          case DbSetupRequest::LIST_PEERS:
@@ -1199,7 +1215,7 @@ namespace
             std::string_view spPass{spPassCapnp.begin(), spPassCapnp.size()};
 
             auto callbackIdCapnp = walletRequest.getCallbackId();
-            std::string_view callbackId{callbackIdCapnp.begin(), callbackIdCapnp.size()};
+            std::string callbackId{callbackIdCapnp.begin(), callbackIdCapnp.size()};
 
             bridge->restoreWallet(lines, spPass,
                callbackId, referenceId);
@@ -1406,6 +1422,11 @@ namespace
                   notif.getSuccess(), false,
                   Passphrase::Params{std::move(pass)}
                });
+            }
+
+            case NotificationReply::PRESENT_PUBKEY:
+            {
+               return handler(Seeds::PromptReply{notif.getSuccess(), false, {}});
             }
 
             default:

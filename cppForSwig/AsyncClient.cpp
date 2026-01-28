@@ -786,12 +786,12 @@ void BlockDataViewer::getFeeSchedule(const std::string& strategy,
 
 ///////////////////////////////////////////////////////////////////////////////
 void BlockDataViewer::setCheckServerKeyPromptLambda(
-   std::function<bool(const BinaryData&, const std::string&)> lbd)
+   const std::function<bool(const BinaryData&)>& lbd)
 {
    auto wsSock = std::dynamic_pointer_cast<WebSocketClient>(sock_);
-   if (wsSock == nullptr)
+   if (wsSock == nullptr) {
       return;
-
+   }
    wsSock->setPubkeyPromptLambda(lbd);
 }
 

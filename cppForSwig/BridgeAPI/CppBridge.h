@@ -64,6 +64,7 @@ namespace Armory
 
       ////
       using MessageId = uint64_t;
+      using CallbackId = std::string;
 
       //////////////////////////////////////////////////////////////////////////
       using WalletPtr = std::shared_ptr<Armory::Wallets::AssetWallet>;
@@ -81,7 +82,7 @@ namespace Armory
          CppBridgeSignerStruct(std::function<WalletPtr(const Wallets::WalletId&)>,
             std::function<void(ServerPushWrapper)>);
 
-         void signTx(const Wallets::WalletId&, const std::string&, MessageId);
+         void signTx(const Wallets::WalletId&, const CallbackId&, MessageId);
          bool resolve(const Wallets::WalletId&);
          BinaryData getSignedStateForInput(unsigned, MessageId);
       };
@@ -126,11 +127,11 @@ namespace Armory
 
          //wallet manager init methods
          BinaryData listWallets(MessageId);
-         void unlockControlHeader(const std::string&, const std::string&,
+         void unlockControlHeader(const std::string&, const CallbackId&,
             MessageId);
          bool stageWallet(const Wallets::WalletId&, bool);
          void migrateWallet(const std::filesystem::path&,
-            const std::string&, MessageId);
+            const CallbackId&, MessageId);
          BinaryData loadWallets(MessageId);
 
          //wallet setup
@@ -142,15 +143,18 @@ namespace Armory
             Wallets::AddressAccountId, MessageId) const;
 
          //db setup
-         void connectToIp(
-            const std::string&, const std::string&,
-            bool, MessageId);
+         void connectToIp(const std::string&, const std::string&,
+            const CallbackId&, MessageId);
          void connectToPeer(const std::string&, bool, MessageId);
-         void automateDb(MessageId);
+         void automateDb(
+            const std::filesystem::path&,
+            const std::filesystem::path&,
+            MessageId);
          void cleanupDb(MessageId);
          void goOnline(void);
          void disconnect(void);
 
+         void loadPeersDb(const CallbackId&, MessageId);
          void listPeers(MessageId);
          void addPeer(SecureBinaryData&, std::vector<std::string>&, MessageId);
 
@@ -171,26 +175,26 @@ namespace Armory
          //create/generate wallet & addresses
          void extendAddressPool(const Wallets::WalletId&,
             const Wallets::AddressAccountId&, unsigned, bool,
-            const std::string&, MessageId);
+            const CallbackId&, MessageId);
          void getAddress(const Wallets::WalletId&,
             const Wallets::AddressAccountId&, uint32_t,
             uint32_t, MessageId);
          void createWallet(
             SecureBinaryData, //extra entropy
             Wallets::IO::CreateWalletParams,
-            const std::string&, //callbackId
+            const CallbackId&,
             MessageId);
          void createBackupStringForWallet(const Wallets::WalletId&,
-            bool, const std::string&, MessageId);
+            bool, const CallbackId&, MessageId);
          void changeWalletPassphrase(const Wallets::WalletId&,
-            const std::string&, bool, MessageId);
+            const CallbackId&, bool, MessageId);
          void restoreWallet(
             const std::vector<std::string_view>&,
             const std::string_view&,
-            const std::string_view&, MessageId);
+            const CallbackId&, MessageId);
          void importWallet(const std::filesystem::path&, MessageId);
          void forkWatchingOnly(const Wallets::WalletId&,
-            const std::string&, MessageId);
+            const CallbackId&, MessageId);
 
          //ledgers
          const std::string& getLedgerDelegateId(void);

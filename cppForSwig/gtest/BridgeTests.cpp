@@ -713,8 +713,6 @@ namespace {
    // connect to db stuff
    bool waitOnConnection(Bridge::MessageId refId)
    {
-      //expecting setup done notif
-
       bool success = false;
       while (true) {
          auto reply = waitOnReply();
@@ -749,9 +747,11 @@ namespace {
                if (repCapnp.getReferenceId() != refId) {
                   throw std::runtime_error("referenceId mismatch");
                }
+               if (repCapnp.getSuccess() == false) {
+                  std::cout << std::string(repCapnp.getError()) << std::endl;
+               }
                if (repCapnp.getSuccess() != success) {
-                  throw std::runtime_error(
-                     "db connect error: " + std::string(repCapnp.getError()));
+                  throw std::runtime_error("connection state mismatch");
                }
                return success;
             }
@@ -760,20 +760,56 @@ namespace {
    }
 
    bool connectToIp(std::shared_ptr<Bridge::CppBridge> bridge,
-      const std::string& ip, const std::string& port)
+      const std::string& ip, const std::string& port,
+      const std::string& expectedPubkey)
    {
       auto refId = rand();
-      capnp::MallocMessageBuilder message;
-      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
-      toBridge.setReferenceId(refId);
-      auto request = toBridge.initSetup();
-      auto connectReq = request.initConnectToIp();
-      connectReq.setIp(ip);
-      connectReq.setPort(port);
-      connectReq.setOneWayAuth(Config::NetworkSettings::oneWayAuth());
+      auto callbackId = Cryptography::PRNG::fortuna.generateRandom(4).toHexStr();
+      {
+         capnp::MallocMessageBuilder message;
+         auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+         toBridge.setReferenceId(refId);
+         auto request = toBridge.initSetup();
+         auto connectReq = request.initConnectToIp();
+         connectReq.setIp(ip);
+         connectReq.setPort(port);
+         connectReq.setCallbackId(callbackId);
 
-      auto rawReq = serializeCapnp(message);
-      pushRequest(bridge, rawReq);
+         auto rawReq = serializeCapnp(message);
+         pushRequest(bridge, rawReq);
+      }
+
+      //wait on key presentation
+      auto reply = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(reply->data.getPtr()),
+         reply->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::NOTIFICATION) {
+         return false;
+      }
+
+      auto notif = fromBridge.getNotification();
+      if (notif.which() != Codec::Bridge::Notification::PRESENT_PUBKEY) {
+         return false;
+      }
+      std::string presentedKey(notif.getPresentPubkey());
+
+      //reply to request
+      {
+         capnp::MallocMessageBuilder message;
+         auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+         toBridge.setReferenceId(refId);
+         auto notifReply = toBridge.initNotification();
+         notifReply.setCounter(notif.getCounter());
+         notifReply.setPresentPubkey();
+         notifReply.setSuccess(presentedKey == expectedPubkey);
+
+         auto rawReq = serializeCapnp(message);
+         pushRequest(bridge, rawReq);
+      }
       return waitOnConnection(refId);
    }
 
@@ -794,14 +830,18 @@ namespace {
       return waitOnConnection(refId);
    }
 
-   bool automateDb(std::shared_ptr<Bridge::CppBridge> bridge)
+   bool automateDb(std::shared_ptr<Bridge::CppBridge> bridge,
+      const std::filesystem::path& satoshiDir,
+      const std::filesystem::path& dbDir)
    {
       auto refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
       auto request = toBridge.initSetup();
-      request.setAutomateDb();
+      auto autoDbReq = request.initAutomateDb();
+      autoDbReq.setSatoshiPath(satoshiDir.string());
+      autoDbReq.setDbDir(dbDir.string());
 
       auto rawReq = serializeCapnp(message);
       pushRequest(bridge, rawReq);
@@ -1697,7 +1737,7 @@ TEST_F(WalletManagerWebsocketsTests, Connect)
          homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_});
    auto bdvPtr = Bridge::setupClientConnection(clientPeers,
       Config::NetworkSettings::dbIP(), Config::NetworkSettings::dbPort(),
-      Config::NetworkSettings::oneWayAuth(), false,
+      Config::NetworkSettings::oneWayAuth(), {},
       mgr->getBdvCallback());
    mgr->setBdvPtr(bdvPtr);
 
@@ -4070,16 +4110,10 @@ protected:
       Wallets::AuthorizedPeers serverPeers(
          {homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
 
-      Wallets::AuthorizedPeers::createWallet({
-         homedir_ / CLIENT_AUTH_PEER_FILENAME, {createWltLbd}});
-      Wallets::AuthorizedPeers clientPeers(
-         {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_});
-
       //share public keys between client and server
-      auto& serverPubkey = serverPeers.getOwnPublicKey();
-
-      serverAddr_ = "127.0.0.1:" + Config::NetworkSettings::dbPort();
-      clientPeers.addPeer(serverPubkey, serverAddr_);
+      BinaryDataRef pubkeyref{
+         serverPeers.getOwnPublicKey().pubkey, BIP151PUBKEYSIZE};
+      serverPubkey_ = pubkeyref.toHexStr();
 
       replyQueue.clear();
       bridge_ = std::make_shared<Bridge::CppBridge>();
@@ -4124,10 +4158,10 @@ protected:
    std::filesystem::path ldbdir_{"./ldbtestdir"sv};
    std::filesystem::path blk0dat_;
 
-   std::string serverAddr_;
    std::string hexMagicBytes;
    std::shared_ptr<Bridge::CppBridge> bridge_;
    std::string walletId_;
+   std::string serverPubkey_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -4149,7 +4183,7 @@ TEST_F(BridgeBlocksDBTests, Connect)
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
-   ASSERT_TRUE(connectToPeer(bridge_, serverAddr_));
+   ASSERT_TRUE(connectToIp(bridge_, "127.0.0.1", "9001", serverPubkey_));
    ASSERT_TRUE(registerWallets(bridge_));
 
    //start db, go online and wait on ready notif
@@ -4209,8 +4243,8 @@ TEST_F(BridgeBlocksDBTests, CycleConnection)
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
-   ASSERT_FALSE(connectToIp(bridge_, "127.0.0.1", "8000"));
-   ASSERT_TRUE(connectToPeer(bridge_, serverAddr_));
+   ASSERT_FALSE(connectToIp(bridge_, "127.0.0.1", "9001", {}));
+   ASSERT_TRUE(connectToIp(bridge_, "127.0.0.1", "9001", serverPubkey_));
    ASSERT_TRUE(registerWallets(bridge_));
 
    //start db, go online and wait on ready notif
@@ -4280,7 +4314,7 @@ TEST_F(BridgeBlocksDBTests, DeleteWallet)
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
-   ASSERT_TRUE(connectToPeer(bridge_, serverAddr_));
+   ASSERT_TRUE(connectToIp(bridge_, "127.0.0.1", "9001", serverPubkey_));
    ASSERT_TRUE(registerWallets(bridge_));
 
    //start db, go online and wait on ready notif
@@ -4367,7 +4401,7 @@ TEST_F(BridgeBlocksDBTests, ExtendAddressChain)
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
-   ASSERT_TRUE(connectToPeer(bridge_, serverAddr_));
+   ASSERT_TRUE(connectToIp(bridge_, "127.0.0.1", "9001", serverPubkey_));
    ASSERT_TRUE(registerWallets(bridge_));
 
    //start db, go online and wait on ready notif
@@ -4446,7 +4480,7 @@ TEST_F(BridgeBlocksDBTests, AddNewAddress)
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
-   ASSERT_TRUE(connectToPeer(bridge_, serverAddr_));
+   ASSERT_TRUE(connectToIp(bridge_, "127.0.0.1", "9001", serverPubkey_));
    ASSERT_TRUE(registerWallets(bridge_));
 
    //start db, go online and wait on ready notif
@@ -4702,7 +4736,7 @@ TEST_F(BridgeBlocksAutoDBTests, Connect)
    ASSERT_FALSE(accountId.empty());
 
    //setup connection to db
-   ASSERT_TRUE(automateDb(bridge_));
+   ASSERT_TRUE(automateDb(bridge_, blkdir_, ldbdir_));
    ASSERT_TRUE(Bridge::isDbRunning());
    ASSERT_TRUE(registerWallets(bridge_));
    ASSERT_EQ(goOnline(bridge_), 5);
@@ -4747,7 +4781,7 @@ TEST_F(BridgeBlocksAutoDBTests, Connect_NoCleanup)
    ASSERT_FALSE(accountId.empty());
 
    //setup connection to db
-   ASSERT_TRUE(automateDb(bridge_));
+   ASSERT_TRUE(automateDb(bridge_, blkdir_, ldbdir_));
    ASSERT_TRUE(Bridge::isDbRunning());
    ASSERT_TRUE(registerWallets(bridge_));
    ASSERT_EQ(goOnline(bridge_), 5);
@@ -4786,6 +4820,143 @@ protected:
    {
       theBDMt_ = new BlockDataManagerThread();
       iface_ = theBDMt_->bdm()->getIFace();
+   }
+
+   bool loadPeersDb(bool succeed)
+   {
+      auto refId = rand();
+      auto callbackId = Cryptography::PRNG::fortuna.generateRandom(4).toHexStr();
+      {
+         capnp::MallocMessageBuilder message;
+         auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+         toBridge.setReferenceId(refId);
+         auto request = toBridge.initSetup();
+         request.setLoadPeersDb(callbackId);
+
+         auto rawReq = serializeCapnp(message);
+         pushRequest(bridge_, rawReq);
+      }
+
+      //deal with unlock request
+      {
+         auto reply = waitOnReply();
+         kj::ArrayPtr<const capnp::word> words(
+            reinterpret_cast<const capnp::word*>(reply->data.getPtr()),
+            reply->data.getSize() / sizeof(capnp::word));
+         capnp::FlatArrayMessageReader reader(words);
+
+         auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+         if (fromBridge.which() != Codec::Bridge::FromBridge::NOTIFICATION) {
+            return false;
+         }
+
+         auto notif = fromBridge.getNotification();
+         if (notif.which() != Codec::Bridge::Notification::UNLOCK_REQUEST) {
+            return false;
+         }
+
+         //reply to unlock request
+         capnp::MallocMessageBuilder message;
+         auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+         toBridge.setReferenceId(refId);
+         auto notifReply = toBridge.initNotification();
+         notifReply.setCounter(notif.getCounter());
+         if (succeed) {
+            notifReply.setUnlockRequest(clientPeersDbPass_);
+            notifReply.setSuccess(true);
+         } else {
+            notifReply.setSuccess(false);
+         }
+
+         auto rawReq = serializeCapnp(message);
+         pushRequest(bridge_, rawReq);
+      }
+
+      //wait on success reply
+      auto reply = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(reply->data.getPtr()),
+         reply->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return false;
+      }
+
+      auto capnReply = fromBridge.getReply();
+      return capnReply.getSuccess() && capnReply.getReferenceId() == refId;
+   }
+
+   bool createPeersDb(const std::string& passphrase)
+   {
+      auto refId = rand();
+      auto callbackId = Cryptography::PRNG::fortuna.generateRandom(4).toHexStr();
+      {
+         capnp::MallocMessageBuilder message;
+         auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+         toBridge.setReferenceId(refId);
+         auto request = toBridge.initSetup();
+         request.setLoadPeersDb(callbackId);
+
+         auto rawReq = serializeCapnp(message);
+         pushRequest(bridge_, rawReq);
+      }
+
+      //deal with setpass request
+      {
+         auto reply = waitOnReply();
+         kj::ArrayPtr<const capnp::word> words(
+            reinterpret_cast<const capnp::word*>(reply->data.getPtr()),
+            reply->data.getSize() / sizeof(capnp::word));
+         capnp::FlatArrayMessageReader reader(words);
+
+         auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+         if (fromBridge.which() != Codec::Bridge::FromBridge::NOTIFICATION) {
+            return false;
+         }
+
+         auto notif = fromBridge.getNotification();
+         if (notif.which() != Codec::Bridge::Notification::SET_PASSPHRASE) {
+            return false;
+         }
+
+         auto passReq = notif.getSetPassphrase();
+         if (passReq.which() != Codec::Bridge::Notification::SetPassphraseRequest::CONTROL_PASS) {
+            return false;
+         }
+
+         //reply to setpass request
+         capnp::MallocMessageBuilder message;
+         auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+         toBridge.setReferenceId(refId);
+         auto notifReply = toBridge.initNotification();
+         notifReply.setCounter(notif.getCounter());
+         notifReply.setSuccess(true);
+
+         auto passReply = notifReply.initSetPassphrase();
+         passReply.setPassphrase(passphrase);
+         passReply.setKdfTargetMs(1);
+         passReply.setKdfTargetMB(0);
+
+         auto rawReq = serializeCapnp(message);
+         pushRequest(bridge_, rawReq);
+      }
+
+      //wait on success reply
+      auto reply = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(reply->data.getPtr()),
+         reply->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return false;
+      }
+
+      auto capnReply = fromBridge.getReply();
+      return capnReply.getSuccess() && capnReply.getReferenceId() == refId;
    }
 
    std::map<std::string, std::set<std::string>> listPeers()
@@ -4886,27 +5057,36 @@ protected:
       startupBIP150CTX(4);
 
       //setup auth peers for server and client
-      authPeersPassLbd_ = [](const std::set<Wallets::EncryptionKeyId>&)
+      serverPeersPassLbd_ = [](const std::set<Wallets::EncryptionKeyId>&)
       ->Passphrase::Result
       {
          return { {}, true };
       };
 
-      auto createWltLbd = []()->std::unique_ptr<Passphrase::Params>
-      {
-         return std::make_unique<Passphrase::Params>(
-            1ms, 0, SecureBinaryData{});
-      };
-
       Wallets::AuthorizedPeers::createWallet({
-         homedir_ / SERVER_AUTH_PEER_FILENAME, {createWltLbd}});
+         homedir_ / SERVER_AUTH_PEER_FILENAME, {
+            []()->std::unique_ptr<Passphrase::Params>
+            { return std::make_unique<Passphrase::Params>
+               (1ms, 0, SecureBinaryData{});
+            }
+         }
+      });
       Wallets::AuthorizedPeers serverPeers(
-         {homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+         {homedir_ / SERVER_AUTH_PEER_FILENAME, serverPeersPassLbd_});
 
       Wallets::AuthorizedPeers::createWallet({
-         homedir_ / CLIENT_AUTH_PEER_FILENAME, {createWltLbd}});
+         homedir_ / CLIENT_AUTH_PEER_FILENAME, {
+            [pass=clientPeersDbPass_]()->std::unique_ptr<Passphrase::Params>
+            { return std::make_unique<Passphrase::Params>
+               (1ms, 0, SecureBinaryData::fromString(pass));
+            }
+         }
+      });
       Wallets::AuthorizedPeers clientPeers(
-         {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_});
+         {homedir_ / CLIENT_AUTH_PEER_FILENAME,
+         [pass=clientPeersDbPass_](const std::set<Wallets::EncryptionKeyId>&)
+         ->Passphrase::Result { return { SecureBinaryData::fromString(pass), true }; }
+      });
 
       //share public keys between client and server
       auto btcServerKey = serverPeers.getOwnPublicKey();
@@ -4947,7 +5127,8 @@ protected:
 
 protected:
    BlockDataManagerThread *theBDMt_;
-   Passphrase::UnlockFunc authPeersPassLbd_;
+   Passphrase::UnlockFunc serverPeersPassLbd_;
+   const std::string clientPeersDbPass_{"client_peers_pass"};
    LMDBBlockDatabase* iface_;
 
    std::filesystem::path blkdir_{"./blkfiletest"sv};
@@ -4966,7 +5147,10 @@ TEST_F(BridgePeersManagement, ListAddConnect)
    WebSocketServer::initAuthPeers({homedir_ / SERVER_AUTH_PEER_FILENAME, {}});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
-   //peer list should be empty at first
+   //load peers db
+   ASSERT_TRUE(loadPeersDb(true));
+
+   //peer list should be empty at first, but for our own key
    auto peerList = listPeers();
    ASSERT_EQ(peerList.size(), 1);
    const auto& firstPeer = *peerList.begin();
@@ -4986,6 +5170,49 @@ TEST_F(BridgePeersManagement, ListAddConnect)
    ASSERT_EQ(peerList.size(), 2);
    for (const auto& keyEntry : peerList) {
       if (keyEntry.first == clientPubKey_.toHexStr()) {
+         continue;
+      }
+      EXPECT_EQ(keyEntry.first, serverPubkey_.toHexStr());
+      ASSERT_EQ(keyEntry.second.size(), 1);
+      EXPECT_EQ(*keyEntry.second.begin(), serverAddress);
+   }
+
+   //connect to db
+   ASSERT_TRUE(connectToPeer(bridge_, serverAddress));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(BridgePeersManagement, LoadDeleteCreate)
+{
+   WebSocketServer::initAuthPeers({homedir_ / SERVER_AUTH_PEER_FILENAME, {}});
+   WebSocketServer::start(theBDMt_->bdm(), true);
+
+   //reject loading of peers db then delete it
+   ASSERT_FALSE(loadPeersDb(false));
+   ASSERT_TRUE(std::filesystem::remove(homedir_ / CLIENT_AUTH_PEER_FILENAME));
+
+   //create from new call to loadPeersDb
+   const std::string newPass{"new_client_peers_pass"};
+   ASSERT_TRUE(createPeersDb(newPass));
+
+   //peer list should be empty at first, but for our own key
+   auto peerList = listPeers();
+   ASSERT_EQ(peerList.size(), 1);
+   const auto& firstPeer = *peerList.begin();
+   ASSERT_EQ(firstPeer.second.size(), 1);
+   ASSERT_EQ(*firstPeer.second.begin(), "own");
+   auto clientKey = firstPeer.first;
+   ASSERT_EQ(clientKey.size(), BIP151PUBKEYSIZE*2);
+
+   //add the server to peers store
+   auto serverAddress = std::string{"127.0.0.1:"} + Config::NetworkSettings::dbPort();
+   addPeer(serverPubkey_, { serverAddress });
+
+   //list again, server should appear
+   peerList = listPeers();
+   ASSERT_EQ(peerList.size(), 2);
+   for (const auto& keyEntry : peerList) {
+      if (keyEntry.first == clientKey) {
          continue;
       }
       EXPECT_EQ(keyEntry.first, serverPubkey_.toHexStr());

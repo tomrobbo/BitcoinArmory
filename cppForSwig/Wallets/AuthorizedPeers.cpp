@@ -29,6 +29,23 @@ using namespace Armory::Seeds;
 using namespace std::chrono_literals;
 using namespace std::string_view_literals;
 
+void AuthorizedPeers::setOwnPrivateKey(SecureBinaryData& privateKey)
+{
+   //compute the public key
+   auto ownPubKey = Cryptography::ECDSA::computePublicKey(privateKey);
+   auto ownPubKey_compressed = Cryptography::ECDSA::compressPoint(ownPubKey);
+
+   //add to private keys map
+   privateKeys_.emplace(ownPubKey_compressed, std::move(privateKey));
+
+   //add to public key map as own
+   btc_pubkey btc_own;
+   btc_pubkey_init(&btc_own);
+   std::memcpy(btc_own.pubkey, ownPubKey_compressed.getPtr(), BIP151PUBKEYSIZE);
+   btc_own.compressed = true;
+   nameToKeyMap_.emplace("own", btc_own);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 AuthorizedPeers::AuthorizedPeers(std::shared_ptr<AssetWallet> wltPtr) :
    wallet_(wltPtr)
@@ -48,23 +65,15 @@ AuthorizedPeers::AuthorizedPeers()
 {
    //No filename was passed, create an ephemral peer db instead
    auto privateKey = Cryptography::PRNG::generateRandomStrong(32);
-
-   //compute the public key
-   auto ownPubKey = Cryptography::ECDSA::computePublicKey(privateKey);
-   auto ownPubKey_compressed = Cryptography::ECDSA::compressPoint(ownPubKey);
-
-   //add to private keys map
-   privateKeys_.emplace(ownPubKey_compressed, privateKey);
-
-   //add to public key map as own
-   btc_pubkey btc_own;
-   btc_pubkey_init(&btc_own);
-   std::memcpy(btc_own.pubkey, ownPubKey_compressed.getPtr(), BIP151PUBKEYSIZE);
-   btc_own.compressed = true;
-   nameToKeyMap_.emplace("own", btc_own);
+   setOwnPrivateKey(privateKey);
 }
 
-////////////////////////////////////////////////////////////////////////////////
+AuthorizedPeers::AuthorizedPeers(SecureBinaryData& privateKey)
+{
+   setOwnPrivateKey(privateKey);
+}
+
+////////
 void AuthorizedPeers::loadWallet(const IO::ReadOnlyFileParams& params)
 {
    if (!FileUtils::fileExists(params.filePath, 6)) {
@@ -73,7 +82,6 @@ void AuthorizedPeers::loadWallet(const IO::ReadOnlyFileParams& params)
    wallet_ = AssetWallet::loadMainWalletFromFile(params);
 }
 
-////
 void AuthorizedPeers::initFromWallet()
 {
    if (wallet_ == nullptr) {
@@ -136,23 +144,10 @@ void AuthorizedPeers::initFromWallet()
       auto assetPtr = outerAccount->getAssetForKey(1);
       auto assetSingle = std::dynamic_pointer_cast<AssetEntry_Single>(assetPtr);
 
-      const auto& privateKey = wallet_->getDecryptedValue(
+      auto privateKey = wallet_->getDecryptedValue(
          assetSingle->getPrivKey());
-
-      //compute the public key
-      auto ownPubKey = Cryptography::ECDSA::computePublicKey(privateKey);
-      ownPubKey_compressed = Cryptography::ECDSA::compressPoint(ownPubKey);
-
-      //add to private keys map
-      privateKeys_.emplace(ownPubKey_compressed, privateKey);
+      setOwnPrivateKey(privateKey);
    }
-
-   //add to public key map as own
-   btc_pubkey btc_own;
-   btc_pubkey_init(&btc_own);
-   std::memcpy(btc_own.pubkey, ownPubKey_compressed.getPtr(), BIP151PUBKEYSIZE);
-   btc_own.compressed = true;
-   nameToKeyMap_.emplace("own", btc_own);
 
    //grab public key to index map
    keyToAssetIndexMap_ =
@@ -165,7 +160,6 @@ void AuthorizedPeers::initFromWallet()
    masterKey_ = std::move(peerAssets.masterKey);
 }
 
-////////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<AuthorizedPeers> AuthorizedPeers::createWallet(
    const IO::CreateFileParams& params)
 {
@@ -233,6 +227,22 @@ std::shared_ptr<AuthorizedPeers> AuthorizedPeers::createWallet(
    IO::ReadOnlyFileParams roFileParams{params.filePath,
       walletParams.setCtrlPassObj.getUnlockFunc()};
    return std::make_shared<AuthorizedPeers>(roFileParams);
+}
+
+std::shared_ptr<AuthorizedPeers> AuthorizedPeers::getNarrowSet(
+   const std::string& peerName) const
+{
+   /*
+   return a walletless auth peer db with only its own private key
+   and only the one peer
+   */
+   const auto& peerKey = nameToKeyMap_.at(peerName);
+   BinaryDataRef ownKeyRef{getOwnPublicKey().pubkey, BIP151PUBKEYSIZE};
+   auto privateKey = getPrivateKey(ownKeyRef);
+   auto result = std::shared_ptr<AuthorizedPeers>(
+      new AuthorizedPeers(privateKey));
+   result->addPeer(peerKey, peerName);
+   return result;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
