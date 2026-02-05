@@ -195,6 +195,9 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
       self.needUpdateAfterScan = True
       self.sweepAfterScanList = []
       self.newWalletList = []
+      self.dbConnectionEstablishedBySetup = False
+      self.walletsRegistered = False
+      self.blockchainSetupComplete = False
       self.newZeroConfSinceLastUpdate = []
       self.lastSDMStr = ""
       self.doShutdown = False
@@ -1813,7 +1816,7 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
 
    #############################################################################
    def finalizeLoadWallets(self):
-      self.setupBlockchainService_step1()
+      self.initBlockchainService()
       self.walletModel.reset()
       if self.wallets.empty():
          self.execIntroDialog()
@@ -4552,7 +4555,7 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
 
       elif action == NODESTATUS_UPDATE:
          prevStatus = None
-         if self.nodeStatus is not None and hasattr(self.nodeStatus, 'node'):
+         if self.nodeStatus is not None:
             prevStatus = self.nodeStatus.node
          self.nodeStatus = args
 
@@ -4564,7 +4567,7 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
                      'receive bitcoins until connection is '
                      're-established.'),
                   QtWidgets.QSystemTrayIcon.Critical, 10000)
-            elif self.nodeStatus.node_state == NodeStatus_Online:
+            elif self.nodeStatus.node == 'online':
                self.showTrayMsg(self.tr('Connected'),
                   self.tr('Connection to Bitcoin Core '
                      're-established'),
@@ -4589,9 +4592,9 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
 
       #setup notifs
       elif action == SETUP_STEP2:
-         self.setupBlockchainService_step2()
+         self.registerWalletsWithService()
       elif action == SETUP_STEP3:
-         self.setupBlockchainService_step3()
+         self.finalizeBlockchainSetup()
 
    #############################################################################
    def printAlert(self, moneyID, ledgerAmt, txAmt):
@@ -4831,23 +4834,33 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
          self.macNotifHdlr.showNotification(dispTitle, dispText)
 
    #############################################################################
-   def setupBlockchainService_step1(self):
+   def initBlockchainService(self):
       if CLI_OPTIONS.offline:
          self.setDashboardDetails()
          return
-      TheBridge.service.setupDB()
+      if self.dbConnectionEstablishedBySetup:
+         LOGINFO("DB connected by setup manager, registering wallets")
+         self.registerWalletsWithService()
 
    #############################################################################
-   def setupBlockchainService_step2(self):
+   def registerWalletsWithService(self):
+      if self.walletsRegistered:
+         return
+      LOGINFO("Registering wallets with blockchain service")
+      self.walletsRegistered = True
       self.switchNetworkMode(NETWORKMODE.Full)
       TheBridge.service.registerWallets()
 
    #############################################################################
-   def setupBlockchainService_step3(self):
+   def finalizeBlockchainSetup(self):
+      if self.blockchainSetupComplete:
+         return
+      LOGINFO("Finalizing blockchain setup")
+      self.blockchainSetupComplete = True
       self.setupLedgerViews()
       self.loadBlockchainIfNecessary()
       self.setDashboardDetails()
-      TheBridge.service.goOnline()
+      TheBridge.dbSetup.goOnline()
 
    #############################################################################
    def setupLedgerViews(self):
@@ -5068,18 +5081,8 @@ if 1:
          SPLASH.close()
       TheSignalExecution.executeMethod(closeSplash)
 
-   #build bridge args with settings-based additions
+   # Build bridge args - basic startup only, DB connection via bridge API later
    bridgeArgs = getBridgeArgList()
-   if CLI_OPTIONS.ram_usage == -1 and TheSettings.hasSetting('RAMUsage'):
-      ramUsage = TheSettings.get('RAMUsage')
-      if ramUsage > 0:
-         bridgeArgs.append(f"--ram-usage={ramUsage}")
-   if CLI_OPTIONS.thread_count == -1 and TheSettings.hasSetting('ThreadCount'):
-      threadCount = TheSettings.get('ThreadCount')
-      if threadCount > 0:
-         bridgeArgs.append(f"--thread-count={threadCount}")
-   if TheSettings.hasSetting('ManageSatoshi') and TheSettings.get('ManageSatoshi'):
-      bridgeArgs.append("--automateDb")
    TheBDM.startBridge(bridgeArgs, bridgeReadyHandler)
 
    # Show setup manager (wallet list will populate when bridge ready)
@@ -5087,9 +5090,12 @@ if 1:
       TheBridge.service.shutdown()
       sys.exit(1)
 
-   # Spawn main window after setup accepted
+   dbSettings = dlg.databaseTab.collectSettings()
+   dbConnectionEstablished = dlg.connectionSuccess and dbSettings['scenario'] != 'Offline'
+
    wallets = loadWalletsForMainApp()
    armoryMainWindow = ArmoryMainWindow(wallets)
+   armoryMainWindow.dbConnectionEstablishedBySetup = dbConnectionEstablished
    TheSignalExecution.executeMethod(armoryMainWindow.finalizeLoadWallets)
    armoryMainWindow.show()
 

@@ -227,11 +227,11 @@ class BlockDataManager(object):
 
    #############################################################################
    def reportProgress(self, notifProto):
-      phase = notifProto.progress.phase
-      prog = notifProto.progress.progress
-      seconds = notifProto.progress.time
-      progressNumeric = notifProto.progress.numericProgress
-      walletVec = notifProto.progress.ids
+      phase = notifProto.scanProgress.phase
+      prog = notifProto.scanProgress.progress
+      seconds = notifProto.scanProgress.time
+      progressNumeric = notifProto.scanProgress.numericProgress
+      walletVec = notifProto.scanProgress.ids
 
       try:
          if len(walletVec) == 0:
@@ -277,5 +277,3 @@ else:
 
    cppLogFile = os.path.join(ARMORY_HOME_DIR, 'armorycpplog.txt')
    cpplf = cppLogFile
-   if OS_WINDOWS and isinstance(cppLogFile, unicode):
-      cpplf = cppLogFile.encode('utf8')

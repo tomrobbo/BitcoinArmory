@@ -10,6 +10,9 @@ import os
 
 from qtpy import QtCore, QtWidgets
 from armoryengine.BDM import TheBDM
+from armoryengine.ArmoryUtils import USE_TESTNET, USE_REGTEST, BITCOIN_PORT, \
+   BITCOIN_RPC_PORT
+from armoryengine.Settings import TheSettings
 
 import qtdialogs.qtdefines as qtdefines
 
@@ -159,12 +162,38 @@ class CoreTab(QtWidgets.QWidget):
 
    def loadSettings(self):
       """Load core tab settings from configuration."""
-      btcDir = TheBDM.btcdir
+      # Load Bitcoin Core path from settings, fallback to TheBDM
+      savedPath = TheSettings.get('SatoshiDatadir')
+      if savedPath:
+         btcDir = savedPath
+      else:
+         btcDir = TheBDM.btcdir
       self.satoshiHomePath.setText(os.path.normpath(btcDir))
+
+      # Load operation mode
       hasCoreSettings = bool(self.satoshiHomePath.text() and
          os.path.exists(self.satoshiHomePath.text()))
-      self.scenarioCombo.setCurrentText(
-         SCENARIO_CORE_AUTOMATE if hasCoreSettings else SCENARIO_CORE_MANUAL)
+      manageSatoshi = TheSettings.get('ManageSatoshi')
+      if manageSatoshi is not None:
+         self.scenarioCombo.setCurrentText(
+            SCENARIO_CORE_AUTOMATE if manageSatoshi else SCENARIO_CORE_MANUAL)
+      else:
+         self.scenarioCombo.setCurrentText(
+            SCENARIO_CORE_AUTOMATE if hasCoreSettings else SCENARIO_CORE_MANUAL)
+
+      # Set network mode from CLI flags (read-only)
+      if USE_REGTEST:
+         self.networkModeCombo.setCurrentText('Regtest')
+      elif USE_TESTNET:
+         self.networkModeCombo.setCurrentText('Testnet')
+      else:
+         self.networkModeCombo.setCurrentText('Mainnet')
+
+      # Load port settings
+      p2pPort = TheSettings.get('BitcoinP2PPort')
+      rpcPort = TheSettings.get('BitcoinRPCPort')
+      self.p2pPortInput.setText(str(p2pPort) if p2pPort else str(BITCOIN_PORT))
+      self.rpcPortInput.setText(str(rpcPort) if rpcPort else str(BITCOIN_RPC_PORT))
 
    def collectSettings(self):
       """Return current core settings from UI as a dict."""
@@ -173,6 +202,8 @@ class CoreTab(QtWidgets.QWidget):
          'networkMode': str(self.networkModeCombo.currentText()),
          'manageSatoshi': (self.scenarioCombo.currentText() ==
             SCENARIO_CORE_AUTOMATE),
+         'p2pPort': str(self.p2pPortInput.text()),
+         'rpcPort': str(self.rpcPortInput.text()),
       }
 
    def validate(self):

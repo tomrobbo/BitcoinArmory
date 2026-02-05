@@ -9,7 +9,7 @@
 import os
 
 from qtpy import QtCore, QtWidgets
-from armoryengine.ArmoryUtils import ARMORY_HOME_DIR, LOGINFO
+from armoryengine.ArmoryUtils import ARMORY_HOME_DIR, LOGINFO, LOGERROR
 from armoryengine.WalletUtils import WalletList
 from armoryengine.CppBridge import TheBridge
 from ui.QtExecuteSignal import TheSignalExecution
@@ -228,14 +228,14 @@ class WalletTab(QtWidgets.QWidget):
                else:
                   errorMsg = replyObj.error if replyObj.error else \
                      "Unknown error"
-                  LOGINFO(f"Failed to unlock wallet {walletId}: {errorMsg}")
+                  LOGERROR(f"Failed to unlock wallet {walletId}: {errorMsg}")
                   unlockDlg.reject()
                   QtWidgets.QMessageBox.warning(
                      self,
                      self.tr('Unlock Failed'),
                      self.tr('Failed to unlock wallet: {}').format(errorMsg))
             except Exception as e:
-               LOGINFO(f"Unlock callback error: {e}")
+               LOGERROR(f"Unlock callback error: {e}")
                unlockDlg.reject()
 
          TheBridge.wltManager.unlockControlHeader(
@@ -245,7 +245,7 @@ class WalletTab(QtWidgets.QWidget):
          unlockDlg.exec_()
 
       except Exception as e:
-         LOGINFO(f"Failed to unlock wallet {walletId}: {e}")
+         LOGERROR(f"Failed to unlock wallet {walletId}: {e}")
          QtWidgets.QMessageBox.warning(
             self,
             self.tr('Unlock Failed'),
@@ -276,7 +276,7 @@ class WalletTab(QtWidgets.QWidget):
       if not os.path.exists(armoryPath):
          try:
             os.makedirs(armoryPath)
-         except Exception as e:
+         except (OSError, PermissionError) as e:
             QtWidgets.QMessageBox.critical(
                self,
                self.tr('Error'),
