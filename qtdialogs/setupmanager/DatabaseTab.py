@@ -13,17 +13,18 @@ from armoryengine.ArmoryUtils import ARMORY_DB_DIR, ARMORY_HOME_DIR, \
    BTC_HOME_DIR, ARMORYDB_DEFAULT_PORT, LOGINFO
 from armoryengine.Settings import TheSettings
 from armoryengine.CppBridge import TheBridge
+from armorycolors import htmlColor
 
 import qtdialogs.qtdefines as qtdefines
 
 # Database scenario constants
 SCENARIO_DB_LOCAL = "Automate ArmoryDB"
-SCENARIO_DB_REMOTE = "Remote Database"
+SCENARIO_REMOTE_IP = "Connect to IP"
+SCENARIO_REMOTE_PEER = "Connect to Peer"
 SCENARIO_DB_NONE = "Offline"
 
-# Remote connection sub-modes
-REMOTE_MODE_PEER = "Connect to Saved Peer"
-REMOTE_MODE_IP = "Connect by IP (ad-hoc)"
+def isRemoteScenario(scenario):
+   return scenario in (SCENARIO_REMOTE_IP, SCENARIO_REMOTE_PEER)
 
 # Validation limits
 MAX_RAM_USAGE = 256      # Max RAM in 128MB increments (~32GB)
@@ -56,10 +57,10 @@ class PeerData:
          return self.names[0]
       if self.publicKey:
          return self.publicKey[:16] + '...'
-      return '(unknown)'
+      return 'unknown'
 
    def isOwn(self):
-      """Check if this is the 'own' peer (user's public key)."""
+      """Check if this is the own peer, i.e. user's public key."""
       return 'own' in self.names
 
 ################################################################################
@@ -81,20 +82,22 @@ class AddPeerDialog(QtWidgets.QDialog):
       formLayout = QtWidgets.QGridLayout()
       formLayout.setSpacing(8)
 
-      # Public Key (required)
-      keyLabel = QtWidgets.QLabel(self.tr("Public Key (hex):"))
+      # Public Key
+      keyLabel = QtWidgets.QLabel(self.tr("Public Key, hex:"))
       self.keyEdit = QtWidgets.QLineEdit()
-      self.keyEdit.setPlaceholderText("66 hex chars (compressed secp256k1)")
+      self.keyEdit.setPlaceholderText("66 hex chars, compressed secp256k1")
       formLayout.addWidget(keyLabel, 0, 0)
       formLayout.addWidget(self.keyEdit, 0, 1)
 
       keyInfo = QtWidgets.QLabel(
          self.tr("Get this from the remote ArmoryDB startup output."))
-      keyInfo.setStyleSheet("color: gray; font-style: italic; font-size: 9pt;")
+      keyInfo.setStyleSheet(
+         f"color: {htmlColor('DisableFG')}; "
+         "font-style: italic; font-size: 9pt;")
       formLayout.addWidget(keyInfo, 1, 1)
 
-      # Address (required) - must be ip:port format
-      addressLabel = QtWidgets.QLabel(self.tr("Address (ip:port):"))
+      # Address - must be ip:port format
+      addressLabel = QtWidgets.QLabel(self.tr("Address, ip:port:"))
       self.addressEdit = QtWidgets.QLineEdit()
       self.addressEdit.setPlaceholderText(
          f"e.g. 192.168.1.100:{ARMORYDB_DEFAULT_PORT}")
@@ -103,7 +106,9 @@ class AddPeerDialog(QtWidgets.QDialog):
 
       addrInfo = QtWidgets.QLabel(
          self.tr("IP address and port only. Domains not supported yet."))
-      addrInfo.setStyleSheet("color: gray; font-style: italic; font-size: 9pt;")
+      addrInfo.setStyleSheet(
+         f"color: {htmlColor('DisableFG')}; "
+         "font-style: italic; font-size: 9pt;")
       formLayout.addWidget(addrInfo, 3, 1)
 
       formLayout.setColumnStretch(1, 1)
@@ -128,7 +133,7 @@ class AddPeerDialog(QtWidgets.QDialog):
       if len(publicKey) != 66 or not all(c in validHexChars for c in publicKey):
          QtWidgets.QMessageBox.warning(
             self, self.tr('Invalid Public Key'),
-            self.tr('Public key must be 66 hex characters (33 bytes).'))
+            self.tr('Public key must be 66 hex characters, 33 bytes.'))
          return
 
       address = self.addressEdit.text().strip()
@@ -147,176 +152,8 @@ class AddPeerDialog(QtWidgets.QDialog):
       return self.publicKey
 
    def getAddress(self):
-      """Return the entered address (ip:port)."""
+      """Return the entered address as ip:port."""
       return self.address
-
-################################################################################
-class PeerManagerDialog(QtWidgets.QDialog):
-   """
-   Dialog for managing and selecting remote database peers.
-
-   Peers are stored in the bridge's peers database.
-   This dialog provides UI for viewing, adding, and selecting peers.
-   """
-   def __init__(self, parent, peersDbLoaded=False):
-      super().__init__(parent)
-      self.peersDbLoaded = peersDbLoaded
-      self.peers = []
-      self.ownPublicKey = ''
-      self.selectedPeerName = None
-      self.setWindowTitle(self.tr('Manage Peers'))
-      self.setMinimumWidth(550)
-      self.setMinimumHeight(400)
-      self.initUI()
-      if self.peersDbLoaded:
-         self.loadPeersFromBridge()
-
-   def initUI(self):
-      """Initialize the peer manager dialog UI."""
-      layout = QtWidgets.QVBoxLayout(self)
-      layout.setSpacing(12)
-
-      # Own public key display
-      ownKeyFrame = QtWidgets.QGroupBox(self.tr('Your Public Key'))
-      ownKeyLayout = QtWidgets.QVBoxLayout(ownKeyFrame)
-      ownKeyLayout.setContentsMargins(12, 12, 12, 12)
-
-      self.ownKeyLabel = QtWidgets.QLabel(self.tr('(Not loaded)'))
-      self.ownKeyLabel.setWordWrap(True)
-      self.ownKeyLabel.setTextInteractionFlags(
-         QtCore.Qt.TextSelectableByMouse | QtCore.Qt.TextSelectableByKeyboard)
-      self.ownKeyLabel.setStyleSheet(
-         "font-family: monospace; font-size: 9pt; padding: 4px; "
-         "background-color: #f8f8f8; border: 1px solid #ddd;")
-      ownKeyLayout.addWidget(self.ownKeyLabel)
-
-      ownKeyInfo = QtWidgets.QLabel(
-         self.tr("Share this key with peers who want to connect to you."))
-      ownKeyInfo.setStyleSheet("color: gray; font-style: italic;")
-      ownKeyLayout.addWidget(ownKeyInfo)
-
-      layout.addWidget(ownKeyFrame)
-
-      # Peer list
-      listLabel = QtWidgets.QLabel(
-         self.tr("Saved Peers (double-click to select):"))
-      layout.addWidget(listLabel)
-
-      self.peerList = QtWidgets.QListWidget()
-      self.peerList.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
-      self.peerList.itemDoubleClicked.connect(self.selectAndClose)
-      layout.addWidget(self.peerList)
-
-      # Action buttons
-      actionLayout = QtWidgets.QHBoxLayout()
-
-      self.refreshButton = QtWidgets.QPushButton(self.tr("Refresh"))
-      self.refreshButton.clicked.connect(self.loadPeersFromBridge)
-      actionLayout.addWidget(self.refreshButton)
-
-      self.addButton = QtWidgets.QPushButton(self.tr("Add Peer..."))
-      self.addButton.clicked.connect(self.addPeer)
-      actionLayout.addWidget(self.addButton)
-
-      actionLayout.addStretch()
-
-      useButton = QtWidgets.QPushButton(self.tr("Use Selected"))
-      useButton.clicked.connect(self.useSelectedPeer)
-      actionLayout.addWidget(useButton)
-
-      layout.addLayout(actionLayout)
-
-      # Status label
-      self.statusLabel = QtWidgets.QLabel('')
-      self.statusLabel.setStyleSheet("color: gray;")
-      layout.addWidget(self.statusLabel)
-
-      # Dialog buttons
-      buttonBox = QtWidgets.QDialogButtonBox(
-         QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
-      buttonBox.accepted.connect(self.accept)
-      buttonBox.rejected.connect(self.reject)
-      layout.addWidget(buttonBox)
-
-      if not self.peersDbLoaded:
-         self.addButton.setEnabled(False)
-         self.statusLabel.setText(
-            self.tr('Peers database not loaded. Load it first to manage peers.'))
-
-   def loadPeersFromBridge(self):
-      """Load peers from bridge listPeers API."""
-      self.peers = []
-      self.ownPublicKey = ''
-      bridgePeers = TheBridge.dbSetup.listPeers()
-      for bp in bridgePeers:
-         peer = PeerData.fromBridgePeer(bp)
-         if peer.isOwn():
-            self.ownPublicKey = peer.publicKey
-         else:
-            self.peers.append(peer)
-      self.refreshDisplay()
-
-   def refreshDisplay(self):
-      """Refresh the UI with current peer data."""
-      if self.ownPublicKey:
-         self.ownKeyLabel.setText(self.ownPublicKey)
-      else:
-         self.ownKeyLabel.setText(self.tr('(Not available)'))
-
-      self.peerList.clear()
-      for peer in self.peers:
-         displayText = peer.displayName()
-         if len(peer.names) > 1:
-            displayText += f" (+{len(peer.names) - 1} more)"
-         item = QtWidgets.QListWidgetItem(displayText)
-         item.setData(QtCore.Qt.UserRole, peer)
-         item.setToolTip(f"Key: {peer.publicKey[:32]}...")
-         self.peerList.addItem(item)
-
-      if self.peers:
-         self.statusLabel.setText(
-            self.tr('{} peer(s) available').format(len(self.peers)))
-      else:
-         self.statusLabel.setText(self.tr('No peers saved yet.'))
-
-   def addPeer(self):
-      """Open dialog to add a new peer via bridge."""
-      dialog = AddPeerDialog(self)
-      if dialog.exec_() == QtWidgets.QDialog.Accepted:
-         publicKey = dialog.getPublicKey()
-         address = dialog.getAddress()
-         result = TheBridge.dbSetup.addPeer(publicKey, [address])
-         if result.success:
-            LOGINFO(f"Added peer: {address}")
-            self.loadPeersFromBridge()
-         else:
-            QtWidgets.QMessageBox.warning(
-               self, self.tr('Add Peer Failed'),
-               self.tr('Failed to add peer: {}').format(result.error))
-
-   def useSelectedPeer(self):
-      """Set selected peer and close dialog."""
-      selected = self.peerList.currentItem()
-      if selected:
-         peer = selected.data(QtCore.Qt.UserRole)
-         if peer.names:
-            self.selectedPeerName = peer.names[0]
-            self.accept()
-
-   def selectAndClose(self, item):
-      """Handle double-click to select peer and close."""
-      peer = item.data(QtCore.Qt.UserRole)
-      if peer.names:
-         self.selectedPeerName = peer.names[0]
-         self.accept()
-
-   def getSelectedPeerName(self):
-      """Return the selected peer name (ip:port), if any."""
-      return self.selectedPeerName
-
-   def getOwnPublicKey(self):
-      """Return the user's own public key."""
-      return self.ownPublicKey
 
 ################################################################################
 class DatabaseTab(QtWidgets.QWidget):
@@ -328,7 +165,7 @@ class DatabaseTab(QtWidgets.QWidget):
    - Database scenario (automate/remote/offline)
    - ArmoryDB configuration (type, RAM, threads)
    - Remote database configuration:
-     - Connect to saved peer (2-way auth via peers DB)
+     - Connect to known peer (2-way auth via peers DB)
      - Connect by IP (1-way auth, ad-hoc)
    - CLI command display (informational)
 
@@ -358,19 +195,20 @@ class DatabaseTab(QtWidgets.QWidget):
 
       # Remote mode widgets
       self.remoteFrame = None
-      self.remoteModeCombo = None
       self.peerFrame = None
       self.ipFrame = None
 
       # Remote Peer sub-mode widgets
-      self.peerCombo = None
-      self.managePeersButton = None
+      self.peerList = None
+      self.loadPeersDbButton = None
+      self.addPeerButton = None
       self.handshakeModeCombo = None
+      self.peersDbStatusLabel = None
 
       # Remote IP sub-mode widgets
       self.ipEdit = None
       self.portEdit = None
-      self.ownKeyLabel = None
+      self.ownKeyEdit = None
 
       # Test connection widgets
       self.testFrame = None
@@ -394,6 +232,24 @@ class DatabaseTab(QtWidgets.QWidget):
 
       self.initWidgets()
 
+      # Database scenario section (always on top)
+      scenarioFrame = QtWidgets.QGroupBox(self.tr('Database Scenario'))
+      scenarioLayout = QtWidgets.QVBoxLayout(scenarioFrame)
+      scenarioLayout.setContentsMargins(12, 12, 12, 12)
+      scenarioLayout.setSpacing(8)
+
+      scenarioGrid = QtWidgets.QGridLayout()
+      scenarioGrid.setSpacing(8)
+
+      dbScenarioLabel = QtWidgets.QLabel(self.tr("Mode"))
+
+      scenarioGrid.addWidget(dbScenarioLabel, 0, 0)
+      scenarioGrid.addWidget(self.databaseScenarioCombo, 0, 1)
+      scenarioGrid.setColumnStretch(1, 1)
+
+      scenarioLayout.addLayout(scenarioGrid)
+      mainLayout.addWidget(scenarioFrame)
+
       self.dirFrame = QtWidgets.QGroupBox(self.tr('Database Directory'))
       dirFrameLayout = QtWidgets.QVBoxLayout(self.dirFrame)
       dirFrameLayout.setContentsMargins(12, 12, 12, 12)
@@ -412,24 +268,6 @@ class DatabaseTab(QtWidgets.QWidget):
 
       dirFrameLayout.addLayout(dirGrid)
       mainLayout.addWidget(self.dirFrame)
-
-      # Database scenario section
-      scenarioFrame = QtWidgets.QGroupBox(self.tr('Database Scenario'))
-      scenarioLayout = QtWidgets.QVBoxLayout(scenarioFrame)
-      scenarioLayout.setContentsMargins(12, 12, 12, 12)
-      scenarioLayout.setSpacing(8)
-
-      scenarioGrid = QtWidgets.QGridLayout()
-      scenarioGrid.setSpacing(8)
-
-      dbScenarioLabel = QtWidgets.QLabel(self.tr("Mode"))
-
-      scenarioGrid.addWidget(dbScenarioLabel, 0, 0)
-      scenarioGrid.addWidget(self.databaseScenarioCombo, 0, 1)
-      scenarioGrid.setColumnStretch(1, 1)
-
-      scenarioLayout.addLayout(scenarioGrid)
-      mainLayout.addWidget(scenarioFrame)
 
       self.createLocalDatabaseFrame()
       mainLayout.addWidget(self.localDatabaseFrame)
@@ -471,11 +309,11 @@ class DatabaseTab(QtWidgets.QWidget):
       self.databaseScenarioCombo = QtWidgets.QComboBox()
       self.databaseScenarioCombo.setFixedWidth(200)
       self.databaseScenarioCombo.addItems([
-         SCENARIO_DB_LOCAL, SCENARIO_DB_REMOTE, SCENARIO_DB_NONE])
+         SCENARIO_DB_LOCAL, SCENARIO_REMOTE_IP,
+         SCENARIO_REMOTE_PEER, SCENARIO_DB_NONE])
       self.databaseScenarioCombo.currentIndexChanged.connect(
          self.handleScenarioChange)
 
-      # Local mode widgets
       self.databaseTypeCombo = QtWidgets.QComboBox()
       self.databaseTypeCombo.setFixedWidth(200)
       self.databaseTypeCombo.addItems(["Full Database", "Supernode"])
@@ -490,26 +328,39 @@ class DatabaseTab(QtWidgets.QWidget):
       self.threadCountEdit.setFixedWidth(100)
       self.threadCountEdit.textChanged.connect(self.updateCliCommandDisplay)
 
-      # Remote mode widgets
-      self.remoteModeCombo = QtWidgets.QComboBox()
-      self.remoteModeCombo.setFixedWidth(220)
-      self.remoteModeCombo.addItems([REMOTE_MODE_PEER, REMOTE_MODE_IP])
-      self.remoteModeCombo.currentIndexChanged.connect(
-         self.handleRemoteModeChange)
-
       # Remote Peer sub-mode widgets
-      self.peerCombo = QtWidgets.QComboBox()
-      self.peerCombo.setMinimumWidth(200)
+      self.peerList = QtWidgets.QListWidget()
+      self.peerList.setMinimumWidth(200)
+      self.peerList.setMinimumHeight(80)
+      self.peerList.setMaximumHeight(140)
+      self.peerList.setSelectionMode(
+         QtWidgets.QAbstractItemView.SingleSelection)
+      self.peerList.currentItemChanged.connect(
+         self.onPeerSelectionChanged)
+      hint = QtWidgets.QListWidgetItem(
+         self.tr("Load peers database to see saved peers"))
+      hint.setFlags(QtCore.Qt.NoItemFlags)
+      self.peerList.addItem(hint)
 
-      self.managePeersButton = QtWidgets.QPushButton(self.tr("Manage..."))
-      self.managePeersButton.setFixedWidth(80)
-      self.managePeersButton.clicked.connect(self.openPeerManager)
+      self.peersDbStatusLabel = QtWidgets.QLabel(
+         self.tr('Load peers database:'))
+
+      self.loadPeersDbButton = QtWidgets.QPushButton(
+         self.tr("Load DB"))
+      self.loadPeersDbButton.setFixedWidth(80)
+
+      self.addPeerButton = QtWidgets.QPushButton(self.tr("Add Peer..."))
+      self.addPeerButton.setFixedWidth(100)
+      self.addPeerButton.clicked.connect(self.addPeerFromTab)
+      self.addPeerButton.setEnabled(False)
 
       self.handshakeModeCombo = QtWidgets.QComboBox()
       self.handshakeModeCombo.setFixedWidth(200)
-      self.handshakeModeCombo.addItems(["1-way (client only)", "2-way (mutual)"])
+      self.handshakeModeCombo.addItems(
+         ["1-way, client only", "2-way, mutual"])
       self.handshakeModeCombo.setToolTip(
-         self.tr("1-way: client verifies server\n2-way: mutual authentication"))
+         self.tr("1-way: client verifies server\n"
+            "2-way: mutual authentication"))
 
       # Remote IP sub-mode widgets
       self.ipEdit = QtWidgets.QLineEdit()
@@ -523,30 +374,28 @@ class DatabaseTab(QtWidgets.QWidget):
       self.portEdit.textChanged.connect(self.updateCliCommandDisplay)
 
       # Own public key display for sharing
-      self.ownKeyLabel = QtWidgets.QLabel(self.tr('(Load peers DB to view)'))
-      self.ownKeyLabel.setWordWrap(True)
-      self.ownKeyLabel.setTextInteractionFlags(
-         QtCore.Qt.TextSelectableByMouse | QtCore.Qt.TextSelectableByKeyboard)
-      self.ownKeyLabel.setStyleSheet(
-         "font-family: monospace; font-size: 8pt; padding: 4px; "
-         "background-color: #f8f8f8; border: 1px solid #ddd;")
+      self.ownKeyEdit = QtWidgets.QLineEdit()
+      self.ownKeyEdit.setReadOnly(True)
+      self.ownKeyEdit.setPlaceholderText(
+         self.tr('Load peers DB to view'))
 
       # CLI command display
       self.cliCommandLabel = QtWidgets.QLabel()
       self.cliCommandLabel.setWordWrap(False)
       self.cliCommandLabel.setStyleSheet(
-         "background-color: #f0f0f0; border: 1px solid #ccc; padding: 8px; "
-         "font-family: monospace; font-size: 10pt; color: #333;")
+         f"background-color: {htmlColor('SlightBkgdDark')}; "
+         f"border: 1px solid {htmlColor('Mid')}; "
+         "padding: 8px; font-family: monospace; "
+         f"font-size: 10pt; color: {htmlColor('Foreground')};")
       self.cliCommandLabel.setText(
-         "CLI Command: (will be generated based on settings)")
+         "CLI command will be generated based on settings")
 
       # Test connection button
       self.testConnectionButton = QtWidgets.QPushButton(
-         self.tr("Test Connection"))
+         self.tr("Connect"))
       self.testConnectionButton.setFixedWidth(140)
       self.testConnectionButton.setToolTip(
-         self.tr("Test connection to database with current settings.\n"
-                 "A successful test establishes a live connection."))
+         self.tr("Connect to the database with current settings"))
       self.testConnectionButton.clicked.connect(self.onTestConnectionClicked)
 
    def createLocalDatabaseFrame(self):
@@ -561,7 +410,7 @@ class DatabaseTab(QtWidgets.QWidget):
       localDbGrid.setSpacing(8)
 
       dbTypeLabel = QtWidgets.QLabel(self.tr("Database Type"))
-      ramLabel = QtWidgets.QLabel(self.tr("RAM Usage (MB)"))
+      ramLabel = QtWidgets.QLabel(self.tr("RAM Usage, MB"))
       threadLabel = QtWidgets.QLabel(self.tr("Thread Count"))
 
       localDbGrid.addWidget(dbTypeLabel, 0, 0)
@@ -575,113 +424,95 @@ class DatabaseTab(QtWidgets.QWidget):
       localDbLayout.addLayout(localDbGrid)
 
    def createRemoteFrame(self):
-      """Create the remote database configuration frame with sub-modes."""
-      self.remoteFrame = QtWidgets.QGroupBox(self.tr('Remote Connection'))
+      """Create the remote database configuration frame."""
+      self.remoteFrame = QtWidgets.QGroupBox(
+         self.tr('Remote Connection'))
       remoteLayout = QtWidgets.QVBoxLayout(self.remoteFrame)
       remoteLayout.setContentsMargins(12, 12, 12, 12)
       remoteLayout.setSpacing(8)
 
-      # Connection mode selector
-      modeLayout = QtWidgets.QHBoxLayout()
-      modeLabel = QtWidgets.QLabel(self.tr("Connection Mode:"))
-      modeLayout.addWidget(modeLabel)
-      modeLayout.addWidget(self.remoteModeCombo)
-      modeLayout.addStretch()
-      remoteLayout.addLayout(modeLayout)
-
-      # Sub-frame for saved peer connection
+      # Peer sub-frame
       self.peerFrame = QtWidgets.QFrame()
-      peerFrameLayout = QtWidgets.QVBoxLayout(self.peerFrame)
-      peerFrameLayout.setContentsMargins(0, 8, 0, 0)
-      peerFrameLayout.setSpacing(8)
+      peerLayout = QtWidgets.QVBoxLayout(self.peerFrame)
+      peerLayout.setContentsMargins(0, 0, 0, 0)
+      peerLayout.setSpacing(8)
 
-      peerGrid = QtWidgets.QGridLayout()
-      peerGrid.setSpacing(8)
+      dbStatusLayout = QtWidgets.QHBoxLayout()
+      dbStatusLayout.setSpacing(8)
+      dbStatusLayout.addWidget(self.peersDbStatusLabel)
+      dbStatusLayout.addWidget(self.loadPeersDbButton)
+      dbStatusLayout.addStretch()
+      peerLayout.addLayout(dbStatusLayout)
 
-      peerLabel = QtWidgets.QLabel(self.tr("Saved Peer:"))
-      peerSelectLayout = QtWidgets.QHBoxLayout()
-      peerSelectLayout.setSpacing(8)
-      peerSelectLayout.addWidget(self.peerCombo, 1)
-      peerSelectLayout.addWidget(self.managePeersButton)
+      peerListLabel = QtWidgets.QLabel(
+         self.tr("Known Peers:"))
+      peerLayout.addWidget(peerListLabel)
+      peerLayout.addWidget(self.peerList)
 
-      handshakeLabel = QtWidgets.QLabel(self.tr("Auth Mode:"))
-
-      peerGrid.addWidget(peerLabel, 0, 0)
-      peerGrid.addLayout(peerSelectLayout, 0, 1)
-      peerGrid.addWidget(handshakeLabel, 1, 0)
-      peerGrid.addWidget(self.handshakeModeCombo, 1, 1)
-      peerGrid.setColumnStretch(1, 1)
-      peerFrameLayout.addLayout(peerGrid)
-
-      peerInfo = QtWidgets.QLabel(
-         self.tr("Uses peers database for authenticated connections."))
-      peerInfo.setStyleSheet("color: gray; font-style: italic;")
-      peerFrameLayout.addWidget(peerInfo)
+      peerButtonLayout = QtWidgets.QHBoxLayout()
+      peerButtonLayout.setSpacing(8)
+      peerButtonLayout.addWidget(self.addPeerButton)
+      peerButtonLayout.addStretch()
+      handshakeLabel = QtWidgets.QLabel(self.tr("Auth:"))
+      peerButtonLayout.addWidget(handshakeLabel)
+      peerButtonLayout.addWidget(self.handshakeModeCombo)
+      peerLayout.addLayout(peerButtonLayout)
 
       remoteLayout.addWidget(self.peerFrame)
 
-      # Sub-frame for direct IP connection
+      # IP sub-frame
       self.ipFrame = QtWidgets.QFrame()
-      ipFrameLayout = QtWidgets.QVBoxLayout(self.ipFrame)
-      ipFrameLayout.setContentsMargins(0, 8, 0, 0)
-      ipFrameLayout.setSpacing(8)
+      ipLayout = QtWidgets.QVBoxLayout(self.ipFrame)
+      ipLayout.setContentsMargins(0, 0, 0, 0)
+      ipLayout.setSpacing(8)
 
       ipGrid = QtWidgets.QGridLayout()
       ipGrid.setSpacing(8)
-
       ipLabel = QtWidgets.QLabel(self.tr("IP Address:"))
       portLabel = QtWidgets.QLabel(self.tr("Port:"))
-
       ipGrid.addWidget(ipLabel, 0, 0)
       ipGrid.addWidget(self.ipEdit, 0, 1)
       ipGrid.addWidget(portLabel, 0, 2)
       ipGrid.addWidget(self.portEdit, 0, 3)
       ipGrid.setColumnStretch(1, 1)
-      ipFrameLayout.addLayout(ipGrid)
-
-      ipInfo = QtWidgets.QLabel(
-         self.tr("1-way auth only. Server key will be shown for approval."))
-      ipInfo.setStyleSheet("color: gray; font-style: italic;")
-      ipFrameLayout.addWidget(ipInfo)
+      ipLayout.addLayout(ipGrid)
 
       remoteLayout.addWidget(self.ipFrame)
 
-      # Own public key section (for sharing with peers)
-      ownKeyFrame = QtWidgets.QFrame()
-      ownKeyLayout = QtWidgets.QVBoxLayout(ownKeyFrame)
+      # Own public key (for sharing with peers)
+      ownKeyLayout = QtWidgets.QVBoxLayout()
       ownKeyLayout.setContentsMargins(0, 12, 0, 0)
       ownKeyLayout.setSpacing(4)
-
-      ownKeyHeader = QtWidgets.QLabel(self.tr("Your Public Key (share with peers):"))
+      ownKeyHeader = QtWidgets.QLabel(
+         self.tr("Your Public Key:"))
+      ownKeyHeader.setToolTip(
+         self.tr("Share with peers for mutual auth"))
       ownKeyLayout.addWidget(ownKeyHeader)
-      ownKeyLayout.addWidget(self.ownKeyLabel)
-
-      remoteLayout.addWidget(ownKeyFrame)
-
-      # Initial sub-frame visibility
-      self.ipFrame.hide()
+      ownKeyLayout.addWidget(self.ownKeyEdit)
+      remoteLayout.addLayout(ownKeyLayout)
 
    def updateCliCommandDisplay(self):
       """Update the CLI command display based on current database settings.
 
-      Note: This is informational only. Actual connection is done via bridge API.
+      Informational only. Actual connection is via bridge API.
       """
-      dbScenario = self.databaseScenarioCombo.currentText()
-      if dbScenario == SCENARIO_DB_LOCAL:
+      scenario = self.databaseScenarioCombo.currentText()
+      if scenario == SCENARIO_DB_LOCAL:
          dbType = self.databaseTypeCombo.currentText()
          ramUsage = self.ramUsageEdit.text() or '50'
          threadCount = self.threadCountEdit.text() or '4'
          dbDir = self.databaseDirEdit.text() or ARMORY_DB_DIR
          dataDir = ARMORY_HOME_DIR or '/path/to/armory'
          if BTC_HOME_DIR:
-            satoshiDir = os.path.join(BTC_HOME_DIR, 'blocks')
+            satoshiDir = os.path.join(
+               BTC_HOME_DIR, 'blocks')
          else:
             satoshiDir = '/path/to/bitcoin/blocks'
-         dbTypeArg = 'DB_SUPER' if dbType == 'Supernode' else 'DB_FULL'
+         dbTypeArg = 'DB_SUPER' \
+            if dbType == 'Supernode' else 'DB_FULL'
          cmdParts = [
             '# Local ArmoryDB (bridge: automateDb)',
-            'ArmoryDB',
-            '--ephemeral',
+            'ArmoryDB', '--ephemeral',
             f'--db-type={dbTypeArg}',
             f'--ram-usage={ramUsage}',
             f'--thread-count={threadCount}',
@@ -689,78 +520,92 @@ class DatabaseTab(QtWidgets.QWidget):
             f'--dbdir="{dbDir}"',
             f'--satoshi-datadir="{satoshiDir}"'
          ]
-      elif dbScenario == SCENARIO_DB_REMOTE:
-         remoteMode = self.remoteModeCombo.currentText()
-         if remoteMode == REMOTE_MODE_PEER:
-            if self.peerCombo.currentData():
-               peerName = self.peerCombo.currentText()
-            else:
-               peerName = '(none)'
-            authMode = '2-way' if self.handshakeModeCombo.currentIndex() == 1 \
-               else '1-way'
-            cmdParts = [
-               '# Remote via saved peer (bridge: connectToPeer)',
-               f'Peer: {peerName}',
-               f'Auth: {authMode}'
-            ]
-         else:
-            ipAddr = self.ipEdit.text().strip() or '(not set)'
-            portText = self.portEdit.text().strip() or str(ARMORYDB_DEFAULT_PORT)
-            cmdParts = [
-               '# Remote via IP (bridge: connectToIp)',
-               f'IP: {ipAddr}',
-               f'Port: {portText}',
-               'Auth: 1-way only'
-            ]
+      elif scenario == SCENARIO_REMOTE_PEER:
+         selected = self.peerList.currentItem()
+         peerName = selected.text() if selected \
+            else 'none'
+         authMode = '2-way' \
+            if self.handshakeModeCombo.currentIndex() == 1 \
+            else '1-way'
+         cmdParts = [
+            '# Remote via peer (bridge: connectToPeer)',
+            f'Peer: {peerName}',
+            f'Auth: {authMode}'
+         ]
+      elif scenario == SCENARIO_REMOTE_IP:
+         ipAddr = self.ipEdit.text().strip() \
+            or 'not set'
+         portText = self.portEdit.text().strip() \
+            or str(ARMORYDB_DEFAULT_PORT)
+         cmdParts = [
+            '# Remote via IP (bridge: connectToIp)',
+            f'IP: {ipAddr}',
+            f'Port: {portText}',
+            'Auth: 1-way only'
+         ]
       else:
-         cmdParts = ['# Offline mode', '(No database connection)']
+         cmdParts = [
+            '# Offline mode',
+            'No database connection']
       commandLine = '\n  '.join(cmdParts)
       self.cliCommandLabel.setText(f"Settings:\n  {commandLine}")
 
-   def handleRemoteModeChange(self, index):
-      """Handle remote connection sub-mode changes."""
-      currentMode = self.remoteModeCombo.currentText()
-      if currentMode == REMOTE_MODE_PEER:
-         self.peerFrame.show()
-         self.ipFrame.hide()
-      else:
-         self.peerFrame.hide()
-         self.ipFrame.show()
-      self.updateCliCommandDisplay()
-
    def handleScenarioChange(self, index):
       """Handle changes to the database scenario selection."""
-      dbScenario = self.databaseScenarioCombo.itemText(index)
-      isLocal = dbScenario == SCENARIO_DB_LOCAL
-      isRemote = dbScenario == SCENARIO_DB_REMOTE
-      isOffline = dbScenario == SCENARIO_DB_NONE
+      scenario = self.databaseScenarioCombo.itemText(index)
+      isLocal = scenario == SCENARIO_DB_LOCAL
+      isRemote = isRemoteScenario(scenario)
+      isPeer = scenario == SCENARIO_REMOTE_PEER
+      isIp = scenario == SCENARIO_REMOTE_IP
+      isOffline = scenario == SCENARIO_DB_NONE
+
       self.dirFrame.setVisible(not isRemote)
       self.localDatabaseFrame.setVisible(isLocal)
       self.remoteFrame.setVisible(isRemote)
+      self.peerFrame.setVisible(isPeer)
+      self.ipFrame.setVisible(isIp)
       self.cliFrame.setVisible(not isRemote)
-      # Test connection only available for local and remote scenarios
       self.testFrame.setVisible(not isOffline)
+
+      if isPeer:
+         selected = self.peerList.currentItem()
+         if selected and selected.data(QtCore.Qt.UserRole):
+            self.testConnectionButton.setText(
+               self.tr("Connect: {}").format(
+                  selected.text()))
+         else:
+            self.testConnectionButton.setText(
+               self.tr("Connect"))
+      else:
+         self.testConnectionButton.setText(
+            self.tr("Connect"))
+
       self.updateCliCommandDisplay()
 
-   def onTestConnectionClicked(self):
-      """Handle Test Connection button click.
+   def onPeerSelectionChanged(self, current, previous):
+      """Update connect button label with selected peer name."""
+      if current and current.data(QtCore.Qt.UserRole):
+         label = self.tr("Connect: {}").format(
+            current.text())
+         self.testConnectionButton.setText(label)
+      else:
+         self.testConnectionButton.setText(
+            self.tr("Connect"))
 
-      Emits testConnectionRequested signal for parent to handle the actual
-      connection attempt. The parent (DlgSetupManager) will call the
-      appropriate bridge API based on current settings.
-      """
-      LOGINFO("Test Connection requested from DatabaseTab")
+   def onTestConnectionClicked(self):
+      """Emit testConnectionRequested for parent to handle."""
+      LOGINFO("Connect requested from DatabaseTab")
       self.testConnectionRequested.emit()
 
-   def refreshPeerCombo(self):
-      """Refresh peer combo box from bridge."""
-      self.peerCombo.clear()
+   def refreshPeerList(self):
+      """Refresh peer list widget from bridge."""
+      self.peerList.clear()
       self.cachedPeers = []
       self.ownPublicKey = ''
 
       if not self.peersDbLoaded:
-         self.peerCombo.addItem(self.tr('(Load peers DB first)'))
-         self.peerCombo.setEnabled(False)
+         self._showPeerListHint(
+            self.tr("Load peers database to see saved peers"))
          return
 
       bridgePeers = TheBridge.dbSetup.listPeers()
@@ -768,55 +613,110 @@ class DatabaseTab(QtWidgets.QWidget):
          peer = PeerData.fromBridgePeer(bp)
          if peer.isOwn():
             self.ownPublicKey = peer.publicKey
-            self.ownKeyLabel.setText(peer.publicKey)
+            self.ownKeyEdit.setText(peer.publicKey)
          else:
             self.cachedPeers.append(peer)
-            # Add each name (ip:port) as a combo item
             for name in peer.names:
-               displayText = name
-               self.peerCombo.addItem(displayText, peer)
+               item = QtWidgets.QListWidgetItem(name)
+               item.setData(QtCore.Qt.UserRole, peer)
+               item.setToolTip(
+                  f"Key: {peer.publicKey[:32]}...")
+               self.peerList.addItem(item)
 
-      if self.peerCombo.count() == 0:
-         self.peerCombo.addItem(self.tr('(No peers saved)'))
-         self.peerCombo.setEnabled(False)
-      else:
-         self.peerCombo.setEnabled(True)
+      if not self.cachedPeers:
+         self._showPeerListHint(
+            self.tr("No peers yet, use Add Peer to add one"))
 
-   def openPeerManager(self):
-      """Open the peer manager dialog."""
-      dialog = PeerManagerDialog(self, peersDbLoaded=self.peersDbLoaded)
+   def _showPeerListHint(self, text):
+      """Show a disabled hint item in the peer list."""
+      hint = QtWidgets.QListWidgetItem(text)
+      hint.setFlags(QtCore.Qt.NoItemFlags)
+      self.peerList.addItem(hint)
+
+   def addPeerFromTab(self):
+      """Add a peer directly from the database tab."""
+      if not self.peersDbLoaded:
+         QtWidgets.QMessageBox.warning(
+            self,
+            self.tr('Peers DB Required'),
+            self.tr('Load the peers database first to add peers.'))
+         return
+      dialog = AddPeerDialog(self)
       if dialog.exec_() == QtWidgets.QDialog.Accepted:
-         selectedPeerName = dialog.getSelectedPeerName()
-         if selectedPeerName:
-            self.refreshPeerCombo()
-            # Select the chosen peer in combo
-            idx = self.peerCombo.findText(selectedPeerName)
-            if idx >= 0:
-               self.peerCombo.setCurrentIndex(idx)
-         # Update own public key display
-         ownKey = dialog.getOwnPublicKey()
-         if ownKey:
-            self.ownPublicKey = ownKey
-            self.ownKeyLabel.setText(ownKey)
+         publicKey = dialog.getPublicKey()
+         address = dialog.getAddress()
+         result = TheBridge.dbSetup.addPeer(publicKey, [address])
+         if result.success:
+            LOGINFO(f"Added peer: {address}")
+            self.refreshPeerList()
+         else:
+            QtWidgets.QMessageBox.warning(
+               self, self.tr('Add Peer Failed'),
+               self.tr('Failed to add peer: {}').format(
+                  result.error))
 
    def setPeersDbLoaded(self, loaded):
-      """Update peers database loaded state and refresh UI accordingly."""
+      """Update peers database loaded state and refresh UI."""
       self.peersDbLoaded = loaded
-      self.refreshPeerCombo()
-      self.managePeersButton.setEnabled(loaded)
+      self.refreshPeerList()
+      self.addPeerButton.setEnabled(loaded)
       if loaded:
-         self.ownKeyLabel.setText(
-            self.ownPublicKey if self.ownPublicKey else self.tr('(Available)'))
+         self.peersDbStatusLabel.setText(
+            self.tr('Peers database:'))
+         self.loadPeersDbButton.setText(
+            self.tr("Reload"))
+         self.ownKeyEdit.setText(
+            self.ownPublicKey if self.ownPublicKey
+            else '')
+         self.ownKeyEdit.setPlaceholderText(
+            self.tr('Available after reload'))
       else:
-         self.ownKeyLabel.setText(self.tr('(Load peers DB to view)'))
+         self.peersDbStatusLabel.setText(
+            self.tr('Load peers database:'))
+         self.loadPeersDbButton.setText(
+            self.tr("Load DB"))
+         self.ownKeyEdit.clear()
+         self.ownKeyEdit.setPlaceholderText(
+            self.tr('Load peers DB to view'))
+
+   def setDbSettingsLocked(self, locked):
+      """Lock or unlock DB settings after a successful connection.
+
+      C++ bridge bug: bdvPtr_ is not reset after cleanupDb,
+      so reconnection is not possible on the same session.
+      Lock settings to prevent the user from changing them
+      after a successful test connection.
+      """
+      self.databaseScenarioCombo.setEnabled(not locked)
+      self.databaseDirEdit.setEnabled(not locked)
+      self.databaseTypeCombo.setEnabled(not locked)
+      self.ramUsageEdit.setEnabled(not locked)
+      self.threadCountEdit.setEnabled(not locked)
+      self.ipEdit.setEnabled(not locked)
+      self.portEdit.setEnabled(not locked)
+      self.testConnectionButton.setEnabled(not locked)
+      if locked:
+         self.testConnectionButton.setText(
+            self.tr("Connected"))
 
    def loadSettings(self):
       """Load database tab settings from configuration."""
       self.databaseDirEdit.setText(os.path.normpath(ARMORY_DB_DIR))
 
-      # Database configuration
       dbScenario = TheSettings.getSettingOrSetDefault(
-         'DBScenario', 'Automate ArmoryDB')
+         'DBScenario', SCENARIO_DB_LOCAL)
+      # Migrate old scenario names
+      if dbScenario == "Remote Database":
+         oldMode = TheSettings.getSettingOrSetDefault(
+            'RemoteMode', '')
+         if 'Peer' in oldMode:
+            dbScenario = SCENARIO_REMOTE_PEER
+         else:
+            dbScenario = SCENARIO_REMOTE_IP
+      elif dbScenario in ("Remote (by Peer)", "Remote, by Peer"):
+         dbScenario = SCENARIO_REMOTE_PEER
+      elif dbScenario in ("Remote (by IP)", "Remote, by IP"):
+         dbScenario = SCENARIO_REMOTE_IP
       self.databaseScenarioCombo.setCurrentText(dbScenario)
 
       # Check if database has already been bootstrapped
@@ -830,9 +730,10 @@ class DatabaseTab(QtWidgets.QWidget):
          self.databaseScenarioCombo.setEnabled(False)
          if self.dbBootstrapLabel is None:
             self.dbBootstrapLabel = QtWidgets.QLabel(
-               self.tr("(Database already bootstrapped - cannot change mode)"))
+               self.tr("Database already bootstrapped, cannot change mode"))
             self.dbBootstrapLabel.setStyleSheet(
-               "color: orange; font-style: italic;")
+               f"color: {htmlColor('TextWarn')}; "
+               "font-style: italic;")
             layout = self.databaseScenarioCombo.parent().layout()
             if layout:
                layout.addWidget(self.dbBootstrapLabel)
@@ -851,18 +752,11 @@ class DatabaseTab(QtWidgets.QWidget):
             str(TheSettings.getSettingOrSetDefault('RAMUsage', 50)))
          self.threadCountEdit.setText(
             str(TheSettings.getSettingOrSetDefault('ThreadCount', 4)))
-      elif dbScenario == SCENARIO_DB_REMOTE:
-         # Load remote sub-mode preference
-         remoteMode = TheSettings.getSettingOrSetDefault(
-            'RemoteMode', REMOTE_MODE_PEER)
-         self.remoteModeCombo.setCurrentText(remoteMode)
-         self.handleRemoteModeChange(self.remoteModeCombo.currentIndex())
-
-         # Load handshake mode setting (for peer mode)
-         handshakeMode = TheSettings.getSettingOrSetDefault('HandshakeMode', 0)
-         self.handshakeModeCombo.setCurrentIndex(handshakeMode)
-
-         # Load IP connection settings (for IP mode)
+      elif isRemoteScenario(dbScenario):
+         handshakeMode = TheSettings.getSettingOrSetDefault(
+            'HandshakeMode', 0)
+         self.handshakeModeCombo.setCurrentIndex(
+            handshakeMode)
          savedHost = TheSettings.get('RemoteDBHost')
          savedPort = TheSettings.get('RemoteDBPort')
          if savedHost:
@@ -870,43 +764,41 @@ class DatabaseTab(QtWidgets.QWidget):
          if savedPort:
             self.portEdit.setText(str(savedPort))
 
-         # Note: Peers are loaded from bridge via refreshPeerCombo()
-         # when peersDbLoaded is set to True
-
    def collectSettings(self):
       """Return current database config from UI as a dict."""
-      dbScenario = self.databaseScenarioCombo.currentText()
-      isLocal = dbScenario == SCENARIO_DB_LOCAL
-      isRemote = dbScenario == SCENARIO_DB_REMOTE
+      scenario = self.databaseScenarioCombo.currentText()
+      isLocal = scenario == SCENARIO_DB_LOCAL
+      isPeer = scenario == SCENARIO_REMOTE_PEER
+      isIp = scenario == SCENARIO_REMOTE_IP
 
-      # Remote connection details
-      remoteMode = self.remoteModeCombo.currentText() if isRemote else ''
       peerName = ''
       ipAddr = ''
       ipPort = ''
       handshakeMode = 0
 
-      if isRemote:
-         if remoteMode == REMOTE_MODE_PEER:
-            # Peer mode: get selected peer name (ip:port) from combo
-            if self.peerCombo.currentData() is not None:
-               peerName = self.peerCombo.currentText()
-            handshakeMode = self.handshakeModeCombo.currentIndex()
-         else:
-            # IP mode: get host/port from edit fields
-            ipAddr = self.ipEdit.text().strip()
-            portText = self.portEdit.text().strip()
-            ipPort = portText if portText else str(ARMORYDB_DEFAULT_PORT)
+      if isPeer:
+         selected = self.peerList.currentItem()
+         if selected and selected.data(QtCore.Qt.UserRole):
+            peerName = selected.text()
+         handshakeMode = \
+            self.handshakeModeCombo.currentIndex()
+      elif isIp:
+         ipAddr = self.ipEdit.text().strip()
+         portText = self.portEdit.text().strip()
+         ipPort = portText if portText \
+            else str(ARMORYDB_DEFAULT_PORT)
 
       return {
          'dbPath': str(self.databaseDirEdit.text()),
-         'scenario': str(dbScenario),
-         # Local mode settings
-         'typeDisp': str(self.databaseTypeCombo.currentText()) if isLocal else '',
-         'ram': str(self.ramUsageEdit.text()) if isLocal else '',
-         'threads': str(self.threadCountEdit.text()) if isLocal else '',
-         # Remote mode settings
-         'remoteMode': remoteMode,
+         'scenario': str(scenario),
+         'typeDisp': str(
+            self.databaseTypeCombo.currentText()
+            ) if isLocal else '',
+         'ram': str(
+            self.ramUsageEdit.text()) if isLocal else '',
+         'threads': str(
+            self.threadCountEdit.text()
+            ) if isLocal else '',
          'peerName': peerName,
          'ipAddr': ipAddr,
          'ipPort': ipPort,
@@ -914,9 +806,9 @@ class DatabaseTab(QtWidgets.QWidget):
       }
 
    def validate(self):
-      """Validate database tab settings. Returns True if valid."""
-      dbScenario = self.databaseScenarioCombo.currentText()
-      if dbScenario == SCENARIO_DB_LOCAL:
+      """Validate database tab settings."""
+      scenario = self.databaseScenarioCombo.currentText()
+      if scenario == SCENARIO_DB_LOCAL:
          ramText = str(self.ramUsageEdit.text()).strip()
          threadText = str(self.threadCountEdit.text()).strip()
          if ramText:
@@ -935,42 +827,42 @@ class DatabaseTab(QtWidgets.QWidget):
                if threads < 1 or threads > MAX_THREAD_COUNT:
                   raise ValueError()
             except ValueError:
-               msg = self.tr('Thread count must be an integer between 1 and {}.')
+               msg = self.tr('Thread count must be between '
+                  '1 and {}.')
                QtWidgets.QMessageBox.warning(
                   self, self.tr('Invalid Thread Count'),
                   msg.format(MAX_THREAD_COUNT))
                return False
-      elif dbScenario == SCENARIO_DB_REMOTE:
-         remoteMode = self.remoteModeCombo.currentText()
-         if remoteMode == REMOTE_MODE_PEER:
-            # Peer mode: must have a selected peer
-            if self.peerCombo.currentData() is None:
+      elif scenario == SCENARIO_REMOTE_PEER:
+         selected = self.peerList.currentItem()
+         if not selected \
+               or not selected.data(QtCore.Qt.UserRole):
+            QtWidgets.QMessageBox.warning(
+               self,
+               self.tr('No Peer Selected'),
+               self.tr('Select a known peer or use '
+                  'Connect to IP mode.'))
+            return False
+      elif scenario == SCENARIO_REMOTE_IP:
+         ipAddr = self.ipEdit.text().strip()
+         if not ipAddr:
+            QtWidgets.QMessageBox.warning(
+               self,
+               self.tr('Missing IP Address'),
+               self.tr('Enter the remote database IP.'))
+            return False
+         portText = self.portEdit.text().strip()
+         if portText:
+            try:
+               port = int(portText)
+               if port < 1 or port > 65535:
+                  raise ValueError()
+            except ValueError:
                QtWidgets.QMessageBox.warning(
                   self,
-                  self.tr('No Peer Selected'),
-                  self.tr('Please select a saved peer or switch to IP mode.'))
+                  self.tr('Invalid Port'),
+                  self.tr('Port must be 1-65535.'))
                return False
-         else:
-            # IP mode: validate IP and port
-            ipAddr = self.ipEdit.text().strip()
-            if not ipAddr:
-               QtWidgets.QMessageBox.warning(
-                  self,
-                  self.tr('Missing IP Address'),
-                  self.tr('Please enter the remote database IP address.'))
-               return False
-            portText = self.portEdit.text().strip()
-            if portText:
-               try:
-                  port = int(portText)
-                  if port < 1 or port > 65535:
-                     raise ValueError()
-               except ValueError:
-                  QtWidgets.QMessageBox.warning(
-                     self,
-                     self.tr('Invalid Port'),
-                     self.tr('Port must be an integer between 1 and 65535.'))
-                  return False
       return True
 
    def validateDbPath(self):

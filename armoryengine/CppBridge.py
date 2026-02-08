@@ -412,24 +412,28 @@ class DbSetupService(ProtoWrapper):
       return fut.getVal(nothrow=True)
 
    ####
-   def connectToIp(self, ip: str, port: str, callbackId: str):
+   def connectToIp(self, ip: str, port: str, callbackId: str,
+      resultCallback: callable = None):
       """
       Connect to remote DB by IP address (1-way auth).
 
-      The server will present its public key via a 'presentPubkey' notification.
-      User must ack/nack the connection.
+      The server will present its public key via a 'presentPubkey'
+      notification. User must ack/nack the connection. The actual
+      connection result arrives as a reply after the ack.
 
       Args:
          ip: Remote DB IP address
          port: Remote DB port
-         callbackId: Callback ID for receiving server key presentation
+         callbackId: Callback ID for receiving server key
+         resultCallback: Called with the reply when connection
+            completes or fails (after key ack/nack)
       """
       packet = Bridge.ToBridge.new_message()
       request = packet.init("setup").init("connectToIp")
       request.ip = ip
       request.port = port
       request.callbackId = callbackId
-      self.send(packet, needsReply=False)
+      self.send(packet, needsReply=False, callback=resultCallback)
 
    ####
    def connectToPeer(self, peerName: str, oneWayAuth: bool = False):
@@ -450,7 +454,8 @@ class DbSetupService(ProtoWrapper):
       return fut.getVal(nothrow=True)
 
    ####
-   def loadPeersDb(self, callbackId: str):
+   def loadPeersDb(self, callbackId: str,
+      resultCallback: callable = None):
       """
       Load the peers database.
 
@@ -459,12 +464,21 @@ class DbSetupService(ProtoWrapper):
       - setPassphrase: If container doesn't exist, needs new passphrase
 
       Args:
-         callbackId: Callback ID for receiving unlock/passphrase requests
+         callbackId: Callback ID for receiving unlock/passphrase
+         resultCallback: If provided, call is non-blocking and the
+            callback fires with the reply when the load completes.
+            Must be non-blocking when called from the Qt thread,
+            since C++ may send passphrase prompts that need the
+            Qt event loop.
       """
       packet = Bridge.ToBridge.new_message()
       packet.init("setup").loadPeersDb = callbackId
-      fut = self.send(packet)
-      return fut.getVal(nothrow=True)
+      if resultCallback:
+         self.send(packet, needsReply=False,
+            callback=resultCallback)
+      else:
+         fut = self.send(packet)
+         return fut.getVal(nothrow=True)
 
    ####
    def listPeers(self):
@@ -538,8 +552,20 @@ class DbSetupService(ProtoWrapper):
       self.send(packet, needsReply=False)
 
    ####
+   def cleanupDb(self):
+      """Shutdown the running ArmoryDB process.
+
+      Note: C++ does NOT reset bdvPtr_ after shutdown,
+      so reconnection on the same bridge is not possible.
+      """
+      packet = Bridge.ToBridge.new_message()
+      packet.init("setup").cleanupDb = None
+      fut = self.send(packet)
+      return fut.getVal(nothrow=True)
+
+   ####
    def shutdown(self):
-      """Shutdown the database connection and cleanup."""
+      """Shutdown the bridge entirely."""
       packet = Bridge.ToBridge.new_message()
       packet.init("setup").shutdown = None
       self.send(packet, needsReply=False)

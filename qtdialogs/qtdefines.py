@@ -98,12 +98,16 @@ UI_STYLE_DIALOG_BASE = """
    QTabBar::tab:hover:!selected {
       background-color: %(tab_hover)s;
    }
+   QTabBar::tab:disabled {
+      color: %(disabled_fg)s;
+   }
 """ % {
    'bg': htmlColor('Background'),
    'fg': htmlColor('Foreground'),
    'tab_bg': htmlColor('SlightBkgdDark'),
    'tab_sel': htmlColor('SlightBkgdLight'),
-   'tab_hover': htmlColor('SlightBkgdLight')
+   'tab_hover': htmlColor('SlightBkgdLight'),
+   'disabled_fg': htmlColor('DisableFG')
 }
 
 def applyDialogBaseStyle(widget):
