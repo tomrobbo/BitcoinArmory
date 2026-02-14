@@ -9,27 +9,27 @@
 #include <cstring>
 #include <filesystem>
 #include <string_view>
+#include <cstring>
 
 #include "Manager.h"
-#include "Utils/BtcUtils.h"
-#include "Utils/DBUtils.h"
+#include <Utils/BtcUtils.h>
+#include <Utils/DBUtils.h>
 
-#include "Wallets/Wallets.h"
-#include "Wallets/IOHeader.h"
-#include "Wallets/Accounts/AddressAccounts.h"
-#include "Wallets/Seeds/Backups.h"
-#include "Wallets/Seeds/Seeds.h"
+#include <Wallets/Wallets.h>
+#include <Wallets/IOHeader.h>
+#include <Wallets/EncryptedDB.h>
+#include <Wallets/Accounts/AddressAccounts.h>
+#include <Wallets/Seeds/Backups.h>
+#include <Wallets/Seeds/Seeds.h>
 
 #include "Notifications.h"
 #include "../PassphrasePrompt.h"
-#include "AsyncClient.h"
+#include <AsyncClient.h>
 
 using namespace Armory;
 using namespace Armory::Bridge;
 using namespace std::string_view_literals;
 using namespace std::chrono_literals;
-
-#include "capnp/Bridge.capnp.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 ////
@@ -340,6 +340,10 @@ void WalletManager::loadAFile(const std::filesystem::path& path)
          path.filename().string(),
          std::make_shared<LMDBWalletInfo>(path, nullptr)
       );
+   } catch (const Wallets::IO::NoEntryInWalletException&) {
+      //wallet is missing an mandatory entry, typically a header
+      LOGWARN << "failed to open wallet \"" << path.string()
+         << "\" with missing entry error";
    }
 }
 
@@ -620,7 +624,9 @@ std::shared_ptr<AddressEntry> WalletManager::getNewAddress(
    const Wallets::AddressAccountId& accId,
    uint32_t addrType, uint32_t addrKind)
 {
-   using namespace Armory::Codec::Bridge;
+   #define ADDRESS_NEW     1
+   #define ADDRESS_CHANGE  2
+   #define ADDRESS_PEEK    3
 
    bool wasExtended = false;
    auto progFunc = [&wasExtended](int)
@@ -635,21 +641,21 @@ std::shared_ptr<AddressEntry> WalletManager::getNewAddress(
    std::shared_ptr<AddressEntry> addrPtr;
    switch (addrKind)
    {
-      case WalletRequest::AddressRequest::NEW:
+      case ADDRESS_NEW:
       {
          addrPtr = accPtr->getNewAddress(
             wltPtr->getIface(), (AddressEntryType)addrType, progFunc);
          break;
       }
 
-      case WalletRequest::AddressRequest::CHANGE:
+      case ADDRESS_CHANGE:
       {
          addrPtr = accPtr->getNewChangeAddress(
             wltPtr->getIface(), (AddressEntryType)addrType, progFunc);
          break;
       }
 
-      case WalletRequest::AddressRequest::PEEK_CHANGE:
+      case ADDRESS_PEEK:
       {
          addrPtr = accPtr->peekNextChangeAddress(
             wltPtr->getIface(), (AddressEntryType)addrType, progFunc);
