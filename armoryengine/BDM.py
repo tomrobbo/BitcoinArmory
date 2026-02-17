@@ -28,7 +28,6 @@ BDM_UNINITIALIZED = 'Uninitialized'
 BDM_BLOCKCHAIN_READY = 'BlockChainReady'
 BDM_SCANNING = 'Scanning'
 
-SETUP_STEP1 = 'ready'
 NEW_ZC_ACTION = 'zeroConfs'
 NEW_BLOCK_ACTION = 'newBlock'
 REFRESH_ACTION = 'refresh'
@@ -43,8 +42,9 @@ BDV_DISCONNECTED = 'disconnected'
 CPP_BDM_NOTIF_ID      = "bdm_callback"
 CPP_PROGRESS_NOTIF_ID = "progress"
 
-SETUP_STEP2 = 'setupDone'
-SETUP_STEP3 = 'registerDone'
+INIT_DB_CONNECTED = 'setupDone'
+INIT_WALLETS_REGISTERED = 'registerDone'
+INIT_DB_READY = 'ready'
 
 def newTheBDM(isOffline=False):
    global TheBDM
@@ -210,7 +210,7 @@ class BlockDataManager(object):
    def pushNotification(self, notifProto):
       act = notifProto.which()
 
-      if act == SETUP_STEP1:
+      if act == INIT_DB_READY:
          LOGINFO('BDM is ready!')
          TheBDM.topBlockHeight = notifProto.ready
          TheBDM.setState(BDM_BLOCKCHAIN_READY)

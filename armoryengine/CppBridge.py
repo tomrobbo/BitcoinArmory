@@ -1527,19 +1527,6 @@ class ArmoryBridge(object):
          needsReply, callback, cbArgs, msgType)
 
    #############################################################################
-   def pushNotification(self, callbackData):
-      notifThread = threading.Thread(\
-         group=None, target=TheBDM.pushNotification, \
-         name=None, args=[callbackData], kwargs={})
-      notifThread.start()
-
-   def pushProgressNotification(self, data):
-      payload = Bridge.Notification.new_message()
-      payload.from_bytes_packed()
-
-      TheBDM.reportProgress(payload)
-
-   #############################################################################
    def getBlockTimeByHeight(self, height):
       if height in self.blockTimeByHeightCache:
          return self.blockTimeByHeightCache[height]

@@ -53,7 +53,7 @@ class DlgSetupManager(ArmoryDialog):
       self.bottomFrame = None
 
       # True after a successful Connect test
-      self.connectionSuccess = False
+      self._connectionSuccess = False
 
       # Callback state tracking for async operations
       self.peersDbCallback = None
@@ -70,6 +70,10 @@ class DlgSetupManager(ArmoryDialog):
       # Signals don't fire during init (loadSettings runs
       # before connectSignals), so trigger explicitly.
       self._autoLoadPeersIfNeeded()
+
+   @property
+   def connectionSuccess(self):
+      return self._connectionSuccess
 
    def setupDialogProperties(self):
       """Configure basic dialog properties and styling."""
@@ -193,6 +197,7 @@ class DlgSetupManager(ArmoryDialog):
 
       if success:
          LOGINFO("Connection established on accept")
+         self._connectionSuccess = True
          self._saveAndAccept()
          return
 
@@ -247,7 +252,7 @@ class DlgSetupManager(ArmoryDialog):
 
    def _invalidateConnection(self):
       """Reset connection state when DB settings change."""
-      self.connectionSuccess = False
+      self._connectionSuccess = False
 
    def onDbScenarioChanged(self, radioId, checked):
       """Handle database mode radio changes."""
@@ -346,7 +351,7 @@ class DlgSetupManager(ArmoryDialog):
          )
          return
 
-      self.connectionSuccess = False
+      self._connectionSuccess = False
 
       btn = self.databaseTab.testConnectionButton
       savedLabel = btn.text()
@@ -356,7 +361,7 @@ class DlgSetupManager(ArmoryDialog):
       try:
          success, error = self.initiateDbConnection(params)
          if success:
-            self.connectionSuccess = True
+            self._connectionSuccess = True
             self.databaseTab.setDbSettingsLocked(True)
             QtWidgets.QMessageBox.information(
                self,

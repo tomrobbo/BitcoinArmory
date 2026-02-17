@@ -8,7 +8,7 @@
 
 import os
 
-from qtpy import QtCore, QtWidgets
+from qtpy import QtCore, QtWidgets, QtGui
 from armoryengine.ArmoryUtils import ARMORY_DB_DIR, ARMORY_HOME_DIR, \
    BTC_HOME_DIR, ARMORYDB_DEFAULT_PORT, LOGINFO
 from armoryengine.Settings import TheSettings
@@ -686,8 +686,8 @@ class DatabaseTab(QtWidgets.QWidget):
       hint.setFlags(QtCore.Qt.NoItemFlags)
       hint.setForeground(
          self.peerList.palette().color(
-            self.peerList.palette().Disabled,
-            self.peerList.palette().Text))
+            QtGui.QPalette.ColorGroup.Disabled,
+            QtGui.QPalette.ColorRole.Text))
       font = hint.font()
       font.setItalic(True)
       hint.setFont(font)

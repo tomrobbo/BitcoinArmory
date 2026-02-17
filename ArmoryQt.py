@@ -50,10 +50,11 @@ from armoryengine.UserAddressUtils import getScriptForUserStringImpl, \
    getDisplayStringForScriptImpl
 from armoryengine.BDM import TheBDM, \
    BDM_BLOCKCHAIN_READY, BDM_SCANNING, BDM_UNINITIALIZED, BDM_OFFLINE, \
-   SETUP_STEP1, NEW_ZC_ACTION, NEW_BLOCK_ACTION, \
+   NEW_ZC_ACTION, NEW_BLOCK_ACTION, \
    REFRESH_ACTION, WARNING_ACTION, WARNING_ACTION, SCAN_ACTION, \
    NODESTATUS_UPDATE, BDM_SCAN_PROGRESS, BDV_ERROR, BDV_DISCONNECTED, \
-   SETUP_STEP2, SETUP_STEP3, BDMPhase_DBHeaders, BDMPhase_OrganizingChain, \
+   INIT_DB_CONNECTED, INIT_WALLETS_REGISTERED, INIT_DB_READY, \
+   BDMPhase_DBHeaders, BDMPhase_OrganizingChain, \
    BDMPhase_BlockHeaders, BDMPhase_BlockData, BDMPhase_Rescan, \
    BDMPhase_Balance, BDMPhase_SearchHashes, BDMPhase_ResolveHashes
 
@@ -4378,10 +4379,9 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
 
    #############################################################################
    def handleCppNotification(self, action, args):
-      if action == SETUP_STEP1:
+      if action == INIT_DB_READY:
          #Blockchain just finished loading, finish initializing UI and render
          #the ledgers
-
          self.nodeStatus = TheBridge.service.getNodeStatus()
          self.wallets.updateBalanceAndCount()
 
@@ -4591,9 +4591,9 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
          self.updateStatusBarText()
 
       #setup notifs
-      elif action == SETUP_STEP2:
+      elif action == INIT_DB_CONNECTED:
          self.registerWalletsWithService()
-      elif action == SETUP_STEP3:
+      elif action == INIT_WALLETS_REGISTERED:
          self.finalizeBlockchainSetup()
 
    #############################################################################
@@ -5067,7 +5067,7 @@ if 1:
    # Determine app directory for translations
    app_dir = os.path.dirname(os.path.realpath(__file__))
 
-   translator.load(TheSettings.getGuiLanguage(), 
+   translator.load(TheSettings.getGuiLanguage(),
       os.path.join(app_dir, "lang/"))
    QAPP.installTranslator(translator)
 
