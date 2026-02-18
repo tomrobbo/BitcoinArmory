@@ -121,7 +121,9 @@ int main(int argc, char* argv[])
             "server peers store");
          WebSocketServer::initAuthPeers({serverPeersFile, passLbd});
       }
-      LOGINFO << "This is my key: " << WebSocketServer::getPublicKey().toHexStr();
+      Wallets::PeerKey myKey{WebSocketServer::getPublicKey(),
+         Config::NetworkSettings::oneWayAuth(), true};
+      LOGINFO << "This is my key: " << myKey.toHumanReadable();
    }
 
    //start blockchain service

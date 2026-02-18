@@ -1987,7 +1987,7 @@ protected:
 
       std::stringstream serverAddr;
       serverAddr << "127.0.0.1:" << Config::NetworkSettings::dbPort();
-      clientPeers.addPeer(serverPubkey, serverAddr.str());
+      clientPeers.addPeer(serverPubkey, {serverAddr.str()});
 
       wallet1id = "wallet1";
 

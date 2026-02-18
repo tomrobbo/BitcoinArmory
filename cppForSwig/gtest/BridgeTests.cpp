@@ -1666,7 +1666,7 @@ protected:
 
       std::stringstream serverAddr;
       serverAddr << "127.0.0.1:" << Config::NetworkSettings::dbPort();
-      clientPeers.addPeer(serverPubkey, serverAddr.str());
+      clientPeers.addPeer(serverPubkey, {serverAddr.str()});
 
       serverPubkey_ = BinaryData(serverPubkey.pubkey, 33);
       serverAddr_ = serverAddr.str();
@@ -4986,13 +4986,14 @@ protected:
       auto capnPeers = replyMgr.getListPeers();
 
       std::map<std::string, std::set<std::string>> peersMap;
-      for (auto capnPeer : capnPeers) {
+      for (auto capnPeerData : capnPeers) {
+         auto capnPeer = capnPeerData.getPeer();
          std::set<std::string> names;
          for (auto name : capnPeer.getNames()) {
             names.emplace(std::string{name});
          }
          peersMap.emplace(
-            std::string{capnPeer.getPublicKey()},
+            std::string{capnPeer.getKey()},
             std::move(names));
       }
       return peersMap;
@@ -5000,13 +5001,15 @@ protected:
 
    void addPeer(const BinaryData& key, std::vector<std::string> names)
    {
+      Wallets::PeerKey peer{key.getRef(), true, true};
+
       auto refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
       auto request = toBridge.initSetup();
       auto peerCapnp = request.initAddPeer();
-      peerCapnp.setPublicKey(key.toHexStr());
+      peerCapnp.setKey(peer.toHumanReadable());
       auto namesCapnp = peerCapnp.initNames(names.size());
       for (unsigned i = 0; i < names.size(); i++) {
          namesCapnp.set(i, names[i]);
@@ -5024,6 +5027,36 @@ protected:
       auto reply = fromBridge.getReply();
 
       ASSERT_EQ(reply.getReferenceId(), refId);
+      if (reply.getSuccess() == false) {
+         std::cout << std::string(reply.getError()) << std::endl;
+      }
+      ASSERT_TRUE(reply.getSuccess());
+   }
+
+   void removePeer(const std::string& key)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto request = toBridge.initSetup();
+      request.setRemovePeer(key);
+
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge_, rawReq);
+
+      auto result = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+         result->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      auto reply = fromBridge.getReply();
+
+      ASSERT_EQ(reply.getReferenceId(), refId);
+      if (reply.getSuccess() == false) {
+         std::cout << std::string(reply.getError()) << std::endl;
+      }
       ASSERT_TRUE(reply.getSuccess());
    }
 
@@ -5147,6 +5180,11 @@ TEST_F(BridgePeersManagement, ListAddConnect)
    WebSocketServer::initAuthPeers({homedir_ / SERVER_AUTH_PEER_FILENAME, {}});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
+   Wallets::PeerKey clientPeer{clientPubKey_.getRef(), true, false};
+   Wallets::PeerKey serverPeer{serverPubkey_.getRef(), true, true};
+   auto clientKey = clientPeer.toHumanReadable();
+   auto serverKey = serverPeer.toHumanReadable();
+
    //load peers db
    ASSERT_TRUE(loadPeersDb(true));
 
@@ -5154,7 +5192,7 @@ TEST_F(BridgePeersManagement, ListAddConnect)
    auto peerList = listPeers();
    ASSERT_EQ(peerList.size(), 1);
    const auto& firstPeer = *peerList.begin();
-   EXPECT_EQ(firstPeer.first, clientPubKey_.toHexStr());
+   EXPECT_EQ(firstPeer.first, clientKey);
    ASSERT_EQ(firstPeer.second.size(), 1);
    EXPECT_EQ(*firstPeer.second.begin(), "own");
 
@@ -5169,10 +5207,10 @@ TEST_F(BridgePeersManagement, ListAddConnect)
    peerList = listPeers();
    ASSERT_EQ(peerList.size(), 2);
    for (const auto& keyEntry : peerList) {
-      if (keyEntry.first == clientPubKey_.toHexStr()) {
+      if (keyEntry.first == clientKey) {
          continue;
       }
-      EXPECT_EQ(keyEntry.first, serverPubkey_.toHexStr());
+      EXPECT_EQ(keyEntry.first, serverKey);
       ASSERT_EQ(keyEntry.second.size(), 1);
       EXPECT_EQ(*keyEntry.second.begin(), serverAddress);
    }
@@ -5186,6 +5224,8 @@ TEST_F(BridgePeersManagement, LoadDeleteCreate)
 {
    WebSocketServer::initAuthPeers({homedir_ / SERVER_AUTH_PEER_FILENAME, {}});
    WebSocketServer::start(theBDMt_->bdm(), true);
+   Wallets::PeerKey serverPeer{serverPubkey_.getRef(), true, true};
+   auto serverKey = serverPeer.toHumanReadable();
 
    //reject loading of peers db then delete it
    ASSERT_FALSE(loadPeersDb(false));
@@ -5202,7 +5242,7 @@ TEST_F(BridgePeersManagement, LoadDeleteCreate)
    ASSERT_EQ(firstPeer.second.size(), 1);
    ASSERT_EQ(*firstPeer.second.begin(), "own");
    auto clientKey = firstPeer.first;
-   ASSERT_EQ(clientKey.size(), BIP151PUBKEYSIZE*2);
+   ASSERT_EQ(clientKey.size(), 52);
 
    //add the server to peers store
    auto serverAddress = std::string{"127.0.0.1:"} + Config::NetworkSettings::dbPort();
@@ -5215,7 +5255,85 @@ TEST_F(BridgePeersManagement, LoadDeleteCreate)
       if (keyEntry.first == clientKey) {
          continue;
       }
-      EXPECT_EQ(keyEntry.first, serverPubkey_.toHexStr());
+      EXPECT_EQ(keyEntry.first, serverKey);
+      ASSERT_EQ(keyEntry.second.size(), 1);
+      EXPECT_EQ(*keyEntry.second.begin(), serverAddress);
+   }
+
+   //connect to db
+   ASSERT_TRUE(connectToPeer(bridge_, serverAddress));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(BridgePeersManagement, Remove)
+{
+   WebSocketServer::initAuthPeers({homedir_ / SERVER_AUTH_PEER_FILENAME, {}});
+   WebSocketServer::start(theBDMt_->bdm(), true);
+
+   Wallets::PeerKey clientPeer{clientPubKey_.getRef(), true, false};
+   Wallets::PeerKey serverPeer{serverPubkey_.getRef(), true, true};
+   auto clientKey = clientPeer.toHumanReadable();
+   auto serverKey = serverPeer.toHumanReadable();
+
+   //load peers db
+   ASSERT_TRUE(loadPeersDb(true));
+
+   //peer list should be empty at first, but for our own key
+   auto peerList = listPeers();
+   ASSERT_EQ(peerList.size(), 1);
+   const auto& firstPeer = *peerList.begin();
+   EXPECT_EQ(firstPeer.first, clientKey);
+   ASSERT_EQ(firstPeer.second.size(), 1);
+   EXPECT_EQ(*firstPeer.second.begin(), "own");
+
+   //try to connect to an invalid peer
+   ASSERT_FALSE(connectToPeer(bridge_, "abcd"));
+
+   //add the server to peers store
+   auto serverAddress = std::string{"127.0.0.1:"} + Config::NetworkSettings::dbPort();
+   addPeer(serverPubkey_, { serverAddress });
+
+   //also add a random key
+   auto newKey = Cryptography::ECDSA::createNewPrivateKey();
+   auto pubkey = Cryptography::ECDSA::computePublicKey(newKey, true);
+   addPeer(pubkey, {"1.1.1.1"});
+   Wallets::PeerKey newPeer{pubkey.getRef(), true, true};
+   auto newPeerKey = newPeer.toHumanReadable();
+
+   //list again, both keys should appear
+   peerList = listPeers();
+   ASSERT_EQ(peerList.size(), 3);
+   int count = 0;
+   for (const auto& keyEntry : peerList) {
+      if (keyEntry.first == clientKey) {
+         count++;
+         continue;
+      }
+      else if (keyEntry.first == newPeerKey) {
+         ASSERT_EQ(keyEntry.second.size(), 1);
+         EXPECT_EQ(*keyEntry.second.begin(), "1.1.1.1");
+         count++;
+      } else if (keyEntry.first == serverKey) {
+         ASSERT_EQ(keyEntry.second.size(), 1);
+         EXPECT_EQ(*keyEntry.second.begin(), serverAddress);
+         count++;
+      } else {
+         ASSERT_TRUE(false);
+      }
+   }
+   ASSERT_EQ(count, 3);
+
+   //delete the new key
+   removePeer(newPeerKey);
+
+   //list again, server should appear
+   peerList = listPeers();
+   ASSERT_EQ(peerList.size(), 2);
+   for (const auto& keyEntry : peerList) {
+      if (keyEntry.first == clientKey) {
+         continue;
+      }
+      EXPECT_EQ(keyEntry.first, serverKey);
       ASSERT_EQ(keyEntry.second.size(), 1);
       EXPECT_EQ(*keyEntry.second.begin(), serverAddress);
    }

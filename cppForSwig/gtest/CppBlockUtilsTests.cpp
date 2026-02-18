@@ -1884,7 +1884,7 @@ protected:
 
       std::stringstream serverAddr;
       serverAddr << "127.0.0.1:" << Config::NetworkSettings::dbPort();
-      clientPeers.addPeer(serverPubkey, serverAddr.str());
+      clientPeers.addPeer(serverPubkey, {serverAddr.str()});
 
       serverPubkey_ = BinaryData(serverPubkey.pubkey, 33);
       serverAddr_ = serverAddr.str();
@@ -2488,8 +2488,8 @@ protected:
 
       std::stringstream serverAddr;
       serverAddr << "127.0.0.1:" << Config::NetworkSettings::dbPort();
-      clientPeers.addPeer(serverPubkey, serverAddr.str());
-      serverPeers.addPeer(clientPubkey, "127.0.0.1");
+      clientPeers.addPeer(serverPubkey, {serverAddr.str()});
+      serverPeers.addPeer(clientPubkey, {"127.0.0.1"});
       serverPeers.setMasterKey(clientPubkey);
 
       serverPubkey_ = BinaryData(serverPubkey.pubkey, 33);

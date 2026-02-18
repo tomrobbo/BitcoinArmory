@@ -401,7 +401,7 @@ Bridge::spawnDb(const std::filesystem::path& satoshiPath,
 
       //add db key to custom store
       std::string addr{"127.0.0.1:" + portStr};
-      peers->addPeer(serverPubkey, addr);
+      peers->addPeer(serverPubkey, {addr});
       break;
    }
 

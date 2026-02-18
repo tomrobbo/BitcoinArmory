@@ -11,6 +11,7 @@
 #include "AuthorizedPeers.h"
 #include <Utils/BIP150_151.h>
 #include <Utils/DBUtils.h>
+#include <Utils/BtcUtils.h>
 
 #include "Accounts/AccountTypes.h"
 #include "Accounts/AddressAccounts.h"
@@ -28,6 +29,11 @@ using namespace Armory::Seeds;
 
 using namespace std::chrono_literals;
 using namespace std::string_view_literals;
+
+#define ARMORY_PEERKEY_PREFIX    0x6582 //AR in ascii
+#define ARMORY_PEERKEY_VERSION   0x01
+#define ARMORY_PEERKEY_ISONEWAY  0x01
+#define ARMORY_PEERKEY_ISCLIENT  0x10
 
 void AuthorizedPeers::setOwnPrivateKey(SecureBinaryData& privateKey)
 {
@@ -241,7 +247,7 @@ std::shared_ptr<AuthorizedPeers> AuthorizedPeers::getNarrowSet(
    auto privateKey = getPrivateKey(ownKeyRef);
    auto result = std::shared_ptr<AuthorizedPeers>(
       new AuthorizedPeers(privateKey));
-   result->addPeer(peerKey, peerName);
+   result->addPeer(peerKey, {peerName});
    return result;
 }
 
@@ -268,27 +274,34 @@ const SecureBinaryData& AuthorizedPeers::getPrivateKey(
    return iter->second;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-void AuthorizedPeers::addPeer(const SecureBinaryData& pubkey,
-   const std::initializer_list<std::string>& names)
+void AuthorizedPeers::addPeer(const PeerKey& peerKey,
+   const std::vector<std::string>& names)
 {
-   std::vector<std::string> namesVec(names);
-   addPeer(pubkey, namesVec);
+   addPeer(peerKey.getKey(), names);
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 void AuthorizedPeers::addPeer(const btc_pubkey& pubkey,
-   const std::initializer_list<std::string>& names)
+   const std::vector<std::string>& names)
 {
-   std::vector<std::string> namesVec(names);
-   SecureBinaryData keySbd(pubkey.pubkey, pubkey.compressed ? 33 : 65);
-   addPeer(keySbd, namesVec);
+   SecureBinaryData keySbd{pubkey.pubkey, pubkey.compressed ? 33u : 65u};
+   addPeer(keySbd, names);
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 void AuthorizedPeers::addPeer(const SecureBinaryData& pubkey,
    const std::vector<std::string>& names)
 {
+   //sanity check
+   if (!Cryptography::ECDSA::verifyPublicKeyValid(pubkey)) {
+      throw AuthorizedPeersException("peer lacks a valid public key");
+   }
+   for (const auto& name : names) {
+      if (name == "own") {
+         throw AuthorizedPeersException("use of a reserved name");
+      }
+   }
+
    //convert sbd pubkey to libbtc pubkey
    SecureBinaryData pubkey_cmp;
    if (pubkey.getSize() == 65) {
@@ -439,6 +452,11 @@ void AuthorizedPeers::eraseKey(const btc_pubkey& pubkey)
    SecureBinaryData keySbd(size);
    std::memcpy(keySbd.getPtr(), pubkey.pubkey, size);
    eraseKey(keySbd);
+}
+
+void AuthorizedPeers::erasePeer(const PeerKey& peer)
+{
+   eraseKey(peer.getKey());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -736,4 +754,64 @@ bool AuthorizedPeers::isMasterKey(const SecureBinaryData& pubkey) const
       return false;
    }
    return masterKey_.getRef() == pubkey;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// PeerKey
+PeerKey::PeerKey(const SecureBinaryData& pubkey, bool isOneWay, bool isServer) :
+   pubkey_(pubkey), oneWayAuth_(isOneWay), isServer_(isServer)
+{}
+
+const SecureBinaryData& PeerKey::getKey() const
+{
+   return pubkey_;
+}
+
+bool PeerKey::isServer() const
+{
+   return isServer_;
+}
+
+////////
+std::string PeerKey::toHumanReadable() const
+{
+   BinaryWriter bw;
+   bw.reserve(36);
+   bw.put_uint16_t(ARMORY_PEERKEY_PREFIX, BE);
+   bw.put_uint8_t(ARMORY_PEERKEY_VERSION);
+   uint8_t mode = isServer_ ? 0 : ARMORY_PEERKEY_ISCLIENT;
+   if (oneWayAuth_ && isServer_) {
+      mode |= ARMORY_PEERKEY_ISONEWAY;
+   }
+   bw.put_uint8_t(mode);
+   bw.put_BinaryDataRef(pubkey_.getRef());
+
+   auto raw = bw.getDataRef();
+   std::string_view rawView{raw.toCharPtr(), raw.getSize()};
+   return BtcUtils::base64_encode(rawView);
+}
+
+PeerKey PeerKey::fromHumanReadable(const std::string& str)
+{
+   auto raw = BtcUtils::base64_decode(str);
+   BinaryRefReader brr((const uint8_t*)raw.c_str(), raw.size());
+
+   if (brr.get_uint16_t(BE) != ARMORY_PEERKEY_PREFIX) {
+      throw std::runtime_error("this isn't a peer key");
+   }
+
+   auto version = brr.get_uint8_t();
+   switch (version) {
+      case 1:
+      {
+         auto mode = brr.get_uint8_t();
+         bool oneWay = mode & ARMORY_PEERKEY_ISONEWAY;
+         bool isServer = !(mode & ARMORY_PEERKEY_ISCLIENT);
+         auto pubkey = brr.get_BinaryDataRef(33);
+         return PeerKey{pubkey, oneWay, isServer};
+      }
+
+      default:
+         throw std::runtime_error("unexpected peer key version");
+   }
 }

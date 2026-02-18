@@ -5398,7 +5398,7 @@ protected:
       //share public keys between client and server
       clientPeers.addPeer(
          serverPeers.getOwnPublicKey(),
-         std::string{"127.0.0.1:" + Config::NetworkSettings::dbPort()});
+         {std::string{"127.0.0.1:" + Config::NetworkSettings::dbPort()}});
 
       wallet1id = "wallet1";
       initBDM();

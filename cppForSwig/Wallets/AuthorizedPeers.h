@@ -42,7 +42,7 @@ namespace Armory
          {}
       };
 
-      //////////////////////////////////////////////////////////////////////////
+      ////////
       class AuthorizedPeersException : public std::runtime_error
       {
       public:
@@ -51,6 +51,22 @@ namespace Armory
          {}
       };
 
+      ////////
+      class PeerKey
+      {
+      private:
+         const bool oneWayAuth_;
+         const bool isServer_;
+         const SecureBinaryData pubkey_;
+
+      public:
+         PeerKey(const SecureBinaryData&, bool, bool);
+
+         const SecureBinaryData& getKey(void) const;
+         bool isServer(void) const;
+         std::string toHumanReadable(void) const;
+         static PeerKey fromHumanReadable(const std::string&);
+      };
 
       //////////////////////////////////////////////////////////////////////////
       class AuthorizedPeers
@@ -82,10 +98,6 @@ namespace Armory
          void setOwnPrivateKey(SecureBinaryData&);
          void loadWallet(const IO::ReadOnlyFileParams&);
          void initFromWallet(void);
-         void addPeer(const SecureBinaryData&,
-            const std::initializer_list<std::string>&);
-         void addPeer(const btc_pubkey_&,
-            const std::initializer_list<std::string>&);
          void erasePeerRootKey(const SecureBinaryData&);
 
       public:
@@ -99,38 +111,21 @@ namespace Armory
 
          /* addPeer:
          input:
-         - pubkey as SecureBinaryData/btc_pubkey. secp256k1 un/compressed
+         - pubkey as SecureBinaryData/btc_pubkey/PeerKey; secp256k1 un/compressed
            public key
-         - count as unsigned: number of names as strings, at least 1
-         - count names as string/char*
+         - vector<std::string> of names; at least 1
          */
-         template<typename... Types>
-         void addPeer(const SecureBinaryData& pubkey, const Types... strings)
-         {
-            //variadic template shenanigans. This makes sure we get compiler
-            //errors if the wrong arg types are passed (something that can't
-            //natively convert to std::string), instead of blowing up at
-            //runtime
-            std::initializer_list<std::string> names({ strings... });
-            addPeer(pubkey, names);
-         }
-
-         template<typename... Types>
-         void addPeer(const btc_pubkey& pubkey, const Types... strings)
-         {
-            std::initializer_list<std::string> names({ strings... });
-            addPeer(pubkey, names);
-         }
-
-         void addPeer(
-            const SecureBinaryData&, const std::vector<std::string>&);
+         void addPeer(const PeerKey&, const std::vector<std::string>&);
+         void addPeer(const btc_pubkey&, const std::vector<std::string>&);
+         void addPeer(const SecureBinaryData&, const std::vector<std::string>&);
 
          void addRootSignature(
-            const SecureBinaryData& key, const SecureBinaryData& sig);
+            const SecureBinaryData&, const SecureBinaryData&);
          void addPeerRootKey(const SecureBinaryData&, std::string);
 
          //
          void eraseName(const std::string&);
+         void erasePeer(const PeerKey&);
          void eraseKey(const SecureBinaryData&);
          void eraseKey(const btc_pubkey&);
 

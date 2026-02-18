@@ -102,8 +102,10 @@ struct UTXO {
 }
 
 struct Peer {
-   publicKey   @0 : Text; #in hexits
-   names       @1 : List(Text);
+   key         @0 : Text; #base64 blob
+   names       @1 : List(Text); #ip:port or domain:port
+   oneWay      @2 : Bool;
+   label       @3 : Text; #human readable label for the key
 }
 
 ################################################################################
@@ -240,16 +242,21 @@ struct DbSetupRequest {
 
       loadPeersDb    @8 : Text; #callbackId
       listPeers      @9 : Void;
-      addPeer        @10 : Peer;
-      removePeer     @11 : Peer;
+      addPeer        @10: Peer;
+      removePeer     @11: Text; #remove by key
    }
 }
 
 struct DbSetupReply {
+   struct PeerData {
+      peer           @0 : Peer;
+      oneWay         @1 : Bool;
+   }
+
    union {
       unset          @0 : Void;
 
-      listPeers      @1 : List(Peer);
+      listPeers      @1 : List(PeerData);
    }
 }
 

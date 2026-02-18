@@ -173,12 +173,18 @@ namespace
          case DbSetupRequest::ADD_PEER:
          {
             auto peerReq = request.getAddPeer();
-            auto key = SecureBinaryData{READHEX(peerReq.getPublicKey())};
             std::vector<std::string> names;
             for (auto capnName : peerReq.getNames()) {
                names.emplace_back(std::string(capnName));
             }
-            bridge->addPeer(key, names, referenceId);
+            bridge->addPeer(peerReq.getKey(), names, referenceId);
+            return true;
+         }
+
+         case DbSetupRequest::REMOVE_PEER:
+         {
+            auto peer = std::string(request.getRemovePeer());
+            bridge->removePeer(peer, referenceId);
             return true;
          }
       }

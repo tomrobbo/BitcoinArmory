@@ -889,13 +889,12 @@ void CppBridge::listPeers(MessageId refId)
       if (peersDb_ == nullptr) {
          throw std::runtime_error("have to load peers db before listing peers");
       }
-      std::map<std::string, std::set<std::string>> keyNameMap;
+      std::map<BinaryDataRef, std::set<std::string>> keyNameMap;
       for (const auto& namePair : peersDb_->getPeerNameMap()) {
          BinaryDataRef keyRef{namePair.second.pubkey, BIP151PUBKEYSIZE};
-         auto keyHex = keyRef.toHexStr();
-         auto iter = keyNameMap.find(keyHex);
+         auto iter = keyNameMap.find(keyRef);
          if (iter == keyNameMap.end()) {
-            iter = keyNameMap.emplace(keyHex, std::set<std::string>{}).first;
+            iter = keyNameMap.emplace(keyRef, std::set<std::string>{}).first;
          }
          iter->second.emplace(namePair.first);
       }
@@ -904,14 +903,25 @@ void CppBridge::listPeers(MessageId refId)
       auto peersCapnp = setupReply.initListPeers(keyNameMap.size());
       unsigned i = 0;
       for (const auto& keyNames : keyNameMap) {
-         auto peerCapnp = peersCapnp[i++];
-         peerCapnp.setPublicKey(keyNames.first);
+         auto peerDataCapnp = peersCapnp[i++];
+         peerDataCapnp.setOneWay(true);
 
+         auto peerCapnp = peerDataCapnp.initPeer();
          auto namesCapnp = peerCapnp.initNames(keyNames.second.size());
          unsigned y = 0;
+         bool isOwn = false;
          for (const auto& name : keyNames.second) {
             namesCapnp.set(y++, name);
+            if (name == "own") {
+               isOwn = true;
+            }
          }
+
+         //TODO: get mode from peer store instead of hardcoding it
+         auto peer = isOwn ? Wallets::PeerKey{keyNames.first, true, false}
+            : Wallets::PeerKey{keyNames.first, true, true};
+         peerCapnp.setKey(peer.toHumanReadable());
+         peerCapnp.setLabel("N/A");
       }
       reply.setSuccess(true);
    } catch (const std::exception& e) {
@@ -923,7 +933,7 @@ void CppBridge::listPeers(MessageId refId)
    this->writeToClient(response);
 }
 
-void CppBridge::addPeer(SecureBinaryData& pubkey,
+void CppBridge::addPeer(const std::string& peerKey,
    std::vector<std::string>& names, MessageId refId)
 {
    LOGINFO << "adding peer";
@@ -937,10 +947,42 @@ void CppBridge::addPeer(SecureBinaryData& pubkey,
       if (peersDb_ == nullptr) {
          throw std::runtime_error("have to load peers db before adding a peer");
       }
-      peersDb_->addPeer(pubkey, names);
+      auto peer = Wallets::PeerKey::fromHumanReadable(peerKey);
+      if (!peer.isServer()) {
+         throw std::runtime_error("cannot add a client key to a client peer store");
+      }
+      peersDb_->addPeer(peer, names);
       reply.setSuccess(true);
    } catch (const std::exception& e) {
       reply.setError(std::string{"failed to add peer with error: "} + e.what());
+      reply.setSuccess(false);
+   }
+
+   auto response = serializeCapnp(message);
+   this->writeToClient(response);
+}
+
+void CppBridge::removePeer(const std::string& peerKey, MessageId refId)
+{
+   LOGINFO << "removing peer";
+
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   reply.setReferenceId(refId);
+
+   try {
+      if (peersDb_ == nullptr) {
+         throw std::runtime_error("have to load peers db before adding a peer");
+      }
+      auto peer = Wallets::PeerKey::fromHumanReadable(peerKey);
+      if (!peer.isServer()) {
+         throw std::runtime_error("cannot remove a client key from a client peer store");
+      }
+      peersDb_->erasePeer(peer);
+      reply.setSuccess(true);
+   } catch (const std::exception& e) {
+      reply.setError(std::string{"failed to remove peer with error: "} + e.what());
       reply.setSuccess(false);
    }
 
@@ -1098,7 +1140,8 @@ void CppBridge::connectToPeer(const std::string& peerName,
       reply.setSuccess(true);
    } catch (const std::exception& e) {
       reply.setSuccess(false);
-      reply.setError(e.what());
+      reply.setError(std::string{"failed connect to peer with error: "} +
+         e.what());
    }
 
    auto response = serializeCapnp(message);

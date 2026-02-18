@@ -8723,18 +8723,27 @@ TEST_F(WalletMetaDataTest, AuthPeers)
    auto privKey1 = Cryptography::PRNG::generateRandomStrong(32);
    auto pubkey1 = Cryptography::ECDSA::computePublicKey(privKey1);
    auto pubkey1_compressed = Cryptography::ECDSA::compressPoint(pubkey1);
-   authPeers->addPeer(pubkey1, "1.1.1.1", "0123::4567::89ab::cdef::", "test.com");
+   authPeers->addPeer(pubkey1, {"1.1.1.1", "0123::4567::89ab::cdef::", "test.com"});
 
    auto privKey2 = Cryptography::PRNG::generateRandomStrong(32);
    auto pubkey2 = Cryptography::ECDSA::computePublicKey(privKey2);
    auto pubkey2_compressed = Cryptography::ECDSA::compressPoint(pubkey2);
-   authPeers->addPeer(pubkey2_compressed, "2.2.2.2", "domain.com");
+   authPeers->addPeer(pubkey2_compressed, {"2.2.2.2", "domain.com"});
 
    auto privKey3 = Cryptography::PRNG::generateRandomStrong(32);
    auto pubkey3 = Cryptography::ECDSA::computePublicKey(privKey3);
    auto pubkey3_compressed = Cryptography::ECDSA::compressPoint(pubkey3);
    std::string domain_name("anotherdomain.com");
-   authPeers->addPeer(pubkey3_compressed, "3.3.3.3", "test.com", domain_name);
+   authPeers->addPeer(pubkey3_compressed, {"3.3.3.3", "test.com", domain_name});
+
+   auto privKeyFail = Cryptography::PRNG::generateRandomStrong(32);
+   auto pubkeyFail = Cryptography::ECDSA::computePublicKey(privKeyFail);
+   auto pubkeyFail_compressed = Cryptography::ECDSA::compressPoint(pubkeyFail);
+   try {
+      authPeers->addPeer(pubkey3_compressed, {"10.10.10.10", "test.com", "own"});
+   } catch (const AuthorizedPeersException& e) {
+      ASSERT_EQ(e.what(), std::string{"use of a reserved name"});
+   }
 
    {
       //check peer object has expected values
@@ -8852,7 +8861,7 @@ TEST_F(WalletMetaDataTest, AuthPeers)
    btc_pubkey_init(&btckey4);
    std::memcpy(btckey4.pubkey, pubkey4.getPtr(), 65);
    btc_pubkey btckey4_cmp = Cryptography::ECDSA::compressPoint(btckey4);
-   authPeers->addPeer(btckey4, "4.4.4.4", "more.com");
+   authPeers->addPeer(btckey4, {"4.4.4.4", "more.com"});
 
    auto privKey5 = Cryptography::PRNG::generateRandomStrong(32);
    auto pubkey5 = Cryptography::ECDSA::computePublicKey(privKey5);
@@ -8862,7 +8871,7 @@ TEST_F(WalletMetaDataTest, AuthPeers)
    std::memcpy(btckey5.pubkey, pubkey5_compressed.getPtr(), 33);
    btckey5.compressed = true;
 
-   authPeers->addPeer(btckey5, "5.5.5.5", "newdomain.com");
+   authPeers->addPeer(btckey5, {"5.5.5.5", "newdomain.com"});
 
    {
       //check peer object has expected values
@@ -9224,7 +9233,7 @@ TEST_F(WalletMetaDataTest, AuthPeers)
    ASSERT_FALSE(authPeers->isMasterKey(btckey6));
 
    //TODO: re-add key1, check it isnt master key
-   authPeers->addPeer(pubkey1, "1.1.1.1", "0123::4567::89ab::cdef::", "test.com");
+   authPeers->addPeer(pubkey1, {"1.1.1.1", "0123::4567::89ab::cdef::", "test.com"});
    ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
    ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
    ASSERT_FALSE(authPeers->isMasterKey(btckey6));
@@ -9272,18 +9281,18 @@ TEST_F(WalletMetaDataTest, AuthPeers_Ephemeral)
    auto privKey1 = Cryptography::PRNG::generateRandomStrong(32);
    auto pubkey1 = Cryptography::ECDSA::computePublicKey(privKey1);
    auto pubkey1_compressed = Cryptography::ECDSA::compressPoint(pubkey1);
-   authPeers->addPeer(pubkey1, "1.1.1.1", "0123::4567::89ab::cdef::", "test.com");
+   authPeers->addPeer(pubkey1, {"1.1.1.1", "0123::4567::89ab::cdef::", "test.com"});
 
    auto privKey2 = Cryptography::PRNG::generateRandomStrong(32);
    auto pubkey2 = Cryptography::ECDSA::computePublicKey(privKey2);
    auto pubkey2_compressed = Cryptography::ECDSA::compressPoint(pubkey2);
-   authPeers->addPeer(pubkey2_compressed, "2.2.2.2", "domain.com");
+   authPeers->addPeer(pubkey2_compressed, {"2.2.2.2", "domain.com"});
 
    auto privKey3 = Cryptography::PRNG::generateRandomStrong(32);
    auto pubkey3 = Cryptography::ECDSA::computePublicKey(privKey3);
    auto pubkey3_compressed = Cryptography::ECDSA::compressPoint(pubkey3);
    std::string domain_name{"anotherdomain.com"};
-   authPeers->addPeer(pubkey3_compressed, "3.3.3.3", "test.com", domain_name);
+   authPeers->addPeer(pubkey3_compressed, {"3.3.3.3", "test.com", domain_name});
 
    {
       //check peer object has expected values
@@ -9345,7 +9354,7 @@ TEST_F(WalletMetaDataTest, AuthPeers_Ephemeral)
    btc_pubkey_init(&btckey4);
    std::memcpy(btckey4.pubkey, pubkey4.getPtr(), 65);
    btc_pubkey btckey4_cmp = Cryptography::ECDSA::compressPoint(btckey4);
-   authPeers->addPeer(btckey4, "4.4.4.4", "more.com");
+   authPeers->addPeer(btckey4, {"4.4.4.4", "more.com"});
 
    auto privKey5 = Cryptography::PRNG::generateRandomStrong(32);
    auto pubkey5 = Cryptography::ECDSA::computePublicKey(privKey5);
@@ -9354,7 +9363,7 @@ TEST_F(WalletMetaDataTest, AuthPeers_Ephemeral)
    btc_pubkey_init(&btckey5);
    std::memcpy(btckey5.pubkey, pubkey5_compressed.getPtr(), 33);
    btckey5.compressed = true;
-   authPeers->addPeer(btckey5, "5.5.5.5", "newdomain.com");
+   authPeers->addPeer(btckey5, {"5.5.5.5", "newdomain.com"});
 
    {
       //check peer object has expected values

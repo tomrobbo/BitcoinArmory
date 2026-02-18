@@ -628,7 +628,7 @@ bool WebSocketClient::processAEADHandshake(const WebSocketMessagePartial& msgObj
 void WebSocketClient::addPublicKey(const SecureBinaryData& pubkey)
 {
    const std::string addrPort{ addr_ + ":" + port_ };
-   authPeers_->addPeer(pubkey, addrPort);
+   authPeers_->addPeer(pubkey, {addrPort});
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -653,7 +653,7 @@ void WebSocketClient::promptUser(
    {
       if (this->userPromptLambda_(key_copy)) {
          //the lambda returns true, the user accepted the key, add it to peers
-         this->authPeers_->addPeer(key_copy, name);
+         this->authPeers_->addPeer(key_copy, {name});
          serverPubkeyProm_->set_value(true);
       } else {
          //otherwise, we still have to set the promise so that the auth

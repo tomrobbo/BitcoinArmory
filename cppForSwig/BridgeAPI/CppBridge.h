@@ -156,7 +156,8 @@ namespace Armory
 
          void loadPeersDb(const CallbackId&, MessageId);
          void listPeers(MessageId);
-         void addPeer(SecureBinaryData&, std::vector<std::string>&, MessageId);
+         void addPeer(const std::string&, std::vector<std::string>&, MessageId);
+         void removePeer(const std::string&, MessageId);
 
          //wallet registration
          void registerWallets(void);
