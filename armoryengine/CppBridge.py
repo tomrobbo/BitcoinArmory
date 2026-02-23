@@ -485,11 +485,9 @@ class DbSetupService(ProtoWrapper):
       """
       List all saved peers.
 
-      Returns a list of Peer objects. Always includes 'own' peer which
-      contains your public key.
-
-      Returns:
-         List of peers with publicKey and names fields
+      Returns a list of PeerData objects. Always includes 'own' peer
+      which contains your public key. Each PeerData has .peer (with
+      .key, .names, .label) and .oneWay fields.
       """
       packet = Bridge.ToBridge.new_message()
       packet.init("setup").listPeers = None
@@ -500,17 +498,17 @@ class DbSetupService(ProtoWrapper):
       return []
 
    ####
-   def addPeer(self, publicKey: str, names: list):
+   def addPeer(self, key: str, names: list):
       """
       Add a new peer to the peers database.
 
       Args:
-         publicKey: Peer's public key in hex (66 chars, compressed secp256k1)
-         names: List of names for this peer (each name is ip:port format)
+         key: Human-readable peer key (base64, from PeerKey format)
+         names: List of names for this peer (each name is ip:port)
       """
       packet = Bridge.ToBridge.new_message()
       peerMsg = packet.init("setup").init("addPeer")
-      peerMsg.publicKey = publicKey
+      peerMsg.key = key
       peerNames = peerMsg.init("names", len(names))
       for i, name in enumerate(names):
          peerNames[i] = name
@@ -518,22 +516,15 @@ class DbSetupService(ProtoWrapper):
       return fut.getVal(nothrow=True)
 
    ####
-   def removePeer(self, publicKey: str, names: list):
+   def removePeer(self, key: str):
       """
       Remove a peer from the peers database.
 
-      Note: Not fully implemented in C++ backend yet.
-
       Args:
-         publicKey: Peer's public key in hex
-         names: List of names for this peer
+         key: Human-readable peer key (base64, from PeerKey format)
       """
       packet = Bridge.ToBridge.new_message()
-      peerMsg = packet.init("setup").init("removePeer")
-      peerMsg.publicKey = publicKey
-      peerNames = peerMsg.init("names", len(names))
-      for i, name in enumerate(names):
-         peerNames[i] = name
+      packet.init("setup").removePeer = key
       fut = self.send(packet)
       return fut.getVal(nothrow=True)
 

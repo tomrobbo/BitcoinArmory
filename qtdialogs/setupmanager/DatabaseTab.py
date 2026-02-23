@@ -35,20 +35,24 @@ class PeerData:
    """
    Data class for remote database peer information.
 
-   Matches bridge Peer structure:
-   - publicKey: hex string (66 chars compressed secp256k1)
+   Matches bridge PeerData/Peer structure:
+   - key: human-readable base64 peer key (from PeerKey format)
    - names: list of ip:port strings
+   - label: human-readable label
    """
-   def __init__(self, publicKey='', names=None):
-      self.publicKey = publicKey
+   def __init__(self, key='', names=None, label=''):
+      self.key = key
       self.names = names if names else []
+      self.label = label
 
    @classmethod
-   def fromBridgePeer(cls, bridgePeer):
-      """Create PeerData from bridge listPeers response."""
+   def fromBridgePeer(cls, bridgePeerData):
+      """Create PeerData from bridge listPeers PeerData entry."""
+      peer = bridgePeerData.peer
       return cls(
-         publicKey=bridgePeer.publicKey,
-         names=list(bridgePeer.names)
+         key=peer.key,
+         names=list(peer.names),
+         label=peer.label
       )
 
    def isOwn(self):
@@ -60,7 +64,7 @@ class AddPeerDialog(QtWidgets.QDialog):
    """Dialog for adding a new peer to the peers database."""
    def __init__(self, parent):
       super().__init__(parent)
-      self.publicKey = ''
+      self.peerKey = ''
       self.address = ''
       self.setWindowTitle(self.tr('Add Peer'))
       self.setMinimumWidth(450)
@@ -74,22 +78,23 @@ class AddPeerDialog(QtWidgets.QDialog):
       formLayout = QtWidgets.QGridLayout()
       formLayout.setSpacing(8)
 
-      # Public Key
-      keyLabel = QtWidgets.QLabel(self.tr("Public Key, hex:"))
+      keyLabel = QtWidgets.QLabel(self.tr("Peer Key:"))
       self.keyEdit = QtWidgets.QLineEdit()
-      self.keyEdit.setPlaceholderText("66 hex chars, compressed secp256k1")
+      self.keyEdit.setPlaceholderText(
+         "base64 server peer key")
       formLayout.addWidget(keyLabel, 0, 0)
       formLayout.addWidget(self.keyEdit, 0, 1)
 
       keyInfo = QtWidgets.QLabel(
-         self.tr("Get this from the remote ArmoryDB startup output."))
+         self.tr("Get this from the remote "
+            "ArmoryDB startup output."))
       keyInfo.setStyleSheet(
          f"color: {htmlColor('DisableFG')}; "
          "font-style: italic; font-size: 9pt;")
       formLayout.addWidget(keyInfo, 1, 1)
 
-      # Address - must be ip:port format
-      addressLabel = QtWidgets.QLabel(self.tr("Address, ip:port:"))
+      addressLabel = QtWidgets.QLabel(
+         self.tr("Address, ip:port:"))
       self.addressEdit = QtWidgets.QLineEdit()
       self.addressEdit.setPlaceholderText(
          f"e.g. 127.0.0.1:{ARMORYDB_DEFAULT_PORT}")
@@ -97,7 +102,8 @@ class AddPeerDialog(QtWidgets.QDialog):
       formLayout.addWidget(self.addressEdit, 2, 1)
 
       addrInfo = QtWidgets.QLabel(
-         self.tr("IP address and port only. Domains not supported yet."))
+         self.tr("IP address and port only. "
+            "Domains not supported yet."))
       addrInfo.setStyleSheet(
          f"color: {htmlColor('DisableFG')}; "
          "font-style: italic; font-size: 9pt;")
@@ -107,25 +113,19 @@ class AddPeerDialog(QtWidgets.QDialog):
       layout.addLayout(formLayout)
 
       buttonBox = QtWidgets.QDialogButtonBox(
-         QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+         QtWidgets.QDialogButtonBox.Ok
+            | QtWidgets.QDialogButtonBox.Cancel)
       buttonBox.accepted.connect(self.validateAndAccept)
       buttonBox.rejected.connect(self.reject)
       layout.addWidget(buttonBox)
 
    def validateAndAccept(self):
       """Validate input and accept if valid."""
-      publicKey = self.keyEdit.text().strip()
-      if not publicKey:
+      peerKey = self.keyEdit.text().strip()
+      if not peerKey:
          QtWidgets.QMessageBox.warning(
-            self, self.tr('Missing Public Key'),
-            self.tr('Public key is required to add a peer.'))
-         return
-
-      validHexChars = '0123456789abcdefABCDEF'
-      if len(publicKey) != 66 or not all(c in validHexChars for c in publicKey):
-         QtWidgets.QMessageBox.warning(
-            self, self.tr('Invalid Public Key'),
-            self.tr('Public key must be 66 hex characters, 33 bytes.'))
+            self, self.tr('Missing Peer Key'),
+            self.tr('Peer key is required to add a peer.'))
          return
 
       address = self.addressEdit.text().strip()
@@ -135,13 +135,13 @@ class AddPeerDialog(QtWidgets.QDialog):
             self.tr('Please enter address as ip:port.'))
          return
 
-      self.publicKey = publicKey.lower()
+      self.peerKey = peerKey
       self.address = address
       self.accept()
 
-   def getPublicKey(self):
-      """Return the entered public key."""
-      return self.publicKey
+   def getPeerKey(self):
+      """Return the entered peer key."""
+      return self.peerKey
 
    def getAddress(self):
       """Return the entered address as ip:port."""
@@ -214,7 +214,7 @@ class DatabaseTab(QtWidgets.QWidget):
 
       # State tracking
       self.peersDbLoaded = False
-      self.ownPublicKey = ''
+      self.ownKey = ''
 
       self.initUI()
 
@@ -651,7 +651,7 @@ class DatabaseTab(QtWidgets.QWidget):
    def refreshPeerList(self):
       """Refresh peer list widget from bridge."""
       self.peerList.clear()
-      self.ownPublicKey = ''
+      self.ownKey = ''
 
       if not self.peersDbLoaded:
          self._showPeerListHint(
@@ -663,15 +663,15 @@ class DatabaseTab(QtWidgets.QWidget):
       for bp in bridgePeers:
          peer = PeerData.fromBridgePeer(bp)
          if peer.isOwn():
-            self.ownPublicKey = peer.publicKey
-            self.ownKeyEdit.setText(peer.publicKey)
+            self.ownKey = peer.key
+            self.ownKeyEdit.setText(peer.key)
          else:
             peerCount += 1
             for name in peer.names:
                item = QtWidgets.QListWidgetItem(name)
                item.setData(QtCore.Qt.UserRole, peer)
                item.setToolTip(
-                  f"Key: {peer.publicKey[:32]}...")
+                  f"Key: {peer.key[:32]}...")
                self.peerList.addItem(item)
 
       if peerCount == 0:
@@ -699,13 +699,15 @@ class DatabaseTab(QtWidgets.QWidget):
          QtWidgets.QMessageBox.warning(
             self,
             self.tr('Peers DB Required'),
-            self.tr('Load the peers database first to add peers.'))
+            self.tr('Load the peers database first '
+               'to add peers.'))
          return
       dialog = AddPeerDialog(self)
       if dialog.exec_() == QtWidgets.QDialog.Accepted:
-         publicKey = dialog.getPublicKey()
+         peerKey = dialog.getPeerKey()
          address = dialog.getAddress()
-         result = TheBridge.dbSetup.addPeer(publicKey, [address])
+         result = TheBridge.dbSetup.addPeer(
+            peerKey, [address])
          if result.success:
             LOGINFO(f"Added peer: {address}")
             self.refreshPeerList()
@@ -735,13 +737,15 @@ class DatabaseTab(QtWidgets.QWidget):
       if reply != QtWidgets.QMessageBox.Yes:
          return
 
-      # Backend glue not yet wired (CppBridge/Parser)
-      QtWidgets.QMessageBox.information(
-         self,
-         self.tr('Not Yet Available'),
-         self.tr('Remove peer is not yet implemented '
-            'in the backend. Please remove peers '
-            'manually or wait for a future update.'))
+      result = TheBridge.dbSetup.removePeer(peer.key)
+      if result.success:
+         LOGINFO(f"Removed peer: {selected.text()}")
+         self.refreshPeerList()
+      else:
+         QtWidgets.QMessageBox.warning(
+            self, self.tr('Remove Peer Failed'),
+            self.tr('Failed to remove peer: {}').format(
+               result.error))
 
    def setPeersDbLoaded(self, loaded):
       """Update peers database loaded state."""

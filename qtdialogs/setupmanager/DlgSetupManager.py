@@ -12,6 +12,7 @@ from qtpy import QtCore, QtWidgets
 from armoryengine.ArmoryUtils import CLI_OPTIONS, \
    ARMORY_HOME_DIR, ARMORYDB_DEFAULT_PORT, \
    LOGINFO, LOGERROR
+from armoryengine.BDM import TheBDM, INIT_DB_CONNECTED
 from armoryengine.Settings import TheSettings
 from armoryengine.CppBridge import TheBridge, PeersDbCallback, ServerKeyCallback
 from ui.QtExecuteSignal import TheSignalExecution
@@ -51,14 +52,15 @@ class DlgSetupManager(ArmoryDialog):
       self.acceptButton = None
       self.cancelButton = None
       self.bottomFrame = None
-
-      # True after a successful Connect test
       self._connectionSuccess = False
 
       # Callback state tracking for async operations
       self.peersDbCallback = None
       self.serverKeyCallback = None
       self.pendingConnectionResult = None
+
+      self._bdmListener = self._onBdmNotification
+      TheBDM.registerCppNotification(self._bdmListener)
 
       self.setupDialogProperties()
       self.initTabs()
@@ -74,6 +76,11 @@ class DlgSetupManager(ArmoryDialog):
    @property
    def connectionSuccess(self):
       return self._connectionSuccess
+
+   def _onBdmNotification(self, action, args):
+      if action == INIT_DB_CONNECTED:
+         LOGINFO("Setup manager received setupDone notification")
+         self._connectionSuccess = True
 
    def setupDialogProperties(self):
       """Configure basic dialog properties and styling."""
@@ -197,7 +204,6 @@ class DlgSetupManager(ArmoryDialog):
 
       if success:
          LOGINFO("Connection established on accept")
-         self._connectionSuccess = True
          self._saveAndAccept()
          return
 
@@ -226,6 +232,10 @@ class DlgSetupManager(ArmoryDialog):
          )
          return
       super().accept()
+
+   def done(self, result):
+      TheBDM.unregisterCppNotification(self._bdmListener)
+      super().done(result)
 
    def showEvent(self, event):
       """Handle show event to ensure the dialog is properly displayed."""
@@ -361,7 +371,6 @@ class DlgSetupManager(ArmoryDialog):
       try:
          success, error = self.initiateDbConnection(params)
          if success:
-            self._connectionSuccess = True
             self.databaseTab.setDbSettingsLocked(True)
             QtWidgets.QMessageBox.information(
                self,
