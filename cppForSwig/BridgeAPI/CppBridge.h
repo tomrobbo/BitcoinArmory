@@ -145,7 +145,7 @@ namespace Armory
          //db setup
          void connectToIp(const std::string&, const std::string&,
             const CallbackId&, MessageId);
-         void connectToPeer(const std::string&, bool, MessageId);
+         void connectToPeer(const std::string&, MessageId);
          void automateDb(
             const std::filesystem::path&,
             const std::filesystem::path&,
@@ -156,8 +156,10 @@ namespace Armory
 
          void loadPeersDb(const CallbackId&, MessageId);
          void listPeers(MessageId);
-         void addPeer(const std::string&, std::vector<std::string>&, MessageId);
+         void addPeer(const std::string&,
+            std::vector<std::string>&, const std::string&, MessageId);
          void removePeer(const std::string&, MessageId);
+         void setPeerLabel(const std::string&, const std::string&, MessageId);
 
          //wallet registration
          void registerWallets(void);

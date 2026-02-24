@@ -814,16 +814,14 @@ namespace {
    }
 
    bool connectToPeer(std::shared_ptr<Bridge::CppBridge> bridge,
-      const std::string& peerName)
+      const std::string& peerKey)
    {
       auto refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
       auto request = toBridge.initSetup();
-      auto connectReq = request.initConnectToPeer();
-      connectReq.setPeerName(peerName);
-      connectReq.setOneWayAuth(Config::NetworkSettings::oneWayAuth());
+      request.setConnectToPeer(peerKey);
 
       auto rawReq = serializeCapnp(message);
       pushRequest(bridge, rawReq);
@@ -1666,7 +1664,7 @@ protected:
 
       std::stringstream serverAddr;
       serverAddr << "127.0.0.1:" << Config::NetworkSettings::dbPort();
-      clientPeers.addPeer(serverPubkey, {serverAddr.str()});
+      clientPeers.addPeer(serverPubkey, {serverAddr.str()}, {}, true);
 
       serverPubkey_ = BinaryData(serverPubkey.pubkey, 33);
       serverAddr_ = serverAddr.str();
@@ -4816,6 +4814,13 @@ TEST_F(BridgeBlocksAutoDBTests, Connect_NoCleanup)
 class BridgePeersManagement : public ::testing::Test
 {
 protected:
+   struct PeerData
+   {
+      std::string key;
+      std::set<std::string> names;
+      std::string label;
+   };
+
    void initBDM()
    {
       theBDMt_ = new BlockDataManagerThread();
@@ -4959,7 +4964,7 @@ protected:
       return capnReply.getSuccess() && capnReply.getReferenceId() == refId;
    }
 
-   std::map<std::string, std::set<std::string>> listPeers()
+   std::vector<PeerData> listPeers()
    {
       auto refId = rand();
       capnp::MallocMessageBuilder message;
@@ -4985,21 +4990,26 @@ protected:
       auto replyMgr = reply.getSetup();
       auto capnPeers = replyMgr.getListPeers();
 
-      std::map<std::string, std::set<std::string>> peersMap;
+      std::vector<PeerData> peerVec;
       for (auto capnPeerData : capnPeers) {
          auto capnPeer = capnPeerData.getPeer();
          std::set<std::string> names;
          for (auto name : capnPeer.getNames()) {
             names.emplace(std::string{name});
          }
-         peersMap.emplace(
+         std::string label = capnPeer.hasLabel() ? std::string(capnPeer.getLabel()) : "";
+         peerVec.emplace_back(PeerData{
             std::string{capnPeer.getKey()},
-            std::move(names));
+            std::move(names),
+            label
+         });
       }
-      return peersMap;
+      return peerVec;
    }
 
-   void addPeer(const BinaryData& key, std::vector<std::string> names)
+   void addPeer(const BinaryData& key,
+      const std::vector<std::string>& names,
+      const std::string& label)
    {
       Wallets::PeerKey peer{key.getRef(), true, true};
 
@@ -5014,6 +5024,7 @@ protected:
       for (unsigned i = 0; i < names.size(); i++) {
          namesCapnp.set(i, names[i]);
       }
+      peerCapnp.setLabel(label);
 
       auto rawReq = serializeCapnp(message);
       pushRequest(bridge_, rawReq);
@@ -5041,6 +5052,35 @@ protected:
       toBridge.setReferenceId(refId);
       auto request = toBridge.initSetup();
       request.setRemovePeer(key);
+
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge_, rawReq);
+
+      auto result = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+         result->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      auto reply = fromBridge.getReply();
+
+      ASSERT_EQ(reply.getReferenceId(), refId);
+      if (reply.getSuccess() == false) {
+         std::cout << std::string(reply.getError()) << std::endl;
+      }
+      ASSERT_TRUE(reply.getSuccess());
+   }
+
+   void setLabel(const std::string& key, const std::string& label)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto request = toBridge.initSetup();
+      auto labelReq = request.initSetLabel();
+      labelReq.setKey(key);
+      labelReq.setLabel(label);
 
       auto rawReq = serializeCapnp(message);
       pushRequest(bridge_, rawReq);
@@ -5192,31 +5232,33 @@ TEST_F(BridgePeersManagement, ListAddConnect)
    auto peerList = listPeers();
    ASSERT_EQ(peerList.size(), 1);
    const auto& firstPeer = *peerList.begin();
-   EXPECT_EQ(firstPeer.first, clientKey);
-   ASSERT_EQ(firstPeer.second.size(), 1);
-   EXPECT_EQ(*firstPeer.second.begin(), "own");
+   EXPECT_EQ(firstPeer.key, clientKey);
+   ASSERT_EQ(firstPeer.names.size(), 1);
+   EXPECT_EQ(*firstPeer.names.begin(), "own");
+   EXPECT_EQ(firstPeer.label, "N/A");
 
    //try to connect to an invalid peer
-   ASSERT_FALSE(connectToPeer(bridge_, "abcd"));
+   ASSERT_FALSE(connectToPeer(bridge_, serverKey));
 
    //add the server to peers store
    auto serverAddress = std::string{"127.0.0.1:"} + Config::NetworkSettings::dbPort();
-   addPeer(serverPubkey_, { serverAddress });
+   addPeer(serverPubkey_, { serverAddress }, "the server key");
 
    //list again, server should appear
    peerList = listPeers();
    ASSERT_EQ(peerList.size(), 2);
    for (const auto& keyEntry : peerList) {
-      if (keyEntry.first == clientKey) {
+      if (keyEntry.key == clientKey) {
          continue;
       }
-      EXPECT_EQ(keyEntry.first, serverKey);
-      ASSERT_EQ(keyEntry.second.size(), 1);
-      EXPECT_EQ(*keyEntry.second.begin(), serverAddress);
+      EXPECT_EQ(keyEntry.key, serverKey);
+      ASSERT_EQ(keyEntry.names.size(), 1);
+      EXPECT_EQ(*keyEntry.names.begin(), serverAddress);
+      EXPECT_EQ(keyEntry.label, "the server key");
    }
 
    //connect to db
-   ASSERT_TRUE(connectToPeer(bridge_, serverAddress));
+   ASSERT_TRUE(connectToPeer(bridge_, serverKey));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -5239,29 +5281,30 @@ TEST_F(BridgePeersManagement, LoadDeleteCreate)
    auto peerList = listPeers();
    ASSERT_EQ(peerList.size(), 1);
    const auto& firstPeer = *peerList.begin();
-   ASSERT_EQ(firstPeer.second.size(), 1);
-   ASSERT_EQ(*firstPeer.second.begin(), "own");
-   auto clientKey = firstPeer.first;
-   ASSERT_EQ(clientKey.size(), 52);
+   ASSERT_EQ(firstPeer.names.size(), 1);
+   ASSERT_EQ(*firstPeer.names.begin(), "own");
+   auto clientKey = firstPeer.key;
+   ASSERT_EQ(clientKey.size(), 48);
 
    //add the server to peers store
    auto serverAddress = std::string{"127.0.0.1:"} + Config::NetworkSettings::dbPort();
-   addPeer(serverPubkey_, { serverAddress });
+   addPeer(serverPubkey_, { serverAddress }, "my serv key");
 
    //list again, server should appear
    peerList = listPeers();
    ASSERT_EQ(peerList.size(), 2);
    for (const auto& keyEntry : peerList) {
-      if (keyEntry.first == clientKey) {
+      if (keyEntry.key == clientKey) {
          continue;
       }
-      EXPECT_EQ(keyEntry.first, serverKey);
-      ASSERT_EQ(keyEntry.second.size(), 1);
-      EXPECT_EQ(*keyEntry.second.begin(), serverAddress);
+      EXPECT_EQ(keyEntry.key, serverKey);
+      ASSERT_EQ(keyEntry.names.size(), 1);
+      EXPECT_EQ(*keyEntry.names.begin(), serverAddress);
+      EXPECT_EQ(keyEntry.label, "my serv key");
    }
 
    //connect to db
-   ASSERT_TRUE(connectToPeer(bridge_, serverAddress));
+   ASSERT_TRUE(connectToPeer(bridge_, serverKey));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -5282,21 +5325,21 @@ TEST_F(BridgePeersManagement, Remove)
    auto peerList = listPeers();
    ASSERT_EQ(peerList.size(), 1);
    const auto& firstPeer = *peerList.begin();
-   EXPECT_EQ(firstPeer.first, clientKey);
-   ASSERT_EQ(firstPeer.second.size(), 1);
-   EXPECT_EQ(*firstPeer.second.begin(), "own");
+   EXPECT_EQ(firstPeer.key, clientKey);
+   ASSERT_EQ(firstPeer.names.size(), 1);
+   EXPECT_EQ(*firstPeer.names.begin(), "own");
 
    //try to connect to an invalid peer
    ASSERT_FALSE(connectToPeer(bridge_, "abcd"));
 
    //add the server to peers store
    auto serverAddress = std::string{"127.0.0.1:"} + Config::NetworkSettings::dbPort();
-   addPeer(serverPubkey_, { serverAddress });
+   addPeer(serverPubkey_, { serverAddress }, "serv key");
 
    //also add a random key
    auto newKey = Cryptography::ECDSA::createNewPrivateKey();
    auto pubkey = Cryptography::ECDSA::computePublicKey(newKey, true);
-   addPeer(pubkey, {"1.1.1.1"});
+   addPeer(pubkey, {"1.1.1.1"}, "rando key");
    Wallets::PeerKey newPeer{pubkey.getRef(), true, true};
    auto newPeerKey = newPeer.toHumanReadable();
 
@@ -5305,17 +5348,19 @@ TEST_F(BridgePeersManagement, Remove)
    ASSERT_EQ(peerList.size(), 3);
    int count = 0;
    for (const auto& keyEntry : peerList) {
-      if (keyEntry.first == clientKey) {
+      if (keyEntry.key == clientKey) {
          count++;
          continue;
       }
-      else if (keyEntry.first == newPeerKey) {
-         ASSERT_EQ(keyEntry.second.size(), 1);
-         EXPECT_EQ(*keyEntry.second.begin(), "1.1.1.1");
+      else if (keyEntry.key == newPeerKey) {
+         ASSERT_EQ(keyEntry.names.size(), 1);
+         EXPECT_EQ(*keyEntry.names.begin(), "1.1.1.1");
+         EXPECT_EQ(keyEntry.label, "rando key");
          count++;
-      } else if (keyEntry.first == serverKey) {
-         ASSERT_EQ(keyEntry.second.size(), 1);
-         EXPECT_EQ(*keyEntry.second.begin(), serverAddress);
+      } else if (keyEntry.key == serverKey) {
+         ASSERT_EQ(keyEntry.names.size(), 1);
+         EXPECT_EQ(*keyEntry.names.begin(), serverAddress);
+         EXPECT_EQ(keyEntry.label, "serv key");
          count++;
       } else {
          ASSERT_TRUE(false);
@@ -5325,21 +5370,23 @@ TEST_F(BridgePeersManagement, Remove)
 
    //delete the new key
    removePeer(newPeerKey);
+   setLabel(serverKey, "updated serv key label");
 
    //list again, server should appear
    peerList = listPeers();
    ASSERT_EQ(peerList.size(), 2);
    for (const auto& keyEntry : peerList) {
-      if (keyEntry.first == clientKey) {
+      if (keyEntry.key == clientKey) {
          continue;
       }
-      EXPECT_EQ(keyEntry.first, serverKey);
-      ASSERT_EQ(keyEntry.second.size(), 1);
-      EXPECT_EQ(*keyEntry.second.begin(), serverAddress);
+      EXPECT_EQ(keyEntry.key, serverKey);
+      ASSERT_EQ(keyEntry.names.size(), 1);
+      EXPECT_EQ(*keyEntry.names.begin(), serverAddress);
+      EXPECT_EQ(keyEntry.label, "updated serv key label");
    }
 
    //connect to db
-   ASSERT_TRUE(connectToPeer(bridge_, serverAddress));
+   ASSERT_TRUE(connectToPeer(bridge_, serverKey));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

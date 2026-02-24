@@ -52,7 +52,7 @@ TEST_F(BIP151RekeyTest, rekeyRequired)
       throw std::runtime_error("");
    };
 
-   auto getauthset = [](void)->const std::set<SecureBinaryData>&
+   auto getauthset = [](void)->const std::map<SecureBinaryData, std::string>&
    {
       throw std::runtime_error("");
    };

@@ -624,9 +624,9 @@ std::shared_ptr<AddressEntry> WalletManager::getNewAddress(
    const Wallets::AddressAccountId& accId,
    uint32_t addrType, uint32_t addrKind)
 {
-   #define ADDRESS_NEW     1
-   #define ADDRESS_CHANGE  2
-   #define ADDRESS_PEEK    3
+   #define ADDRESS_NEW     0
+   #define ADDRESS_CHANGE  1
+   #define ADDRESS_PEEK    2
 
    bool wasExtended = false;
    auto progFunc = [&wasExtended](int)

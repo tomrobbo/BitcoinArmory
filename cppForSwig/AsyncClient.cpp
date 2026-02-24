@@ -354,7 +354,7 @@ bool BlockDataViewer::connectToRemote()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-void BlockDataViewer::addPublicKey(const SecureBinaryData& pubkey)
+void BlockDataViewer::addPublicKey(const SecureBinaryData& pubkey, bool oneWay)
 {
    auto wsSock = std::dynamic_pointer_cast<WebSocketClient>(sock_);
    if (wsSock == nullptr)
@@ -363,7 +363,7 @@ void BlockDataViewer::addPublicKey(const SecureBinaryData& pubkey)
       return;
    }
 
-   wsSock->addPublicKey(pubkey);
+   wsSock->addPublicKey(pubkey, oneWay);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -5398,7 +5398,8 @@ protected:
       //share public keys between client and server
       clientPeers.addPeer(
          serverPeers.getOwnPublicKey(),
-         {std::string{"127.0.0.1:" + Config::NetworkSettings::dbPort()}});
+         {std::string{"127.0.0.1:" + Config::NetworkSettings::dbPort()}},\
+         {}, true);
 
       wallet1id = "wallet1";
       initBDM();
@@ -5473,7 +5474,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, ZcUpdate)
          Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
       true, //public server
       pCallback);
-   bdvObj->addPublicKey(serverPubkey);
+   bdvObj->addPublicKey(serverPubkey, true);
    bdvObj->connectToRemote();
    bdvObj->registerWithDB(hexMagicBytes);
 
@@ -5722,7 +5723,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, ZcUpdate_RPC)
          Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
       true,
       pCallback);
-   bdvObj->addPublicKey(serverPubkey);
+   bdvObj->addPublicKey(serverPubkey, true);
    bdvObj->connectToRemote();
    bdvObj->registerWithDB(hexMagicBytes);
 
@@ -5949,7 +5950,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, ZcUpdate_RPC_Fallback)
          Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
       true, //public server
       pCallback);
-   bdvObj->addPublicKey(serverPubkey);
+   bdvObj->addPublicKey(serverPubkey, true);
    bdvObj->connectToRemote();
    bdvObj->registerWithDB(hexMagicBytes);
 
@@ -6179,7 +6180,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, ZcUpdate_RPC_Fallback_SingleBatch)
          Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
       true, //public server
       pCallback);
-   bdvObj->addPublicKey(serverPubkey);
+   bdvObj->addPublicKey(serverPubkey, true);
    bdvObj->connectToRemote();
    bdvObj->registerWithDB(hexMagicBytes);
 
@@ -6410,7 +6411,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, ZcUpdate_AlreadyInMempool)
          Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
       true, //public server
       pCallback);
-   bdvObj->addPublicKey(serverPubkey);
+   bdvObj->addPublicKey(serverPubkey, true);
    bdvObj->connectToRemote();
    bdvObj->registerWithDB(hexMagicBytes);
 
@@ -6647,7 +6648,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, ZcUpdate_AlreadyInMempool_Batched)
          Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
       true, //public server
       pCallback);
-   bdvObj->addPublicKey(serverPubkey);
+   bdvObj->addPublicKey(serverPubkey, true);
    bdvObj->connectToRemote();
    bdvObj->registerWithDB(hexMagicBytes);
 
@@ -6897,7 +6898,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, ZcUpdate_AlreadyInNodeMempool)
          Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
       true, //public server
       pCallback);
-   bdvObj->addPublicKey(serverPubkey);
+   bdvObj->addPublicKey(serverPubkey, true);
    bdvObj->connectToRemote();
    bdvObj->registerWithDB(hexMagicBytes);
 
@@ -7126,7 +7127,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, ZcUpdate_RBFLowFee)
          Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
       true, //public server
       pCallback);
-   bdvObj->addPublicKey(serverPubkey);
+   bdvObj->addPublicKey(serverPubkey, true);
    bdvObj->connectToRemote();
    bdvObj->registerWithDB(hexMagicBytes);
 
@@ -7375,7 +7376,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BatchZcChain)
             Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
          true, //public server
          pCallback);
-      bdvObj->addPublicKey(serverPubkey);
+      bdvObj->addPublicKey(serverPubkey, true);
       bdvObj->connectToRemote();
       bdvObj->registerWithDB(hexMagicBytes);
 
@@ -7660,7 +7661,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BatchZcChain_AlreadyInMempool)
             Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
          true, //public server
          pCallback);
-      bdvObj->addPublicKey(serverPubkey);
+      bdvObj->addPublicKey(serverPubkey, true);
       bdvObj->connectToRemote();
       bdvObj->registerWithDB(hexMagicBytes);
 
@@ -7960,7 +7961,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BatchZcChain_AlreadyInNodeMempool)
             Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
          true, //public server
          pCallback);
-      bdvObj->addPublicKey(serverPubkey);
+      bdvObj->addPublicKey(serverPubkey, true);
       bdvObj->connectToRemote();
       bdvObj->registerWithDB(hexMagicBytes);
 
@@ -8288,7 +8289,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BatchZcChain_AlreadyInChain)
             Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
          true, //public server
          pCallback);
-      bdvObj->addPublicKey(serverPubkey);
+      bdvObj->addPublicKey(serverPubkey, true);
       bdvObj->connectToRemote();
       bdvObj->registerWithDB(hexMagicBytes);
 
@@ -8607,7 +8608,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BatchZcChain_MissInv)
             Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
          true, //public server
          pCallback);
-      bdvObj->addPublicKey(serverPubkey);
+      bdvObj->addPublicKey(serverPubkey, true);
       bdvObj->connectToRemote();
       bdvObj->registerWithDB(hexMagicBytes);
 
@@ -8922,7 +8923,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BatchZcChain_ConflictingChildren)
             Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
          true, //public server
          pCallback);
-      bdvObj->addPublicKey(serverPubkey);
+      bdvObj->addPublicKey(serverPubkey, true);
       bdvObj->connectToRemote();
       bdvObj->registerWithDB(hexMagicBytes);
 
@@ -9226,7 +9227,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BatchZcChain_ConflictingChildren_Alrea
             Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
          true, //public server
          pCallback);
-      bdvObj->addPublicKey(serverPubkey);
+      bdvObj->addPublicKey(serverPubkey, true);
       bdvObj->connectToRemote();
       bdvObj->registerWithDB(hexMagicBytes);
 
@@ -9543,7 +9544,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BatchZcChain_ConflictingChildren_Alrea
             Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
          true, //public server
          pCallback);
-      bdvObj->addPublicKey(serverPubkey);
+      bdvObj->addPublicKey(serverPubkey, true);
       bdvObj->connectToRemote();
       bdvObj->registerWithDB(hexMagicBytes);
 
@@ -9862,7 +9863,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BatchZcChain_ConflictingChildren_Alrea
             Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
          true, //public server
          pCallback);
-      bdvObj->addPublicKey(serverPubkey);
+      bdvObj->addPublicKey(serverPubkey, true);
       bdvObj->connectToRemote();
       bdvObj->registerWithDB(hexMagicBytes);
 
@@ -10182,7 +10183,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BroadcastAlreadyMinedTx)
             Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
          true, //public server
          pCallback);
-      bdvObj->addPublicKey(serverPubkey);
+      bdvObj->addPublicKey(serverPubkey, true);
       bdvObj->connectToRemote();
       bdvObj->registerWithDB(hexMagicBytes);
 
@@ -10258,7 +10259,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BroadcastSameZC_ManyThreads)
             Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
          true, //public server
          pCallback);
-      bdvObj->addPublicKey(serverPubkey);
+      bdvObj->addPublicKey(serverPubkey, true);
       bdvObj->connectToRemote();
       bdvObj->registerWithDB(hexMagicBytes);
 
@@ -10864,7 +10865,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BroadcastSameZC_ManyThreads_RPCFallbac
             Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
          true, //public server
          pCallback);
-      bdvObj->addPublicKey(serverPubkey);
+      bdvObj->addPublicKey(serverPubkey, true);
       bdvObj->connectToRemote();
       bdvObj->registerWithDB(hexMagicBytes);
 
@@ -11469,7 +11470,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BroadcastSameZC_RPCThenP2P)
             Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
          true, //public server
          pCallback);
-      bdvObj->addPublicKey(serverPubkey);
+      bdvObj->addPublicKey(serverPubkey, true);
       bdvObj->connectToRemote();
       bdvObj->registerWithDB(hexMagicBytes);
 
@@ -11780,7 +11781,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, RebroadcastInvalidBatch)
             Config::getDataDir() / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
          true, //public server
          pCallback);
-      bdvObj->addPublicKey(serverPubkey);
+      bdvObj->addPublicKey(serverPubkey, true);
       bdvObj->connectToRemote();
       bdvObj->registerWithDB(hexMagicBytes);
 

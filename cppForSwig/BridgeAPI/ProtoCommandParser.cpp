@@ -112,12 +112,10 @@ namespace
 
          case DbSetupRequest::CONNECT_TO_PEER:
          {
-            auto connectReq = request.getConnectToPeer();
-            std::string peerName = connectReq.getPeerName();
-            bool oneWay = connectReq.getOneWayAuth();
+            std::string key = request.getConnectToPeer();
 
-            std::thread thr([bridge, peerName, oneWay, referenceId]{
-               bridge->connectToPeer(peerName, oneWay, referenceId);});
+            std::thread thr([bridge, key=std::move(key), referenceId]{
+               bridge->connectToPeer(key, referenceId);});
             if (thr.joinable()) {
                thr.detach();
             }
@@ -177,7 +175,8 @@ namespace
             for (auto capnName : peerReq.getNames()) {
                names.emplace_back(std::string(capnName));
             }
-            bridge->addPeer(peerReq.getKey(), names, referenceId);
+            bridge->addPeer(peerReq.getKey(),
+               names, peerReq.getLabel(), referenceId);
             return true;
          }
 
@@ -185,6 +184,14 @@ namespace
          {
             auto peer = std::string(request.getRemovePeer());
             bridge->removePeer(peer, referenceId);
+            return true;
+         }
+
+         case DbSetupRequest::SET_LABEL:
+         {
+            auto labelReq = request.getSetLabel();
+            bridge->setPeerLabel(
+               labelReq.getKey(), labelReq.getLabel(), referenceId);
             return true;
          }
       }

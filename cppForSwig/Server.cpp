@@ -236,7 +236,8 @@ void WebSocketServer::initAuthPeers(const IO::ReadOnlyFileParams& params)
       //inject caller pubkey in the store
       std::string serverName{"127.0.0.1:" +
          Armory::Config::NetworkSettings::dbPort()};
-      instance->authorizedPeers_->addPeer(callerPubKey.getRef(), {serverName});
+      instance->authorizedPeers_->addPeer(
+         callerPubKey.getRef(), {serverName}, {}, false);
 
       //set caller pubkey as master key
       if (!instance->authorizedPeers_->setMasterKey(callerPubKey.getRef())) {
@@ -645,7 +646,7 @@ WebSocketServer::getConnectionStateMap() const
 ///////////////////////////////////////////////////////////////////////////////
 void WebSocketServer::addId(const uint64_t& id, struct lws* ptr)
 {
-   auto lbds = getAuthPeerLambda();
+   auto lbds = getAuthPeerLambda(oneWayAuth_);
    auto write_pair = std::make_pair(
       id, ClientConnection(ptr, id, lbds, oneWayAuth_));
    clientStateMap_.insert(std::move(write_pair));
@@ -660,12 +661,12 @@ void WebSocketServer::eraseId(const uint64_t& id, struct lws* ptr)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-AuthPeersLambdas WebSocketServer::getAuthPeerLambda(void) const
+AuthPeersLambdas WebSocketServer::getAuthPeerLambda(bool oneWay) const
 {
    auto authPeerPtr = authorizedPeers_;
-   auto getMap = [authPeerPtr](void)->const std::map<std::string, btc_pubkey>&
+   auto getMap = [authPeerPtr, oneWay](void)->const std::map<std::string, btc_pubkey>&
    {
-      return authPeerPtr->getPeerNameMap();
+      return authPeerPtr->getPeerNameMap(oneWay);
    };
 
    auto getPrivKey = [authPeerPtr](
@@ -674,12 +675,13 @@ AuthPeersLambdas WebSocketServer::getAuthPeerLambda(void) const
       return authPeerPtr->getPrivateKey(pubkey);
    };
 
-   auto getAuthSet = [authPeerPtr](void)->const std::set<SecureBinaryData>&
+   auto getAuthMap = [authPeerPtr, oneWay](void)
+   ->const std::map<SecureBinaryData, std::string>&
    {
-      return authPeerPtr->getPublicKeySet();
+      return authPeerPtr->getPublicKeyMap(oneWay);
    };
 
-   return AuthPeersLambdas(getMap, getPrivKey, getAuthSet);
+   return AuthPeersLambdas(getMap, getPrivKey, getAuthMap);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

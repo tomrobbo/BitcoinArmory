@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 #include <sys/file.h>
 #include <random>
+#include <cstring>
 
 #ifndef _WIN32
    #include <sys/wait.h>
@@ -401,7 +402,7 @@ Bridge::spawnDb(const std::filesystem::path& satoshiPath,
 
       //add db key to custom store
       std::string addr{"127.0.0.1:" + portStr};
-      peers->addPeer(serverPubkey, {addr});
+      peers->addPeer(serverPubkey, {addr}, {}, false);
       break;
    }
 
@@ -498,13 +499,26 @@ BdvPtr Armory::Bridge::setupClientConnection(
 ////////////////////////////////////////////////////////////////////////////////
 BdvPtr Armory::Bridge::setupClientConnection(
    std::shared_ptr<Wallets::AuthorizedPeers> peers,
-   const std::string& peerName, bool oneWayAuth,
+   const Wallets::PeerKey& peerObj,
    std::shared_ptr<RemoteCallback> cbPtr)
 {
-   auto ipAndPort = getIpAndPortFromPeerName(peerName);
-   return setupClientConnection(peers,
-      ipAndPort.first, ipAndPort.second,
-      oneWayAuth, {},
-      cbPtr
-   );
+   auto peerNames = peers->getPeerNameMap(peerObj.isOneWay());
+   for (const auto& peerName : peerNames) {
+      if (std::memcmp(peerObj.getKey().getPtr(),
+         peerName.second.pubkey,
+         BIP151PUBKEYSIZE) != 0) {
+         continue;
+      }
+
+      auto ipAndPort = getIpAndPortFromPeerName(peerName.first);
+      auto bdvPtr = setupClientConnection(peers,
+         ipAndPort.first, ipAndPort.second,
+         peerObj.isOneWay(), {},
+         cbPtr
+      );
+      if (bdvPtr != nullptr) {
+         return bdvPtr;
+      }
+   }
+   return nullptr;
 }

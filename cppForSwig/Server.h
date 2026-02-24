@@ -159,7 +159,7 @@ private:
 
    void prepareWriteThread(void);
 
-   AuthPeersLambdas getAuthPeerLambda(void) const;
+   AuthPeersLambdas getAuthPeerLambda(bool) const;
    void closeClientConnection(uint64_t);
    void clientInterruptThread(void);
 

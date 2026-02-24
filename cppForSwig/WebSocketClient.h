@@ -153,7 +153,7 @@ public:
    void cleanup(void);
    bool running(void) const override;
    std::pair<unsigned, unsigned> getRekeyCount(void) const;
-   void addPublicKey(const SecureBinaryData&);
+   void addPublicKey(const SecureBinaryData&, bool);
    void setPubkeyPromptLambda(const std::function<bool(const BinaryData&)>&);
 
    //virtuals

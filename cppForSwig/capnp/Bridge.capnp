@@ -104,8 +104,7 @@ struct UTXO {
 struct Peer {
    key         @0 : Text; #base64 blob
    names       @1 : List(Text); #ip:port or domain:port
-   oneWay      @2 : Bool;
-   label       @3 : Text; #human readable label for the key
+   label       @2 : Text; #human readable label for the key
 }
 
 ################################################################################
@@ -219,9 +218,9 @@ struct DbSetupRequest {
       callbackId     @2 : Text;
    }
 
-   struct PeerRequest {
-      peerName       @0 : Text; #peer name
-      oneWayAuth     @1 : Bool;
+   struct LabelRequest {
+      key            @0 : Text; #base64 blob
+      label          @1 : Text;
    }
 
    struct AutoDbRequest {
@@ -233,7 +232,7 @@ struct DbSetupRequest {
       unset          @0 : Void;
 
       connectToIp    @1 : IpRequest;
-      connectToPeer  @2 : PeerRequest;
+      connectToPeer  @2 : Text; #peer key
       automateDb     @3 : AutoDbRequest;
       goOnline       @4 : Void;
       disconnect     @5 : Void;
@@ -244,6 +243,7 @@ struct DbSetupRequest {
       listPeers      @9 : Void;
       addPeer        @10: Peer;
       removePeer     @11: Text; #remove by key
+      setLabel       @12: LabelRequest;
    }
 }
 

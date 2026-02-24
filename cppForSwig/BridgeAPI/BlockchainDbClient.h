@@ -25,6 +25,7 @@ namespace Armory
    namespace Wallets
    {
       class AuthorizedPeers;
+      class PeerKey;
    }
 
    namespace Bridge
@@ -49,7 +50,7 @@ namespace Armory
       );
       BdvPtr setupClientConnection(
          std::shared_ptr<Wallets::AuthorizedPeers>,
-         const std::string&, bool,
+         const Wallets::PeerKey&,
          std::shared_ptr<RemoteCallback>
       );
    }

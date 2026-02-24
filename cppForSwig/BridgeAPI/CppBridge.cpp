@@ -889,40 +889,83 @@ void CppBridge::listPeers(MessageId refId)
       if (peersDb_ == nullptr) {
          throw std::runtime_error("have to load peers db before listing peers");
       }
-      std::map<BinaryDataRef, std::set<std::string>> keyNameMap;
-      for (const auto& namePair : peersDb_->getPeerNameMap()) {
+
+      //grab 1way peers, sort by key
+      std::map<BinaryDataRef, std::set<std::string>> keysOneWay;
+      for (const auto& namePair : peersDb_->getPeerNameMap(true)) {
+         if (namePair.first == "own") {
+            continue;
+         }
          BinaryDataRef keyRef{namePair.second.pubkey, BIP151PUBKEYSIZE};
-         auto iter = keyNameMap.find(keyRef);
-         if (iter == keyNameMap.end()) {
-            iter = keyNameMap.emplace(keyRef, std::set<std::string>{}).first;
+         auto iter = keysOneWay.find(keyRef);
+         if (iter == keysOneWay.end()) {
+            iter = keysOneWay.emplace(keyRef, std::set<std::string>{}).first;
          }
          iter->second.emplace(namePair.first);
       }
 
-      auto setupReply = reply.initSetup();
-      auto peersCapnp = setupReply.initListPeers(keyNameMap.size());
-      unsigned i = 0;
-      for (const auto& keyNames : keyNameMap) {
-         auto peerDataCapnp = peersCapnp[i++];
-         peerDataCapnp.setOneWay(true);
+      //same with 2way peers
+      std::map<BinaryDataRef, std::set<std::string>> keysTwoWay;
+      for (const auto& namePair : peersDb_->getPeerNameMap(false)) {
+         if (namePair.first == "own") {
+            continue;
+         }
+         BinaryDataRef keyRef{namePair.second.pubkey, BIP151PUBKEYSIZE};
+         auto iter = keysTwoWay.find(keyRef);
+         if (iter == keysTwoWay.end()) {
+            iter = keysTwoWay.emplace(keyRef, std::set<std::string>{}).first;
+         }
+         iter->second.emplace(namePair.first);
+      }
 
-         auto peerCapnp = peerDataCapnp.initPeer();
-         auto namesCapnp = peerCapnp.initNames(keyNames.second.size());
-         unsigned y = 0;
-         bool isOwn = false;
-         for (const auto& name : keyNames.second) {
-            namesCapnp.set(y++, name);
-            if (name == "own") {
-               isOwn = true;
+      //prepare capnp reply list
+      auto setupReply = reply.initSetup();
+      auto peersCapnp = setupReply.initListPeers(
+         keysOneWay.size() + keysTwoWay.size() + 1);
+
+      //set own key
+      auto ownKey = peersDb_->getOwnPublicKey();
+      Wallets::PeerKey ownPeer{ownKey, false, false};
+      auto ownKeyCapnp = peersCapnp[0];
+      ownKeyCapnp.setOneWay(false);
+      auto ownKeyDataCapnp = ownKeyCapnp.initPeer();
+      ownKeyDataCapnp.setKey(ownPeer.toHumanReadable());
+      auto keyNames = ownKeyDataCapnp.initNames(1);
+      keyNames.set(0, "own");
+      ownKeyDataCapnp.setLabel("N/A");
+
+      //function to populate the capnp peer list
+      size_t counter = 1;
+      auto addKeys = [this, &counter, &peersCapnp]
+      (std::map<BinaryDataRef, std::set<std::string>> keyMap, bool oneWay)
+      {
+         for (const auto& keyNames : keyMap) {
+            auto peerDataCapnp = peersCapnp[counter++];
+            peerDataCapnp.setOneWay(oneWay);
+
+            auto peerCapnp = peerDataCapnp.initPeer();
+            auto namesCapnp = peerCapnp.initNames(keyNames.second.size());
+            unsigned y = 0;
+            for (const auto& name : keyNames.second) {
+               namesCapnp.set(y++, name);
+            }
+
+            //TODO: get mode from peer store instead of hardcoding it
+            Wallets::PeerKey peer{keyNames.first, oneWay, true};
+            peerCapnp.setKey(peer.toHumanReadable());
+            try {
+               const auto& label = peersDb_->getLabel(keyNames.first, oneWay);
+               peerCapnp.setLabel(label);
+            } catch (const std::exception&) {
+               peerCapnp.setLabel("N/A");
             }
          }
+      };
 
-         //TODO: get mode from peer store instead of hardcoding it
-         auto peer = isOwn ? Wallets::PeerKey{keyNames.first, true, false}
-            : Wallets::PeerKey{keyNames.first, true, true};
-         peerCapnp.setKey(peer.toHumanReadable());
-         peerCapnp.setLabel("N/A");
-      }
+      //feed the keymaps to the function
+      addKeys(keysOneWay, true);
+      addKeys(keysTwoWay, false);
+
       reply.setSuccess(true);
    } catch (const std::exception& e) {
       reply.setError(std::string{"failed to list peers with error: "} + e.what());
@@ -934,7 +977,7 @@ void CppBridge::listPeers(MessageId refId)
 }
 
 void CppBridge::addPeer(const std::string& peerKey,
-   std::vector<std::string>& names, MessageId refId)
+   std::vector<std::string>& names, const std::string& label, MessageId refId)
 {
    LOGINFO << "adding peer";
 
@@ -951,7 +994,7 @@ void CppBridge::addPeer(const std::string& peerKey,
       if (!peer.isServer()) {
          throw std::runtime_error("cannot add a client key to a client peer store");
       }
-      peersDb_->addPeer(peer, names);
+      peersDb_->addPeer(peer, names, label);
       reply.setSuccess(true);
    } catch (const std::exception& e) {
       reply.setError(std::string{"failed to add peer with error: "} + e.what());
@@ -989,6 +1032,32 @@ void CppBridge::removePeer(const std::string& peerKey, MessageId refId)
    auto response = serializeCapnp(message);
    this->writeToClient(response);
 }
+
+void CppBridge::setPeerLabel(
+   const std::string& peerKey, const std::string& label, MessageId refId)
+{
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   reply.setReferenceId(refId);
+
+   try {
+      if (peersDb_ == nullptr) {
+         throw std::runtime_error("have to load peers db before updating labels");
+      }
+      auto peer = Wallets::PeerKey::fromHumanReadable(peerKey);
+      peersDb_->setLabel(peer, label);
+      reply.setSuccess(true);
+   } catch (const std::exception& e) {
+      reply.setError(std::string{"failed to remove peer with error: "} + e.what());
+      reply.setSuccess(false);
+   }
+
+   auto response = serializeCapnp(message);
+   this->writeToClient(response);
+
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // db connection routines
@@ -1085,8 +1154,7 @@ void CppBridge::connectToIp(const std::string& ip, const std::string& port,
    this->writeToClient(response);
 }
 
-void CppBridge::connectToPeer(const std::string& peerName,
-   bool oneWayAuth, MessageId refId)
+void CppBridge::connectToPeer(const std::string& peerKey, MessageId refId)
 {
    /*
    * Should call this method from a dedicated thread
@@ -1127,10 +1195,11 @@ void CppBridge::connectToPeer(const std::string& peerName,
          throw std::runtime_error(
             "have to load peers db before attemping connection to a peer");
       }
-      auto peers = peersDb_->getNarrowSet(peerName);
+      auto peerObj = Wallets::PeerKey::fromHumanReadable(peerKey);
+      auto peers = peersDb_->getNarrowSet(peerObj);
 
-      bdvPtr_ = setupClientConnection(peers, peerName,
-         oneWayAuth, wltManager_->getBdvCallback());
+      bdvPtr_ = setupClientConnection(peers, peerObj,
+         wltManager_->getBdvCallback());
       if (bdvPtr_ == nullptr) {
          throw std::runtime_error("connecToPeer failed");
       }

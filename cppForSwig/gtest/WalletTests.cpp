@@ -8723,32 +8723,36 @@ TEST_F(WalletMetaDataTest, AuthPeers)
    auto privKey1 = Cryptography::PRNG::generateRandomStrong(32);
    auto pubkey1 = Cryptography::ECDSA::computePublicKey(privKey1);
    auto pubkey1_compressed = Cryptography::ECDSA::compressPoint(pubkey1);
-   authPeers->addPeer(pubkey1, {"1.1.1.1", "0123::4567::89ab::cdef::", "test.com"});
+   authPeers->addPeer(pubkey1,
+      {"1.1.1.1", "0123::4567::89ab::cdef::", "test.com"}, "key1", true);
 
    auto privKey2 = Cryptography::PRNG::generateRandomStrong(32);
    auto pubkey2 = Cryptography::ECDSA::computePublicKey(privKey2);
    auto pubkey2_compressed = Cryptography::ECDSA::compressPoint(pubkey2);
-   authPeers->addPeer(pubkey2_compressed, {"2.2.2.2", "domain.com"});
+   authPeers->addPeer(pubkey2_compressed,
+      {"2.2.2.2", "domain.com"}, "key2", true);
 
    auto privKey3 = Cryptography::PRNG::generateRandomStrong(32);
    auto pubkey3 = Cryptography::ECDSA::computePublicKey(privKey3);
    auto pubkey3_compressed = Cryptography::ECDSA::compressPoint(pubkey3);
    std::string domain_name("anotherdomain.com");
-   authPeers->addPeer(pubkey3_compressed, {"3.3.3.3", "test.com", domain_name});
+   authPeers->addPeer(pubkey3_compressed,
+      {"3.3.3.3", "test.com", domain_name}, "key3", true);
 
    auto privKeyFail = Cryptography::PRNG::generateRandomStrong(32);
    auto pubkeyFail = Cryptography::ECDSA::computePublicKey(privKeyFail);
    auto pubkeyFail_compressed = Cryptography::ECDSA::compressPoint(pubkeyFail);
    try {
-      authPeers->addPeer(pubkey3_compressed, {"10.10.10.10", "test.com", "own"});
+      authPeers->addPeer(pubkey3_compressed,
+         {"10.10.10.10", "test.com", "own"}, {}, true);
    } catch (const AuthorizedPeersException& e) {
       ASSERT_EQ(e.what(), std::string{"use of a reserved name"});
    }
 
    {
       //check peer object has expected values
-      auto& peerMap = authPeers->getPeerNameMap();
-      auto& pubkeySet = authPeers->getPublicKeySet();
+      auto& peerMap = authPeers->getPeerNameMap(true);
+      auto& pubkeySet = authPeers->getPublicKeyMap(true);
 
       {
          //first peer
@@ -8764,6 +8768,8 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_EQ(pubkey1_sbd, pubkey1_compressed);
          EXPECT_NE(pubkey1_sbd, pubkey1);
          EXPECT_TRUE(pubkeySet.find(pubkey1_compressed) != pubkeySet.end());
+
+         EXPECT_EQ(authPeers->getLabel(pubkey1_compressed, true), std::string{"key1"});
       }
 
       {
@@ -8778,6 +8784,8 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_EQ(pubkey2_sbd, pubkey2_compressed);
          EXPECT_NE(pubkey2_sbd, pubkey2);
          EXPECT_TRUE(pubkeySet.find(pubkey2_compressed) != pubkeySet.end());
+
+         EXPECT_EQ(authPeers->getLabel(pubkey2_compressed, true), std::string{"key2"});
       }
 
       {
@@ -8794,6 +8802,8 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_EQ(pubkey3_sbd, pubkey3_compressed);
          EXPECT_NE(pubkey3_sbd, pubkey3);
          EXPECT_TRUE(pubkeySet.find(pubkey3_compressed) != pubkeySet.end());
+
+         EXPECT_EQ(authPeers->getLabel(pubkey3_compressed, true), std::string{"key3"});
       }
    }
 
@@ -8803,8 +8813,8 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
    {
       //check peer object has expected values
-      auto& peerMap = authPeers->getPeerNameMap();
-      auto& pubkeySet = authPeers->getPublicKeySet();
+      auto& peerMap = authPeers->getPeerNameMap(true);
+      auto& pubkeySet = authPeers->getPublicKeyMap(true);
 
       {
          //first peer
@@ -8820,6 +8830,8 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_EQ(pubkey1_sbd, pubkey1_compressed);
          EXPECT_NE(pubkey1_sbd, pubkey1);
          EXPECT_TRUE(pubkeySet.find(pubkey1_compressed) != pubkeySet.end());
+
+         EXPECT_EQ(authPeers->getLabel(pubkey1_compressed, true), std::string{"key1"});
       }
 
       {
@@ -8834,6 +8846,8 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_EQ(pubkey2_sbd, pubkey2_compressed);
          EXPECT_NE(pubkey2_sbd, pubkey2);
          EXPECT_TRUE(pubkeySet.find(pubkey2_compressed) != pubkeySet.end());
+
+         EXPECT_EQ(authPeers->getLabel(pubkey2_compressed, true), std::string{"key2"});
       }
 
       {
@@ -8850,6 +8864,8 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_EQ(pubkey3_sbd, pubkey3_compressed);
          EXPECT_NE(pubkey3_sbd, pubkey3);
          EXPECT_TRUE(pubkeySet.find(pubkey3_compressed) != pubkeySet.end());
+
+         EXPECT_EQ(authPeers->getLabel(pubkey3_compressed, true), std::string{"key3"});
       }
    }
 
@@ -8861,7 +8877,7 @@ TEST_F(WalletMetaDataTest, AuthPeers)
    btc_pubkey_init(&btckey4);
    std::memcpy(btckey4.pubkey, pubkey4.getPtr(), 65);
    btc_pubkey btckey4_cmp = Cryptography::ECDSA::compressPoint(btckey4);
-   authPeers->addPeer(btckey4, {"4.4.4.4", "more.com"});
+   authPeers->addPeer(btckey4, {"4.4.4.4", "more.com"}, "key4", false);
 
    auto privKey5 = Cryptography::PRNG::generateRandomStrong(32);
    auto pubkey5 = Cryptography::ECDSA::computePublicKey(privKey5);
@@ -8871,12 +8887,12 @@ TEST_F(WalletMetaDataTest, AuthPeers)
    std::memcpy(btckey5.pubkey, pubkey5_compressed.getPtr(), 33);
    btckey5.compressed = true;
 
-   authPeers->addPeer(btckey5, {"5.5.5.5", "newdomain.com"});
+   authPeers->addPeer(btckey5, {"5.5.5.5", "newdomain.com"}, "key5", false);
 
    {
       //check peer object has expected values
-      auto& peerMap = authPeers->getPeerNameMap();
-      auto& pubkeySet = authPeers->getPublicKeySet();
+      auto& peerMap = authPeers->getPeerNameMap(true);
+      auto& pubkeySet = authPeers->getPublicKeyMap(true);
 
       {
          //first peer
@@ -8892,6 +8908,8 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_EQ(pubkey1_sbd, pubkey1_compressed);
          EXPECT_NE(pubkey1_sbd, pubkey1);
          EXPECT_TRUE(pubkeySet.find(pubkey1_compressed) != pubkeySet.end());
+
+         EXPECT_EQ(authPeers->getLabel(pubkey1_compressed, true), std::string{"key1"});
       }
 
       {
@@ -8906,6 +8924,8 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_EQ(pubkey2_sbd, pubkey2_compressed);
          EXPECT_NE(pubkey2_sbd, pubkey2);
          EXPECT_TRUE(pubkeySet.find(pubkey2_compressed) != pubkeySet.end());
+
+         EXPECT_EQ(authPeers->getLabel(pubkey2_compressed, true), std::string{"key2"});
       }
 
       {
@@ -8922,7 +8942,15 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_EQ(pubkey3_sbd, pubkey3_compressed);
          EXPECT_NE(pubkey3_sbd, pubkey3);
          EXPECT_TRUE(pubkeySet.find(pubkey3_compressed) != pubkeySet.end());
+
+         EXPECT_EQ(authPeers->getLabel(pubkey3_compressed, true), std::string{"key3"});
       }
+   }
+
+   {
+      //check peer object has expected values
+      auto& peerMap = authPeers->getPeerNameMap(false);
+      auto& pubkeySet = authPeers->getPublicKeyMap(false);
 
       {
          //4th peer
@@ -8936,6 +8964,8 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_NE(memcmp(iter1->second.pubkey, btckey4.pubkey, BIP151PUBKEYSIZE), 0);
          EXPECT_EQ(memcmp(iter1->second.pubkey, btckey4_cmp.pubkey, BIP151PUBKEYSIZE), 0);
          EXPECT_TRUE(pubkeySet.find(pubkey4_compressed) != pubkeySet.end());
+
+         EXPECT_EQ(authPeers->getLabel(pubkey4_compressed, false), std::string{"key4"});
       }
 
       {
@@ -8949,19 +8979,29 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          //convert btc_pubkey to sbd
          EXPECT_EQ(memcmp(iter1->second.pubkey, btckey5.pubkey, BIP151PUBKEYSIZE), 0);
          EXPECT_TRUE(pubkeySet.find(pubkey5_compressed) != pubkeySet.end());
+
+         EXPECT_EQ(authPeers->getLabel(pubkey5_compressed, false), std::string{"key5"});
       }
    }
 
    //remove entries, check again
-   authPeers->eraseName(domain_name);
-   authPeers->eraseKey(pubkey2);
-   authPeers->eraseName("5.5.5.5");
-   authPeers->eraseKey(btckey4);
+   authPeers->eraseName(domain_name, true);
+   authPeers->eraseKey(pubkey2, true);
+   authPeers->eraseName("5.5.5.5", false);
+   authPeers->eraseKey(btckey4, false);
+   authPeers->setLabel(pubkey1_compressed, "updated key1", true);
+   try {
+      authPeers->setLabel(pubkey2_compressed, "update key2", true);
+      ASSERT_TRUE(false);
+   } catch (const std::exception& e) {
+      EXPECT_EQ(e.what(), std::string{"unknown peer key"});
+   }
+   authPeers->setLabel(pubkey5_compressed, "55key", false);
 
    {
       //check peer object has expected values
-      auto& peerMap = authPeers->getPeerNameMap();
-      auto& pubkeySet = authPeers->getPublicKeySet();
+      auto& peerMap = authPeers->getPeerNameMap(true);
+      auto& pubkeySet = authPeers->getPublicKeyMap(true);
 
       {
          //first peer
@@ -8977,6 +9017,8 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_EQ(pubkey1_sbd, pubkey1_compressed);
          EXPECT_NE(pubkey1_sbd, pubkey1);
          EXPECT_TRUE(pubkeySet.find(pubkey1_compressed) != pubkeySet.end());
+
+         EXPECT_EQ(authPeers->getLabel(pubkey1_compressed, true), std::string{"updated key1"});
       }
 
       {
@@ -8987,6 +9029,13 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_TRUE(iter1 == peerMap.end());
          EXPECT_TRUE(iter2 == peerMap.end());
          EXPECT_TRUE(pubkeySet.find(pubkey2_compressed) == pubkeySet.end());
+
+         try {
+            authPeers->getLabel(pubkey2_compressed, true);
+            ASSERT_TRUE(false);
+         } catch (const std::exception& e) {
+            EXPECT_EQ(e.what(), std::string{"unknown peer key"});
+         }
       }
 
       {
@@ -9003,7 +9052,15 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_EQ(pubkey3_sbd, pubkey3_compressed);
          EXPECT_NE(pubkey3_sbd, pubkey3);
          EXPECT_TRUE(pubkeySet.find(pubkey3_compressed) != pubkeySet.end());
+
+         EXPECT_EQ(authPeers->getLabel(pubkey3_compressed, true), std::string{"key3"});
       }
+   }
+
+   {
+      //check peer object has expected values
+      auto& peerMap = authPeers->getPeerNameMap(false);
+      auto& pubkeySet = authPeers->getPublicKeyMap(false);
 
       {
          //4th peer
@@ -9013,6 +9070,13 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_EQ(iter1, peerMap.end());
          EXPECT_EQ(iter2, peerMap.end());
          EXPECT_TRUE(pubkeySet.find(pubkey4_compressed) == pubkeySet.end());
+
+         try {
+            authPeers->getLabel(pubkey4_compressed, false);
+            ASSERT_TRUE(false);
+         } catch (const std::exception& e) {
+            EXPECT_EQ(e.what(), std::string{"unknown peer key"});
+         }
       }
 
       {
@@ -9024,7 +9088,10 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
          EXPECT_EQ(memcmp(iter2->second.pubkey, btckey5.pubkey, BIP151PUBKEYSIZE), 0);
          EXPECT_TRUE(pubkeySet.find(pubkey5_compressed) != pubkeySet.end());
+
+         EXPECT_EQ(authPeers->getLabel(pubkey5_compressed, false), std::string{"55key"});
       }
+
    }
 
    //delete auth peer object, reload and test again
@@ -9033,8 +9100,8 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
    {
       //check peer object has expected values
-      auto& peerMap = authPeers->getPeerNameMap();
-      auto& pubkeySet = authPeers->getPublicKeySet();
+      auto& peerMap = authPeers->getPeerNameMap(true);
+      auto& pubkeySet = authPeers->getPublicKeyMap(true);
 
       {
          //first peer
@@ -9050,6 +9117,8 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_EQ(pubkey1_sbd, pubkey1_compressed);
          EXPECT_NE(pubkey1_sbd, pubkey1);
          EXPECT_TRUE(pubkeySet.find(pubkey1_compressed) != pubkeySet.end());
+
+         EXPECT_EQ(authPeers->getLabel(pubkey1_compressed, true), std::string{"updated key1"});
       }
 
       {
@@ -9060,6 +9129,13 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_TRUE(iter1 == peerMap.end());
          EXPECT_TRUE(iter2 == peerMap.end());
          EXPECT_TRUE(pubkeySet.find(pubkey2_compressed) == pubkeySet.end());
+
+         try {
+            authPeers->getLabel(pubkey2_compressed, true);
+            ASSERT_TRUE(false);
+         } catch (const std::exception& e) {
+            EXPECT_EQ(e.what(), std::string{"unknown peer key"});
+         }
       }
 
       {
@@ -9076,7 +9152,15 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_EQ(pubkey3_sbd, pubkey3_compressed);
          EXPECT_NE(pubkey3_sbd, pubkey3);
          EXPECT_TRUE(pubkeySet.find(pubkey3_compressed) != pubkeySet.end());
+
+         EXPECT_EQ(authPeers->getLabel(pubkey3_compressed, true), std::string{"key3"});
       }
+   }
+
+   {
+      //check peer object has expected values
+      auto& peerMap = authPeers->getPeerNameMap(false);
+      auto& pubkeySet = authPeers->getPublicKeyMap(false);
 
       {
          //4th peer
@@ -9086,6 +9170,13 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_EQ(iter1, peerMap.end());
          EXPECT_EQ(iter2, peerMap.end());
          EXPECT_TRUE(pubkeySet.find(pubkey4_compressed) == pubkeySet.end());
+
+         try {
+            authPeers->getLabel(pubkey4_compressed, false);
+            ASSERT_TRUE(false);
+         } catch (const std::exception& e) {
+            EXPECT_EQ(e.what(), std::string{"unknown peer key"});
+         }
       }
 
       {
@@ -9097,16 +9188,18 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
          EXPECT_EQ(memcmp(iter2->second.pubkey, btckey5.pubkey, BIP151PUBKEYSIZE), 0);
          EXPECT_TRUE(pubkeySet.find(pubkey5_compressed) != pubkeySet.end());
+
+         EXPECT_EQ(authPeers->getLabel(pubkey5_compressed, false), std::string{"55key"});
       }
    }
 
    //remove last name of 5th peer, check keySet entry is gone too
-   authPeers->eraseName("newdomain.com");
+   authPeers->eraseName("newdomain.com", false);
 
    {
       //check peer object has expected values
-      auto& peerMap = authPeers->getPeerNameMap();
-      auto& pubkeySet = authPeers->getPublicKeySet();
+      auto& peerMap = authPeers->getPeerNameMap(true);
+      auto& pubkeySet = authPeers->getPublicKeyMap(true);
 
       {
          //first peer
@@ -9122,6 +9215,8 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_EQ(pubkey1_sbd, pubkey1_compressed);
          EXPECT_NE(pubkey1_sbd, pubkey1);
          EXPECT_TRUE(pubkeySet.find(pubkey1_sbd) != pubkeySet.end());
+
+         EXPECT_EQ(authPeers->getLabel(pubkey1_compressed, true), std::string{"updated key1"});
       }
 
       {
@@ -9132,6 +9227,13 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_TRUE(iter1 == peerMap.end());
          EXPECT_TRUE(iter2 == peerMap.end());
          EXPECT_TRUE(pubkeySet.find(pubkey2_compressed) == pubkeySet.end());
+
+         try {
+            authPeers->getLabel(pubkey2_compressed, true);
+            ASSERT_TRUE(false);
+         } catch (const std::exception& e) {
+            EXPECT_EQ(e.what(), std::string{"unknown peer key"});
+         }
       }
 
       {
@@ -9148,7 +9250,15 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_EQ(pubkey3_sbd, pubkey3_compressed);
          EXPECT_NE(pubkey3_sbd, pubkey3);
          EXPECT_TRUE(pubkeySet.find(pubkey3_sbd) != pubkeySet.end());
+
+         EXPECT_EQ(authPeers->getLabel(pubkey3_compressed, true), std::string{"key3"});
       }
+   }
+
+   {
+      //check peer object has expected values
+      auto& peerMap = authPeers->getPeerNameMap(false);
+      auto& pubkeySet = authPeers->getPublicKeyMap(false);
 
       {
          //4th peer
@@ -9158,6 +9268,13 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_EQ(iter1, peerMap.end());
          EXPECT_EQ(iter2, peerMap.end());
          EXPECT_TRUE(pubkeySet.find(pubkey4_compressed) == pubkeySet.end());
+
+         try {
+            authPeers->getLabel(pubkey4_compressed, false);
+            ASSERT_TRUE(false);
+         } catch (const std::exception& e) {
+            EXPECT_EQ(e.what(), std::string{"unknown peer key"});
+         }
       }
 
       {
@@ -9168,6 +9285,13 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_EQ(iter1, peerMap.end());
          EXPECT_EQ(iter2, peerMap.end());
          EXPECT_TRUE(pubkeySet.find(pubkey5_compressed) == pubkeySet.end());
+
+         try {
+            authPeers->getLabel(pubkey5_compressed, false);
+            ASSERT_TRUE(false);
+         } catch (const std::exception& e) {
+            EXPECT_EQ(e.what(), std::string{"unknown peer key"});
+         }
       }
    }
 
@@ -9220,7 +9344,7 @@ TEST_F(WalletMetaDataTest, AuthPeers)
    ASSERT_FALSE(authPeers->isMasterKey(btckey6));
 
    //delete key1, check it's not master key anymore
-   authPeers->eraseKey(pubkey1_compressed);
+   authPeers->eraseKey(pubkey1_compressed, true);
    ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
    ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
    ASSERT_FALSE(authPeers->isMasterKey(btckey6));
@@ -9233,7 +9357,8 @@ TEST_F(WalletMetaDataTest, AuthPeers)
    ASSERT_FALSE(authPeers->isMasterKey(btckey6));
 
    //TODO: re-add key1, check it isnt master key
-   authPeers->addPeer(pubkey1, {"1.1.1.1", "0123::4567::89ab::cdef::", "test.com"});
+   authPeers->addPeer(pubkey1,
+      {"1.1.1.1", "0123::4567::89ab::cdef::", "test.com"}, {}, true);
    ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
    ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
    ASSERT_FALSE(authPeers->isMasterKey(btckey6));
@@ -9281,23 +9406,26 @@ TEST_F(WalletMetaDataTest, AuthPeers_Ephemeral)
    auto privKey1 = Cryptography::PRNG::generateRandomStrong(32);
    auto pubkey1 = Cryptography::ECDSA::computePublicKey(privKey1);
    auto pubkey1_compressed = Cryptography::ECDSA::compressPoint(pubkey1);
-   authPeers->addPeer(pubkey1, {"1.1.1.1", "0123::4567::89ab::cdef::", "test.com"});
+   authPeers->addPeer(pubkey1,
+      {"1.1.1.1", "0123::4567::89ab::cdef::", "test.com"}, {}, false);
 
    auto privKey2 = Cryptography::PRNG::generateRandomStrong(32);
    auto pubkey2 = Cryptography::ECDSA::computePublicKey(privKey2);
    auto pubkey2_compressed = Cryptography::ECDSA::compressPoint(pubkey2);
-   authPeers->addPeer(pubkey2_compressed, {"2.2.2.2", "domain.com"});
+   authPeers->addPeer(pubkey2_compressed,
+      {"2.2.2.2", "domain.com"}, {}, false);
 
    auto privKey3 = Cryptography::PRNG::generateRandomStrong(32);
    auto pubkey3 = Cryptography::ECDSA::computePublicKey(privKey3);
    auto pubkey3_compressed = Cryptography::ECDSA::compressPoint(pubkey3);
    std::string domain_name{"anotherdomain.com"};
-   authPeers->addPeer(pubkey3_compressed, {"3.3.3.3", "test.com", domain_name});
+   authPeers->addPeer(pubkey3_compressed,
+      {"3.3.3.3", "test.com", domain_name}, {}, false);
 
    {
       //check peer object has expected values
-      auto& peerMap = authPeers->getPeerNameMap();
-      auto& pubkeySet = authPeers->getPublicKeySet();
+      auto& peerMap = authPeers->getPeerNameMap(false);
+      auto& pubkeySet = authPeers->getPublicKeyMap(false);
 
       {
          //first peer
@@ -9354,7 +9482,7 @@ TEST_F(WalletMetaDataTest, AuthPeers_Ephemeral)
    btc_pubkey_init(&btckey4);
    std::memcpy(btckey4.pubkey, pubkey4.getPtr(), 65);
    btc_pubkey btckey4_cmp = Cryptography::ECDSA::compressPoint(btckey4);
-   authPeers->addPeer(btckey4, {"4.4.4.4", "more.com"});
+   authPeers->addPeer(btckey4, {"4.4.4.4", "more.com"}, {}, false);
 
    auto privKey5 = Cryptography::PRNG::generateRandomStrong(32);
    auto pubkey5 = Cryptography::ECDSA::computePublicKey(privKey5);
@@ -9363,12 +9491,12 @@ TEST_F(WalletMetaDataTest, AuthPeers_Ephemeral)
    btc_pubkey_init(&btckey5);
    std::memcpy(btckey5.pubkey, pubkey5_compressed.getPtr(), 33);
    btckey5.compressed = true;
-   authPeers->addPeer(btckey5, {"5.5.5.5", "newdomain.com"});
+   authPeers->addPeer(btckey5, {"5.5.5.5", "newdomain.com"}, {}, false);
 
    {
       //check peer object has expected values
-      auto& peerMap = authPeers->getPeerNameMap();
-      auto& pubkeySet = authPeers->getPublicKeySet();
+      auto& peerMap = authPeers->getPeerNameMap(false);
+      auto& pubkeySet = authPeers->getPublicKeyMap(false);
 
       {
          //first peer
@@ -9445,15 +9573,15 @@ TEST_F(WalletMetaDataTest, AuthPeers_Ephemeral)
    }
 
    //remove entries, check again
-   authPeers->eraseName(domain_name);
-   authPeers->eraseKey(pubkey2);
-   authPeers->eraseName("5.5.5.5");
-   authPeers->eraseKey(btckey4);
+   authPeers->eraseName(domain_name, false);
+   authPeers->eraseKey(pubkey2, false);
+   authPeers->eraseName("5.5.5.5", false);
+   authPeers->eraseKey(btckey4, false);
 
    {
       //check peer object has expected values
-      auto& peerMap = authPeers->getPeerNameMap();
-      auto& pubkeySet = authPeers->getPublicKeySet();
+      auto& peerMap = authPeers->getPeerNameMap(false);
+      auto& pubkeySet = authPeers->getPublicKeyMap(false);
 
       {
          //first peer

@@ -1987,7 +1987,7 @@ protected:
 
       std::stringstream serverAddr;
       serverAddr << "127.0.0.1:" << Config::NetworkSettings::dbPort();
-      clientPeers.addPeer(serverPubkey, {serverAddr.str()});
+      clientPeers.addPeer(serverPubkey, {serverAddr.str()}, {}, true);
 
       wallet1id = "wallet1";
 
@@ -2076,7 +2076,7 @@ TEST_F(WebSocketTests, DISABLED_WebSocketStack_ParallelAsync)
          {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_},
          Config::NetworkSettings::ephemeralPeers(), true, //public server
          pCallback);
-      bdvObj->addPublicKey(serverPubkey);
+      bdvObj->addPublicKey(serverPubkey, true);
       bdvObj->connectToRemote();
       bdvObj->registerWithDB(hexMagicBytes);
       auto wallet1 = bdvObj->getWalletObj("wallet1");
@@ -2117,7 +2117,7 @@ TEST_F(WebSocketTests, DISABLED_WebSocketStack_ParallelAsync)
          {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_},
          Config::NetworkSettings::ephemeralPeers(), true, //public server
          pCallback);
-      bdvObj->addPublicKey(serverPubkey);
+      bdvObj->addPublicKey(serverPubkey, true);
       bdvObj->connectToRemote();
       bdvObj->registerWithDB(hexMagicBytes);
 
@@ -2487,7 +2487,7 @@ TEST_F(WebSocketTests, DISABLED_WebSocketStack_ParallelAsync)
       "127.0.0.1", Config::NetworkSettings::dbPort(),
       {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_},
       Config::NetworkSettings::ephemeralPeers(), true, nullptr);
-   bdvObj2->addPublicKey(serverPubkey);
+   bdvObj2->addPublicKey(serverPubkey, true);
    bdvObj2->connectToRemote();
 
    bdvObj2->shutdown(Config::NetworkSettings::cookie());
@@ -2548,7 +2548,7 @@ TEST_F(WebSocketTests, DISABLED_WebSocketStack_ParallelAsync_ShutdownClients)
          {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_},
          Config::NetworkSettings::ephemeralPeers(), true, //public server
          pCallback);
-      bdvObj->addPublicKey(serverPubkey);
+      bdvObj->addPublicKey(serverPubkey, true);
       bdvObj->connectToRemote();
       bdvObj->registerWithDB(Config::BitcoinSettings::getMagicBytes());
 
@@ -2601,7 +2601,7 @@ TEST_F(WebSocketTests, DISABLED_WebSocketStack_ParallelAsync_ShutdownClients)
          {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_},
          Config::NetworkSettings::ephemeralPeers(), true, //public server
          pCallback);
-      bdvObj->addPublicKey(serverPubkey);
+      bdvObj->addPublicKey(serverPubkey, true);
       bdvObj->connectToRemote();
       bdvObj->registerWithDB(Config::BitcoinSettings::getMagicBytes());
 
@@ -2959,7 +2959,7 @@ TEST_F(WebSocketTests, DISABLED_WebSocketStack_ParallelAsync_ShutdownClients)
       "127.0.0.1", Config::NetworkSettings::dbPort(),
       {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_},
       Config::NetworkSettings::ephemeralPeers(), true, nullptr);
-   bdvObj2->addPublicKey(serverPubkey);
+   bdvObj2->addPublicKey(serverPubkey, true);
    bdvObj2->connectToRemote();
 
    bdvObj2->shutdown(Config::NetworkSettings::cookie());
@@ -3029,7 +3029,7 @@ TEST_F(WebSocketTests, WebSocketStack_ManyLargeWallets)
                homedir_ / CLIENT_AUTH_PEER_FILENAME,
                authPeersPassLbd_}), true, //public server
             pCallback);
-      bdvObj->addPublicKey(serverPubkey);
+      bdvObj->addPublicKey(serverPubkey, true);
       ASSERT_TRUE(bdvObj->connectToRemote());
       bdvObj->registerWithDB(hexMagicBytes);
 
@@ -3165,7 +3165,7 @@ TEST_F(WebSocketTests, WebSocketStack_AddrOpLoop)
                homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
          true, //public server
          pCallback);
-      bdvObj->addPublicKey(serverPubkey);
+      bdvObj->addPublicKey(serverPubkey, true);
       bdvObj->connectToRemote();
       bdvObj->registerWithDB(hexMagicBytes);
 
@@ -3418,7 +3418,7 @@ TEST_F(WebSocketTests, WebSocketStack_CombinedCalls)
                homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
          true, //public server
          pCallback);
-      bdvObj->addPublicKey(serverPubkey);
+      bdvObj->addPublicKey(serverPubkey, true);
       bdvObj->connectToRemote();
       bdvObj->registerWithDB(hexMagicBytes);
 
@@ -3564,7 +3564,7 @@ TEST_F(WebSocketTests, WebSocketStack_UnregisterAddresses)
             Wallets::IO::ReadOnlyFileParams{homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
          true, //public server
          pCallback);
-      bdvObj->addPublicKey(serverPubkey);
+      bdvObj->addPublicKey(serverPubkey, true);
       bdvObj->connectToRemote();
       bdvObj->registerWithDB(hexMagicBytes);
 
@@ -3866,7 +3866,7 @@ TEST_F(WebSocketTests, WebSocketStack_DynamicReorg)
             homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
       true, //public server
       pCallback);
-   bdvObj->addPublicKey(serverPubkey);
+   bdvObj->addPublicKey(serverPubkey, true);
    bdvObj->connectToRemote();
    bdvObj->registerWithDB(hexMagicBytes);
 
@@ -4243,7 +4243,7 @@ TEST_F(WebSocketTests, WebSocketStack_GetTxByHash)
             homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
       true, //public server
       pCallback);
-   bdvObj->addPublicKey(serverPubkey);
+   bdvObj->addPublicKey(serverPubkey, true);
    bdvObj->connectToRemote();
    bdvObj->registerWithDB(hexMagicBytes);
 
@@ -4491,7 +4491,7 @@ TEST_F(WebSocketTests, WebSocketStack_GetTxByHash)
                homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
          true, //public server
          pCallback2);
-      bdvObj2->addPublicKey(serverPubkey);
+      bdvObj2->addPublicKey(serverPubkey, true);
       bdvObj2->connectToRemote();
       bdvObj2->registerWithDB(hexMagicBytes);
 
@@ -4730,7 +4730,7 @@ TEST_F(WebSocketTests, WebSocketStack_GetSpentness)
                homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_}),
          true, //public server
          pCallback);
-      bdvObj->addPublicKey(serverPubkey);
+      bdvObj->addPublicKey(serverPubkey, true);
       bdvObj->connectToRemote();
       bdvObj->registerWithDB(hexMagicBytes);
 
