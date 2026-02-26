@@ -134,22 +134,6 @@ void WalletContainer::unregisterFromBDV()
    asyncWlt_->unregister();
 }
 
-////////////////////////////////////////////////////////////////////////////////
-void WalletContainer::updateWalletBalanceState(
-   const AsyncClient::CombinedBalances& bal)
-{
-   std::unique_lock<std::mutex> lock(stateMutex_);
-
-   totalBalance_        = bal.walletBalanceAndCount[0];
-   spendableBalance_    = bal.walletBalanceAndCount[1];
-   unconfirmedBalance_  = bal.walletBalanceAndCount[2];
-   txioCount_           = bal.walletBalanceAndCount[3];
-
-   for (const auto& addrPair : bal.addressBalances) {
-      balanceMap_[addrPair.first] = addrPair.second;
-   }
-}
-
 uint64_t WalletContainer::getFullBalance() const
 {
    return totalBalance_;
@@ -171,7 +155,7 @@ uint64_t WalletContainer::getTxIOCount() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-Wallets::AssetKeyType WalletContainer::getHighestUsedIndex(void) const
+Wallets::AssetKeyType WalletContainer::getHighestUsedIndex() const
 {
    auto accPtr = wallet_->getAccountForID(accountId_);
    if (accPtr == nullptr) {
@@ -195,6 +179,12 @@ Wallets::AssetKeyType WalletContainer::getHighestUsedIndex(void) const
 void WalletContainer::updateAddressCountState(
    const AsyncClient::CombinedBalances& cnt)
 {
+   /***
+   TODO:
+      Need to integrate this to local address/count computing.
+      This code compares local address chain length vs on-chain balance
+      data and reconciliates them. Crucial when restoring wallets.
+   ***/
    std::unique_lock<std::mutex> lock(stateMutex_);
 
    std::map<Wallets::AssetAccountId, Wallets::AssetKeyType> topIndexMap;
@@ -421,20 +411,6 @@ void WalletContainer::setLabels(const std::string& title, const std::string& des
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void WalletContainer::updateBalancesAndCount(uint32_t topBlockHeight)
-{
-   auto lbd = [this](ReturnMessage<std::vector<uint64_t>> vec)
-   {
-      std::unique_lock<std::mutex> lock(stateMutex_);
-      auto balVec = std::move(vec.get());
-      totalBalance_ = balVec[0];
-      spendableBalance_ = balVec[1];
-      unconfirmedBalance_ = balVec[2];
-   };
-   asyncWlt_->getBalancesAndCount(topBlockHeight, lbd);
-}
-
-////////////////////////////////////////////////////////////////////////////////
 void WalletContainer::extendAddressChain(unsigned count,
    const std::function<void(int)>& progFunc)
 {
@@ -492,9 +468,62 @@ const std::map<BinaryData, TxIOPair>& WalletContainer::getTxioMap() const
 
 void WalletContainer::resolveTxios(uint32_t fromHeight)
 {
-   txioMap_ = cache_->resolve(
+   auto result = cache_->resolve(
       [this](const BinaryData& scrAddr)->bool
-         { return this->hasAddress(scrAddr); },
+      { return this->hasAddress(scrAddr); },
       fromHeight
    );
+
+   //update balances
+   totalBalance_        = 0;
+   spendableBalance_    = 0;
+   unconfirmedBalance_  = 0;
+   txioCount_           = 0;
+   balanceMap_.clear();
+   countMap_.clear();
+
+   for (const auto& addr : result.addrTxioMap) {
+      //tally address balance and count
+      uint64_t total = 0;
+      uint64_t spendable = 0;
+      uint64_t unconfirmed = 0;
+      uint64_t count = 0;
+      for (const auto& txio : addr.second) {
+         //+1 txio per output
+         ++count;
+         if (txio->hasTxIn()) {
+            //+1 txio per input
+            //spent txios do not affect balance
+            ++count;
+            continue;
+         }
+
+         //total tallies all unspent outputs indiscriminately
+         total += txio->getValue();
+
+         //spendable only tracks mature outputs (cf mining reward maturity)
+         if (txio->isSpendable(result.topBlock)) {
+            spendable += txio->getValue();
+         }
+
+         //unconfirmed adds up immature and unconfirmed outputs
+         if (txio->isUnconfirmed(result.topBlock, MIN_CONFIRMATIONS)) {
+            unconfirmed += txio->getValue();
+         }
+      }
+
+      //set address data
+      balanceMap_.emplace(addr.first,
+         std::vector<uint64_t>{total, spendable, unconfirmed});
+      countMap_.emplace(addr.first, count);
+
+      //update wallet aggregate
+      totalBalance_        += total;
+      spendableBalance_    += spendable;
+      unconfirmedBalance_  += unconfirmed;
+      txioCount_           += count;
+   }
+
+   //we're done
+   txioMap_ = std::move(result.txioMap);
 }

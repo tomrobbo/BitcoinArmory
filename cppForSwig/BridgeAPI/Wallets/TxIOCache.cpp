@@ -28,12 +28,12 @@ std::shared_ptr<const Ledgers::DBCache> TxIOCache::getDBCache() const
    return std::const_pointer_cast<const Ledgers::DBCache>(dbCache_);
 }
 
-std::map<BinaryData, TxIOPair> TxIOCache::resolve(
+CacheResolveResult TxIOCache::resolve(
    const std::function<bool(const BinaryData&)>& filter,
    uint32_t fromHeight) const
 {
    //run through unspent txios first
-   std::map<BinaryData, TxIOPair> result;
+   CacheResolveResult result{lastKnownBlock_};
    for (const auto& txio : unspentTxios_) {
       const auto& txKey = txio.second.getTxRefOfOutput().getDBKey();
 
@@ -46,7 +46,7 @@ std::map<BinaryData, TxIOPair> TxIOCache::resolve(
       const auto& tx = dbCache_->txMap.at(txKey);
       auto scrAddr = tx.getScrAddrForTxOut(txio.second.getIndexOfOutput());
       if (filter(scrAddr)) {
-         result.emplace(txio);
+         result.addTxio(txio.first, txio.second, scrAddr);
       }
    }
 
@@ -66,8 +66,8 @@ std::map<BinaryData, TxIOPair> TxIOCache::resolve(
 
       //do we have an unspent txio in the result map?
       auto txioKey = txio.second.getDBKeyOfOutput();
-      auto iter = result.find(txioKey);
-      if (iter != result.end()) {
+      auto iter = result.txioMap.find(txioKey);
+      if (iter != result.txioMap.end()) {
          //we do, merge in the txin
          iter->second.merge(txio.second);
          continue;
@@ -77,7 +77,7 @@ std::map<BinaryData, TxIOPair> TxIOCache::resolve(
       const auto& tx = dbCache_->txMap.at(txKeyOutput);
       auto scrAddr = tx.getScrAddrForTxOut(txio.second.getIndexOfOutput());
       if (filter(scrAddr)) {
-         result.emplace(txioKey, txio.second);
+         result.addTxio(txioKey, txio.second, scrAddr);
       }
    }
    return result;
@@ -184,4 +184,17 @@ std::pair<std::set<BinaryData>, std::set<uint32_t>> TxIOCache::addTxios(
       lastKnownBlock_ = fetchedHeight;
    }
    return {std::move(missingTxKeys), std::move(missingHeights)};
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// CacheResolveResult
+void CacheResolveResult::addTxio(const BinaryData& key, const TxIOPair& txio,
+   const BinaryData& addr)
+{
+   auto iter = txioMap.emplace(key, txio).first;
+   auto addrIter = addrTxioMap.find(addr);
+   if (addrIter == addrTxioMap.end()) {
+      addrIter = addrTxioMap.emplace(addr, std::vector<TxIOPair*>{}).first;
+   }
+   addrIter->second.emplace_back(&iter->second);
 }

@@ -35,6 +35,15 @@ namespace Armory
 
    namespace Bridge
    {
+      struct CacheResolveResult
+      {
+         const uint32_t topBlock;
+         std::map<BinaryData, TxIOPair> txioMap;
+         std::map<BinaryData, std::vector<TxIOPair*>> addrTxioMap;
+
+         void addTxio(const BinaryData&, const TxIOPair&, const BinaryData&);
+      };
+
       class TxIOCache : public Lockable
       {
       private:
@@ -57,7 +66,7 @@ namespace Armory
          uint32_t update(std::shared_ptr<AsyncClient::BlockDataViewer>,
             const NewBlockNotif&);
          std::shared_ptr<const Ledgers::DBCache> getDBCache(void) const;
-         std::map<BinaryData, TxIOPair> resolve(
+         CacheResolveResult resolve(
             const std::function<bool(const BinaryData&)>&,
             uint32_t) const;
       };

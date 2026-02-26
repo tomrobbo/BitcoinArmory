@@ -101,10 +101,7 @@ namespace Armory
             getAddressAccount(void) const;
          const Wallets::AddressAccountId& getAccountId(void) const;
 
-         void updateBalancesAndCount(uint32_t);
-         void updateWalletBalanceState(const AsyncClient::CombinedBalances&);
          void updateAddressCountState(const AsyncClient::CombinedBalances&);
-
          void extendAddressChain(unsigned, const std::function<void(int)>&);
          void extendAddressChainToIndex(unsigned);
          bool hasAddress(const BinaryData&);

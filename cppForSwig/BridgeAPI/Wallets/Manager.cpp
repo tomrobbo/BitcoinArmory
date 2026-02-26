@@ -623,31 +623,6 @@ void WalletManager::updateStateFromDB(
 {
    auto lbd = [this, callback, blockNotif](void)->void
    {
-      //0. grab wallet balances
-      auto promBal = std::make_shared<std::promise<std::map<
-         std::string, AsyncClient::CombinedBalances>>>();
-      auto futBal = promBal->get_future();
-      auto lbdBal = [promBal]
-         (ReturnMessage<std::map<std::string, AsyncClient::CombinedBalances>> result)->void
-      {
-         promBal->set_value(result.get());
-      };
-      bdvPtr_->getCombinedBalances(lbdBal);
-      auto balances = std::move(futBal.get());
-
-      //update wallet balances
-      {
-         ReentrantLock lock(this);
-         for (const auto& wltBalance : balances) {
-            auto wltContIter = walletsByDbId_.find(wltBalance.first);
-            if (wltContIter == walletsByDbId_.end()) {
-               continue;
-            }
-            wltContIter->second->updateWalletBalanceState(wltBalance.second);
-            wltContIter->second->updateAddressCountState(wltBalance.second);
-         }
-      }
-
       //update txio cache
       auto checkFromHeight = txioCache_->update(bdvPtr_, blockNotif);
 
