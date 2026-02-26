@@ -36,28 +36,34 @@ class PeerData:
    Data class for remote database peer information.
 
    Matches bridge PeerData/Peer structure:
-   - key: human-readable base64 peer key (from PeerKey format)
+   - key: human-readable peer key (AR1.../AR2.../ARc...)
    - names: list of ip:port strings
    - label: human-readable label
+   - oneWay: True for 1-way auth, False for 2-way
    """
-   def __init__(self, key='', names=None, label=''):
+   def __init__(self,
+      key='', names=None, label='', oneWay=True):
       self.key = key
       self.names = names if names else []
       self.label = label
+      self.oneWay = oneWay
 
    @classmethod
    def fromBridgePeer(cls, bridgePeerData):
-      """Create PeerData from bridge listPeers PeerData entry."""
+      """Create PeerData from bridge listPeers entry."""
       peer = bridgePeerData.peer
       return cls(
          key=peer.key,
          names=list(peer.names),
-         label=peer.label
+         label=peer.label,
+         oneWay=bridgePeerData.oneWay
       )
 
    def isOwn(self):
-      """Check if this is the own peer, i.e. user's public key."""
       return 'own' in self.names
+
+   def authModeStr(self):
+      return '1-way' if self.oneWay else '2-way'
 
 ################################################################################
 class AddPeerDialog(QtWidgets.QDialog):
@@ -66,12 +72,12 @@ class AddPeerDialog(QtWidgets.QDialog):
       super().__init__(parent)
       self.peerKey = ''
       self.address = ''
+      self.peerLabel = ''
       self.setWindowTitle(self.tr('Add Peer'))
       self.setMinimumWidth(450)
       self.initUI()
 
    def initUI(self):
-      """Initialize the add peer dialog UI."""
       layout = QtWidgets.QVBoxLayout(self)
       layout.setSpacing(12)
 
@@ -81,7 +87,7 @@ class AddPeerDialog(QtWidgets.QDialog):
       keyLabel = QtWidgets.QLabel(self.tr("Peer Key:"))
       self.keyEdit = QtWidgets.QLineEdit()
       self.keyEdit.setPlaceholderText(
-         "base64 server peer key")
+         "AR1... or AR2... server peer key")
       formLayout.addWidget(keyLabel, 0, 0)
       formLayout.addWidget(self.keyEdit, 0, 1)
 
@@ -109,18 +115,40 @@ class AddPeerDialog(QtWidgets.QDialog):
          "font-style: italic; font-size: 9pt;")
       formLayout.addWidget(addrInfo, 3, 1)
 
+      labelLabel = QtWidgets.QLabel(
+         self.tr("Label:"))
+      self.labelEdit = QtWidgets.QLineEdit()
+      self.labelEdit.setPlaceholderText(
+         self.tr("optional, e.g. Home Server"))
+      formLayout.addWidget(labelLabel, 4, 0)
+      formLayout.addWidget(self.labelEdit, 4, 1)
+
       formLayout.setColumnStretch(1, 1)
       layout.addLayout(formLayout)
+
+      authTipText = self.tr(
+         '<b>AR1 keys.</b> 1-way auth: client '
+         'verifies the server.'
+         '<br><br>'
+         '<b>AR2 keys.</b> 2-way auth: both sides '
+         'verify each other. Server needs to know '
+         'of the client ARc key beforehand.')
+      authTip = qtdefines.createInstantToolTip(
+         authTipText)
 
       buttonBox = QtWidgets.QDialogButtonBox(
          QtWidgets.QDialogButtonBox.Ok
             | QtWidgets.QDialogButtonBox.Cancel)
       buttonBox.accepted.connect(self.validateAndAccept)
       buttonBox.rejected.connect(self.reject)
-      layout.addWidget(buttonBox)
+
+      btnRow = QtWidgets.QHBoxLayout()
+      btnRow.addWidget(authTip)
+      btnRow.addStretch()
+      btnRow.addWidget(buttonBox)
+      layout.addLayout(btnRow)
 
    def validateAndAccept(self):
-      """Validate input and accept if valid."""
       peerKey = self.keyEdit.text().strip()
       if not peerKey:
          QtWidgets.QMessageBox.warning(
@@ -137,15 +165,8 @@ class AddPeerDialog(QtWidgets.QDialog):
 
       self.peerKey = peerKey
       self.address = address
+      self.peerLabel = self.labelEdit.text().strip()
       self.accept()
-
-   def getPeerKey(self):
-      """Return the entered peer key."""
-      return self.peerKey
-
-   def getAddress(self):
-      """Return the entered address as ip:port."""
-      return self.address
 
 ################################################################################
 class DatabaseTab(QtWidgets.QWidget):
@@ -199,7 +220,6 @@ class DatabaseTab(QtWidgets.QWidget):
       self.peerList = None
       self.addPeerButton = None
       self.removePeerButton = None
-      self.handshakeModeCombo = None
 
       # Remote IP sub-mode widgets
       self.ipEdit = None
@@ -243,11 +263,61 @@ class DatabaseTab(QtWidgets.QWidget):
       self.modeGroup.addButton(self.offlineRadio, 2)
       self.autoDbRadio.setChecked(True)
 
-      mainLayout.addWidget(self.autoDbRadio)
+      autoDbTipText = self.tr(
+         '<b>Automate ArmoryDB.</b> Runs ArmoryDB '
+         'locally as a managed process. Enforces '
+         '2-way auth with ad-hoc keys. The database '
+         'shuts down when the client exits.'
+         '<br><br>'
+         '<b>Full Database.</b> Tracks only transactions '
+         'relevant to your registered wallets. Lower '
+         'disk and memory usage.'
+         '<br><br>'
+         '<b>Super Node.</b> Indexes every transaction '
+         'on the blockchain. Allows lookups for any '
+         'address. Requires significantly more disk '
+         'space and RAM.')
+      autoDbTip = qtdefines.createInstantToolTip(
+         autoDbTipText)
+
+      autoDbRow = QtWidgets.QHBoxLayout()
+      autoDbRow.setSpacing(8)
+      autoDbRow.addWidget(self.autoDbRadio)
+      autoDbRow.addStretch()
+      autoDbRow.addWidget(autoDbTip)
+      mainLayout.addLayout(autoDbRow)
+
       self.buildAutoDbSection()
       mainLayout.addWidget(self.autoDbSection)
 
-      mainLayout.addWidget(self.connectRadio)
+      connectTipText = self.tr(
+         '<b>Connect to IP.</b> Connect to a remote '
+         'ArmoryDB by IP:port. 1-way auth only: you '
+         'verify the server, the server does not '
+         'verify you.'
+         '<br><br>'
+         '<b>Connect to Peer.</b> Connect to a saved '
+         'peer from the peers database. Supports '
+         '1-way or 2-way auth depending on the key '
+         'prefix.'
+         '<br><br>'
+         '<b>1-way (AR1 keys).</b> Client authenticates '
+         'the server. Server does not verify the '
+         'client.'
+         '<br><br>'
+         '<b>2-way (AR2 keys).</b> Mutual authentication. '
+         'Both sides verify each other. Server needs '
+         'to know of the client ARc key beforehand.')
+      connectTip = qtdefines.createInstantToolTip(
+         connectTipText)
+
+      connectRow = QtWidgets.QHBoxLayout()
+      connectRow.setSpacing(8)
+      connectRow.addWidget(self.connectRadio)
+      connectRow.addStretch()
+      connectRow.addWidget(connectTip)
+      mainLayout.addLayout(connectRow)
+
       self.buildConnectSection()
       mainLayout.addWidget(self.connectSection)
 
@@ -327,16 +397,7 @@ class DatabaseTab(QtWidgets.QWidget):
          self.removePeerFromTab)
       self.removePeerButton.setEnabled(False)
       self.removePeerButton.setToolTip(
-         self.tr("Remove selected peer"
-            " (backend pending)"))
-
-      self.handshakeModeCombo = QtWidgets.QComboBox()
-      self.handshakeModeCombo.setFixedWidth(200)
-      self.handshakeModeCombo.addItems(
-         ["1-way, client only", "2-way, mutual"])
-      self.handshakeModeCombo.setToolTip(
-         self.tr("1-way: client verifies server\n"
-            "2-way: mutual authentication"))
+         self.tr("Remove selected peer"))
 
       # Remote IP sub-mode widgets
       self.ipEdit = QtWidgets.QLineEdit('127.0.0.1')
@@ -491,11 +552,6 @@ class DatabaseTab(QtWidgets.QWidget):
       peerButtonLayout.addWidget(self.addPeerButton)
       peerButtonLayout.addWidget(self.removePeerButton)
       peerButtonLayout.addStretch()
-      handshakeLabel = QtWidgets.QLabel(
-         self.tr("Auth:"))
-      peerButtonLayout.addWidget(handshakeLabel)
-      peerButtonLayout.addWidget(
-         self.handshakeModeCombo)
       peerLayout.addLayout(peerButtonLayout)
 
       frameLayout.addWidget(self.peerFrame)
@@ -614,14 +670,15 @@ class DatabaseTab(QtWidgets.QWidget):
          ]
       elif scenario == SCENARIO_REMOTE_PEER:
          selected = self.peerList.currentItem()
-         peerName = selected.text() if selected \
+         peer = selected.data(QtCore.Qt.UserRole) \
+            if selected else None
+         peerDisp = selected.text() if selected \
             else 'none'
-         authMode = '2-way' \
-            if self.handshakeModeCombo.currentIndex() \
-               == 1 else '1-way'
+         authMode = peer.authModeStr() \
+            if peer else '?'
          cmdParts = [
             '# Remote via peer (connectToPeer)',
-            f'Peer: {peerName}',
+            f'Peer: {peerDisp}',
             f'Auth: {authMode}'
          ]
       elif scenario == SCENARIO_REMOTE_IP:
@@ -665,14 +722,22 @@ class DatabaseTab(QtWidgets.QWidget):
          if peer.isOwn():
             self.ownKey = peer.key
             self.ownKeyEdit.setText(peer.key)
+            continue
+
+         peerCount += 1
+         names = ' '.join(peer.names)
+         label = peer.label if peer.label \
+            and peer.label != 'N/A' else ''
+         authTag = peer.authModeStr()
+         if label:
+            display = f"{label} \u2014 {names} [{authTag}]"
          else:
-            peerCount += 1
-            for name in peer.names:
-               item = QtWidgets.QListWidgetItem(name)
-               item.setData(QtCore.Qt.UserRole, peer)
-               item.setToolTip(
-                  f"Key: {peer.key[:32]}...")
-               self.peerList.addItem(item)
+            display = f"{names} [{authTag}]"
+         item = QtWidgets.QListWidgetItem(display)
+         item.setData(QtCore.Qt.UserRole, peer)
+         item.setToolTip(
+            f"Key: {peer.key[:40]}...")
+         self.peerList.addItem(item)
 
       if peerCount == 0:
          self._showPeerListHint(
@@ -704,10 +769,11 @@ class DatabaseTab(QtWidgets.QWidget):
          return
       dialog = AddPeerDialog(self)
       if dialog.exec_() == QtWidgets.QDialog.Accepted:
-         peerKey = dialog.getPeerKey()
-         address = dialog.getAddress()
+         peerKey = dialog.peerKey
+         address = dialog.address
+         label = dialog.peerLabel
          result = TheBridge.dbSetup.addPeer(
-            peerKey, [address])
+            peerKey, [address], label)
          if result.success:
             LOGINFO(f"Added peer: {address}")
             self.refreshPeerList()
@@ -867,12 +933,6 @@ class DatabaseTab(QtWidgets.QWidget):
          self.threadCountEdit.setText(str(
             TheSettings.getSettingOrSetDefault(
                'ThreadCount', 4)))
-      elif isRemoteScenario(dbScenario):
-         handshakeMode = \
-            TheSettings.getSettingOrSetDefault(
-               'HandshakeMode', 0)
-         self.handshakeModeCombo.setCurrentIndex(
-            handshakeMode)
 
    def collectSettings(self):
       """Return current database config from UI."""
@@ -881,18 +941,16 @@ class DatabaseTab(QtWidgets.QWidget):
       isPeer = scenario == SCENARIO_REMOTE_PEER
       isIp = scenario == SCENARIO_REMOTE_IP
 
-      peerName = ''
+      peerKey = ''
       ipAddr = ''
       ipPort = ''
-      handshakeMode = 0
 
       if isPeer:
          selected = self.peerList.currentItem()
          if selected \
                and selected.data(QtCore.Qt.UserRole):
-            peerName = selected.text()
-         handshakeMode = \
-            self.handshakeModeCombo.currentIndex()
+            peer = selected.data(QtCore.Qt.UserRole)
+            peerKey = peer.key
       elif isIp:
          ipAddr = self.ipEdit.text().strip()
          portText = self.portEdit.text().strip()
@@ -911,10 +969,9 @@ class DatabaseTab(QtWidgets.QWidget):
             if isLocal else '',
          'threads': self.threadCountEdit.text()
             if isLocal else '',
-         'peerName': peerName,
+         'peerKey': peerKey,
          'ipAddr': ipAddr,
          'ipPort': ipPort,
-         'handshakeMode': handshakeMode,
       }
 
    def validate(self):

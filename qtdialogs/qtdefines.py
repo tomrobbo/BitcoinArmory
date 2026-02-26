@@ -761,6 +761,18 @@ def createToolTipWidget(tiptext, iconSz=2):
    lbl.setText(tiptext)
    return lbl
 
+def createInstantToolTip(tiptext, iconSz=2):
+   """Create a (?) tooltip widget that shows instantly on hover."""
+   widget = createToolTipWidget(tiptext, iconSz)
+   def handler(ev, w=widget, txt=tiptext):
+      pos = w.mapToGlobal(
+         QtCore.QPoint(w.width(), 0))
+      QtWidgets.QToolTip.showText(
+         pos, '<u></u>' + txt, w)
+      QtWidgets.QLabel.enterEvent(w, ev)
+   widget.enterEvent = handler
+   return widget
+
 #############################################################################
 class AdvancedOptionsFrame(ArmoryFrame):
    def __init__(self, parent, main, initLabel=''):

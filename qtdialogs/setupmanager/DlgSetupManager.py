@@ -24,8 +24,7 @@ from qtdialogs.setupmanager.WalletTab import WalletTab
 from qtdialogs.setupmanager.CoreTab import CoreTab
 from qtdialogs.setupmanager.DatabaseTab import (
    DatabaseTab, SCENARIO_DB_LOCAL, SCENARIO_DB_NONE,
-   SCENARIO_REMOTE_IP, SCENARIO_REMOTE_PEER,
-   isRemoteScenario
+   SCENARIO_REMOTE_IP, SCENARIO_REMOTE_PEER
 )
 
 # Dialog-specific constants (only used by this dialog)
@@ -460,10 +459,6 @@ class DlgSetupManager(ArmoryDialog):
             self._setSettingIfChanged(
                'ThreadCount',
                int(dbSettings['threads']))
-      elif isRemoteScenario(dbScenario):
-         self._setSettingIfChanged(
-            'HandshakeMode',
-            dbSettings['handshakeMode'])
 
       if self.main:
          self.main.setSatoshiPaths()
@@ -479,9 +474,7 @@ class DlgSetupManager(ArmoryDialog):
          params['satoshiPath'] = coreSettings['corePath']
          params['dbPath'] = dbSettings['dbPath']
       elif scenario == SCENARIO_REMOTE_PEER:
-         params['oneWayAuth'] = \
-            dbSettings['handshakeMode'] == 0
-         params['peerName'] = dbSettings['peerName']
+         params['peerKey'] = dbSettings['peerKey']
       elif scenario == SCENARIO_REMOTE_IP:
          params['ipAddr'] = dbSettings['ipAddr']
          params['ipPort'] = dbSettings['ipPort'] \
@@ -522,58 +515,45 @@ class DlgSetupManager(ArmoryDialog):
 
    def _connectLocalDb(self, params):
       """Initiate local (automated) database connection."""
-      try:
-         satoshiPath = params.get('satoshiPath', '')
-         dbPath = params.get('dbPath', '')
+      satoshiPath = params.get('satoshiPath', '')
+      dbPath = params.get('dbPath', '')
 
-         LOGINFO(f"Calling automateDb: "
-            f"satoshiPath={satoshiPath}, "
-            f"dbPath={dbPath}")
+      LOGINFO(f"Calling automateDb: "
+         f"satoshiPath={satoshiPath}, "
+         f"dbPath={dbPath}")
 
-         result = TheBridge.dbSetup.automateDb(
-            satoshiPath=satoshiPath,
-            dbDir=dbPath
-         )
+      result = TheBridge.dbSetup.automateDb(
+         satoshiPath=satoshiPath,
+         dbDir=dbPath
+      )
 
-         if result.success:
-            LOGINFO("automateDb succeeded")
-            return (True, None)
-         else:
-            LOGERROR(f"automateDb failed: {result.error}")
-            return (False, result.error)
+      if result.success:
+         LOGINFO("automateDb succeeded")
+         return (True, None)
 
-      except Exception as e:
-         LOGERROR(f"automateDb exception: {e}")
-         return (False, str(e))
+      LOGERROR(f"automateDb failed: {result.error}")
+      return (False, result.error)
 
    def _connectToPeer(self, params):
       """Connect to a known peer from the peers database."""
-      peerName = params.get('peerName', '')
-      oneWayAuth = params.get('oneWayAuth', False)
+      peerKey = params.get('peerKey', '')
+      if not peerKey:
+         raise ValueError(
+            "peerKey missing from params")
 
-      if not peerName:
-         return (False, "No peer selected")
+      LOGINFO(f"Calling connectToPeer: "
+         f"key={peerKey[:20]}...")
 
-      try:
-         LOGINFO(f"Calling connectToPeer: "
-            f"name={peerName}, "
-            f"oneWayAuth={oneWayAuth}")
+      result = TheBridge.dbSetup.connectToPeer(
+         peerKey)
 
-         result = TheBridge.dbSetup.connectToPeer(
-            peerName=peerName,
-            oneWayAuth=oneWayAuth
-         )
+      if result.success:
+         LOGINFO("connectToPeer succeeded")
+         return (True, None)
 
-         if result.success:
-            LOGINFO("connectToPeer succeeded")
-            return (True, None)
-         else:
-            LOGERROR(f"connectToPeer failed: {result.error}")
-            return (False, result.error)
-
-      except Exception as e:
-         LOGERROR(f"connectToPeer exception: {e}")
-         return (False, str(e))
+      LOGERROR("connectToPeer failed: "
+         f"{result.error}")
+      return (False, result.error)
 
    def _connectToIp(self, params):
       """Connect to a remote database by IP address (1-way auth).
@@ -589,60 +569,55 @@ class DlgSetupManager(ArmoryDialog):
       ipPort = params.get('ipPort', '9001')
 
       if not ipAddr:
-         return (False, "No IP address specified")
+         raise ValueError(
+            "ipAddr missing from params")
 
-      try:
-         LOGINFO(f"Calling connectToIp: {ipAddr}:{ipPort}")
+      LOGINFO(f"Calling connectToIp: {ipAddr}:{ipPort}")
 
-         callbackId = f"connectToIp_{ipAddr}_{ipPort}"
-         self.pendingConnectionResult = None
+      callbackId = f"connectToIp_{ipAddr}_{ipPort}"
+      self.pendingConnectionResult = None
 
-         def onConnectResult(reply):
-            if reply.success:
-               self.pendingConnectionResult = (True, None)
-            else:
-               err = reply.error if reply.error \
-                  else "Connection failed"
-               self.pendingConnectionResult = (False, err)
+      def onConnectResult(reply):
+         if reply.success:
+            self.pendingConnectionResult = (True, None)
+         else:
+            err = reply.error if reply.error \
+               else "Connection failed"
+            self.pendingConnectionResult = (False, err)
 
-         self.serverKeyCallback = ServerKeyCallback(
-            callbackId=callbackId,
-            onPresentPubkey=self._onServerKeyPresented)
+      self.serverKeyCallback = ServerKeyCallback(
+         callbackId=callbackId,
+         onPresentPubkey=self._onServerKeyPresented)
 
-         TheBridge.dbSetup.connectToIp(
-            ip=ipAddr, port=ipPort,
-            callbackId=callbackId,
-            resultCallback=onConnectResult)
+      TheBridge.dbSetup.connectToIp(
+         ip=ipAddr, port=ipPort,
+         callbackId=callbackId,
+         resultCallback=onConnectResult)
 
-         LOGINFO("connectToIp initiated, waiting for key")
+      LOGINFO("connectToIp initiated, waiting for key")
 
-         loop = QtCore.QEventLoop()
-         timer = QtCore.QTimer()
-         timer.setSingleShot(True)
-         timer.timeout.connect(loop.quit)
+      loop = QtCore.QEventLoop()
+      timer = QtCore.QTimer()
+      timer.setSingleShot(True)
+      timer.timeout.connect(loop.quit)
 
-         def checkResult():
-            if self.pendingConnectionResult is not None:
-               loop.quit()
+      def checkResult():
+         if self.pendingConnectionResult is not None:
+            loop.quit()
 
-         checkTimer = QtCore.QTimer()
-         checkTimer.timeout.connect(checkResult)
-         checkTimer.start(100)
+      checkTimer = QtCore.QTimer()
+      checkTimer.timeout.connect(checkResult)
+      checkTimer.start(100)
 
-         timer.start(30000)
-         loop.exec_()
-         checkTimer.stop()
-         timer.stop()
+      timer.start(30000)
+      loop.exec_()
+      checkTimer.stop()
+      timer.stop()
 
-         if self.pendingConnectionResult is None:
-            return (False,
-               "Connection timeout")
+      if self.pendingConnectionResult is None:
+         return (False, "Connection timeout")
 
-         return self.pendingConnectionResult
-
-      except Exception as e:
-         LOGERROR(f"connectToIp exception: {e}")
-         return (False, str(e))
+      return self.pendingConnectionResult
 
    def _onServerKeyPresented(self, callback, serverPubkey):
       """Show server key for approval (marshaled to Qt thread)."""

@@ -384,7 +384,7 @@ class DbSetupService(ProtoWrapper):
    Provides methods for:
    - automateDb: Start local automated ArmoryDB
    - connectToIp: Connect to remote DB by IP (1-way auth)
-   - connectToPeer: Connect to remote DB by saved peer name
+   - connectToPeer: Connect to remote DB by peer key
    - loadPeersDb: Load the peers database
    - listPeers: List all saved peers
    - addPeer: Add a new peer
@@ -412,7 +412,8 @@ class DbSetupService(ProtoWrapper):
       return fut.getVal(nothrow=True)
 
    ####
-   def connectToIp(self, ip: str, port: str, callbackId: str,
+   def connectToIp(self,
+      ip: str, port: str, callbackId: str,
       resultCallback: callable = None):
       """
       Connect to remote DB by IP address (1-way auth).
@@ -436,25 +437,24 @@ class DbSetupService(ProtoWrapper):
       self.send(packet, needsReply=False, callback=resultCallback)
 
    ####
-   def connectToPeer(self, peerName: str, oneWayAuth: bool = False):
+   def connectToPeer(self, peerKey: str):
       """
-      Connect to remote DB by saved peer name.
+      Connect to remote DB by peer key.
 
       The peer must be loaded via loadPeersDb first.
+      Auth mode (1-way/2-way) is embedded in the key prefix.
 
       Args:
-         peerName: Name of the peer (ip:port format)
-         oneWayAuth: If True, use 1-way auth; if False, use 2-way auth
+         peerKey: Human-readable peer key (AR1.../AR2...)
       """
       packet = Bridge.ToBridge.new_message()
-      request = packet.init("setup").init("connectToPeer")
-      request.peerName = peerName
-      request.oneWayAuth = oneWayAuth
+      packet.init("setup").connectToPeer = peerKey
       fut = self.send(packet)
       return fut.getVal(nothrow=True)
 
    ####
-   def loadPeersDb(self, callbackId: str,
+   def loadPeersDb(self,
+      callbackId: str,
       resultCallback: callable = None):
       """
       Load the peers database.
@@ -498,13 +498,14 @@ class DbSetupService(ProtoWrapper):
       return []
 
    ####
-   def addPeer(self, key: str, names: list):
+   def addPeer(self, key: str, names: list, label: str = ''):
       """
       Add a new peer to the peers database.
 
       Args:
-         key: Human-readable peer key (base64, from PeerKey format)
+         key: Human-readable peer key (AR1.../AR2...)
          names: List of names for this peer (each name is ip:port)
+         label: Human-readable label for the peer
       """
       packet = Bridge.ToBridge.new_message()
       peerMsg = packet.init("setup").init("addPeer")
@@ -512,6 +513,7 @@ class DbSetupService(ProtoWrapper):
       peerNames = peerMsg.init("names", len(names))
       for i, name in enumerate(names):
          peerNames[i] = name
+      peerMsg.label = label
       fut = self.send(packet)
       return fut.getVal(nothrow=True)
 
@@ -521,10 +523,26 @@ class DbSetupService(ProtoWrapper):
       Remove a peer from the peers database.
 
       Args:
-         key: Human-readable peer key (base64, from PeerKey format)
+         key: Human-readable peer key (AR1.../AR2...)
       """
       packet = Bridge.ToBridge.new_message()
       packet.init("setup").removePeer = key
+      fut = self.send(packet)
+      return fut.getVal(nothrow=True)
+
+   ####
+   def setPeerLabel(self, key: str, label: str):
+      """
+      Update the label on an existing peer.
+
+      Args:
+         key: Human-readable peer key (AR1.../AR2...)
+         label: New label for the peer
+      """
+      packet = Bridge.ToBridge.new_message()
+      labelMsg = packet.init("setup").init("setLabel")
+      labelMsg.key = key
+      labelMsg.label = label
       fut = self.send(packet)
       return fut.getVal(nothrow=True)
 
