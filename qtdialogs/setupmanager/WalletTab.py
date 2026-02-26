@@ -58,15 +58,21 @@ class WalletTab(QtWidgets.QWidget):
       dirGrid.setSpacing(8)
 
       dirLabel = QtWidgets.QLabel(self.tr("Armory Data Directory"))
-      dirLabel.setToolTip('The directory where Armory will store all wallet '
-         'files and settings.\n\nThis directory should be:\n• On a secure '
-         'drive\n• Regularly backed up\n• Have sufficient free space')
+      dirLabel.setToolTip(self.tr(
+         'The directory where Armory will store all wallet '
+         'files and settings.\n\nThis directory should be:\n'
+         '\u2022 On a secure drive\n'
+         '\u2022 Regularly backed up\n'
+         '\u2022 Have sufficient free space'))
 
       dirInputLayout, browseBtn = qtdefines.createDirectoryInputLayout(
          self, self.armoryDataDirEdit, self.tr('Select Armory Data Directory'))
-      browseBtn.setToolTip('Click to browse for a directory to store Armory '
-         'data.\n\nChoose a location that is:\n• Secure and private\n• Has '
-         'sufficient space\n• Is on a reliable drive')
+      browseBtn.setToolTip(self.tr(
+         'Click to browse for a directory to store Armory '
+         'data.\n\nChoose a location that is:\n'
+         '\u2022 Secure and private\n'
+         '\u2022 Has sufficient space\n'
+         '\u2022 Is on a reliable drive'))
 
       dirGrid.addWidget(dirLabel, 0, 0)
       dirGrid.addLayout(dirInputLayout, 0, 1)
@@ -188,81 +194,95 @@ class WalletTab(QtWidgets.QWidget):
       dlg = None
       try:
          if not walletEntry.importPreview:
-            raise Exception("Legacy wallet missing extended data from bridge")
+            raise RuntimeError(
+               "Legacy wallet missing extended "
+               "data from bridge")
          mainRef = self.main if self.main else self
-         dlg = DlgWalletMigration(self, mainRef, walletEntry.filename,
+         dlg = DlgWalletMigration(
+            self, mainRef,
+            walletEntry.filename,
             walletEntry.importPreview)
          result = dlg.exec_()
          if result == QtWidgets.QDialog.Accepted:
-            LOGINFO("Wallet migration dialog accepted - refreshing wallet list")
+            LOGINFO("Wallet migration accepted"
+               " - refreshing list")
             self.loadWalletList()
-            LOGINFO("Wallet list refreshed after migration")
          else:
-            LOGINFO("Wallet migration cancelled by user")
-
+            LOGINFO("Wallet migration cancelled")
       except Exception as e:
          QtWidgets.QMessageBox.warning(
             self,
             self.tr('Migration Failed'),
-            self.tr('Failed to start migration: {}').format(str(e))
-         )
+            self.tr(
+               'Failed to start migration: {}'
+               ).format(str(e)))
       finally:
          if dlg:
             dlg.deleteLater()
             dlg = None
 
    def unlockWallet(self, walletEntry):
-      """Unlock wallet using proper unlock control header pattern."""
+      """Unlock wallet via control header pattern."""
       walletId = walletEntry.walletId
       try:
-         unlockDlg = UnlockWalletHandler(walletId, self.tr('Unlock Wallet'),
-            self)
+         unlockDlg = UnlockWalletHandler(
+            walletId,
+            self.tr('Unlock Wallet'), self)
 
          def handleUnlockResult(replyObj):
-            """Handle unlock control header reply."""
             try:
                if replyObj.success:
-                  LOGINFO(f"Wallet {walletId} unlocked successfully")
+                  LOGINFO(
+                     f"Wallet {walletId} unlocked")
                   unlockDlg.accept()
                   self.loadWalletList()
                else:
-                  errorMsg = replyObj.error if replyObj.error else \
-                     "Unknown error"
-                  LOGERROR(f"Failed to unlock wallet {walletId}: {errorMsg}")
+                  errorMsg = replyObj.error \
+                     if replyObj.error \
+                     else "Unknown error"
+                  LOGERROR(
+                     f"Unlock {walletId} failed:"
+                     f" {errorMsg}")
                   unlockDlg.reject()
                   QtWidgets.QMessageBox.warning(
                      self,
                      self.tr('Unlock Failed'),
-                     self.tr('Failed to unlock wallet: {}').format(errorMsg))
+                     self.tr(
+                        'Failed to unlock '
+                        'wallet: {}'
+                        ).format(errorMsg))
             except Exception as e:
-               LOGERROR(f"Unlock callback error: {e}")
+               LOGERROR(
+                  f"Unlock callback error: {e}")
                unlockDlg.reject()
 
          TheBridge.wltManager.unlockControlHeader(
             walletEntry.filename,
             unlockDlg.callbackId,
-            lambda x: TheSignalExecution.executeMethod(handleUnlockResult, x))
+            lambda x: TheSignalExecution
+               .executeMethod(
+                  handleUnlockResult, x))
          unlockDlg.exec_()
-
       except Exception as e:
-         LOGERROR(f"Failed to unlock wallet {walletId}: {e}")
+         LOGERROR(
+            f"Failed to unlock {walletId}: {e}")
          QtWidgets.QMessageBox.warning(
             self,
             self.tr('Unlock Failed'),
-            self.tr('Failed to unlock wallet: {}').format(str(e)))
+            self.tr(
+               'Failed to unlock wallet: {}'
+               ).format(str(e)))
 
    def onStageCheckboxChanged(self, walletId, checked):
-      """Handle staging checkbox with proper error recovery."""
-      try:
-         TheBridge.wltManager.stageWallet(walletId, checked)
-      except Exception as e:
+      success = TheBridge.wltManager.stageWallet(
+         walletId, checked)
+      if not success:
+         LOGERROR(f"stageWallet failed: {walletId}")
          cb = self.walletIdToCheckbox.get(walletId)
          if cb:
             cb.blockSignals(True)
             cb.setChecked(not checked)
             cb.blockSignals(False)
-         QtWidgets.QMessageBox.warning(
-            self, self.tr('Stage Failed'), str(e))
 
    def collectSettings(self):
       """Return current settings from UI as a dict."""

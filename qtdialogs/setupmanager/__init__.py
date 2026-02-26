@@ -10,5 +10,6 @@
 #
 
 from qtdialogs.setupmanager.DlgSetupManager import DlgSetupManager
+from qtdialogs.setupmanager.DatabaseTab import SCENARIO_DB_NONE
 
-__all__ = ['DlgSetupManager']
+__all__ = ['DlgSetupManager', 'SCENARIO_DB_NONE']

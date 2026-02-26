@@ -41,6 +41,8 @@ class DlgSetupManager(ArmoryDialog):
    - Bitcoin Core configuration
    - Database settings (local/remote/none)
    """
+   _ipConnectDone = QtCore.Signal()
+
    def __init__(self, parent=None, main=None):
       """Initialize the setup manager dialog."""
       super().__init__(parent, main)
@@ -164,6 +166,8 @@ class DlgSetupManager(ArmoryDialog):
          self._invalidateConnection)
       self.databaseTab.portEdit.textChanged.connect(
          self._invalidateConnection)
+      self.databaseTab.peerList.currentItemChanged \
+         .connect(self._invalidateConnection)
 
       self.databaseTab.testConnectionRequested.connect(
          self.onTestConnectionRequested)
@@ -196,10 +200,15 @@ class DlgSetupManager(ArmoryDialog):
          self._saveAndAccept()
          return
 
-      # No explicit test - try to connect using current settings
-      LOGINFO("No tested connection - attempting connection on accept")
+      # No explicit test - try to connect now
+      LOGINFO("No tested connection - attempting "
+         "connection on accept")
+      self.setCursor(QtCore.Qt.WaitCursor)
+      QtWidgets.QApplication.processEvents()
+
       params = self.getDbConnectionParams()
       success, error = self.initiateDbConnection(params)
+      self.unsetCursor()
 
       if success:
          LOGINFO("Connection established on accept")
@@ -366,43 +375,42 @@ class DlgSetupManager(ArmoryDialog):
       savedLabel = btn.text()
       btn.setEnabled(False)
       btn.setText(self.tr("Connecting..."))
+      QtWidgets.QApplication.processEvents()
 
-      try:
-         success, error = self.initiateDbConnection(params)
-         if success:
-            self.databaseTab.setDbSettingsLocked(True)
-            QtWidgets.QMessageBox.information(
-               self,
-               self.tr('Connection Successful'),
-               self.tr('Successfully connected to ArmoryDB.'))
-            return
-         errorMsg = error if error \
-            else self.tr('Unknown error')
-         QtWidgets.QMessageBox.warning(
+      success, error = self.initiateDbConnection(params)
+      if success:
+         self.databaseTab.setDbSettingsLocked(True)
+         QtWidgets.QMessageBox.information(
             self,
-            self.tr('Connection Failed'),
+            self.tr('Connection Successful'),
             self.tr(
-               'Failed to connect:\n\n{}'
-               ).format(errorMsg))
-      except Exception as e:
-         LOGERROR(f"Connection test exception: {e}")
-         QtWidgets.QMessageBox.critical(
-            self,
-            self.tr('Connection Error'),
-            self.tr(
-               'Error during connection test:\n\n{}'
-               ).format(str(e)))
+               'Successfully connected to ArmoryDB.'))
+         return
+
       btn.setEnabled(True)
       btn.setText(savedLabel)
+      errorMsg = error if error \
+         else self.tr('Unknown error')
+      QtWidgets.QMessageBox.warning(
+         self,
+         self.tr('Connection Failed'),
+         self.tr(
+            'Failed to connect:\n\n{}'
+            ).format(errorMsg))
 
    def validateAllSettings(self):
       """Run validators on all tabs. Returns True if all valid."""
-      if not self.coreTab.validateCorePath():
-         return False
       if not self.walletTab.validate():
          return False
-      if not self.coreTab.validate():
-         return False
+
+      coreTabIndex = self.tabWidget.indexOf(
+         self.coreTab)
+      if self.tabWidget.isTabEnabled(coreTabIndex):
+         if not self.coreTab.validateCorePath():
+            return False
+         if not self.coreTab.validate():
+            return False
+
       if not self.databaseTab.validateDbPath():
          return False
       if not self.databaseTab.validate():
@@ -459,6 +467,14 @@ class DlgSetupManager(ArmoryDialog):
             self._setSettingIfChanged(
                'ThreadCount',
                int(dbSettings['threads']))
+      elif dbScenario == SCENARIO_REMOTE_IP:
+         self._setSettingIfChanged(
+            'RemoteIpAddr', dbSettings['ipAddr'])
+         self._setSettingIfChanged(
+            'RemoteIpPort', dbSettings['ipPort'])
+      elif dbScenario == SCENARIO_REMOTE_PEER:
+         self._setSettingIfChanged(
+            'RemotePeerKey', dbSettings['peerKey'])
 
       if self.main:
          self.main.setSatoshiPaths()
@@ -566,7 +582,8 @@ class DlgSetupManager(ArmoryDialog):
       5. Result callback fires with actual success/failure
       """
       ipAddr = params.get('ipAddr', '')
-      ipPort = params.get('ipPort', '9001')
+      ipPort = params.get(
+         'ipPort', str(ARMORYDB_DEFAULT_PORT))
 
       if not ipAddr:
          raise ValueError(
@@ -584,6 +601,7 @@ class DlgSetupManager(ArmoryDialog):
             err = reply.error if reply.error \
                else "Connection failed"
             self.pendingConnectionResult = (False, err)
+         self._ipConnectDone.emit()
 
       self.serverKeyCallback = ServerKeyCallback(
          callbackId=callbackId,
@@ -600,19 +618,14 @@ class DlgSetupManager(ArmoryDialog):
       timer = QtCore.QTimer()
       timer.setSingleShot(True)
       timer.timeout.connect(loop.quit)
+      self._ipConnectDone.connect(loop.quit)
 
-      def checkResult():
-         if self.pendingConnectionResult is not None:
-            loop.quit()
-
-      checkTimer = QtCore.QTimer()
-      checkTimer.timeout.connect(checkResult)
-      checkTimer.start(100)
-
-      timer.start(30000)
-      loop.exec_()
-      checkTimer.stop()
-      timer.stop()
+      try:
+         timer.start(30000)
+         loop.exec_()
+      finally:
+         timer.stop()
+         self._ipConnectDone.disconnect(loop.quit)
 
       if self.pendingConnectionResult is None:
          return (False, "Connection timeout")
@@ -658,50 +671,42 @@ class DlgSetupManager(ArmoryDialog):
       Non-blocking so the Qt thread stays responsive for
       passphrase prompts that fire during the load.
       If already loaded, just refreshes the peer list.
-      Falls back to IP mode on failure.
       """
       if self.databaseTab.peersDbLoaded:
          self.databaseTab.refreshPeerList()
          LOGINFO("Peers DB already loaded, refreshed")
          return True
 
-      try:
-         LOGINFO("Loading peers database...")
-         callbackId = "loadPeersDb_setup"
+      LOGINFO("Loading peers database...")
+      callbackId = "loadPeersDb_setup"
 
-         self.peersDbCallback = PeersDbCallback(
-            callbackId=callbackId,
-            onUnlockRequest=\
-               self._onPeersDbUnlockRequest,
-            onSetPassphrase=\
-               self._onPeersDbSetPassphrase,
-            onSuccess=None)
+      self.peersDbCallback = PeersDbCallback(
+         callbackId=callbackId,
+         onUnlockRequest=\
+            self._onPeersDbUnlockRequest,
+         onSetPassphrase=\
+            self._onPeersDbSetPassphrase,
+         onSuccess=None)
 
-         def onLoadResult(reply):
-            if reply.success:
-               LOGINFO("Peers database loaded")
-               TheSignalExecution.executeMethod(
-                  self.databaseTab
-                     .setPeersDbLoaded, True)
-            else:
-               LOGERROR(
-                  "loadPeersDb failed: "
-                  f"{reply.error}")
-               TheSignalExecution.executeMethod(
-                  self.databaseTab
-                     .remoteSubModeCombo
-                     .setCurrentIndex, 0)
+      def onLoadResult(reply):
+         if reply.success:
+            LOGINFO("Peers database loaded")
+            TheSignalExecution.executeMethod(
+               self.databaseTab
+                  .setPeersDbLoaded, True)
+         else:
+            LOGERROR(
+               "loadPeersDb failed: "
+               f"{reply.error}")
+            TheSignalExecution.executeMethod(
+               self.databaseTab
+                  .remoteSubModeCombo
+                  .setCurrentIndex, 0)
 
-         TheBridge.dbSetup.loadPeersDb(
-            callbackId,
-            resultCallback=onLoadResult)
-         return True
-
-      except Exception as e:
-         LOGERROR(f"loadPeersDb exception: {e}")
-         self.databaseTab.remoteSubModeCombo\
-            .setCurrentIndex(0)
-         return False
+      TheBridge.dbSetup.loadPeersDb(
+         callbackId,
+         resultCallback=onLoadResult)
+      return True
 
    def _onPeersDbUnlockRequest(self, callback, unlockRequest):
       """Prompt for passphrase (marshaled to Qt thread)."""

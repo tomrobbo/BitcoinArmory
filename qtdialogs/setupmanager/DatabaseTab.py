@@ -431,6 +431,9 @@ class DatabaseTab(QtWidgets.QWidget):
          "padding: 8px; font-family: monospace; "
          f"font-size: 10pt; "
          f"color: {htmlColor('Foreground')};")
+      self.cliCommandLabel.setSizePolicy(
+         QtWidgets.QSizePolicy.Preferred,
+         QtWidgets.QSizePolicy.MinimumExpanding)
       self.cliCommandLabel.setText(
          "Settings will appear here")
 
@@ -626,6 +629,8 @@ class DatabaseTab(QtWidgets.QWidget):
       self.autoDbSection.setVisible(isAutoDb)
       self.connectSection.setVisible(isConnect)
       self.updateCliCommandDisplay()
+      if isAutoDb:
+         self.autoDbSection.adjustSize()
 
    def onRemoteSubModeChanged(self, index):
       """Toggle IP / Peer sub-frames in connect section."""
@@ -744,6 +749,17 @@ class DatabaseTab(QtWidgets.QWidget):
             self.tr(
                "No peers yet, use Add Peer "
                "to add one"))
+         return
+
+      savedKey = TheSettings.getSettingOrSetDefault(
+         'RemotePeerKey', '')
+      if savedKey:
+         for i in range(self.peerList.count()):
+            item = self.peerList.item(i)
+            peer = item.data(QtCore.Qt.UserRole)
+            if peer and peer.key == savedKey:
+               self.peerList.setCurrentItem(item)
+               break
 
    def _showPeerListHint(self, text):
       """Show placeholder-style hint in the empty peer list."""
@@ -888,7 +904,7 @@ class DatabaseTab(QtWidgets.QWidget):
       self.setDefaultCheckbox.setChecked(
          dbScenario == savedDefault)
 
-      # Check if database has already been bootstrapped
+      # Warn if an existing database is detected
       dbIsBootstrapped = False
       if os.path.exists(ARMORY_DB_DIR):
          dbFiles = os.listdir(ARMORY_DB_DIR)
@@ -896,20 +912,17 @@ class DatabaseTab(QtWidgets.QWidget):
             f.endswith('.db') or f.endswith('.ldb')
             for f in dbFiles)
 
-      if dbIsBootstrapped:
-         self.autoDbRadio.setEnabled(False)
-         self.connectRadio.setEnabled(False)
-         self.offlineRadio.setEnabled(False)
-         if self.dbBootstrapLabel is None:
-            self.dbBootstrapLabel = QtWidgets.QLabel(
-               self.tr("Database already bootstrapped,"
-                  " cannot change mode"))
-            self.dbBootstrapLabel.setStyleSheet(
-               f"color: {htmlColor('TextWarn')}; "
-               "font-style: italic;")
-            layout = self.layout()
-            if layout:
-               layout.addWidget(self.dbBootstrapLabel)
+      if dbIsBootstrapped and self.dbBootstrapLabel is None:
+         self.dbBootstrapLabel = QtWidgets.QLabel(
+            self.tr(
+               "Existing database detected in "
+               "data directory"))
+         self.dbBootstrapLabel.setStyleSheet(
+            f"color: {htmlColor('TextWarn')}; "
+            "font-style: italic;")
+         layout = self.layout()
+         if layout:
+            layout.addWidget(self.dbBootstrapLabel)
 
       # Fire initial visibility
       self.onModeChanged(
@@ -933,6 +946,15 @@ class DatabaseTab(QtWidgets.QWidget):
          self.threadCountEdit.setText(str(
             TheSettings.getSettingOrSetDefault(
                'ThreadCount', 4)))
+      elif dbScenario == SCENARIO_REMOTE_IP:
+         savedIp = TheSettings.getSettingOrSetDefault(
+            'RemoteIpAddr', '')
+         savedPort = TheSettings.getSettingOrSetDefault(
+            'RemoteIpPort', '')
+         if savedIp:
+            self.ipEdit.setText(savedIp)
+         if savedPort:
+            self.portEdit.setText(savedPort)
 
    def collectSettings(self):
       """Return current database config from UI."""

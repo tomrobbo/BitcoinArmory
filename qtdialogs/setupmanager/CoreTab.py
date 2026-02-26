@@ -127,8 +127,9 @@ class CoreTab(QtWidgets.QWidget):
       self.rpcPortInput = QtWidgets.QLineEdit()
       self.rpcPortInput.setFixedWidth(100)
       self.rpcPortInput.setEnabled(False)
-      self.rpcPortInput.setToolTip(
-         "Standard Bitcoin Core RPC port (not configurable in Armory)")
+      self.rpcPortInput.setToolTip(self.tr(
+         "Standard Bitcoin Core RPC port "
+         "(not configurable in Armory)"))
 
       grid.addWidget(operationLabel, 0, 0)
       grid.addWidget(self.scenarioCombo, 0, 1)

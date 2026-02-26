@@ -94,7 +94,7 @@ from qtdialogs.MsgBoxCustom import MsgBoxCustom
 from qtdialogs.MsgBoxWithDNAA import MsgBoxWithDNAA
 from qtdialogs.DlgUniversalRestoreSelect import DlgUniversalRestoreSelect
 from qtdialogs.DlgWalletMigration import DlgWalletMigration
-from qtdialogs.setupmanager import DlgSetupManager
+from qtdialogs.setupmanager import DlgSetupManager, SCENARIO_DB_NONE
 
 from ui.QtExecuteSignal import TheSignalExecution
 from armorymodels import AllWalletsDispModel, AllWalletsCheckboxDelegate, \
@@ -565,11 +565,13 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
 
       actExportTx    = self.createAction(self.tr('&Export Transactions...'), exportTx)
       actSettings    = self.createAction(self.tr('&Settings...'), self.openSettings)
+      actSetupMgr    = self.createAction(self.tr('S&etup Manager...'), self.openSetupManager)
       actMinimApp    = self.createAction(self.tr('&Minimize Armory'), self.minimizeArmory)
       actExportLog   = self.createAction(self.tr('Export &Log File...'), self.exportLogFile)
       actCloseApp    = self.createAction(self.tr('&Quit Armory'), self.closeForReal)
       self.menusList[MENUS.File].addAction(actExportTx)
       self.menusList[MENUS.File].addAction(actSettings)
+      self.menusList[MENUS.File].addAction(actSetupMgr)
       self.menusList[MENUS.File].addAction(actMinimApp)
       self.menusList[MENUS.File].addAction(actExportLog)
       self.menusList[MENUS.File].addAction(actCloseApp)
@@ -1252,6 +1254,19 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
       LOGDEBUG('openSettings')
       dlgSettings = DlgSettings(self, self)
       dlgSettings.exec_()
+
+   def openSetupManager(self):
+      LOGDEBUG('openSetupManager')
+      dlg = DlgSetupManager(self, self)
+      if dlg.exec_() != QtWidgets.QDialog.Accepted:
+         return
+
+      dbSettings = dlg.databaseTab.collectSettings()
+      if dlg.connectionSuccess \
+            and dbSettings['scenario'] != SCENARIO_DB_NONE:
+         if not self.dbConnectionEstablishedBySetup:
+            self.dbConnectionEstablishedBySetup = True
+            self.registerWalletsWithService()
 
    ####################################################
    def setupSystemTray(self):
@@ -5091,7 +5106,10 @@ if 1:
       sys.exit(1)
 
    dbSettings = dlg.databaseTab.collectSettings()
-   dbConnectionEstablished = dlg.connectionSuccess and dbSettings['scenario'] != 'Offline'
+   dbConnectionEstablished = (
+      dlg.connectionSuccess
+      and dbSettings['scenario'] != SCENARIO_DB_NONE
+   )
 
    wallets = loadWalletsForMainApp()
    armoryMainWindow = ArmoryMainWindow(wallets)
