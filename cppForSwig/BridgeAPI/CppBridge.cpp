@@ -2252,40 +2252,28 @@ void CppBridge::setupNewCoinSelectionInstance(const Wallets::WalletId& wltId,
    auto insertIter = csMap_.emplace(csId,
       std::shared_ptr<CoinSelection::CoinSelectionInstance>()).first;
    auto csPtr = &insertIter->second;
+   auto aeVec = wltContainer->getAddressBook();
 
-   auto lbd = [this, wltContainer, csPtr, csId, height, msgId](
-      ReturnMessage<std::vector<::AddressBookEntry>> result)->void
+   auto fetchLbd = [wltContainer](uint64_t val)->std::vector<::UTXO>
    {
-      auto fetchLbd = [wltContainer](uint64_t val)->std::vector<::UTXO>
-      {
-         auto promPtr = std::make_shared<std::promise<std::vector<::UTXO>>>();
-         auto fut = promPtr->get_future();
-         auto lbd = [promPtr](ReturnMessage<std::vector<::UTXO>> result)->void
-         {
-            promPtr->set_value(result.get());
-         };
-         wltContainer->getUTXOs(val, false, false, lbd);
-         return fut.get();
-      };
-
-      auto aeVec = std::move(result.get());
-      *csPtr = std::make_shared<CoinSelection::CoinSelectionInstance>(
-         wltContainer->getWalletPtr(), fetchLbd, aeVec,
-         wltContainer->getSpendableBalance(), height);
-
-      capnp::MallocMessageBuilder message;
-      auto fromBridge = message.initRoot<FromBridge>();
-      auto reply = fromBridge.initReply();
-      reply.setReferenceId(msgId);
-      reply.setSuccess(true);
-
-      auto wallet = reply.initWallet();
-      wallet.setSetupNewCoinSelectionInstance(csId);
-
-      auto serialized = serializeCapnp(message);
-      this->writeToClient(serialized);
+      return wltContainer->getUTXOs(val, false, false);
    };
-   wltContainer->createAddressBook(lbd);
+
+   *csPtr = std::make_shared<CoinSelection::CoinSelectionInstance>(
+      wltContainer->getWalletPtr(), fetchLbd, aeVec,
+      wltContainer->getSpendableBalance(), height);
+
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   reply.setReferenceId(msgId);
+   reply.setSuccess(true);
+
+   auto wallet = reply.initWallet();
+   wallet.setSetupNewCoinSelectionInstance(csId);
+
+   auto serialized = serializeCapnp(message);
+   this->writeToClient(serialized);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2310,43 +2298,38 @@ void CppBridge::createAddressBook(const Wallets::WalletId& wltId,
    const Wallets::AddressAccountId& accId, MessageId msgId)
 {
    auto wltContainer = wltManager_->getWalletContainer(wltId, accId);
-   auto lbd = [this, msgId](
-      ReturnMessage<std::vector<AddressBookEntry>> result)->void
-   {
-      capnp::MallocMessageBuilder message;
-      auto fromBridge = message.initRoot<FromBridge>();
-      auto reply = fromBridge.initReply();
-      reply.setReferenceId(msgId);
-      reply.setSuccess(true);
+   auto addrBook = wltContainer->getAddressBook();
 
-      auto wallet = reply.initWallet();
-      auto addrBook = wallet.initCreateAddressBook();
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   reply.setReferenceId(msgId);
+   reply.setSuccess(true);
 
-      auto aeVec = std::move(result.get());
-      auto capnEntries = addrBook.initEntries(aeVec.size());
-      unsigned i=0;
-      for (const auto& ae : aeVec) {
-         auto capnEntry = capnEntries[i++];
+   auto walletReply = reply.initWallet();
+   auto capnAddrBook = walletReply.initCreateAddressBook();
+   auto capnEntries = capnAddrBook.initEntries(addrBook.size());
+   unsigned i=0;
+   for (const auto& ae : addrBook) {
+      auto capnEntry = capnEntries[i++];
 
-         const auto& scrAddr = ae.getScrAddr();
-         capnEntry.setScrAddr(capnp::Data::Builder(
-            (uint8_t*)scrAddr.getPtr(), scrAddr.getSize()
+      const auto& scrAddr = ae.getScrAddr();
+      capnEntry.setScrAddr(capnp::Data::Builder(
+         (uint8_t*)scrAddr.getPtr(), scrAddr.getSize()
+      ));
+
+      const auto& hashList = ae.getTxHashList();
+      auto capnHashes = capnEntry.initTxHashes(hashList.size());
+      unsigned y=0;
+      for (const auto& hash : hashList) {
+         capnHashes.set(y++, capnp::Data::Builder(
+            (uint8_t*)hash.getPtr(), hash.getSize()
          ));
-
-         const auto& hashList = ae.getTxHashList();
-         auto capnHashes = capnEntry.initTxHashes(hashList.size());
-         unsigned y=0;
-         for (const auto& hash : hashList) {
-            capnHashes.set(y++, capnp::Data::Builder(
-               (uint8_t*)hash.getPtr(), hash.getSize()
-            ));
-         }
       }
+   }
 
-      auto serialized = serializeCapnp(message);
-      this->writeToClient(serialized);
-   };
-   wltContainer->createAddressBook(lbd);
+   auto serialized = serializeCapnp(message);
+   this->writeToClient(serialized);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2371,25 +2354,20 @@ void CppBridge::getUTXOs(const Wallets::WalletId& wltId,
    uint64_t value, bool zc, bool rbf, MessageId msgId)
 {
    auto wltContainer = wltManager_->getWalletContainer(wltId, accId);
-   auto lbd = [this, msgId](ReturnMessage<std::vector<::UTXO>> result)->void
-   {
-      auto utxoVec = std::move(result.get());
+   auto utxos = wltContainer->getUTXOs(value, zc, rbf);
 
-      capnp::MallocMessageBuilder message;
-      auto fromBridge = message.initRoot<FromBridge>();
-      auto reply = fromBridge.initReply();
-      reply.setReferenceId(msgId);
-      reply.setSuccess(true);
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   reply.setReferenceId(msgId);
+   reply.setSuccess(true);
 
-      auto wallet = reply.initWallet();
-      auto capnUtxos = wallet.initGetUtxos(utxoVec.size());
-      utxosToCapnp(utxoVec, capnUtxos);
+   auto wallet = reply.initWallet();
+   auto capnUtxos = wallet.initGetUtxos(utxos.size());
+   utxosToCapnp(utxos, capnUtxos);
 
-      auto serialized = serializeCapnp(message);
-      this->writeToClient(serialized);
-   };
-
-   wltContainer->getUTXOs(value, zc, rbf, lbd);
+   auto serialized = serializeCapnp(message);
+   this->writeToClient(serialized);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

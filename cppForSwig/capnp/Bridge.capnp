@@ -452,7 +452,7 @@ struct WalletReply {
       getLedgerDelegateIdForScrAddr @8 : Types.DelegateId;
       getBalanceAndCount            @9 : Types.BalanceAndCount;
 
-      setupNewCoinSelectionInstance @10: Text;
+      setupNewCoinSelectionInstance @10: Types.CoinSelectionId;
       getUtxos                      @11: List(UTXO);
 
       createAddressBook             @12: Types.AddressBook;
@@ -492,7 +492,7 @@ struct CoinSelectionRequest {
       feeByte  @1 : Float32;
    }
 
-   id                         @0 : Text;
+   id                         @0 : Types.CoinSelectionId;
    union {
       unset                   @1 : Void;
 
@@ -550,7 +550,7 @@ struct SignerRequest {
       callbackId  @1 : Text;
    }
 
-   id                         @0 : Text;
+   id                         @0 : Types.SignerId;
    union {
       unset                   @1 : Void;
 
@@ -598,7 +598,7 @@ struct SignerReply {
    union {
       unset                   @0 : Void;
 
-      getNew                  @1 : Text;
+      getNew                  @1 : Types.SignerId;
       toTxSigCollect          @2 : Text;
       getSignedTx             @3 : Data;
       getUnsignedTx           @4 : Data;

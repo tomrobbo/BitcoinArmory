@@ -80,7 +80,7 @@ WalletManager::WalletManager(const std::filesystem::path& path) :
    }
 
    //setup primary ledger delegate
-   txioCache_ = std::make_unique<TxIOCache>();
+   txioCache_ = std::make_shared<TxIOCache>();
    delegateMap_.emplace(mainDelegateId, Ledgers::Delegate{
       [this](uint32_t pageId)->std::vector<Ledgers::Entry>{
          return getPageForId(this, pageId);

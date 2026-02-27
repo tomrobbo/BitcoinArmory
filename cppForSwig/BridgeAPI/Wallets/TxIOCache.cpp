@@ -9,6 +9,7 @@
 #include "TxIOCache.h"
 
 #include <Utils/DBUtils.h>
+#include <Utils/BtcUtils.h>
 #include <BlockchainDatabase/txio.h>
 #include <Ledgers/Context.h>
 #include <TxClasses.h>
@@ -29,8 +30,7 @@ std::shared_ptr<const Ledgers::DBCache> TxIOCache::getDBCache() const
 }
 
 CacheResolveResult TxIOCache::resolve(
-   const std::function<bool(const BinaryData&)>& filter,
-   uint32_t fromHeight) const
+   const AddressFilter& filter, uint32_t fromHeight) const
 {
    //run through unspent txios first
    CacheResolveResult result{lastKnownBlock_};
@@ -184,6 +184,100 @@ std::pair<std::set<BinaryData>, std::set<uint32_t>> TxIOCache::addTxios(
       lastKnownBlock_ = fetchedHeight;
    }
    return {std::move(missingTxKeys), std::move(missingHeights)};
+}
+
+////////
+std::map<BinaryData, std::set<BinaryData>> TxIOCache::getAddressBook(
+   const AddressFilter& filter) const
+{
+   std::map<BinaryData, std::set<BinaryData>> result;
+   for (const auto& txio : unspentTxios_) {
+      const auto& txKey = txio.second.getTxRefOfOutput().getDBKey();
+
+      //skip txios that are not on the main chain
+      if (!txKeyIsValid(txKey)) {
+         continue;
+      }
+
+      //track this <addr, hash>
+      const auto& tx = dbCache_->txMap.at(txKey);
+      auto scrAddr = tx.getScrAddrForTxOut(txio.second.getIndexOfOutput());
+      if (filter(scrAddr)) {
+         auto iter = result.find(scrAddr);
+         if (iter == result.end()) {
+            iter = result.emplace(scrAddr, std::set<BinaryData>{}).first;
+         }
+         iter->second.emplace(tx.getThisHash());
+      }
+   }
+
+   for (const auto& txio : spentTxios_) {
+      //is output on mainchain?
+      const auto& txKeyOutput = txio.second.getTxRefOfOutput().getDBKey();
+      if (!txKeyIsValid(txKeyOutput)) {
+         continue;
+      }
+
+      //is input on mainchain?
+      const auto& txKeyInput = txio.second.getTxRefOfInput().getDBKey();
+      if (!txKeyIsValid(txKeyInput)) {
+         continue;
+      }
+
+      //track this <addr, hash>
+      const auto& tx = dbCache_->txMap.at(txKeyOutput);
+      auto scrAddr = tx.getScrAddrForTxOut(txio.second.getIndexOfOutput());
+      if (filter(scrAddr)) {
+         auto iter = result.find(scrAddr);
+         if (iter == result.end()) {
+            iter = result.emplace(scrAddr, std::set<BinaryData>{}).first;
+         }
+         iter->second.emplace(tx.getThisHash());
+      }
+   }
+   return result;
+}
+
+std::vector<UTXO> TxIOCache::getUTXOs(const AddressFilter& filter) const
+{
+   std::set<BinaryData> spentKeys;
+   for (const auto& txio : spentTxios_) {
+      auto outputKey = txio.second.getDBKeyOfOutput();
+      if (!txKeyIsValid(outputKey)) {
+         continue;
+      }
+      spentKeys.emplace(outputKey);
+   }
+
+   std::vector<UTXO> result;
+   result.reserve(unspentTxios_.size());
+   for (const auto& txio : unspentTxios_) {
+      auto iter = spentKeys.find(txio.first);
+      if (iter != spentKeys.end()) {
+         continue;
+      }
+
+      const auto& txKey = txio.second.getTxRefOfOutput().getDBKey();
+      if (!txKeyIsValid(txKey)) {
+         continue;
+      }
+      const auto& tx = dbCache_->txMap.at(txKey);
+      if (tx.getTxIndex() == 0 &&
+         tx.getTxHeight() + COINBASE_MATURITY > lastKnownBlock_) {
+         continue;
+      }
+      auto scrAddr = tx.getScrAddrForTxOut(txio.second.getIndexOfOutput());
+      if (!filter(scrAddr)) {
+         continue;
+      }
+
+      auto txOut = tx.getTxOutCopy(txio.second.getIndexOfOutput());
+      result.emplace_back(UTXO{txio.second.getValue(),
+         tx.getTxHeight(), tx.getTxIndex(), txio.second.getIndexOfOutput(),
+         tx.getThisHash(), txOut.getScript()
+      });
+   }
+   return result;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

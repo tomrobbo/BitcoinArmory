@@ -1155,6 +1155,191 @@ namespace {
          std::cout << ", sts: " << lhs.isSentToSelf() << std::endl;
       }
    }
+
+   /////////////////////////////////////////////////////////////////////////////
+   // wallet data lookups
+   std::map<BinaryData, std::set<BinaryData>> getAddressBook(
+      std::shared_ptr<Bridge::CppBridge> bridge,
+      const std::string& walletId, const std::string& accountId)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initWallet();
+      req.setWalletId(walletId);
+      req.setAccountId(accountId);
+      req.setCreateAddressBook();
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //process reply
+      auto resp = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+         resp->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return {};
+      }
+      auto reply = fromBridge.getReply();
+      if (!reply.getSuccess()) {
+         return {};
+      }
+      if (reply.which() != Codec::Bridge::RpcReply::WALLET) {
+         return {};
+      }
+
+      auto walletReply = reply.getWallet();
+      auto addrBookCapn = walletReply.getCreateAddressBook();
+      std::map<BinaryData, std::set<BinaryData>> result;
+      for (auto entry : addrBookCapn.getEntries()) {
+         auto capnAddr = entry.getScrAddr();
+         auto iter = result.emplace(
+            BinaryData{capnAddr.begin(), capnAddr.size()},
+            std::set<BinaryData>{}).first;
+         auto& hashSet = iter->second;
+         for (auto capnHash : entry.getTxHashes()) {
+            hashSet.emplace(BinaryData{capnHash.begin(), capnHash.size()});
+         }
+      }
+      return result;
+   }
+
+   const std::vector<UTXO> getUTXOs(
+      std::shared_ptr<Bridge::CppBridge> bridge,
+      const std::string& walletId, const std::string& accountId)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initWallet();
+      req.setWalletId(walletId);
+      req.setAccountId(accountId);
+
+      auto utxoReq = req.initGetUtxos();
+      utxoReq.setValue(UINT32_MAX);
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //process reply
+      auto resp = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+         resp->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return {};
+      }
+      auto reply = fromBridge.getReply();
+      if (!reply.getSuccess()) {
+         return {};
+      }
+      if (reply.which() != Codec::Bridge::RpcReply::WALLET) {
+         return {};
+      }
+
+      auto walletReply = reply.getWallet();
+      auto utxoReply = walletReply.getGetUtxos();
+      std::vector<UTXO> result;
+      for (auto capnUtxo : utxoReply) {
+         auto capnOutput = capnUtxo.getOutput();
+         auto capnHash = capnOutput.getTxHash();
+         BinaryData txHash{capnHash.begin(), capnHash.size()};
+
+         auto capnScript = capnOutput.getScript();
+         BinaryData script{capnScript.begin(), capnScript.size()};
+
+         result.emplace_back(UTXO{
+            capnOutput.getValue(), capnOutput.getTxHeight(),
+            capnOutput.getTxIndex(), capnOutput.getTxOutIndex(),
+            std::move(txHash), std::move(script)
+         });
+      }
+
+      std::sort(result.begin(), result.end());
+      return result;
+   }
+
+   /////////////////////////////////////////////////////////////////////////////
+   // signer stuff
+   const std::string getNewCoinSelector(
+      std::shared_ptr<Bridge::CppBridge> bridge,
+      const std::string& walletId, const std::string& accountId,
+      uint32_t height)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initWallet();
+      req.setWalletId(walletId);
+      req.setAccountId(accountId);
+      req.setSetupNewCoinSelectionInstance(height);
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //process reply
+      auto resp = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+         resp->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return {};
+      }
+      auto reply = fromBridge.getReply();
+      if (!reply.getSuccess()) {
+         return {};
+      }
+      if (reply.which() != Codec::Bridge::RpcReply::WALLET) {
+         return {};
+      }
+
+      auto walletReply = reply.getWallet();
+      return walletReply.getSetupNewCoinSelectionInstance();
+   }
+
+   std::string getNewSigner(std::shared_ptr<Bridge::CppBridge> bridge)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initSigner();
+      req.setGetNew();
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //process reply
+      auto resp = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+         resp->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return {};
+      }
+      auto reply = fromBridge.getReply();
+      if (!reply.getSuccess()) {
+         return {};
+      }
+      if (reply.which() != Codec::Bridge::RpcReply::SIGNER) {
+         return {};
+      }
+
+      auto signerReply = reply.getSigner();
+      return signerReply.getGetNew();
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -4671,7 +4856,7 @@ TEST_F(BridgeWebsocketsTests, AddNewAddress)
 
 ////////////////////////////////////////////////////////////////////////////////
 // BridgeLedgerTests
-class BridgeLedgerTests : public ::testing::Test
+class BridgeLocalTests : public ::testing::Test
 {
 protected:
    void initBDM()
@@ -4861,7 +5046,8 @@ protected:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeLedgerTests, Check5Blocks_BCDE)
+// ledgers
+TEST_F(BridgeLocalTests, Check5Blocks_BCDE)
 {
    loadWallets({walletId_BCDE_});
 
@@ -4898,7 +5084,8 @@ TEST_F(BridgeLedgerTests, Check5Blocks_BCDE)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeLedgerTests, AddBlocks_BCDE)
+// ledgers add block
+TEST_F(BridgeLocalTests, AddBlocks_BCDE)
 {
    loadWallets({walletId_BCDE_});
 
@@ -4982,8 +5169,7 @@ TEST_F(BridgeLedgerTests, AddBlocks_BCDE)
    }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeLedgerTests, AddBlocks_BC_DE)
+TEST_F(BridgeLocalTests, AddBlocks_BC_DE)
 {
    // load the 2 wallets
    loadWallets({walletId_BC_, walletId_DE_});
@@ -5167,7 +5353,7 @@ TEST_F(BridgeLedgerTests, AddBlocks_BC_DE)
    }
 }
 
-TEST_F(BridgeLedgerTests, AddBlocks_BCDE_AFLB)
+TEST_F(BridgeLocalTests, AddBlocks_BCDE_AFLB)
 {
    // load the 2 wallets
    loadWallets({walletId_BCDE_, walletId_AFLB_});
@@ -5352,7 +5538,8 @@ TEST_F(BridgeLedgerTests, AddBlocks_BCDE_AFLB)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeLedgerTests, Reorg_BCDE)
+// ledgers reorg
+TEST_F(BridgeLocalTests, Reorg_BCDE)
 {
    loadWallets({walletId_BCDE_});
 
@@ -5458,7 +5645,7 @@ TEST_F(BridgeLedgerTests, Reorg_BCDE)
    }
 }
 
-TEST_F(BridgeLedgerTests, Reorg_BC_DE)
+TEST_F(BridgeLocalTests, Reorg_BC_DE)
 {
    loadWallets({walletId_BC_, walletId_DE_});
 
@@ -5692,7 +5879,7 @@ TEST_F(BridgeLedgerTests, Reorg_BC_DE)
    }
 }
 
-TEST_F(BridgeLedgerTests, Reorg_BCDE_AFLB)
+TEST_F(BridgeLocalTests, Reorg_BCDE_AFLB)
 {
    loadWallets({walletId_BCDE_, walletId_AFLB_});
 
@@ -5924,6 +6111,216 @@ TEST_F(BridgeLedgerTests, Reorg_BCDE_AFLB)
          checkLedgers(ledgersAtBlocks[i],
             combinedLedgers[i])) << i;
    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// helper data
+TEST_F(BridgeLocalTests, AddressBook)
+{
+   loadWallets({walletId_BCDE_});
+
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
+   WebSocketServer::initAuthPeers({
+      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+   WebSocketServer::start(theBDMt_->bdm(), true);
+
+   ASSERT_TRUE(connectToDb(bridge_));
+   ASSERT_TRUE(registerWallets(bridge_));
+
+   //start db, go online and wait on ready notif
+   theBDMt_->start(Config::DBSettings::initMode());
+   ASSERT_EQ(goOnline(bridge_), 5);
+
+   //check balances
+   auto balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   checkBalances(balances, 5, false);
+
+   //check ledgers
+   auto delegateId = getLedgerDelegateId(bridge_);
+   ASSERT_FALSE(delegateId.empty());
+
+   auto pageCount = getLedgersPageCount(bridge_, delegateId);
+   EXPECT_EQ(pageCount, 1);
+
+   auto ledgers = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgers.size(), 15);
+
+   for (unsigned i = 0; i < ledgers.size(); i++) {
+      EXPECT_TRUE(checkLedgers(ledgers[i], TestChain::ledgersBCDE[i])) << i;
+   }
+
+   //grab address book
+   auto addrBook = getAddressBook(bridge_, walletId_BCDE_, accountId_BCDE_);
+
+   try {
+      auto hashes = addrBook.at(TestChain::scrAddrB);
+      ASSERT_EQ(hashes.size(), TestChain::ledgersB.size());
+      for (const auto& entry : TestChain::ledgersB) {
+         ASSERT_NE(hashes.find(entry.txHash), hashes.end());
+      }
+   } catch (const std::range_error&) {
+      ASSERT_TRUE(false);
+   }
+
+   try {
+      auto hashes = addrBook.at(TestChain::scrAddrC);
+      ASSERT_EQ(hashes.size(), TestChain::ledgersC.size());
+      for (const auto& entry : TestChain::ledgersC) {
+         ASSERT_NE(hashes.find(entry.txHash), hashes.end());
+      }
+   } catch (const std::range_error&) {
+      ASSERT_TRUE(false);
+   }
+
+   try {
+      auto hashes = addrBook.at(TestChain::scrAddrD);
+      ASSERT_EQ(hashes.size(), TestChain::ledgersD.size());
+      for (const auto& entry : TestChain::ledgersD) {
+         ASSERT_NE(hashes.find(entry.txHash), hashes.end());
+      }
+   } catch (const std::range_error&) {
+      ASSERT_TRUE(false);
+   }
+
+   try {
+      auto hashes = addrBook.at(TestChain::scrAddrE);
+      ASSERT_EQ(hashes.size(), TestChain::ledgersE.size());
+      for (const auto& entry : TestChain::ledgersE) {
+         ASSERT_NE(hashes.find(entry.txHash), hashes.end());
+      }
+   } catch (const std::range_error&) {
+      ASSERT_TRUE(false);
+   }
+}
+
+TEST_F(BridgeLocalTests, getUTXOs)
+{
+   loadWallets({walletId_BCDE_, walletId_AFLB_});
+
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
+   WebSocketServer::initAuthPeers({
+      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+   WebSocketServer::start(theBDMt_->bdm(), true);
+
+   ASSERT_TRUE(connectToDb(bridge_));
+   ASSERT_TRUE(registerWallets(bridge_));
+
+   //start db, go online and wait on ready notif
+   theBDMt_->start(Config::DBSettings::initMode());
+   ASSERT_EQ(goOnline(bridge_), 5);
+
+   //grab BCDE utxos
+   auto utxos = getUTXOs(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(utxos.size(), 8);
+
+   //Block 4, tx 2, output 0, 5 COINS
+   auto utxo = utxos[0];
+   ASSERT_EQ(utxo.getHeight(), 4);
+   ASSERT_EQ(utxo.getTxIndex(), 2);
+   ASSERT_EQ(utxo.getTxOutIndex(), 0);
+   ASSERT_EQ(utxo.getValue(), 5 * COIN);
+   ASSERT_EQ(utxo.getTxHash(), TestChain::hash42);
+
+   //Block 3, tx 4, output 0, 25 COINS
+   utxo = utxos[1];
+   ASSERT_EQ(utxo.getHeight(), 3);
+   ASSERT_EQ(utxo.getTxIndex(), 4);
+   ASSERT_EQ(utxo.getTxOutIndex(), 0);
+   ASSERT_EQ(utxo.getValue(), 25 * COIN);
+   ASSERT_EQ(utxo.getTxHash(), TestChain::hash34);
+
+   //Block 3, tx 2, output 0, 5 COINS
+   utxo = utxos[2];
+   ASSERT_EQ(utxo.getHeight(), 3);
+   ASSERT_EQ(utxo.getTxIndex(), 2);
+   ASSERT_EQ(utxo.getTxOutIndex(), 0);
+   ASSERT_EQ(utxo.getValue(), 5 * COIN);
+   ASSERT_EQ(utxo.getTxHash(), TestChain::hash32);
+
+   //Block 5, tx 2, output 0, 5 COINS
+   utxo = utxos[3];
+   ASSERT_EQ(utxo.getHeight(), 5);
+   ASSERT_EQ(utxo.getTxIndex(), 2);
+   ASSERT_EQ(utxo.getTxOutIndex(), 0);
+   ASSERT_EQ(utxo.getValue(), 5 * COIN);
+   ASSERT_EQ(utxo.getTxHash(), TestChain::hash52);
+
+   //Block 4, tx 3, output 2, 10 COINS
+   utxo = utxos[4];
+   ASSERT_EQ(utxo.getHeight(), 4);
+   ASSERT_EQ(utxo.getTxIndex(), 3);
+   ASSERT_EQ(utxo.getTxOutIndex(), 2);
+   ASSERT_EQ(utxo.getValue(), 10 * COIN);
+   ASSERT_EQ(utxo.getTxHash(), TestChain::hash43);
+
+   //Block 5, tx 1, output 0, 10 COINS
+   utxo = utxos[5];
+   ASSERT_EQ(utxo.getHeight(), 5);
+   ASSERT_EQ(utxo.getTxIndex(), 1);
+   ASSERT_EQ(utxo.getTxOutIndex(), 0);
+   ASSERT_EQ(utxo.getValue(), 10 * COIN);
+   ASSERT_EQ(utxo.getTxHash(), TestChain::hash51);
+
+   //Block 5, tx 1, output 1, 20 COINS
+   utxo = utxos[6];
+   ASSERT_EQ(utxo.getHeight(), 5);
+   ASSERT_EQ(utxo.getTxIndex(), 1);
+   ASSERT_EQ(utxo.getTxOutIndex(), 1);
+   ASSERT_EQ(utxo.getValue(), 20 * COIN);
+   ASSERT_EQ(utxo.getTxHash(), TestChain::hash51);
+
+   //Block 3, tx 1, output 0, 5 COINS
+   utxo = utxos[7];
+   ASSERT_EQ(utxo.getHeight(), 3);
+   ASSERT_EQ(utxo.getTxIndex(), 1);
+   ASSERT_EQ(utxo.getTxOutIndex(), 0);
+   ASSERT_EQ(utxo.getValue(), 5 * COIN);
+   ASSERT_EQ(utxo.getTxHash(), TestChain::hash31);
+
+   //grab AFLB utxos
+   utxos = getUTXOs(bridge_, walletId_AFLB_, accountId_AFLB_);
+   ASSERT_EQ(utxos.size(), 5);
+
+   //Block 4, tx 1, output 1, 5 COINS
+   utxo = utxos[0];
+   ASSERT_EQ(utxo.getHeight(), 4);
+   ASSERT_EQ(utxo.getTxIndex(), 1);
+   ASSERT_EQ(utxo.getTxOutIndex(), 1);
+   ASSERT_EQ(utxo.getValue(), 5 * COIN);
+   ASSERT_EQ(utxo.getTxHash(), TestChain::hash41);
+
+   //Block 4, tx 3, output 0, 25 COINS
+   utxo = utxos[1];
+   ASSERT_EQ(utxo.getHeight(), 4);
+   ASSERT_EQ(utxo.getTxIndex(), 3);
+   ASSERT_EQ(utxo.getTxOutIndex(), 0);
+   ASSERT_EQ(utxo.getValue(), 25 * COIN);
+   ASSERT_EQ(utxo.getTxHash(), TestChain::hash43);
+
+   //Block 4, tx 3, output 1, 20 COINS
+   utxo = utxos[2];
+   ASSERT_EQ(utxo.getHeight(), 4);
+   ASSERT_EQ(utxo.getTxIndex(), 3);
+   ASSERT_EQ(utxo.getTxOutIndex(), 1);
+   ASSERT_EQ(utxo.getValue(), 20 * COIN);
+   ASSERT_EQ(utxo.getTxHash(), TestChain::hash43);
+
+   //Block 3, tx 5, output 0, 10 COINS
+   utxo = utxos[3];
+   ASSERT_EQ(utxo.getHeight(), 3);
+   ASSERT_EQ(utxo.getTxIndex(), 5);
+   ASSERT_EQ(utxo.getTxOutIndex(), 0);
+   ASSERT_EQ(utxo.getValue(), 10 * COIN);
+   ASSERT_EQ(utxo.getTxHash(), TestChain::hash35);
+
+   //Block 3, tx 5, output 1, 5 COINS
+   utxo = utxos[4];
+   ASSERT_EQ(utxo.getHeight(), 3);
+   ASSERT_EQ(utxo.getTxIndex(), 5);
+   ASSERT_EQ(utxo.getTxOutIndex(), 1);
+   ASSERT_EQ(utxo.getValue(), 5 * COIN);
+   ASSERT_EQ(utxo.getTxHash(), TestChain::hash35);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

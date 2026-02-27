@@ -20,6 +20,7 @@
 class TxIOPair;
 class Tx;
 class NewBlockNotif;
+struct UTXO;
 
 namespace AsyncClient
 {
@@ -35,6 +36,7 @@ namespace Armory
 
    namespace Bridge
    {
+      using AddressFilter = std::function<bool(const BinaryData&)>;
       struct CacheResolveResult
       {
          const uint32_t topBlock;
@@ -66,9 +68,10 @@ namespace Armory
          uint32_t update(std::shared_ptr<AsyncClient::BlockDataViewer>,
             const NewBlockNotif&);
          std::shared_ptr<const Ledgers::DBCache> getDBCache(void) const;
-         CacheResolveResult resolve(
-            const std::function<bool(const BinaryData&)>&,
-            uint32_t) const;
+         CacheResolveResult resolve(const AddressFilter&, uint32_t) const;
+         std::map<BinaryData, std::set<BinaryData>> getAddressBook(
+            const AddressFilter&) const;
+         std::vector<UTXO> getUTXOs(const AddressFilter&) const;
       };
    } //namespace Bridge
 } //namespace Armory

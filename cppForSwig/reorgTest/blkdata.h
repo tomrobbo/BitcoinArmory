@@ -184,227 +184,259 @@ struct LedgerEntryValue
    }
 };
 
+/* tx hashes */
+
+// block 0
+static const BinaryData hash00 = READHEX("3ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4a");
+
+// block 1
+static const BinaryData hash10 = READHEX("ec6ee10ddb21cc8b21524f890e8dd8aed0b7e020032eed9e167a566c8659f35c");
+
+// block 2
+static const BinaryData hash20 = READHEX("63a471e560a4a4d3b956173c84175c39eece33dbae2c7987f1edf3bda1fb420c");
+static const BinaryData hash21 = READHEX("b46699df740c38435c0430e2595c0a61733658ab923121d8a2edeac3895ae541");
+static const BinaryData hash22 = READHEX("9ca7f69284d0e8b0ea5ad7915b50d65817fb5c592fdfc351e473b1291690c76b");
+
+// block 3
+static const BinaryData hash30 = READHEX("feac40d88e7931cfb01fd4aee8a0fae1481c2df357e0b9c7f6db33379d8bbc6f");
+static const BinaryData hash31 = READHEX("d3f38cb8a7e9294db20b67bd99e64bfb6320cfe286f7f77170b33e685a2827a3");
+static const BinaryData hash32 = READHEX("42551f6cb5674bdad8850a4a423101e42e17559568080f7dcd3d2c9480ae53ea");
+static const BinaryData hash33 = READHEX("91c1d6c4eb074ce3570641e615a0ab7f6ca81f91186492b79e4118086ab047b6");
+static const BinaryData hash34 = READHEX("36d958de246b7e422376803e4eb26cac9c82606a315a523f0b5c9f8c07a44677");
+static const BinaryData hash35 = READHEX("9ec8177ca0a4f7aa21ec88a324f236a4d1dce6c610812a90e16febef4603a438");
+
+// block 4
+static const BinaryData hash40 = READHEX("d5fcc32ccb7e4c01049df1458c628253298f78c74a7cdd8df8f40125fbbf4f42");
+static const BinaryData hash41 = READHEX("2564950008ae20c57bd2d5ffb2ceca67a33e003dc69f0d5b7c31c03a16e78071");
+static const BinaryData hash42 = READHEX("1fb865e8cf2e430cca3a80adf8375bea5fddb0080e326b8df668373dfe599c07");
+static const BinaryData hash43 = READHEX("6705262a37294c4e99890418668cfb97738b51b253ac86fcbee599a19fe15cea");
+
+// block 5
+static const BinaryData hash50 = READHEX("dc62ffa88e123ee99aa38ac5e73a65994e9332fbc0c554ebde7885900f5c06cb");
+static const BinaryData hash51 = READHEX("b6b6f145742a9072fd85f96772e63a00eb4101709aa34ec5dd59e8fc904191a7");
+static const BinaryData hash52 = READHEX("55501098859122d73e3e360d90574b468b8299f578738ce293789a7eeeb678b4");
+
 /* address ledgers */
 
 //A
 static const std::vector<LedgerEntryValue> ledgersA{
-   { 50 * COIN          , 0, 0, 1231006505, READHEX("3ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4a")},
+   { 50 * COIN          , 0, 0, 1231006505, hash00},
 };
 
 static const std::vector<LedgerEntryValue> ledgersA_Reorg = ledgersA;
 
 //B
 static const std::vector<LedgerEntryValue> ledgersB{
-   { -10 * (int64_t)COIN, 5, 1, 1231009513, READHEX("b6b6f145742a9072fd85f96772e63a00eb4101709aa34ec5dd59e8fc904191a7")},
-   { 50 * COIN          , 5, 0, 1231009513, READHEX("dc62ffa88e123ee99aa38ac5e73a65994e9332fbc0c554ebde7885900f5c06cb")},
-   { -25 * (int64_t)COIN, 3, 4, 1231008309, READHEX("36d958de246b7e422376803e4eb26cac9c82606a315a523f0b5c9f8c07a44677")},
-   { -20 * (int64_t)COIN, 2, 2, 1231007708, READHEX("9ca7f69284d0e8b0ea5ad7915b50d65817fb5c592fdfc351e473b1291690c76b")},
-   { -25 * (int64_t)COIN, 2, 1, 1231007708, READHEX("b46699df740c38435c0430e2595c0a61733658ab923121d8a2edeac3895ae541")},
-   { 50 * COIN          , 2, 0, 1231007708, READHEX("63a471e560a4a4d3b956173c84175c39eece33dbae2c7987f1edf3bda1fb420c")},
-   { 50 * COIN          , 1, 0, 1231007105, READHEX("ec6ee10ddb21cc8b21524f890e8dd8aed0b7e020032eed9e167a566c8659f35c")},
+   { -10 * (int64_t)COIN, 5, 1, 1231009513, hash51},
+   { 50 * COIN          , 5, 0, 1231009513, hash50},
+   { -25 * (int64_t)COIN, 3, 4, 1231008309, hash34},
+   { -20 * (int64_t)COIN, 2, 2, 1231007708, hash22},
+   { -25 * (int64_t)COIN, 2, 1, 1231007708, hash21},
+   { 50 * COIN          , 2, 0, 1231007708, hash20},
+   { 50 * COIN          , 1, 0, 1231007105, hash10},
 };
 
 static const std::vector<LedgerEntryValue> ledgersB_Reorg{
-   { -25 * (int64_t)COIN, 3, 4, 1231008309, READHEX("36d958de246b7e422376803e4eb26cac9c82606a315a523f0b5c9f8c07a44677")},
-   { -20 * (int64_t)COIN, 2, 2, 1231007708, READHEX("9ca7f69284d0e8b0ea5ad7915b50d65817fb5c592fdfc351e473b1291690c76b")},
-   { -25 * (int64_t)COIN, 2, 1, 1231007708, READHEX("b46699df740c38435c0430e2595c0a61733658ab923121d8a2edeac3895ae541")},
-   { 50 * COIN          , 2, 0, 1231007708, READHEX("63a471e560a4a4d3b956173c84175c39eece33dbae2c7987f1edf3bda1fb420c")},
-   { 50 * COIN          , 1, 0, 1231007105, READHEX("ec6ee10ddb21cc8b21524f890e8dd8aed0b7e020032eed9e167a566c8659f35c")},
+   { -25 * (int64_t)COIN, 3, 4, 1231008309, hash34},
+   { -20 * (int64_t)COIN, 2, 2, 1231007708, hash22},
+   { -25 * (int64_t)COIN, 2, 1, 1231007708, hash21},
+   { 50 * COIN          , 2, 0, 1231007708, hash20},
+   { 50 * COIN          , 1, 0, 1231007105, hash10},
 };
 
 //C
 static const std::vector<LedgerEntryValue> ledgersC{
-   { 10 * COIN          , 5, 1, 1231009513, READHEX("b6b6f145742a9072fd85f96772e63a00eb4101709aa34ec5dd59e8fc904191a7")},
-   { -45 * (int64_t)COIN, 4, 3, 1231008909, READHEX("6705262a37294c4e99890418668cfb97738b51b253ac86fcbee599a19fe15cea")},
-   { 5 * COIN           , 3, 3, 1231008309, READHEX("91c1d6c4eb074ce3570641e615a0ab7f6ca81f91186492b79e4118086ab047b6")},
-   { 50 * COIN          , 3, 0, 1231008309, READHEX("feac40d88e7931cfb01fd4aee8a0fae1481c2df357e0b9c7f6db33379d8bbc6f")},
+   { 10 * COIN          , 5, 1, 1231009513, hash51},
+   { -45 * (int64_t)COIN, 4, 3, 1231008909, hash43},
+   { 5 * COIN           , 3, 3, 1231008309, hash33},
+   { 50 * COIN          , 3, 0, 1231008309, hash30},
 };
 
 static const std::vector<LedgerEntryValue> ledgersC_Reorg{
-   { 5 * COIN           , 3, 3, 1231008309, READHEX("91c1d6c4eb074ce3570641e615a0ab7f6ca81f91186492b79e4118086ab047b6")},
-   { 50 * COIN          , 3, 0, 1231008309, READHEX("feac40d88e7931cfb01fd4aee8a0fae1481c2df357e0b9c7f6db33379d8bbc6f")},
+   { 5 * COIN           , 3, 3, 1231008309, hash33},
+   { 50 * COIN          , 3, 0, 1231008309, hash30},
 };
 
 //D
 static const std::vector<LedgerEntryValue> ledgersD{
-   { 5 * COIN           , 5, 2, 1231009513, READHEX("55501098859122d73e3e360d90574b468b8299f578738ce293789a7eeeb678b4")},
-   { 5 * COIN           , 4, 2, 1231008909, READHEX("1fb865e8cf2e430cca3a80adf8375bea5fddb0080e326b8df668373dfe599c07")},
-   { 50 * COIN          , 4, 0, 1231008909, READHEX("d5fcc32ccb7e4c01049df1458c628253298f78c74a7cdd8df8f40125fbbf4f42")},
-   { 5 * COIN           , 3, 1, 1231008309, READHEX("d3f38cb8a7e9294db20b67bd99e64bfb6320cfe286f7f77170b33e685a2827a3")},
+   { 5 * COIN           , 5, 2, 1231009513, hash52},
+   { 5 * COIN           , 4, 2, 1231008909, hash42},
+   { 50 * COIN          , 4, 0, 1231008909, hash40},
+   { 5 * COIN           , 3, 1, 1231008309, hash31},
 };
 
 static const std::vector<LedgerEntryValue> ledgersD_Reorg{
-   { 5 * COIN           , 5, 2, 1231009510, READHEX("1fb865e8cf2e430cca3a80adf8375bea5fddb0080e326b8df668373dfe599c07")},
+   { 5 * COIN           , 5, 2, 1231009510, hash42},
    { 50 * COIN          , 5, 0, 1231009510, READHEX("9bce56a46508c1ddfb4d8495c8c8eecc1735dcfe61631533ed85d3908bfa33f3")},
-   { 5 * COIN           , 3, 1, 1231008309, READHEX("d3f38cb8a7e9294db20b67bd99e64bfb6320cfe286f7f77170b33e685a2827a3")},
+   { 5 * COIN           , 3, 1, 1231008309, hash31},
 };
 
 //E
 static const std::vector<LedgerEntryValue> ledgersE{
-   { 25 * COIN          , 3, 4, 1231008309, READHEX("36d958de246b7e422376803e4eb26cac9c82606a315a523f0b5c9f8c07a44677")},
-   { 5 * COIN           , 3, 2, 1231008309, READHEX("42551f6cb5674bdad8850a4a423101e42e17559568080f7dcd3d2c9480ae53ea")},
+   { 25 * COIN          , 3, 4, 1231008309, hash34},
+   { 5 * COIN           , 3, 2, 1231008309, hash32},
 };
 
 static const std::vector<LedgerEntryValue> ledgersE_Reorg = ledgersE;
 
 //F
 static const std::vector<LedgerEntryValue> ledgersF{
-   { -5 * (int64_t)COIN , 5, 2, 1231009513, READHEX("55501098859122d73e3e360d90574b468b8299f578738ce293789a7eeeb678b4")},
-   { 5 * COIN           , 4, 1, 1231008909, READHEX("2564950008ae20c57bd2d5ffb2ceca67a33e003dc69f0d5b7c31c03a16e78071")},
-   { -10 * (int64_t)COIN, 3, 5, 1231008309, READHEX("9ec8177ca0a4f7aa21ec88a324f236a4d1dce6c610812a90e16febef4603a438")},
-   { -5 * (int64_t)COIN , 3, 1, 1231008309, READHEX("d3f38cb8a7e9294db20b67bd99e64bfb6320cfe286f7f77170b33e685a2827a3")},
-   { 20 * COIN          , 2, 2, 1231007708, READHEX("9ca7f69284d0e8b0ea5ad7915b50d65817fb5c592fdfc351e473b1291690c76b")},
+   { -5 * (int64_t)COIN , 5, 2, 1231009513, hash52},
+   { 5 * COIN           , 4, 1, 1231008909, hash41},
+   { -10 * (int64_t)COIN, 3, 5, 1231008309, hash35},
+   { -5 * (int64_t)COIN , 3, 1, 1231008309, hash31},
+   { 20 * COIN          , 2, 2, 1231007708, hash22},
 };
 
 static const std::vector<LedgerEntryValue> ledgersF_Reorg{
-   { 5 * COIN           , 5, 1, 1231009510, READHEX("2564950008ae20c57bd2d5ffb2ceca67a33e003dc69f0d5b7c31c03a16e78071")},
+   { 5 * COIN           , 5, 1, 1231009510, hash41},
    { 50 * COIN          , 4, 0, 1231008909, READHEX("45aa44ebb8bc87ad006abad80d0f246172289e92a863cca9be10470d05c6de4d")},
-   { -10 * (int64_t)COIN, 3, 5, 1231008309, READHEX("9ec8177ca0a4f7aa21ec88a324f236a4d1dce6c610812a90e16febef4603a438")},
-   { -5 * (int64_t)COIN , 3, 1, 1231008309, READHEX("d3f38cb8a7e9294db20b67bd99e64bfb6320cfe286f7f77170b33e685a2827a3")},
-   { 20 * COIN          , 2, 2, 1231007708, READHEX("9ca7f69284d0e8b0ea5ad7915b50d65817fb5c592fdfc351e473b1291690c76b")},
+   { -10 * (int64_t)COIN, 3, 5, 1231008309, hash35},
+   { -5 * (int64_t)COIN , 3, 1, 1231008309, hash31},
+   { 20 * COIN          , 2, 2, 1231007708, hash22},
 };
 
 //LB1
 static const std::vector<LedgerEntryValue> ledgersLB1{
-   { -5 * (int64_t)COIN , 4, 1, 1231008909, READHEX("2564950008ae20c57bd2d5ffb2ceca67a33e003dc69f0d5b7c31c03a16e78071")},
-   { 10 * COIN          , 3, 2, 1231008309, READHEX("42551f6cb5674bdad8850a4a423101e42e17559568080f7dcd3d2c9480ae53ea")},
+   { -5 * (int64_t)COIN , 4, 1, 1231008909, hash41},
+   { 10 * COIN          , 3, 2, 1231008309, hash32},
 };
 
 static const std::vector<LedgerEntryValue> ledgersLB1_Reorg{
-   { -5 * (int64_t)COIN , 5, 1, 1231009510, READHEX("2564950008ae20c57bd2d5ffb2ceca67a33e003dc69f0d5b7c31c03a16e78071")},
-   { 10 * COIN          , 3, 2, 1231008309, READHEX("42551f6cb5674bdad8850a4a423101e42e17559568080f7dcd3d2c9480ae53ea")},
+   { -5 * (int64_t)COIN , 5, 1, 1231009510, hash41},
+   { 10 * COIN          , 3, 2, 1231008309, hash32},
 };
 
 static const std::vector<LedgerEntryValue> ledgersLB1_P2SH{
-   { 25 * COIN          , 4, 3, 1231008909, READHEX("6705262a37294c4e99890418668cfb97738b51b253ac86fcbee599a19fe15cea")},
-   { -15 * (int64_t)COIN, 3, 2, 1231008309, READHEX("42551f6cb5674bdad8850a4a423101e42e17559568080f7dcd3d2c9480ae53ea")},
-   { 15 * COIN          , 2, 1, 1231007708, READHEX("b46699df740c38435c0430e2595c0a61733658ab923121d8a2edeac3895ae541")},
+   { 25 * COIN          , 4, 3, 1231008909, hash43},
+   { -15 * (int64_t)COIN, 3, 2, 1231008309, hash32},
+   { 15 * COIN          , 2, 1, 1231007708, hash21},
 };
 
 static const std::vector<LedgerEntryValue> ledgersLB1_P2SH_Reorg{
-   { -15 * (int64_t)COIN, 3, 2, 1231008309, READHEX("42551f6cb5674bdad8850a4a423101e42e17559568080f7dcd3d2c9480ae53ea")},
-   { 15 * COIN          , 2, 1, 1231007708, READHEX("b46699df740c38435c0430e2595c0a61733658ab923121d8a2edeac3895ae541")},
+   { -15 * (int64_t)COIN, 3, 2, 1231008309, hash32},
+   { 15 * COIN          , 2, 1, 1231007708, hash21},
 };
 
 //LB2
 static const std::vector<LedgerEntryValue> ledgersLB2{
-   { 20 * COIN          , 4, 3, 1231008309, READHEX("6705262a37294c4e99890418668cfb97738b51b253ac86fcbee599a19fe15cea")},
-   { 10 * COIN          , 3, 5, 1231008309, READHEX("9ec8177ca0a4f7aa21ec88a324f236a4d1dce6c610812a90e16febef4603a438")},
-   { -10 * (int64_t)COIN, 3, 3, 1231008309, READHEX("91c1d6c4eb074ce3570641e615a0ab7f6ca81f91186492b79e4118086ab047b6")},
+   { 20 * COIN          , 4, 3, 1231008309, hash43},
+   { 10 * COIN          , 3, 5, 1231008309, hash35},
+   { -10 * (int64_t)COIN, 3, 3, 1231008309, hash33},
 };
 
 static const std::vector<LedgerEntryValue> ledgersLB2_Reorg{
-   { 10 * COIN          , 3, 2, 1231008309, READHEX("42551f6cb5674bdad8850a4a423101e42e17559568080f7dcd3d2c9480ae53ea")},
+   { 10 * COIN          , 3, 2, 1231008309, hash32},
 };
 
 static const std::vector<LedgerEntryValue> ledgersLB2_P2SH{
-   { -5 * (int64_t)COIN , 4, 2, 1231008909, READHEX("1fb865e8cf2e430cca3a80adf8375bea5fddb0080e326b8df668373dfe599c07")},
-   { 5 * COIN           , 3, 3, 1231008309, READHEX("91c1d6c4eb074ce3570641e615a0ab7f6ca81f91186492b79e4118086ab047b6")},
+   { -5 * (int64_t)COIN , 4, 2, 1231008909, hash42},
+   { 5 * COIN           , 3, 3, 1231008309, hash33},
 };
 
 static const std::vector<LedgerEntryValue> ledgersLB2_P2SH_Reorg{
-   { -5 * (int64_t)COIN , 5, 2, 1231009510, READHEX("1fb865e8cf2e430cca3a80adf8375bea5fddb0080e326b8df668373dfe599c07")},
-   { 5 * COIN           , 3, 3, 1231008309, READHEX("91c1d6c4eb074ce3570641e615a0ab7f6ca81f91186492b79e4118086ab047b6")},
+   { -5 * (int64_t)COIN , 5, 2, 1231009510, hash42},
+   { 5 * COIN           , 3, 3, 1231008309, hash33},
 };
 
 // wallet ledgers
 static const std::vector<LedgerEntryValue> ledgersBCDE{
-   { 5 * COIN           , 5, 2, 1231009513, READHEX("55501098859122d73e3e360d90574b468b8299f578738ce293789a7eeeb678b4")},
-   { 30 * COIN          , 5, 1, 1231009513, READHEX("b6b6f145742a9072fd85f96772e63a00eb4101709aa34ec5dd59e8fc904191a7"), true},
-   { 50 * COIN          , 5, 0, 1231009513, READHEX("dc62ffa88e123ee99aa38ac5e73a65994e9332fbc0c554ebde7885900f5c06cb")},
-   { -45 * (int64_t)COIN, 4, 3, 1231008909, READHEX("6705262a37294c4e99890418668cfb97738b51b253ac86fcbee599a19fe15cea")},
-   { 5 * COIN           , 4, 2, 1231008909, READHEX("1fb865e8cf2e430cca3a80adf8375bea5fddb0080e326b8df668373dfe599c07")},
-   { 50 * COIN          , 4, 0, 1231008909, READHEX("d5fcc32ccb7e4c01049df1458c628253298f78c74a7cdd8df8f40125fbbf4f42")},
-   { 55 * COIN          , 3, 4, 1231008309, READHEX("36d958de246b7e422376803e4eb26cac9c82606a315a523f0b5c9f8c07a44677"), true},
-   { 5 * COIN           , 3, 3, 1231008309, READHEX("91c1d6c4eb074ce3570641e615a0ab7f6ca81f91186492b79e4118086ab047b6")},
-   { 5 * COIN           , 3, 2, 1231008309, READHEX("42551f6cb5674bdad8850a4a423101e42e17559568080f7dcd3d2c9480ae53ea")},
-   { 5 * COIN           , 3, 1, 1231008309, READHEX("d3f38cb8a7e9294db20b67bd99e64bfb6320cfe286f7f77170b33e685a2827a3")},
-   { 50 * COIN          , 3, 0, 1231008309, READHEX("feac40d88e7931cfb01fd4aee8a0fae1481c2df357e0b9c7f6db33379d8bbc6f")},
-   { -20 * (int64_t)COIN, 2, 2, 1231007708, READHEX("9ca7f69284d0e8b0ea5ad7915b50d65817fb5c592fdfc351e473b1291690c76b")},
-   { -25 * (int64_t)COIN, 2, 1, 1231007708, READHEX("b46699df740c38435c0430e2595c0a61733658ab923121d8a2edeac3895ae541")},
-   { 50 * COIN          , 2, 0, 1231007708, READHEX("63a471e560a4a4d3b956173c84175c39eece33dbae2c7987f1edf3bda1fb420c")},
-   { 50 * COIN          , 1, 0, 1231007105, READHEX("ec6ee10ddb21cc8b21524f890e8dd8aed0b7e020032eed9e167a566c8659f35c")},
+   { 5 * COIN           , 5, 2, 1231009513, hash52},
+   { 30 * COIN          , 5, 1, 1231009513, hash51, true},
+   { 50 * COIN          , 5, 0, 1231009513, hash50},
+   { -45 * (int64_t)COIN, 4, 3, 1231008909, hash43},
+   { 5 * COIN           , 4, 2, 1231008909, hash42},
+   { 50 * COIN          , 4, 0, 1231008909, hash40},
+   { 55 * COIN          , 3, 4, 1231008309, hash34, true},
+   { 5 * COIN           , 3, 3, 1231008309, hash33},
+   { 5 * COIN           , 3, 2, 1231008309, hash32},
+   { 5 * COIN           , 3, 1, 1231008309, hash31},
+   { 50 * COIN          , 3, 0, 1231008309, hash30},
+   { -20 * (int64_t)COIN, 2, 2, 1231007708, hash22},
+   { -25 * (int64_t)COIN, 2, 1, 1231007708, hash21},
+   { 50 * COIN          , 2, 0, 1231007708, hash20},
+   { 50 * COIN          , 1, 0, 1231007105, hash10},
 };
 
 static const std::vector<LedgerEntryValue> ledgersBCDE_Reorg{
-   { 5 * COIN           , 5, 2, 1231009510, READHEX("1fb865e8cf2e430cca3a80adf8375bea5fddb0080e326b8df668373dfe599c07")},
+   { 5 * COIN           , 5, 2, 1231009510, hash42},
    { 50 * COIN          , 5, 0, 1231009510, READHEX("9bce56a46508c1ddfb4d8495c8c8eecc1735dcfe61631533ed85d3908bfa33f3")},
-   { 55 * COIN          , 3, 4, 1231008309, READHEX("36d958de246b7e422376803e4eb26cac9c82606a315a523f0b5c9f8c07a44677"), true},
-   { 5 * COIN           , 3, 3, 1231008309, READHEX("91c1d6c4eb074ce3570641e615a0ab7f6ca81f91186492b79e4118086ab047b6")},
-   { 5 * COIN           , 3, 2, 1231008309, READHEX("42551f6cb5674bdad8850a4a423101e42e17559568080f7dcd3d2c9480ae53ea")},
-   { 5 * COIN           , 3, 1, 1231008309, READHEX("d3f38cb8a7e9294db20b67bd99e64bfb6320cfe286f7f77170b33e685a2827a3")},
-   { 50 * COIN          , 3, 0, 1231008309, READHEX("feac40d88e7931cfb01fd4aee8a0fae1481c2df357e0b9c7f6db33379d8bbc6f")},
-   { -20 * (int64_t)COIN, 2, 2, 1231007708, READHEX("9ca7f69284d0e8b0ea5ad7915b50d65817fb5c592fdfc351e473b1291690c76b")},
-   { -25 * (int64_t)COIN, 2, 1, 1231007708, READHEX("b46699df740c38435c0430e2595c0a61733658ab923121d8a2edeac3895ae541")},
-   { 50 * COIN          , 2, 0, 1231007708, READHEX("63a471e560a4a4d3b956173c84175c39eece33dbae2c7987f1edf3bda1fb420c")},
-   { 50 * COIN          , 1, 0, 1231007105, READHEX("ec6ee10ddb21cc8b21524f890e8dd8aed0b7e020032eed9e167a566c8659f35c")},
+   { 55 * COIN          , 3, 4, 1231008309, hash34, true},
+   { 5 * COIN           , 3, 3, 1231008309, hash33},
+   { 5 * COIN           , 3, 2, 1231008309, hash32},
+   { 5 * COIN           , 3, 1, 1231008309, hash31},
+   { 50 * COIN          , 3, 0, 1231008309, hash30},
+   { -20 * (int64_t)COIN, 2, 2, 1231007708, hash22},
+   { -25 * (int64_t)COIN, 2, 1, 1231007708, hash21},
+   { 50 * COIN          , 2, 0, 1231007708, hash20},
+   { 50 * COIN          , 1, 0, 1231007105, hash10},
 };
 
 static const std::vector<LedgerEntryValue> ledgersBC{
-   { 30 * COIN          , 5, 1, 1231009513, READHEX("b6b6f145742a9072fd85f96772e63a00eb4101709aa34ec5dd59e8fc904191a7"), true},
-   { 50 * COIN          , 5, 0, 1231009513, READHEX("dc62ffa88e123ee99aa38ac5e73a65994e9332fbc0c554ebde7885900f5c06cb")},
-   { -45 * (int64_t)COIN, 4, 3, 1231008909, READHEX("6705262a37294c4e99890418668cfb97738b51b253ac86fcbee599a19fe15cea")},
-   { -25 * (int64_t)COIN, 3, 4, 1231008309, READHEX("36d958de246b7e422376803e4eb26cac9c82606a315a523f0b5c9f8c07a44677")},
-   { 5 * COIN           , 3, 3, 1231008309, READHEX("91c1d6c4eb074ce3570641e615a0ab7f6ca81f91186492b79e4118086ab047b6")},
-   { 50 * COIN          , 3, 0, 1231008309, READHEX("feac40d88e7931cfb01fd4aee8a0fae1481c2df357e0b9c7f6db33379d8bbc6f")},
-   { -20 * (int64_t)COIN, 2, 2, 1231007708, READHEX("9ca7f69284d0e8b0ea5ad7915b50d65817fb5c592fdfc351e473b1291690c76b")},
-   { -25 * (int64_t)COIN, 2, 1, 1231007708, READHEX("b46699df740c38435c0430e2595c0a61733658ab923121d8a2edeac3895ae541")},
-   { 50 * COIN          , 2, 0, 1231007708, READHEX("63a471e560a4a4d3b956173c84175c39eece33dbae2c7987f1edf3bda1fb420c")},
-   { 50 * COIN          , 1, 0, 1231007105, READHEX("ec6ee10ddb21cc8b21524f890e8dd8aed0b7e020032eed9e167a566c8659f35c")},
+   { 30 * COIN          , 5, 1, 1231009513, hash51, true},
+   { 50 * COIN          , 5, 0, 1231009513, hash50},
+   { -45 * (int64_t)COIN, 4, 3, 1231008909, hash43},
+   { -25 * (int64_t)COIN, 3, 4, 1231008309, hash34},
+   { 5 * COIN           , 3, 3, 1231008309, hash33},
+   { 50 * COIN          , 3, 0, 1231008309, hash30},
+   { -20 * (int64_t)COIN, 2, 2, 1231007708, hash22},
+   { -25 * (int64_t)COIN, 2, 1, 1231007708, hash21},
+   { 50 * COIN          , 2, 0, 1231007708, hash20},
+   { 50 * COIN          , 1, 0, 1231007105, hash10},
 };
 
 static const std::vector<LedgerEntryValue> ledgersBC_Reorg{
-   { -25 * (int64_t)COIN, 3, 4, 1231008309, READHEX("36d958de246b7e422376803e4eb26cac9c82606a315a523f0b5c9f8c07a44677")},
-   { 5 * COIN           , 3, 3, 1231008309, READHEX("91c1d6c4eb074ce3570641e615a0ab7f6ca81f91186492b79e4118086ab047b6")},
-   { 50 * COIN          , 3, 0, 1231008309, READHEX("feac40d88e7931cfb01fd4aee8a0fae1481c2df357e0b9c7f6db33379d8bbc6f")},
-   { -20 * (int64_t)COIN, 2, 2, 1231007708, READHEX("9ca7f69284d0e8b0ea5ad7915b50d65817fb5c592fdfc351e473b1291690c76b")},
-   { -25 * (int64_t)COIN, 2, 1, 1231007708, READHEX("b46699df740c38435c0430e2595c0a61733658ab923121d8a2edeac3895ae541")},
-   { 50 * COIN          , 2, 0, 1231007708, READHEX("63a471e560a4a4d3b956173c84175c39eece33dbae2c7987f1edf3bda1fb420c")},
-   { 50 * COIN          , 1, 0, 1231007105, READHEX("ec6ee10ddb21cc8b21524f890e8dd8aed0b7e020032eed9e167a566c8659f35c")},
+   { -25 * (int64_t)COIN, 3, 4, 1231008309, hash34},
+   { 5 * COIN           , 3, 3, 1231008309, hash33},
+   { 50 * COIN          , 3, 0, 1231008309, hash30},
+   { -20 * (int64_t)COIN, 2, 2, 1231007708, hash22},
+   { -25 * (int64_t)COIN, 2, 1, 1231007708, hash21},
+   { 50 * COIN          , 2, 0, 1231007708, hash20},
+   { 50 * COIN          , 1, 0, 1231007105, hash10},
 };
 
 static const std::vector<LedgerEntryValue> ledgersDE{
-   { 5 * COIN           , 5, 2, 1231009513, READHEX("55501098859122d73e3e360d90574b468b8299f578738ce293789a7eeeb678b4")},
-   { 5 * COIN           , 4, 2, 1231008909, READHEX("1fb865e8cf2e430cca3a80adf8375bea5fddb0080e326b8df668373dfe599c07")},
-   { 50 * COIN          , 4, 0, 1231008909, READHEX("d5fcc32ccb7e4c01049df1458c628253298f78c74a7cdd8df8f40125fbbf4f42")},
-   { 25 * COIN          , 3, 4, 1231008309, READHEX("36d958de246b7e422376803e4eb26cac9c82606a315a523f0b5c9f8c07a44677")},
-   { 5 * COIN           , 3, 2, 1231008309, READHEX("42551f6cb5674bdad8850a4a423101e42e17559568080f7dcd3d2c9480ae53ea")},
-   { 5 * COIN           , 3, 1, 1231008309, READHEX("d3f38cb8a7e9294db20b67bd99e64bfb6320cfe286f7f77170b33e685a2827a3")},
+   { 5 * COIN           , 5, 2, 1231009513, hash52},
+   { 5 * COIN           , 4, 2, 1231008909, hash42},
+   { 50 * COIN          , 4, 0, 1231008909, hash40},
+   { 25 * COIN          , 3, 4, 1231008309, hash34},
+   { 5 * COIN           , 3, 2, 1231008309, hash32},
+   { 5 * COIN           , 3, 1, 1231008309, hash31},
 };
 
 static const std::vector<LedgerEntryValue> ledgersDE_Reorg{
-   { 5 * COIN           , 5, 2, 1231009510, READHEX("1fb865e8cf2e430cca3a80adf8375bea5fddb0080e326b8df668373dfe599c07")},
+   { 5 * COIN           , 5, 2, 1231009510, hash42},
    { 50 * COIN          , 5, 0, 1231009510, READHEX("9bce56a46508c1ddfb4d8495c8c8eecc1735dcfe61631533ed85d3908bfa33f3")},
-   { 25 * COIN          , 3, 4, 1231008309, READHEX("36d958de246b7e422376803e4eb26cac9c82606a315a523f0b5c9f8c07a44677")},
-   { 5 * COIN           , 3, 2, 1231008309, READHEX("42551f6cb5674bdad8850a4a423101e42e17559568080f7dcd3d2c9480ae53ea")},
-   { 5 * COIN           , 3, 1, 1231008309, READHEX("d3f38cb8a7e9294db20b67bd99e64bfb6320cfe286f7f77170b33e685a2827a3")},
+   { 25 * COIN          , 3, 4, 1231008309, hash34},
+   { 5 * COIN           , 3, 2, 1231008309, hash32},
+   { 5 * COIN           , 3, 1, 1231008309, hash31},
 };
 
 static const std::vector<LedgerEntryValue> ledgersAFLB{
-   { -5 * (int64_t)COIN , 5, 2, 1231009513, READHEX("55501098859122d73e3e360d90574b468b8299f578738ce293789a7eeeb678b4")},
-   { 45 * COIN          , 4, 3, 1231008909, READHEX("6705262a37294c4e99890418668cfb97738b51b253ac86fcbee599a19fe15cea")},
-   { -5 * (int64_t)COIN , 4, 2, 1231008909, READHEX("1fb865e8cf2e430cca3a80adf8375bea5fddb0080e326b8df668373dfe599c07")},
-   { 10 * COIN          , 4, 1, 1231008909, READHEX("2564950008ae20c57bd2d5ffb2ceca67a33e003dc69f0d5b7c31c03a16e78071"), true},
-   { 15 * COIN          , 3, 5, 1231008309, READHEX("9ec8177ca0a4f7aa21ec88a324f236a4d1dce6c610812a90e16febef4603a438"), true},
-   { -5 * (int64_t)COIN , 3, 3, 1231008309, READHEX("91c1d6c4eb074ce3570641e615a0ab7f6ca81f91186492b79e4118086ab047b6")},
-   { -5 * (int64_t)COIN , 3, 2, 1231008309, READHEX("42551f6cb5674bdad8850a4a423101e42e17559568080f7dcd3d2c9480ae53ea")},
-   { -5 * (int64_t)COIN , 3, 1, 1231008309, READHEX("d3f38cb8a7e9294db20b67bd99e64bfb6320cfe286f7f77170b33e685a2827a3")},
-   { 20 * COIN          , 2, 2, 1231007708, READHEX("9ca7f69284d0e8b0ea5ad7915b50d65817fb5c592fdfc351e473b1291690c76b")},
-   { 25 * COIN          , 2, 1, 1231007708, READHEX("b46699df740c38435c0430e2595c0a61733658ab923121d8a2edeac3895ae541")},
+   { -5 * (int64_t)COIN , 5, 2, 1231009513, hash52},
+   { 45 * COIN          , 4, 3, 1231008909, hash43},
+   { -5 * (int64_t)COIN , 4, 2, 1231008909, hash42},
+   { 10 * COIN          , 4, 1, 1231008909, hash41, true},
+   { 15 * COIN          , 3, 5, 1231008309, hash35, true},
+   { -5 * (int64_t)COIN , 3, 3, 1231008309, hash33},
+   { -5 * (int64_t)COIN , 3, 2, 1231008309, hash32},
+   { -5 * (int64_t)COIN , 3, 1, 1231008309, hash31},
+   { 20 * COIN          , 2, 2, 1231007708, hash22},
+   { 25 * COIN          , 2, 1, 1231007708, hash21},
    { 50 * COIN          , 0, 0, 1231006505, READHEX("3ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4a")},
 };
 
 static const std::vector<LedgerEntryValue> ledgersAFLB_Reorg{
-   { -5 * (int64_t)COIN , 5, 2, 1231009510, READHEX("1fb865e8cf2e430cca3a80adf8375bea5fddb0080e326b8df668373dfe599c07")},
-   { 10 * COIN          , 5, 1, 1231009510, READHEX("2564950008ae20c57bd2d5ffb2ceca67a33e003dc69f0d5b7c31c03a16e78071"), true},
+   { -5 * (int64_t)COIN , 5, 2, 1231009510, hash42},
+   { 10 * COIN          , 5, 1, 1231009510, hash41, true},
    { 50 * COIN          , 4, 0, 1231008909, READHEX("45aa44ebb8bc87ad006abad80d0f246172289e92a863cca9be10470d05c6de4d")},
-   { 15 * COIN          , 3, 5, 1231008309, READHEX("9ec8177ca0a4f7aa21ec88a324f236a4d1dce6c610812a90e16febef4603a438"), true},
-   { -5 * (int64_t)COIN , 3, 3, 1231008309, READHEX("91c1d6c4eb074ce3570641e615a0ab7f6ca81f91186492b79e4118086ab047b6")},
-   { -5 * (int64_t)COIN , 3, 2, 1231008309, READHEX("42551f6cb5674bdad8850a4a423101e42e17559568080f7dcd3d2c9480ae53ea")},
-   { -5 * (int64_t)COIN , 3, 1, 1231008309, READHEX("d3f38cb8a7e9294db20b67bd99e64bfb6320cfe286f7f77170b33e685a2827a3")},
-   { 20 * COIN          , 2, 2, 1231007708, READHEX("9ca7f69284d0e8b0ea5ad7915b50d65817fb5c592fdfc351e473b1291690c76b")},
-   { 25 * COIN          , 2, 1, 1231007708, READHEX("b46699df740c38435c0430e2595c0a61733658ab923121d8a2edeac3895ae541")},
-   { 50 * COIN          , 0, 0, 1231006505, READHEX("3ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4a")},
+   { 15 * COIN          , 3, 5, 1231008309, hash35, true},
+   { -5 * (int64_t)COIN , 3, 3, 1231008309, hash33},
+   { -5 * (int64_t)COIN , 3, 2, 1231008309, hash32},
+   { -5 * (int64_t)COIN , 3, 1, 1231008309, hash31},
+   { 20 * COIN          , 2, 2, 1231007708, hash22},
+   { 25 * COIN          , 2, 1, 1231007708, hash21},
+   { 50 * COIN          , 0, 0, 1231006505, hash00},
 };
 }
 

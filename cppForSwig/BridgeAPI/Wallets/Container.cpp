@@ -333,13 +333,23 @@ WalletContainer::getAddrBalanceMap() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void WalletContainer::createAddressBook(const std::function<
-   void(ReturnMessage<std::vector<AddressBookEntry>>)>& lbd)
+std::vector<AddressBookEntry> WalletContainer::getAddressBook() const
 {
-   if (asyncWlt_ == nullptr) {
-      throw std::runtime_error("empty asyncWlt");
+   auto addrHashMap = cache_->getAddressBook(
+      [this](const BinaryData& scrAddr)->bool
+      { return this->hasAddress(scrAddr); }
+   );
+
+   std::vector<AddressBookEntry> result;
+   result.reserve(addrHashMap.size());
+   for (auto& hashSet : addrHashMap) {
+      AddressBookEntry ae{hashSet.first.getRef()};
+      for (auto& hash : hashSet.second) {
+         ae.addTxHash(std::move(hash));
+      }
+      result.emplace_back(std::move(ae));
    }
-   asyncWlt_->createAddressBook(lbd);
+   return result;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -424,13 +434,13 @@ void WalletContainer::extendAddressChainToIndex(unsigned count)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-bool WalletContainer::hasAddress(const BinaryData& addr)
+bool WalletContainer::hasAddress(const BinaryData& addr) const
 {
    return wallet_->hasScrAddr(addr);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-bool WalletContainer::hasAddress(const std::string& addr)
+bool WalletContainer::hasAddress(const std::string& addr) const
 {
    return wallet_->hasAddrStr(addr);
 }
@@ -454,10 +464,12 @@ std::filesystem::path WalletContainer::forkWatchingOnly(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void WalletContainer::getUTXOs(uint64_t val, bool zc, bool rbf,
-   const std::function<void(ReturnMessage<std::vector<UTXO>>)>& lbd)
+std::vector<UTXO> WalletContainer::getUTXOs(uint64_t val, bool zc, bool rbf)
 {
-   asyncWlt_->getUTXOs(val, zc, rbf, lbd);
+   return cache_->getUTXOs(
+      [this](const BinaryData& scrAddr)->bool
+      { return this->hasAddress(scrAddr); }
+   );
 }
 
 ////////

@@ -104,16 +104,13 @@ namespace Armory
          void updateAddressCountState(const AsyncClient::CombinedBalances&);
          void extendAddressChain(unsigned, const std::function<void(int)>&);
          void extendAddressChainToIndex(unsigned);
-         bool hasAddress(const BinaryData&);
-         bool hasAddress(const std::string&);
+         bool hasAddress(const BinaryData&) const;
+         bool hasAddress(const std::string&) const;
 
-         void createAddressBook(
-            const std::function<void(ReturnMessage<std::vector<AddressBookEntry>>)>&);
-
+         std::vector<AddressBookEntry> getAddressBook(void) const;
          const std::map<BinaryData, TxIOPair>& getTxioMap(void) const;
          void resolveTxios(uint32_t);
-         void getUTXOs(uint64_t, bool, bool,
-            const std::function<void(ReturnMessage<std::vector<UTXO>>)>& lbd);
+         std::vector<UTXO> getUTXOs(uint64_t, bool, bool);
 
          uint64_t getFullBalance(void) const;
          uint64_t getSpendableBalance(void) const;

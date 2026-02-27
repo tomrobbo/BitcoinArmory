@@ -4,16 +4,17 @@ using Cxx = import "/capnp/c++.capnp";
 $Cxx.namespace("Armory::Codec::Types");
 
 ## base types ##
-using Hash        = Data;
-using TxKey       = Data;
-using ScrAddr     = Data;
+using Hash              = Data;
+using TxKey             = Data;
+using ScrAddr           = Data;
 
-using WalletId    = Text;
-using AccountId   = Text;
-using SignerId    = Text;
-using DelegateId  = Text;
-using BdvId       = UInt64;
-using CallbackId  = Text;
+using WalletId          = Text;
+using AccountId         = Text;
+using SignerId          = Text;
+using DelegateId        = Text;
+using BdvId             = UInt64;
+using CallbackId        = Text;
+using CoinSelectionId   = Text;
 
 using Height      = UInt32;
 using CoinAmount  = UInt64;
