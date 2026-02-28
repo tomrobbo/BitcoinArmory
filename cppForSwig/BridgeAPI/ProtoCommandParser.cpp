@@ -1402,20 +1402,40 @@ namespace
                auto pass = SecureBinaryData::fromString(
                   capnpPassStruct.getPassphrase());
 
-               if (capnpPassStruct.getReuseKdf()) {
+               if (notif.getSuccess() == false) {
                   return handler(Seeds::PromptReply{
-                     notif.getSuccess(), false,
-                     Passphrase::Params{std::move(pass), true}
+                     false, false, Passphrase::Params{}
                   });
-               } else {
-                  auto kdfMs = std::chrono::milliseconds{
-                     capnpPassStruct.getKdfTargetMs()};
-                  return handler(Seeds::PromptReply{
-                     notif.getSuccess(), false,
-                     Passphrase::Params{
-                        kdfMs, capnpPassStruct.getKdfTargetMB(),
-                        std::move(pass)
-                     }});
+               }
+
+               switch (capnpPassStruct.which())
+               {
+                  case NotificationReply::SetPassphraseReply::KDF_TARGET_MS:
+                  {
+                     auto kdfMs = std::chrono::milliseconds{
+                        capnpPassStruct.getKdfTargetMs()};
+                     return handler(Seeds::PromptReply{
+                        true, false, Passphrase::Params{
+                           kdfMs, 1, std::move(pass) }
+                     });
+                  }
+
+                  case NotificationReply::SetPassphraseReply::KDF_TARGET_M_B:
+                  {
+                     uint32_t kdfMB = capnpPassStruct.getKdfTargetMB();
+                     return handler(Seeds::PromptReply{
+                        true, false, Passphrase::Params{
+                           1ms, kdfMB, std::move(pass) }
+                     });
+                  }
+
+                  case NotificationReply::SetPassphraseReply::REUSE_KDF:
+                  {
+                     return handler(Seeds::PromptReply{
+                        true, false, Passphrase::Params{
+                           std::move(pass), true }
+                     });
+                  }
                }
             }
 

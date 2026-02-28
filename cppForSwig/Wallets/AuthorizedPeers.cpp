@@ -565,7 +565,7 @@ bool AuthorizedPeers::isMasterKey(const SecureBinaryData& pubkey) const
 
 ////////////////////////////////////////////////////////////////////////////////
 // PeerKey
-PeerKey::PeerKey(const SecureBinaryData& pubkey, bool isOneWay, bool isServer) :
+PeerKey::PeerKey(BinaryDataRef pubkey, bool isOneWay, bool isServer) :
    pubkey_(pubkey), oneWayAuth_(isOneWay), isServer_(isServer)
 {}
 

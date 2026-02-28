@@ -2189,8 +2189,11 @@ protected:
                         notifReply.setSuccess(true);
                         auto capnSetPass = notifReply.initSetPassphrase();
                         capnSetPass.setPassphrase(passphrase);
-                        capnSetPass.setKdfTargetMs(targetMs.count());
-                        capnSetPass.setKdfTargetMB(targetMB);
+                        if (targetMB == 0) {
+                           capnSetPass.setKdfTargetMs(targetMs.count());
+                        } else {
+                           capnSetPass.setKdfTargetMB(targetMB);
+                        }
                      }
 
                      auto rawReq = serializeCapnp(message);
@@ -4111,7 +4114,8 @@ protected:
       //share public keys between client and server
       BinaryDataRef pubkeyref{
          serverPeers.getOwnPublicKey().pubkey, BIP151PUBKEYSIZE};
-      serverPubkey_ = pubkeyref.toHexStr();
+      Wallets::PeerKey servPK{pubkeyref, true, true};
+      serverPubkey_ = servPK.toHumanReadable();
 
       replyQueue.clear();
       bridge_ = std::make_shared<Bridge::CppBridge>();

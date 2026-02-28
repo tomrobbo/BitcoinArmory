@@ -1102,6 +1102,7 @@ void CppBridge::connectToIp(const std::string& ip, const std::string& port,
    {
       auto counterBd = fortuna.generateRandom(4);
       auto notifCounter = *(uint32_t*)counterBd.getPtr();
+      Wallets::PeerKey peerKey{key, true, true};
 
       //create present pubkey notif
       capnp::MallocMessageBuilder notifMessage;
@@ -1109,7 +1110,7 @@ void CppBridge::connectToIp(const std::string& ip, const std::string& port,
       auto notif = fromBridge.initNotification();
       notif.setCallbackId(callbackId);
       notif.setCounter(notifCounter);
-      notif.setPresentPubkey(key.toHexStr());
+      notif.setPresentPubkey(peerKey.toHumanReadable());
       auto notifSerialized = serializeCapnp(notifMessage);
 
       //reply handler

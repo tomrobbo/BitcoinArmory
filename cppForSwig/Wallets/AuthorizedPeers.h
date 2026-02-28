@@ -66,7 +66,7 @@ namespace Armory
          const bool isServer_;
 
       public:
-         PeerKey(const SecureBinaryData&, bool, bool);
+         PeerKey(BinaryDataRef, bool, bool);
          PeerKey(const btc_pubkey&, bool, bool);
 
          const SecureBinaryData& getKey(void) const;

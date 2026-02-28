@@ -193,9 +193,11 @@ struct NotificationReply {
 
    struct SetPassphraseReply {
       passphrase     @0 : Text;
-      kdfTargetMs    @1 : UInt32;
-      kdfTargetMB    @2 : UInt32;
-      reuseKdf       @3 : Bool = false;
+      union {
+         kdfTargetMs    @1 : UInt32;
+         kdfTargetMB    @2 : UInt32;
+         reuseKdf       @3 : Bool;
+      }
    }
 
    success           @0 : Bool;
