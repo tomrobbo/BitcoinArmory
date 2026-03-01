@@ -383,11 +383,17 @@ class DbSetupService(ProtoWrapper):
 
    Provides methods for:
    - automateDb: Start local automated ArmoryDB
-   - connectToIp: Connect to remote DB by IP (1-way auth)
+   - connectToIp: Connect to remote DB by IP
    - connectToPeer: Connect to remote DB by peer key
    - loadPeersDb: Load the peers database
    - listPeers: List all saved peers
    - addPeer: Add a new peer
+   - removePeer: Remove a peer
+   - setPeerLabel: Update a peer's label
+   - goOnline: Signal DB to go online
+   - disconnect: Disconnect from remote DB
+   - cleanupDb: Clean up DB resources
+   - shutdown: Shutdown the bridge and stop socket
    """
    #############################################################################
    ## setup ##
@@ -578,6 +584,7 @@ class DbSetupService(ProtoWrapper):
       packet = Bridge.ToBridge.new_message()
       packet.init("setup").shutdown = None
       self.send(packet, needsReply=False)
+      self.bridgeSocket.stop()
 
 ################################################################################
 class BlockchainService(ProtoWrapper):
@@ -586,39 +593,11 @@ class BlockchainService(ProtoWrapper):
    def __init__(self, bridgeSocket):
       super().__init__(bridgeSocket)
 
-   #############################################################################
-   ## commands ##
-   def shutdown(self):
-      # shutdown is in DbSetupRequest, not BlockchainServiceRequest
-      packet = Bridge.ToBridge.new_message()
-      packet.init("setup").shutdown = None
-      self.send(packet)
-      self.bridgeSocket.stop()
-
-   ####
-   def setupDB(self):
-      """
-      DEPRECATED: Database setup is now handled via DbSetupService methods
-      (automateDb, connectToPeer, connectToIp) called from DlgSetupManager.
-      This method no longer exists in the Cap'n Proto schema.
-      """
-      LOGWARN("setupDB() is deprecated - DB setup handled by DlgSetupManager")
-      pass
-
    ####
    def registerWallets(self):
       packet = Bridge.ToBridge.new_message()
       packet.init("service").registerWallets = None
       self.send(packet, needsReply=False)
-
-   ####
-   def goOnline(self):
-      """
-      DEPRECATED: goOnline is in DbSetupRequest, not BlockchainServiceRequest.
-      Use TheBridge.dbSetup.goOnline() instead.
-      """
-      LOGWARN("BlockchainService.goOnline() is deprecated - use dbSetup.goOnline()")
-      pass
 
    ####
    def getLedgerDelegateIdForWallets(self):
@@ -1658,16 +1637,20 @@ class PeersDbCallback(ServerPush):
       notif.unlockRequest = passphrase
       self.reply()
 
-   def replySetPassphrase(self, passphrase: str, kdfTargetMs: int = 250,
-      kdfTargetMB: int = 32, reuseKdf: bool = False, success: bool = True):
-      """Reply to a setPassphrase request with new passphrase and KDF params."""
+   def replySetPassphrase(self,
+      passphrase: str, kdfTargetMs: int = 0,
+      kdfTargetMB: int = 0, reuseKdf: bool = False,
+      success: bool = True):
       notif = self.getNewPacket()
       notif.success = success
-      passphraseReply = notif.init("setPassphrase")
-      passphraseReply.passphrase = passphrase
-      passphraseReply.kdfTargetMs = kdfTargetMs
-      passphraseReply.kdfTargetMB = kdfTargetMB
-      passphraseReply.reuseKdf = reuseKdf
+      reply = notif.init("setPassphrase")
+      reply.passphrase = passphrase
+      if reuseKdf:
+         reply.reuseKdf = True
+      elif kdfTargetMB > 0:
+         reply.kdfTargetMB = kdfTargetMB
+      else:
+         reply.kdfTargetMs = kdfTargetMs
       self.reply()
 
 ################################################################################

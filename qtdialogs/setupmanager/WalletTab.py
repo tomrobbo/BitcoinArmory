@@ -1,6 +1,6 @@
 ################################################################################
 #                                                                              #
-#  Copyright (C) 2025, goatpig                                                 #
+#  Copyright (C) 2026, goatpig                                                 #
 #  Distributed under the MIT license                                           #
 #  See LICENSE-MIT or https://opensource.org/licenses/MIT                      #
 #                                                                              #

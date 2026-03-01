@@ -394,44 +394,38 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       passPacket = packet.init("setPassphrase")
 
       if isPriv:
-         # private keys passphrase, do we reuse old one or get a fresh one?
          if not reusePassphrase:
-            # User went through wizard to create new passphrase
             packet.success = True
             passPacket.passphrase = self.newPassphrase
 
-            # Get KDF parameters from the advanced options tab
             kdfSec = self.advancedOptionsTab.getKdfSec()
             if kdfSec <= 0:
-               kdfSec = 2.0  # Default fallback
-            passPacket.kdfTargetMs = int(kdfSec * 1000)
+               kdfSec = 2.0
+            kdfMB = int(
+               self.advancedOptionsTab.getKdfBytes()
+               / (1024**2))
+            if kdfMB > 0:
+               passPacket.kdfTargetMB = kdfMB
+            else:
+               passPacket.kdfTargetMs = \
+                  int(kdfSec * 1000)
 
-            kdfBytes = self.advancedOptionsTab.getKdfBytes()
-            if kdfBytes <= 0:
-               kdfBytes = 128 * 1024 * 1024  # Default fallback (128 MB)
-            passPacket.kdfTargetMB = int(kdfBytes / (1024**2))
-
-            # Clean up wizard state
             self.newPassphrase = None
          else:
-            # user wants to reuse old passphrase, feed that instead
             if not self.storedPassphrase:
                raise Exception(
-                  "Reuse passphrase requested but no passphrase stored")
+                  "Reuse passphrase requested "
+                  "but no passphrase stored")
 
             packet.success = True
-            passPacket.passphrase = self.storedPassphrase
-            passPacket.kdfTargetMs = 2000
-            passPacket.kdfTargetMB = 128
-
-            # Clean up stored passphrase
+            passPacket.passphrase = \
+               self.storedPassphrase
+            passPacket.reuseKdf = True
             self.storedPassphrase = None
       else:
-         # control passphrase, return empty for now
          packet.success = True
          passPacket.passphrase = ""
          passPacket.kdfTargetMs = 250
-         passPacket.kdfTargetMB = 0
 
       self.reply()
 

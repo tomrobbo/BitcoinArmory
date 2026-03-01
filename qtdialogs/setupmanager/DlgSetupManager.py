@@ -1,6 +1,6 @@
 ################################################################################
 #                                                                              #
-#  Copyright (C) 2025, goatpig                                                 #
+#  Copyright (C) 2026, goatpig                                                 #
 #  Distributed under the MIT license                                           #
 #  See LICENSE-MIT or https://opensource.org/licenses/MIT                      #
 #                                                                              #
@@ -69,10 +69,8 @@ class DlgSetupManager(ArmoryDialog):
       self.loadSettings()
       self.connectSignals()
 
-      # Auto-load peers DB if saved scenario requires it.
-      # Signals don't fire during init (loadSettings runs
-      # before connectSignals), so trigger explicitly.
-      self._autoLoadPeersIfNeeded()
+      # Peers DB auto-load happens in onBridgeReady
+      # (bridge isn't available during __init__)
 
    @property
    def connectionSuccess(self):
@@ -255,8 +253,9 @@ class DlgSetupManager(ArmoryDialog):
       self.raise_()
 
    def onBridgeReady(self):
-      """Called when bridge is ready - load wallet list."""
+      """Called when bridge is ready."""
       self.walletTab.loadWalletList()
+      self._autoLoadPeersIfNeeded()
 
    def registerWidgetActivateTime(self, widget):
       """Stub for entropy collection - no-op during setup."""
@@ -637,17 +636,15 @@ class DlgSetupManager(ArmoryDialog):
       LOGINFO(f"Server key presented: {serverPubkey[:20]}...")
 
       def promptOnQtThread():
-         formattedKey = '\n'.join([
-            serverPubkey[i:i+16]
-            for i in range(0, len(serverPubkey), 16)
-         ])
          msg = self.tr(
-            "The server is presenting its public key for "
-            "verification.\n\n"
-            "Server Public Key:\n{}\n\n"
-            "Do you want to accept this connection?\n\n"
-            "Note: Only accept if you trust this server."
-         ).format(formattedKey)
+            "The server is presenting its "
+            "public key for verification."
+            "\n\nServer Public Key:\n{}"
+            "\n\nDo you want to accept this "
+            "connection?\n\n"
+            "Note: Only accept if you trust "
+            "this server."
+         ).format(serverPubkey)
 
          reply = QtWidgets.QMessageBox.question(
             self,
@@ -794,8 +791,7 @@ class DlgSetupManager(ArmoryDialog):
             return
 
          callback.replySetPassphrase(
-            passphrase,
-            kdfTargetMs=250, kdfTargetMB=32)
+            passphrase, kdfTargetMs=250)
 
       TheSignalExecution.executeMethod(
          promptOnQtThread)

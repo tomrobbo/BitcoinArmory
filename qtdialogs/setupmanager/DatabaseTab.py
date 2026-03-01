@@ -1,6 +1,6 @@
 ################################################################################
 #                                                                              #
-#  Copyright (C) 2025, goatpig                                                 #
+#  Copyright (C) 2026, goatpig                                                 #
 #  Distributed under the MIT license                                           #
 #  See LICENSE-MIT or https://opensource.org/licenses/MIT                      #
 #                                                                              #
@@ -220,6 +220,7 @@ class DatabaseTab(QtWidgets.QWidget):
       self.peerList = None
       self.addPeerButton = None
       self.removePeerButton = None
+      self.editLabelButton = None
 
       # Remote IP sub-mode widgets
       self.ipEdit = None
@@ -231,6 +232,7 @@ class DatabaseTab(QtWidgets.QWidget):
 
       # Default scenario and checkbox
       self.setDefaultCheckbox = None
+      self.defaultHintLabel = None
 
       # State tracking
       self.peersDbLoaded = False
@@ -250,7 +252,7 @@ class DatabaseTab(QtWidgets.QWidget):
 
       self.initWidgets()
 
-      # Radio buttons for mode selection
+      # Mode selection group
       self.modeGroup = QtWidgets.QButtonGroup(self)
       self.autoDbRadio = QtWidgets.QRadioButton(
          self.tr('Automate ArmoryDB'))
@@ -262,6 +264,10 @@ class DatabaseTab(QtWidgets.QWidget):
       self.modeGroup.addButton(self.connectRadio, 1)
       self.modeGroup.addButton(self.offlineRadio, 2)
       self.autoDbRadio.setChecked(True)
+
+      modeBox = QtWidgets.QGroupBox(
+         self.tr('Database Operation'))
+      modeLayout = QtWidgets.QVBoxLayout(modeBox)
 
       autoDbTipText = self.tr(
          '<b>Automate ArmoryDB.</b> Runs ArmoryDB '
@@ -280,15 +286,15 @@ class DatabaseTab(QtWidgets.QWidget):
       autoDbTip = qtdefines.createInstantToolTip(
          autoDbTipText)
 
-      autoDbRow = QtWidgets.QHBoxLayout()
-      autoDbRow.setSpacing(8)
-      autoDbRow.addWidget(self.autoDbRadio)
-      autoDbRow.addStretch()
-      autoDbRow.addWidget(autoDbTip)
-      mainLayout.addLayout(autoDbRow)
+      self.autoDbRow = QtWidgets.QHBoxLayout()
+      self.autoDbRow.setSpacing(8)
+      self.autoDbRow.addWidget(self.autoDbRadio)
+      self.autoDbRow.addStretch()
+      self.autoDbRow.addWidget(autoDbTip)
+      modeLayout.addLayout(self.autoDbRow)
 
       self.buildAutoDbSection()
-      mainLayout.addWidget(self.autoDbSection)
+      modeLayout.addWidget(self.autoDbSection)
 
       connectTipText = self.tr(
          '<b>Connect to IP.</b> Connect to a remote '
@@ -311,25 +317,37 @@ class DatabaseTab(QtWidgets.QWidget):
       connectTip = qtdefines.createInstantToolTip(
          connectTipText)
 
-      connectRow = QtWidgets.QHBoxLayout()
-      connectRow.setSpacing(8)
-      connectRow.addWidget(self.connectRadio)
-      connectRow.addStretch()
-      connectRow.addWidget(connectTip)
-      mainLayout.addLayout(connectRow)
+      self.connectRow = QtWidgets.QHBoxLayout()
+      self.connectRow.setSpacing(8)
+      self.connectRow.addWidget(self.connectRadio)
+      self.connectRow.addStretch()
+      self.connectRow.addWidget(connectTip)
+      modeLayout.addLayout(self.connectRow)
 
       self.buildConnectSection()
-      mainLayout.addWidget(self.connectSection)
+      modeLayout.addWidget(self.connectSection)
 
-      mainLayout.addWidget(self.offlineRadio)
+      self.offlineRow = QtWidgets.QHBoxLayout()
+      self.offlineRow.setSpacing(8)
+      self.offlineRow.addWidget(self.offlineRadio)
+      self.offlineRow.addStretch()
+      modeLayout.addLayout(self.offlineRow)
 
-      # Set as default checkbox
+      self.defaultHintLabel = QtWidgets.QLabel(
+         self.tr('-- default'))
+      font = self.defaultHintLabel.font()
+      font.setItalic(True)
+      font.setPointSize(font.pointSize() - 1)
+      self.defaultHintLabel.setFont(font)
+      self.defaultHintLabel.hide()
+
       self.setDefaultCheckbox = QtWidgets.QCheckBox(
          self.tr('Set as default'))
       self.setDefaultCheckbox.setToolTip(
          self.tr('Remember this mode for next launch'))
-      mainLayout.addWidget(self.setDefaultCheckbox)
+      modeLayout.addWidget(self.setDefaultCheckbox)
 
+      mainLayout.addWidget(modeBox)
       mainLayout.addStretch()
 
       # Initial state: show autoDb, hide connect
@@ -398,6 +416,15 @@ class DatabaseTab(QtWidgets.QWidget):
       self.removePeerButton.setEnabled(False)
       self.removePeerButton.setToolTip(
          self.tr("Remove selected peer"))
+
+      self.editLabelButton = QtWidgets.QPushButton(
+         self.tr("Rename"))
+      self.editLabelButton.setFixedWidth(peerBtnWidth)
+      self.editLabelButton.clicked.connect(
+         self.editPeerLabel)
+      self.editLabelButton.setEnabled(False)
+      self.editLabelButton.setToolTip(
+         self.tr("Edit selected peer's label"))
 
       # Remote IP sub-mode widgets
       self.ipEdit = QtWidgets.QLineEdit('127.0.0.1')
@@ -554,6 +581,7 @@ class DatabaseTab(QtWidgets.QWidget):
       peerButtonLayout.setSpacing(8)
       peerButtonLayout.addWidget(self.addPeerButton)
       peerButtonLayout.addWidget(self.removePeerButton)
+      peerButtonLayout.addWidget(self.editLabelButton)
       peerButtonLayout.addStretch()
       peerLayout.addLayout(peerButtonLayout)
 
@@ -734,14 +762,19 @@ class DatabaseTab(QtWidgets.QWidget):
          label = peer.label if peer.label \
             and peer.label != 'N/A' else ''
          authTag = peer.authModeStr()
+         keyPrefix = peer.key[:8]
          if label:
-            display = f"{label} \u2014 {names} [{authTag}]"
+            display = ' '.join([
+               f"{keyPrefix}\u2026",
+               f"{label} \u2014 {names}",
+               f"[{authTag}]"])
          else:
-            display = f"{names} [{authTag}]"
+            display = ' '.join([
+               f"{keyPrefix}\u2026",
+               names, f"[{authTag}]"])
          item = QtWidgets.QListWidgetItem(display)
          item.setData(QtCore.Qt.UserRole, peer)
-         item.setToolTip(
-            f"Key: {peer.key[:40]}...")
+         item.setToolTip(peer.key)
          self.peerList.addItem(item)
 
       if peerCount == 0:
@@ -773,6 +806,19 @@ class DatabaseTab(QtWidgets.QWidget):
       font.setItalic(True)
       hint.setFont(font)
       self.peerList.addItem(hint)
+
+   def _showDefaultHint(self, dbScenario):
+      """Place the 'default' hint next to the saved radio."""
+      rowMap = {
+         SCENARIO_DB_LOCAL: self.autoDbRow,
+         SCENARIO_REMOTE_IP: self.connectRow,
+         SCENARIO_REMOTE_PEER: self.connectRow,
+         SCENARIO_DB_NONE: self.offlineRow,
+      }
+      targetRow = rowMap.get(
+         dbScenario, self.autoDbRow)
+      targetRow.insertWidget(1, self.defaultHintLabel)
+      self.defaultHintLabel.show()
 
    def addPeerFromTab(self):
       """Add a peer directly from the database tab."""
@@ -829,12 +875,43 @@ class DatabaseTab(QtWidgets.QWidget):
             self.tr('Failed to remove peer: {}').format(
                result.error))
 
+   def editPeerLabel(self):
+      """Edit the label of the selected peer."""
+      selected = self.peerList.currentItem()
+      if not selected:
+         return
+      peer = selected.data(QtCore.Qt.UserRole)
+      if not peer:
+         return
+
+      newLabel, ok = QtWidgets.QInputDialog.getText(
+         self,
+         self.tr('Edit Peer Label'),
+         self.tr('New label for peer:'),
+         QtWidgets.QLineEdit.Normal,
+         peer.label if peer.label != 'N/A' else '')
+      if not ok:
+         return
+
+      result = TheBridge.dbSetup.setPeerLabel(
+         peer.key, newLabel.strip())
+      if result.success:
+         self.refreshPeerList()
+      else:
+         QtWidgets.QMessageBox.warning(
+            self,
+            self.tr('Edit Label Failed'),
+            self.tr(
+               'Failed to update label: {}'
+            ).format(result.error))
+
    def setPeersDbLoaded(self, loaded):
       """Update peers database loaded state."""
       self.peersDbLoaded = loaded
       self.refreshPeerList()
       self.addPeerButton.setEnabled(loaded)
       self.removePeerButton.setEnabled(loaded)
+      self.editLabelButton.setEnabled(loaded)
       if not loaded:
          self.ownKeyEdit.clear()
          self.ownKeyEdit.setPlaceholderText(
@@ -867,9 +944,8 @@ class DatabaseTab(QtWidgets.QWidget):
       self.databaseDirEdit.setText(
          os.path.normpath(ARMORY_DB_DIR))
 
-      # Determine saved scenario
       dbScenario = TheSettings.getSettingOrSetDefault(
-         'DBScenario', SCENARIO_DB_LOCAL)
+         'DBScenarioDefault', SCENARIO_DB_LOCAL)
       # Migrate old scenario names
       if dbScenario == "Remote Database":
          oldMode = TheSettings.getSettingOrSetDefault(
@@ -897,12 +973,8 @@ class DatabaseTab(QtWidgets.QWidget):
       else:
          self.autoDbRadio.setChecked(True)
 
-      # Check the default checkbox if scenario matches
-      savedDefault = \
-         TheSettings.getSettingOrSetDefault(
-            'DBScenarioDefault', SCENARIO_DB_LOCAL)
-      self.setDefaultCheckbox.setChecked(
-         dbScenario == savedDefault)
+      self.setDefaultCheckbox.setChecked(True)
+      self._showDefaultHint(dbScenario)
 
       # Warn if an existing database is detected
       dbIsBootstrapped = False
@@ -954,7 +1026,7 @@ class DatabaseTab(QtWidgets.QWidget):
          if savedIp:
             self.ipEdit.setText(savedIp)
          if savedPort:
-            self.portEdit.setText(savedPort)
+            self.portEdit.setText(str(savedPort))
 
    def collectSettings(self):
       """Return current database config from UI."""

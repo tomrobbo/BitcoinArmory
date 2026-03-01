@@ -428,10 +428,14 @@ class QRichLabel_AutoToolTip(QRichLabel):
 
 class QMoneyLabel(QRichLabel):
    def __init__(self, nSatoshi, ndec=8, maxZeros=2, wColor=True,
-      wBold=None, txtSize=10):
+      wBold=False, txtSize=10):
       QtWidgets.QLabel.__init__(self, coin2str(nSatoshi))
 
       self.nSatoshi = nSatoshi
+      self.ndec = ndec
+      self.max0 = maxZeros
+      self.colr = wColor
+      self.bold = wBold
       self.setValueText(nSatoshi, ndec, maxZeros, wColor, wBold, txtSize)
 
    def setValueText(self, nSatoshi, ndec=None, maxZeros=None, wColor=None,

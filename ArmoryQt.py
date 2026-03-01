@@ -1262,8 +1262,9 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
          return
 
       dbSettings = dlg.databaseTab.collectSettings()
-      if dlg.connectionSuccess \
-            and dbSettings['scenario'] != SCENARIO_DB_NONE:
+      if dbSettings['scenario'] == SCENARIO_DB_NONE:
+         CLI_OPTIONS.offline = True
+      elif dlg.connectionSuccess:
          if not self.dbConnectionEstablishedBySetup:
             self.dbConnectionEstablishedBySetup = True
             self.registerWalletsWithService()
@@ -3067,7 +3068,6 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
             selectionMade = False
 
       if selectionMade:
-         wlttype = determineWalletType(wlt)
          if ShowRecvCoinsWarningIfNecessary(wlt, self, self):
             QAPP.processEvents()
             dlg = DlgNewAddressDisp(wlt, self, self, loading)
@@ -4788,25 +4788,48 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
       self.setCursor(QtCore.Qt.WaitCursor)
       self.showShuttingDownMessage()
 
+      shutdownDlg = None
+      if self.dbConnectionEstablishedBySetup:
+         shutdownDlg = QtWidgets.QDialog(
+            self, QtCore.Qt.FramelessWindowHint)
+         shutdownDlg.setModal(True)
+         dlgLayout = QtWidgets.QVBoxLayout(
+            shutdownDlg)
+         dlgLayout.setContentsMargins(24, 18, 24, 18)
+         lbl = QtWidgets.QLabel(
+            self.tr('Shutting down database\u2026'))
+         lbl.setAlignment(QtCore.Qt.AlignCenter)
+         dlgLayout.addWidget(lbl)
+         shutdownDlg.setFixedSize(260, 70)
+         shutdownDlg.show()
+      QAPP.processEvents()
+
       try:
-         # Save the main window geometry in the settings file
          try:
-            TheSettings.set('MainGeometry',   self.saveGeometry().toHex())
-            TheSettings.set('MainWalletCols', saveTableView(self.walletsView))
+            TheSettings.set('MainGeometry',
+               self.saveGeometry().toHex())
+            TheSettings.set('MainWalletCols',
+               saveTableView(self.walletsView))
             if self.ledgerView:
-               TheSettings.set('MainLedgerCols', saveTableView(self.ledgerView))
+               TheSettings.set('MainLedgerCols',
+                  saveTableView(self.ledgerView))
          except Exception as e:
             print ("- failed to save main geometry -")
             print (e)
             pass
 
          if TheBDM.getState()==BDM_SCANNING:
-            LOGINFO('BDM state is scanning -- force shutdown BDM')
+            LOGINFO(
+               'BDM state is scanning '
+               '-- force shutdown BDM')
          else:
             LOGINFO('BDM is safe for clean shutdown')
 
          TheBDM.shutdown()
-         TheBridge.service.shutdown()
+         TheBridge.dbSetup.shutdown()
+
+         if shutdownDlg:
+            shutdownDlg.close()
 
          # Remove Temp Modules Directory if it exists:
          if self.tempModulesDirName:
@@ -5102,10 +5125,13 @@ if 1:
 
    # Show setup manager (wallet list will populate when bridge ready)
    if dlg.exec_() != QtWidgets.QDialog.Accepted:
-      TheBridge.service.shutdown()
+      TheBridge.dbSetup.shutdown()
       sys.exit(1)
 
    dbSettings = dlg.databaseTab.collectSettings()
+   if dbSettings['scenario'] == SCENARIO_DB_NONE:
+      CLI_OPTIONS.offline = True
+
    dbConnectionEstablished = (
       dlg.connectionSuccess
       and dbSettings['scenario'] != SCENARIO_DB_NONE

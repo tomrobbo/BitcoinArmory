@@ -222,7 +222,7 @@ class DlgNewAddressDisp(ArmoryDialog):
 def ShowRecvCoinsWarningIfNecessary(wlt, parent, main):
    numTimesOnline = TheSettings.getSettingOrSetDefault("SyncSuccessCount", 0)
    if numTimesOnline < 1 and not TheBDM.getState() == BDM_OFFLINE:
-      result = QtWidgets.QMessageBox.warning(main, self.tr('Careful!'), self.tr(
+      result = QtWidgets.QMessageBox.warning(main, main.tr('Careful!'), main.tr(
          'Armory is not online yet, and will eventually need to be online to '
          'access any funds sent to your wallet.  Please <u><b>do not</b></u> '
          'receive Bitcoins to your Armory wallets until you have successfully '
