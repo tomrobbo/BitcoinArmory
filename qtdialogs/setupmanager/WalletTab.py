@@ -180,7 +180,9 @@ class WalletTab(QtWidgets.QWidget):
       """Create and add a left-aligned action button to the wallet list item."""
       btn = QtWidgets.QPushButton(text)
       btn.clicked.connect(handler)
-      btn.setMaximumWidth(60)
+      btnWidth = qtdefines.relaxedSizeNChar(
+         self, 10)[0]
+      btn.setMaximumWidth(btnWidth)
       cellWidget = QtWidgets.QWidget()
       layout = QtWidgets.QHBoxLayout(cellWidget)
       layout.setContentsMargins(2, 2, 2, 2)
@@ -197,9 +199,9 @@ class WalletTab(QtWidgets.QWidget):
             raise RuntimeError(
                "Legacy wallet missing extended "
                "data from bridge")
-         mainRef = self.main if self.main else self
+         setupMgr = self.window()
          dlg = DlgWalletMigration(
-            self, mainRef,
+            setupMgr, setupMgr,
             walletEntry.filename,
             walletEntry.importPreview)
          result = dlg.exec_()
@@ -227,7 +229,8 @@ class WalletTab(QtWidgets.QWidget):
       try:
          unlockDlg = UnlockWalletHandler(
             walletId,
-            self.tr('Unlock Wallet'), self)
+            self.tr('Unlock Wallet'),
+            self.window())
 
          def handleUnlockResult(replyObj):
             try:

@@ -2757,9 +2757,17 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
 
          #is it legacy or modern?
          if wltData.which() == 'legacy':
-            #this is a legacy wallet, offer to migrate it
-            migrateDlg = DlgWalletMigration(self, self, filePath, wltData)
-            migrateDlg.exec_()
+            migrateDlg = DlgWalletMigration(
+               self, self, filePath, wltData)
+            if migrateDlg.exec_() \
+                  == QtWidgets.QDialog.Accepted:
+               QtWidgets.QMessageBox.information(
+                  self,
+                  self.tr('Restart Required'),
+                  self.tr(
+                     'Wallet migrated successfully. '
+                     'Restart Armory to see it in '
+                     'the wallet list.'))
          elif wltData.which() == 'locked':
             #wallet control header is locked, offer to unlock
             pass
@@ -4785,51 +4793,27 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
       minimize Armory, this method is for *really* closing Armory
       '''
 
-      self.setCursor(QtCore.Qt.WaitCursor)
       self.showShuttingDownMessage()
 
-      shutdownDlg = None
-      if self.dbConnectionEstablishedBySetup:
-         shutdownDlg = QtWidgets.QDialog(
-            self, QtCore.Qt.FramelessWindowHint)
-         shutdownDlg.setModal(True)
-         dlgLayout = QtWidgets.QVBoxLayout(
-            shutdownDlg)
-         dlgLayout.setContentsMargins(24, 18, 24, 18)
-         lbl = QtWidgets.QLabel(
-            self.tr('Shutting down database\u2026'))
-         lbl.setAlignment(QtCore.Qt.AlignCenter)
-         dlgLayout.addWidget(lbl)
-         shutdownDlg.setFixedSize(260, 70)
-         shutdownDlg.show()
-      QAPP.processEvents()
-
       try:
+         # Save the main window geometry in the settings file
          try:
-            TheSettings.set('MainGeometry',
-               self.saveGeometry().toHex())
-            TheSettings.set('MainWalletCols',
-               saveTableView(self.walletsView))
+            TheSettings.set('MainGeometry',   self.saveGeometry().toHex())
+            TheSettings.set('MainWalletCols', saveTableView(self.walletsView))
             if self.ledgerView:
-               TheSettings.set('MainLedgerCols',
-                  saveTableView(self.ledgerView))
+               TheSettings.set('MainLedgerCols', saveTableView(self.ledgerView))
          except Exception as e:
             print ("- failed to save main geometry -")
             print (e)
             pass
 
          if TheBDM.getState()==BDM_SCANNING:
-            LOGINFO(
-               'BDM state is scanning '
-               '-- force shutdown BDM')
+            LOGINFO('BDM state is scanning -- force shutdown BDM')
          else:
             LOGINFO('BDM is safe for clean shutdown')
 
          TheBDM.shutdown()
          TheBridge.dbSetup.shutdown()
-
-         if shutdownDlg:
-            shutdownDlg.close()
 
          # Remove Temp Modules Directory if it exists:
          if self.tempModulesDirName:

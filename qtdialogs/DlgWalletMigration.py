@@ -95,7 +95,7 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
       """Set up the progress page"""
       self.doneBtn = QtWidgets.QPushButton(self.tr('Done'))
       self.doneBtn.setEnabled(False)
-      self.doneBtn.clicked.connect(self.close)
+      self.doneBtn.clicked.connect(self.accept)
       btnLayout = QtWidgets.QHBoxLayout()
       btnLayout.addStretch(1)
       btnLayout.addWidget(self.doneBtn)
