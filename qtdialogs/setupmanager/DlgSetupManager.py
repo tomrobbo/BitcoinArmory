@@ -12,7 +12,6 @@ from qtpy import QtCore, QtWidgets
 from armoryengine.ArmoryUtils import CLI_OPTIONS, \
    ARMORY_HOME_DIR, ARMORYDB_DEFAULT_PORT, \
    LOGINFO, LOGERROR
-from armoryengine.BDM import TheBDM, INIT_DB_CONNECTED
 from armoryengine.Settings import TheSettings
 from armoryengine.CppBridge import TheBridge, PeersDbCallback, ServerKeyCallback
 from ui.QtExecuteSignal import TheSignalExecution
@@ -60,9 +59,6 @@ class DlgSetupManager(ArmoryDialog):
       self.serverKeyCallback = None
       self.pendingConnectionResult = None
 
-      self._bdmListener = self._onBdmNotification
-      TheBDM.registerCppNotification(self._bdmListener)
-
       self.setupDialogProperties()
       self.initTabs()
       self.setupMainLayout()
@@ -75,11 +71,6 @@ class DlgSetupManager(ArmoryDialog):
    @property
    def connectionSuccess(self):
       return self._connectionSuccess
-
-   def _onBdmNotification(self, action, args):
-      if action == INIT_DB_CONNECTED:
-         LOGINFO("Setup manager received setupDone notification")
-         self._connectionSuccess = True
 
    def setupDialogProperties(self):
       """Configure basic dialog properties and styling."""
@@ -147,25 +138,11 @@ class DlgSetupManager(ArmoryDialog):
       self.acceptButton.clicked.connect(self.accept)
       self.cancelButton.clicked.connect(self.reject)
 
-      # Reset connection state on mode change
       self.databaseTab.modeGroup.idToggled.connect(
          self.onDbScenarioChanged)
       self.databaseTab.remoteSubModeCombo \
          .currentIndexChanged.connect(
             self.onRemoteSubModeChanged)
-
-      # Reset connection state when DB settings change
-      self.databaseTab.databaseDirEdit.textChanged \
-         .connect(self._invalidateConnection)
-      self.databaseTab.databaseTypeCombo \
-         .currentIndexChanged.connect(
-            self._invalidateConnection)
-      self.databaseTab.ipEdit.textChanged.connect(
-         self._invalidateConnection)
-      self.databaseTab.portEdit.textChanged.connect(
-         self._invalidateConnection)
-      self.databaseTab.peerList.currentItemChanged \
-         .connect(self._invalidateConnection)
 
       self.databaseTab.testConnectionRequested.connect(
          self.onTestConnectionRequested)
@@ -209,6 +186,7 @@ class DlgSetupManager(ArmoryDialog):
       self.unsetCursor()
 
       if success:
+         self._connectionSuccess = True
          LOGINFO("Connection established on accept")
          self._saveAndAccept()
          return
@@ -239,10 +217,6 @@ class DlgSetupManager(ArmoryDialog):
          return
       super().accept()
 
-   def done(self, result):
-      TheBDM.unregisterCppNotification(self._bdmListener)
-      super().done(result)
-
    def showEvent(self, event):
       """Handle show event to ensure the dialog is properly displayed."""
       super().showEvent(event)
@@ -267,15 +241,10 @@ class DlgSetupManager(ArmoryDialog):
       self.coreTab.loadSettings()
       self.databaseTab.loadSettings()
 
-   def _invalidateConnection(self):
-      """Reset connection state when DB settings change."""
-      self._connectionSuccess = False
-
    def onDbScenarioChanged(self, radioId, checked):
       """Handle database mode radio changes."""
       if not checked:
          return
-      self._invalidateConnection()
       self._autoLoadPeersIfNeeded()
 
    def onRemoteSubModeChanged(self, index):
@@ -284,7 +253,6 @@ class DlgSetupManager(ArmoryDialog):
       Auto-load peers DB when switching to Peer mode.
       Falls back to IP if load fails or user cancels.
       """
-      self._invalidateConnection()
       self._autoLoadPeersIfNeeded()
 
    def _autoLoadPeersIfNeeded(self):
@@ -368,8 +336,6 @@ class DlgSetupManager(ArmoryDialog):
          )
          return
 
-      self._connectionSuccess = False
-
       btn = self.databaseTab.testConnectionButton
       savedLabel = btn.text()
       btn.setEnabled(False)
@@ -378,6 +344,7 @@ class DlgSetupManager(ArmoryDialog):
 
       success, error = self.initiateDbConnection(params)
       if success:
+         self._connectionSuccess = True
          self.databaseTab.setDbSettingsLocked(True)
          QtWidgets.QMessageBox.information(
             self,

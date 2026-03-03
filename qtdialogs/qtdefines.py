@@ -898,6 +898,21 @@ def createTabTitle(text):
    title.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignTop)
    return title
 
+def makeRadioGroupBox(radio, tooltip=None, contentWidget=None):
+   """Create a QGroupBox with a radio row; returns (box, row)."""
+   box = QtWidgets.QGroupBox()
+   layout = QtWidgets.QVBoxLayout(box)
+   row = QtWidgets.QHBoxLayout()
+   row.setSpacing(8)
+   row.addWidget(radio)
+   row.addStretch()
+   if tooltip is not None:
+      row.addWidget(tooltip)
+   layout.addLayout(row)
+   if contentWidget is not None:
+      layout.addWidget(contentWidget)
+   return box, row
+
 def createDirectoryInputLayout(parent, lineEdit, browseTitle="Select Directory"):
    """
    Create a directory input layout with browse button.

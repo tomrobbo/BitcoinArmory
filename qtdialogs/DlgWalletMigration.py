@@ -420,7 +420,7 @@ class DlgWalletMigration(ArmoryDialog, ServerPush):
             packet.success = True
             passPacket.passphrase = \
                self.storedPassphrase
-            passPacket.reuseKdf = True
+            passPacket.kdfTargetMs = 2000
             self.storedPassphrase = None
       else:
          packet.success = True

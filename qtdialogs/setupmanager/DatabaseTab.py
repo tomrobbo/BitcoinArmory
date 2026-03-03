@@ -233,6 +233,7 @@ class DatabaseTab(QtWidgets.QWidget):
       # Default scenario and checkbox
       self.setDefaultCheckbox = None
       self.defaultHintLabel = None
+      self._savedDefaultScenario = SCENARIO_DB_LOCAL
 
       # State tracking
       self.peersDbLoaded = False
@@ -265,10 +266,6 @@ class DatabaseTab(QtWidgets.QWidget):
       self.modeGroup.addButton(self.offlineRadio, 2)
       self.autoDbRadio.setChecked(True)
 
-      modeBox = QtWidgets.QGroupBox(
-         self.tr('Database Operation'))
-      modeLayout = QtWidgets.QVBoxLayout(modeBox)
-
       autoDbTipText = self.tr(
          '<b>Automate ArmoryDB.</b> Runs ArmoryDB '
          'locally as a managed process. Enforces '
@@ -286,15 +283,12 @@ class DatabaseTab(QtWidgets.QWidget):
       autoDbTip = qtdefines.createInstantToolTip(
          autoDbTipText)
 
-      self.autoDbRow = QtWidgets.QHBoxLayout()
-      self.autoDbRow.setSpacing(8)
-      self.autoDbRow.addWidget(self.autoDbRadio)
-      self.autoDbRow.addStretch()
-      self.autoDbRow.addWidget(autoDbTip)
-      modeLayout.addLayout(self.autoDbRow)
-
       self.buildAutoDbSection()
-      modeLayout.addWidget(self.autoDbSection)
+      autoDbBox, self.autoDbRow = \
+         qtdefines.makeRadioGroupBox(
+            self.autoDbRadio, autoDbTip,
+            self.autoDbSection)
+      mainLayout.addWidget(autoDbBox)
 
       connectTipText = self.tr(
          '<b>Connect to IP.</b> Connect to a remote '
@@ -317,24 +311,20 @@ class DatabaseTab(QtWidgets.QWidget):
       connectTip = qtdefines.createInstantToolTip(
          connectTipText)
 
-      self.connectRow = QtWidgets.QHBoxLayout()
-      self.connectRow.setSpacing(8)
-      self.connectRow.addWidget(self.connectRadio)
-      self.connectRow.addStretch()
-      self.connectRow.addWidget(connectTip)
-      modeLayout.addLayout(self.connectRow)
-
       self.buildConnectSection()
-      modeLayout.addWidget(self.connectSection)
+      connectBox, self.connectRow = \
+         qtdefines.makeRadioGroupBox(
+            self.connectRadio, connectTip,
+            self.connectSection)
+      mainLayout.addWidget(connectBox)
 
-      self.offlineRow = QtWidgets.QHBoxLayout()
-      self.offlineRow.setSpacing(8)
-      self.offlineRow.addWidget(self.offlineRadio)
-      self.offlineRow.addStretch()
-      modeLayout.addLayout(self.offlineRow)
+      offlineBox, self.offlineRow = \
+         qtdefines.makeRadioGroupBox(
+            self.offlineRadio)
+      mainLayout.addWidget(offlineBox)
 
       self.defaultHintLabel = QtWidgets.QLabel(
-         self.tr('-- default'))
+         self.tr('(default)'))
       font = self.defaultHintLabel.font()
       font.setItalic(True)
       font.setPointSize(font.pointSize() - 1)
@@ -345,9 +335,7 @@ class DatabaseTab(QtWidgets.QWidget):
          self.tr('Set as default'))
       self.setDefaultCheckbox.setToolTip(
          self.tr('Remember this mode for next launch'))
-      modeLayout.addWidget(self.setDefaultCheckbox)
-
-      mainLayout.addWidget(modeBox)
+      mainLayout.addWidget(self.setDefaultCheckbox)
       mainLayout.addStretch()
 
       # Initial state: show autoDb, hide connect
@@ -657,6 +645,7 @@ class DatabaseTab(QtWidgets.QWidget):
       self.autoDbSection.setVisible(isAutoDb)
       self.connectSection.setVisible(isConnect)
       self.updateCliCommandDisplay()
+      self._updateDefaultCheckbox()
       if isAutoDb:
          self.autoDbSection.adjustSize()
 
@@ -668,6 +657,14 @@ class DatabaseTab(QtWidgets.QWidget):
       self.ownKeyFrame.setVisible(isPeer)
 
       self.updateCliCommandDisplay()
+      self._updateDefaultCheckbox()
+
+   def _updateDefaultCheckbox(self):
+      """Disable checkbox when current scenario matches saved default."""
+      isDefault = \
+         self.getScenario() == self._savedDefaultScenario
+      self.setDefaultCheckbox.setEnabled(not isDefault)
+      self.setDefaultCheckbox.setChecked(isDefault)
 
    def updateCliCommandDisplay(self):
       """Update the CLI command display.
@@ -973,7 +970,9 @@ class DatabaseTab(QtWidgets.QWidget):
       else:
          self.autoDbRadio.setChecked(True)
 
+      self._savedDefaultScenario = dbScenario
       self.setDefaultCheckbox.setChecked(True)
+      self.setDefaultCheckbox.setEnabled(False)
       self._showDefaultHint(dbScenario)
 
       # Warn if an existing database is detected
