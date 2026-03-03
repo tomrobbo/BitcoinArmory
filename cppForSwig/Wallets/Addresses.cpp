@@ -17,6 +17,12 @@
 using namespace Armory;
 
 ////////////////////////////////////////////////////////////////////////////////
+// exceptions
+AddressException::AddressException(const std::string& err) :
+   std::runtime_error(err)
+{}
+
+////////////////////////////////////////////////////////////////////////////////
 // AddressEntry
 AddressEntry::AddressEntry(AddressEntryType aetype) :
    type_(aetype)

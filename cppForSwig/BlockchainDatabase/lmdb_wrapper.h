@@ -511,7 +511,7 @@ public:
    void putStoredZC(StoredTx&, const BinaryData&);
 
    bool getStoredZcTx(StoredTx&, BinaryDataRef) const;
-   bool getStoredTx(StoredTx&, BinaryData&) const;
+   bool getStoredTx(StoredTx&, BinaryDataRef) const;
    bool getStoredTx_byDBKey(StoredTx&, BinaryDataRef) const;
    bool getStoredTx_byHash(BinaryDataRef, StoredTx* = nullptr) const;
    bool getStoredTx(StoredTx&, uint32_t, uint16_t, bool=true) const;

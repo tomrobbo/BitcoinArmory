@@ -126,33 +126,44 @@ namespace {
       };
    }
 
+   std::vector<Ledgers::Entry> capnToLedgers(
+      const Codec::Types::TxLedger::Reader& capnLedgers)
+   {
+      std::vector<Ledgers::Entry> result;
+      auto capnList = capnLedgers.getLedgers();
+      result.reserve(capnList.size());
+
+      for (auto capnLedger : capnList) {
+         auto capnHash = capnLedger.getTxHash();
+         BinaryData txHash{capnHash.begin(), capnHash.end()};
+
+         auto capnAddrList = capnLedger.getScrAddrs();
+         std::set<BinaryData> addrSet;
+         for (auto capnAddr : capnAddrList) {
+            addrSet.emplace(BinaryData{capnAddr.begin(), capnAddr.end()});
+         }
+
+         result.emplace_back(Ledgers::Entry{
+            std::string{capnLedger.getWalletId()},
+            capnLedger.getBalance(), capnLedger.getTxHeight(), txHash,
+            capnLedger.getTxOutIndex(), capnLedger.getTxTime(),
+            addrSet,
+            capnLedger.getIsCoinbase(), capnLedger.getIsSTS(), capnLedger.getIsChangeBack(),
+            capnLedger.getIsOptInRBF(), capnLedger.getIsWitness(), capnLedger.getIsChainedZC()
+         });
+      }
+      return result;
+   }
+
    std::vector<std::vector<Ledgers::Entry>> capnToLedgers(
       const capnp::List<Codec::Types::TxLedger, capnp::Kind::STRUCT>::Reader& capnLedgers)
    {
-      std::vector<std::vector<Ledgers::Entry>> result(capnLedgers.size());
+      std::vector<std::vector<Ledgers::Entry>> result;
+      result.reserve(capnLedgers.size());
 
       unsigned i=0;
       for (auto txLedgers : capnLedgers) {
-         auto& ledgerVec = result[i++];
-         for (auto capnLedger : txLedgers.getLedgers()) {
-            auto capnHash = capnLedger.getTxHash();
-            BinaryData txHash{capnHash.begin(), capnHash.end()};
-
-            auto capnAddrList = capnLedger.getScrAddrs();
-            std::set<BinaryData> addrSet;
-            for (auto capnAddr : capnAddrList) {
-               addrSet.emplace(BinaryData{capnAddr.begin(), capnAddr.end()});
-            }
-
-            ledgerVec.emplace_back(Ledgers::Entry{
-               std::string{capnLedger.getWalletId()},
-               capnLedger.getBalance(), capnLedger.getTxHeight(), txHash,
-               capnLedger.getTxOutIndex(), capnLedger.getTxTime(),
-               addrSet,
-               capnLedger.getIsCoinbase(), capnLedger.getIsSTS(), capnLedger.getIsChangeBack(),
-               capnLedger.getIsOptInRBF(), capnLedger.getIsWitness(), capnLedger.getIsChainedZC()
-            });
-         }
+         result.emplace_back(capnToLedgers(txLedgers));
       }
       return result;
    }
@@ -246,6 +257,38 @@ namespace {
          new Seeds::ClearTextSeed_Armory());
       auto assetWlt = Wallets::AssetWallet_Single::createFromSeed(
          std::move(seed), params);
+      return assetWlt->getID();
+   }
+
+   std::string createImportWallet(
+      const std::filesystem::path& homedir,
+      const std::vector<BinaryData>& privateKeys)
+   {
+      auto privPass = SecureBinaryData::fromString("privPass1");
+      Wallets::IO::CreateWalletParams params{
+         homedir,
+         {1ms, 0, privPass},
+         {},
+         nullptr, 4
+      };
+
+      std::unique_ptr<Seeds::ClearTextSeed> seed(
+         new Seeds::ClearTextSeed_Armory());
+      auto assetWlt = Wallets::AssetWallet_Single::createFromSeed(
+         std::move(seed), params);
+      assetWlt->setupImportAccount();
+
+      assetWlt->setPassphrasePromptLambda(
+         [&privPass](const std::set<Wallets::EncryptionKeyId>&)->Passphrase::Result
+         { return {privPass, true}; }
+      );
+      for (const auto& privKey : privateKeys) {
+         SecureBinaryData privKeySBD{privKey};
+         assetWlt->importPrivateKey(privKeySBD, AddressEntryType(
+            AddressEntryType::P2PKH | AddressEntryType::Uncompressed
+         ));
+      }
+      assetWlt->resetPassphrasePromptLambda();
       return assetWlt->getID();
    }
 
@@ -1267,7 +1310,7 @@ namespace {
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   // signer stuff
+   // coin selection stuff
    const std::string getNewCoinSelector(
       std::shared_ptr<Bridge::CppBridge> bridge,
       const std::string& walletId, const std::string& accountId,
@@ -1307,6 +1350,186 @@ namespace {
       return walletReply.getSetupNewCoinSelectionInstance();
    }
 
+   bool cleanupCoinSelectionInstance(
+      std::shared_ptr<Bridge::CppBridge> bridge,
+      const std::string& csId)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initCoinSelection();
+      req.setId(csId);
+      req.setCleanup();
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //process reply
+      auto resp = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+         resp->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return false;
+      }
+      auto reply = fromBridge.getReply();
+      return reply.getSuccess();
+   }
+
+   bool setNewCsRecipient(std::shared_ptr<Bridge::CppBridge> bridge,
+      const std::string& csId, unsigned recId,
+      const std::string& addr, uint64_t amount)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initCoinSelection();
+      req.setId(csId);
+      auto recReq = req.initSetRecipient();
+      recReq.setId(recId);
+      recReq.setAddress(addr);
+      recReq.setValue(amount);
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      auto resp = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+         resp->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return false;
+      }
+      auto reply = fromBridge.getReply();
+      return reply.getSuccess();
+   }
+
+   bool selectUtxos(std::shared_ptr<Bridge::CppBridge> bridge,
+      const std::string& csId, uint32_t flags, float feeByte)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initCoinSelection();
+      req.setId(csId);
+      auto selectReq = req.initSelectUtxos();
+      selectReq.setFlags(flags);
+      selectReq.setFeeByte(feeByte);
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //process reply
+      auto resp = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+         resp->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return false;
+      }
+      auto reply = fromBridge.getReply();
+      return reply.getSuccess();
+   }
+
+   std::vector<UTXO> getUtxoSelection(
+      std::shared_ptr<Bridge::CppBridge> bridge,
+      const std::string& csId)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initCoinSelection();
+      req.setId(csId);
+      req.setGetUtxoSelection();
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //process reply
+      auto resp = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+         resp->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return {};
+      }
+      auto reply = fromBridge.getReply();
+      if (!reply.getSuccess()) {
+         return {};
+      }
+      if (reply.which() != Codec::Bridge::RpcReply::COIN_SELECTION) {
+         return {};
+      }
+
+      auto csReply = reply.getCoinSelection();
+      auto utxoReply = csReply.getGetUtxoSelection();
+      std::vector<UTXO> result;
+      for (auto capnUtxo : utxoReply) {
+         auto capnOutput = capnUtxo.getOutput();
+         auto capnHash = capnOutput.getTxHash();
+         BinaryData txHash{capnHash.begin(), capnHash.size()};
+
+         auto capnScript = capnOutput.getScript();
+         BinaryData script{capnScript.begin(), capnScript.size()};
+
+         result.emplace_back(UTXO{
+            capnOutput.getValue(), capnOutput.getTxHeight(),
+            capnOutput.getTxIndex(), capnOutput.getTxOutIndex(),
+            std::move(txHash), std::move(script)
+         });
+      }
+      return result;
+   }
+
+   uint64_t getFlatFee(
+      std::shared_ptr<Bridge::CppBridge> bridge,
+      const std::string& csId)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initCoinSelection();
+      req.setId(csId);
+      req.setGetFlatFee();
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //process reply
+      auto resp = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+         resp->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return UINT64_MAX;
+      }
+      auto reply = fromBridge.getReply();
+      if (!reply.getSuccess()) {
+         return UINT64_MAX;
+      }
+      if (reply.which() != Codec::Bridge::RpcReply::COIN_SELECTION) {
+         return UINT64_MAX;
+      }
+      return reply.getCoinSelection().getGetFlatFee();
+   }
+
+   /////////////////////////////////////////////////////////////////////////////
+   // signer stuff
    std::string getNewSigner(std::shared_ptr<Bridge::CppBridge> bridge)
    {
       auto refId = rand();
@@ -1339,6 +1562,474 @@ namespace {
 
       auto signerReply = reply.getSigner();
       return signerReply.getGetNew();
+   }
+
+   bool setSignerVersion(
+      std::shared_ptr<Bridge::CppBridge> bridge, const std::string& signerId,
+      uint32_t version)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initSigner();
+      req.setId(signerId);
+      req.setSetVersion(version);
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //process reply
+      auto resp = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+         resp->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return false;
+      }
+      auto reply = fromBridge.getReply();
+      return reply.getSuccess();
+   }
+
+   std::map<BinaryData, BinaryData> getTxsByHash(
+      std::shared_ptr<Bridge::CppBridge> bridge,
+      const std::set<BinaryData>& hashSet)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initService();
+      auto txsReq = req.initGetTxsByHash(hashSet.size());
+      unsigned i=0;
+      for (const auto& hash : hashSet) {
+         txsReq.set(i++, capnp::Data::Builder(
+            (uint8_t*)hash.getPtr(), hash.getSize()));
+      }
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //process reply
+      auto resp = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+         resp->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return {};
+      }
+      auto reply = fromBridge.getReply();
+      if (!reply.getSuccess()) {
+         return {};
+      }
+      if (reply.which() != Codec::Bridge::RpcReply::SERVICE) {
+         return {};
+      }
+
+      auto serviceReply = reply.getService();
+      auto capnTxs = serviceReply.getGetTxsByHash();
+      std::map<BinaryData, BinaryData> result;
+      for (auto capnTx : capnTxs) {
+         auto capnHash = capnTx.getHash();
+         BinaryDataRef hash{capnHash.begin(), capnHash.size()};
+
+         auto capnRaw = capnTx.getRaw();
+         BinaryDataRef raw{capnRaw.begin(), capnRaw.size()};
+         result.emplace(hash, raw);
+      }
+      return result;
+   }
+
+   bool addSpenderByOutpoint(
+      std::shared_ptr<Bridge::CppBridge> bridge, const std::string& signerId,
+      const BinaryData& hash, uint32_t index, uint32_t sequence)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initSigner();
+      req.setId(signerId);
+
+      auto spenderReq = req.initAddSpenderByOutpoint();
+      spenderReq.setHash(capnp::Data::Builder(
+         (uint8_t*)hash.getPtr(), hash.getSize()));
+      spenderReq.setTxOutId(index);
+      spenderReq.setSequence(sequence);
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //process reply
+      auto resp = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+         resp->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return false;
+      }
+      auto reply = fromBridge.getReply();
+      return reply.getSuccess();
+   }
+
+   bool populateUtxo(
+      std::shared_ptr<Bridge::CppBridge> bridge, const std::string& signerId,
+      const BinaryData& hash, uint32_t index,
+      uint64_t value, const BinaryData& script)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initSigner();
+      req.setId(signerId);
+
+      auto utxoReq = req.initPopulateUtxo();
+      utxoReq.setHash(capnp::Data::Builder(
+         (uint8_t*)hash.getPtr(), hash.getSize()));
+      utxoReq.setTxOutId(index);
+      utxoReq.setScript(capnp::Data::Builder(
+         (uint8_t*)script.getPtr(), script.getSize()));
+      utxoReq.setValue(value);
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //process reply
+      auto resp = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+         resp->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return false;
+      }
+      auto reply = fromBridge.getReply();
+      return reply.getSuccess();
+   }
+
+   bool addSupportingTx(
+      std::shared_ptr<Bridge::CppBridge> bridge, const std::string& signerId,
+      const BinaryData& rawTx)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initSigner();
+      req.setId(signerId);
+      req.setAddSupportingTx(capnp::Data::Builder(
+         (uint8_t*)rawTx.getPtr(), rawTx.getSize()));
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //process reply
+      auto resp = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+         resp->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return false;
+      }
+      auto reply = fromBridge.getReply();
+      return reply.getSuccess();
+   }
+
+   bool addSignerRecipient(
+      std::shared_ptr<Bridge::CppBridge> bridge, const std::string& signerId,
+      const BinaryData& script, uint64_t value)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initSigner();
+      req.setId(signerId);
+
+      auto recipientReq = req.initAddRecipient();
+      recipientReq.setScript(capnp::Data::Builder(
+         (uint8_t*)script.getPtr(), script.getSize()));
+      recipientReq.setValue(value);
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //process reply
+      auto resp = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+         resp->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return false;
+      }
+      auto reply = fromBridge.getReply();
+      return reply.getSuccess();
+   }
+
+   bool resolveSigner(
+      std::shared_ptr<Bridge::CppBridge> bridge, const std::string& signerId,
+      const std::string& walletId)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initSigner();
+      req.setId(signerId);
+      req.setResolve(walletId);
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //process reply
+      auto resp = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+         resp->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return false;
+      }
+      auto reply = fromBridge.getReply();
+      return reply.getSuccess();
+   }
+
+   bool signTx(
+      std::shared_ptr<Bridge::CppBridge> bridge, const std::string& signerId,
+      const std::string& walletId, const std::string& passphrase)
+   {
+      auto refId = rand();
+      auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initSigner();
+      req.setId(signerId);
+      auto signReq = req.initSignTx();
+      signReq.setWalletId(walletId);
+      signReq.setCallbackId(callbackId);
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //handle unlock request
+      bool hasCleanedUp = false;
+      bool hasReply = false;
+      bool success = false;
+      while (!hasCleanedUp || !hasReply) {
+         auto resp = waitOnReply();
+         kj::ArrayPtr<const capnp::word> words(
+            reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+            resp->data.getSize() / sizeof(capnp::word));
+         capnp::FlatArrayMessageReader reader(words);
+
+         auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+         switch (fromBridge.which())
+         {
+            case Codec::Bridge::FromBridge::NOTIFICATION:
+            {
+               auto notif = fromBridge.getNotification();
+               if (notif.getCallbackId() != callbackId) {
+                  return false;
+               }
+
+               switch (notif.which())
+               {
+                  case Codec::Bridge::Notification::UNLOCK_REQUEST:
+                  {
+                     //reply with passphrase
+                     auto counter = notif.getCounter();
+                     capnp::MallocMessageBuilder passReply;
+                     auto toBridge = passReply.initRoot<Codec::Bridge::ToBridge>();
+                     auto notifReply = toBridge.initNotification();
+                     notifReply.setSuccess(true);
+                     notifReply.setCounter(counter);
+                     notifReply.setUnlockRequest(passphrase);
+
+                     auto rawRep = serializeCapnp(passReply);
+                     pushRequest(bridge, rawRep);
+                     break;
+                  }
+
+                  case Codec::Bridge::Notification::CLEANUP:
+                  {
+                     hasCleanedUp = true;
+                     break;
+                  }
+
+                  default:
+                     return false;
+               }
+               break;
+            }
+
+            case Codec::Bridge::FromBridge::REPLY:
+            {
+               auto reply = fromBridge.getReply();
+               success = reply.getSuccess();
+               hasReply = true;
+               break;
+            }
+         }
+      }
+      return success;
+   }
+
+   struct InputState
+   {
+      const bool isValid = false;
+      const uint32_t sigCount = UINT32_MAX;
+   };
+
+   InputState getInputState(
+      std::shared_ptr<Bridge::CppBridge> bridge, const std::string& signerId,
+      uint32_t inputId)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initSigner();
+      req.setId(signerId);
+      req.setGetSignedStateForInput(inputId);
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //process reply
+      auto resp = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+         resp->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return {};
+      }
+      auto reply = fromBridge.getReply();
+
+      if (reply.getSuccess() == false) {
+         return {};
+      }
+      if (reply.which() != Codec::Bridge::RpcReply::SIGNER) {
+         return {};
+      }
+
+      auto inputStateCapn = reply.getSigner().getGetSignedStateForInput();
+      return InputState{ inputStateCapn.getIsValid(), inputStateCapn.getSigCount() };
+   }
+
+   BinaryData getSignedTx(
+      std::shared_ptr<Bridge::CppBridge> bridge, const std::string& signerId)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initSigner();
+      req.setId(signerId);
+      req.setGetSignedTx();
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //process reply
+      auto resp = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+         resp->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return {};
+      }
+      auto reply = fromBridge.getReply();
+
+      if (reply.getSuccess() == false) {
+         return {};
+      }
+      if (reply.which() != Codec::Bridge::RpcReply::SIGNER) {
+         return {};
+      }
+
+      auto signedTxCapn = reply.getSigner().getGetSignedTx();
+      return BinaryData{ signedTxCapn.begin(), signedTxCapn.size() };
+   }
+
+   bool cleanupSigner(std::shared_ptr<Bridge::CppBridge> bridge,
+      const std::string& signerId)
+   {
+      auto refId = rand();
+      auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initSigner();
+      req.setId(signerId);
+      req.setCleanup();
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //process reply
+      auto resp = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+         resp->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return false;
+      }
+      auto reply = fromBridge.getReply();
+      return reply.getSuccess();
+   }
+
+   void broadcastTx(std::shared_ptr<Bridge::CppBridge> bridge,
+      const BinaryData& rawTx)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initService();
+      auto broadcastReq = req.initBroadcastTx(1);
+      broadcastReq.set(0, capnp::Data::Builder(
+         (uint8_t*)rawTx.getPtr(), rawTx.getSize()));
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+   }
+
+   std::vector<Ledgers::Entry> waitOnZc()
+   {
+      auto resp = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+         resp->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::NOTIFICATION) {
+         throw std::runtime_error("not a notif");
+      }
+
+      auto notif = fromBridge.getNotification();
+      if (notif.which() != Codec::Bridge::Notification::ZERO_CONFS) {
+         throw std::runtime_error("not a zc");
+      }
+      return capnToLedgers(notif.getZeroConfs());
    }
 }
 
@@ -4855,7 +5546,7 @@ TEST_F(BridgeWebsocketsTests, AddNewAddress)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// BridgeLedgerTests
+// BridgeLocalTests
 class BridgeLocalTests : public ::testing::Test
 {
 protected:
@@ -4873,9 +5564,12 @@ protected:
       auto pubKeyE = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrE);
       auto pubKeyF = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrF);
 
-      walletId_BCDE_ = createWOWallet(homedir_,
-         { pubKeyB, pubKeyC, pubKeyD, pubKeyE }
-      );
+      walletId_BCDE_ = createImportWallet(homedir_, {
+         TestChain::privKeyAddrB,
+         TestChain::privKeyAddrC,
+         TestChain::privKeyAddrD,
+         TestChain::privKeyAddrE
+      });
       walletId_BC_ = createWOWallet(homedir_,
          { pubKeyB, pubKeyC }
       );
@@ -4998,6 +5692,8 @@ protected:
       nodePtr_ = std::dynamic_pointer_cast<NodeUnitTest>(
          Config::NetworkSettings::bitcoinNodes().first);
       nodePtr_->setIface(theBDMt_->bdm()->getIFace());
+      nodePtr_->setBlockchain(theBDMt_->bdm()->blockchain());
+      nodePtr_->setBlockFiles(theBDMt_->bdm()->blockFiles());
       hexMagicBytes = Config::BitcoinSettings::getMagicBytes().toHexStr();
    }
 
@@ -6321,6 +7017,171 @@ TEST_F(BridgeLocalTests, getUTXOs)
    ASSERT_EQ(utxo.getTxOutIndex(), 1);
    ASSERT_EQ(utxo.getValue(), 5 * COIN);
    ASSERT_EQ(utxo.getTxHash(), TestChain::hash35);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// tx signing & zc broadcast
+TEST_F(BridgeLocalTests, ZeroConf)
+{
+   loadWallets({walletId_BCDE_});
+
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
+   WebSocketServer::initAuthPeers({
+      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+   WebSocketServer::start(theBDMt_->bdm(), true);
+
+   ASSERT_TRUE(connectToDb(bridge_));
+   ASSERT_TRUE(registerWallets(bridge_));
+
+   //start db, go online and wait on ready notif
+   theBDMt_->start(Config::DBSettings::initMode());
+   ASSERT_EQ(goOnline(bridge_), 5);
+
+   //check balances
+   auto balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   checkBalances(balances, 5, false);
+
+   //check ledgers
+   auto delegateId = getLedgerDelegateId(bridge_);
+   ASSERT_FALSE(delegateId.empty());
+
+   auto pageCount = getLedgersPageCount(bridge_, delegateId);
+   EXPECT_EQ(pageCount, 1);
+
+   auto ledgers = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgers.size(), 15);
+
+   for (unsigned i = 0; i < ledgers.size(); i++) {
+      EXPECT_TRUE(checkLedgers(ledgers[i], TestChain::ledgersBCDE[i])) << i;
+   }
+
+   //create a coin selection instance
+   auto csId = getNewCoinSelector(bridge_, walletId_BCDE_, accountId_BCDE_, 5);
+   ASSERT_FALSE(csId.empty());
+
+   //set recipient
+   auto recipientPrivKey = Cryptography::ECDSA::createNewPrivateKey();
+   auto recipientPubKey = Cryptography::ECDSA::computePublicKey(
+      recipientPrivKey, true);
+   auto hash160 =  BtcUtils::getHash160(recipientPubKey);
+   auto recipientAddr = BtcUtils::scrAddrToSegWitAddress(hash160);
+
+   //arbitrary value, used for coin selection grouping, just needs to be unique
+   unsigned recipientId = 100;
+   uint64_t recipientAmount = 11 * COIN;
+   ASSERT_TRUE(setNewCsRecipient(bridge_, csId,
+      recipientId, recipientAddr, recipientAmount));
+
+   //get coin selection
+   ASSERT_TRUE(selectUtxos(bridge_, csId, 0, 2.0f));
+   auto utxoSelection = getUtxoSelection(bridge_, csId);
+   ASSERT_FALSE(utxoSelection.empty());
+   uint64_t totalInputs = 0;
+   std::set<BinaryData> supportingTxHashes;
+   for (const auto& utxo : utxoSelection) {
+      totalInputs += utxo.getValue();
+      supportingTxHashes.emplace(utxo.getTxHash());
+   }
+
+   auto totalFee = getFlatFee(bridge_, csId);
+   ASSERT_TRUE(totalFee != UINT64_MAX && totalFee != 0);
+   ASSERT_TRUE(totalInputs > recipientAmount + totalFee);
+
+   //cleanup
+   ASSERT_TRUE(cleanupCoinSelectionInstance(bridge_, csId));
+
+   //get the supporting tx
+   auto supportingTxMap = getTxsByHash(bridge_, supportingTxHashes);
+   for (const auto& utxo : utxoSelection) {
+      auto iter = supportingTxMap.find(utxo.getTxHash());
+      ASSERT_FALSE(iter == supportingTxMap.end());
+      ASSERT_FALSE(iter->second.empty());
+   }
+
+   //create signer
+   auto signerId = getNewSigner(bridge_);
+   ASSERT_FALSE(signerId.empty());
+
+   //set version
+   setSignerVersion(bridge_, signerId, 2);
+
+   //set inputs
+   for (const auto& utxo : utxoSelection) {
+      ASSERT_TRUE(addSpenderByOutpoint(
+         bridge_, signerId,
+         utxo.getTxHash(), utxo.getTxOutIndex(), 0xFFFFFFFF
+      ));
+      ASSERT_TRUE(populateUtxo(
+         bridge_, signerId,
+         utxo.getTxHash(), utxo.getTxOutIndex(),
+         utxo.getValue(), utxo.getScript()
+      ));
+
+      auto rawTx = supportingTxMap.at(utxo.getTxHash());
+      ASSERT_TRUE(addSupportingTx(bridge_, signerId, rawTx)
+      );
+   }
+
+   //set recipients
+   auto recipientScrAddr = BtcUtils::getScrAddrForAddrStr(recipientAddr);
+   ASSERT_TRUE(addSignerRecipient(
+      bridge_, signerId,
+      BtcUtils::getTxOutScriptForScrAddr(recipientScrAddr), recipientAmount
+   ));
+
+   //add change output
+   uint64_t changeAmount = totalInputs - recipientAmount - totalFee;
+   ASSERT_TRUE(addSignerRecipient(
+      bridge_, signerId,
+      BtcUtils::getTxOutScriptForScrAddr(TestChain::scrAddrA), changeAmount
+   ));
+
+   for (unsigned i = 0; i < utxoSelection.size(); i++) {
+      auto inputState = getInputState(bridge_, signerId, i);
+      ASSERT_FALSE(inputState.isValid);
+      ASSERT_EQ(inputState.sigCount, 0);
+   }
+
+   //resolve
+   ASSERT_TRUE(resolveSigner(bridge_, signerId, walletId_BCDE_));
+   for (unsigned i = 0; i < utxoSelection.size(); i++) {
+      auto inputState = getInputState(bridge_, signerId, i);
+      ASSERT_FALSE(inputState.isValid);
+      ASSERT_EQ(inputState.sigCount, 0);
+   }
+
+   //sign
+   ASSERT_TRUE(signTx(bridge_, signerId, walletId_BCDE_, "privPass1"));
+   for (unsigned i = 0; i < utxoSelection.size(); i++) {
+      auto inputState = getInputState(bridge_, signerId, i);
+      ASSERT_TRUE(inputState.isValid);
+      ASSERT_EQ(inputState.sigCount, 1);
+   }
+
+   //get signed tx
+   auto signedTx = getSignedTx(bridge_, signerId);
+   ASSERT_FALSE(signedTx.empty());
+
+   //cleanup signer
+   ASSERT_TRUE(cleanupSigner(bridge_, signerId));
+
+   //broadcast
+   broadcastTx(bridge_, signedTx);
+
+   //wait on zc notif
+   try {
+      Tx tx(signedTx);
+      auto zcLedgers = waitOnZc();
+      ASSERT_EQ(zcLedgers.size(), 1);
+      ASSERT_EQ(zcLedgers[0].getTxHash(), tx.getThisHash());
+      ASSERT_EQ(zcLedgers[0].getValue(), -20 * (int64_t)COIN);
+      ASSERT_EQ(zcLedgers[0].getBlockNum(), UINT32_MAX);
+   } catch (const std::exception&) {
+      ASSERT_TRUE(false);
+   }
+
+   //TODO: check balance, grab zc utxos
 }
 
 ////////////////////////////////////////////////////////////////////////////////

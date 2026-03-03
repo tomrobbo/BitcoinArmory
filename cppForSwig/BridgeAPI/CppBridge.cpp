@@ -2667,13 +2667,8 @@ bool CppBridgeSignerStruct::resolve(const Wallets::WalletId& wltId)
 BinaryData CppBridgeSignerStruct::getSignedStateForInput(
    unsigned inputId, MessageId referenceId)
 {
-   if (signState_ == nullptr) {
-      signState_ = std::make_unique<Signing::TxEvalState>(
-         signer->evaluateSignedState());
-   }
-
-   const auto signState = signState_.get();
-   auto signStateInput = signState->getSignedStateForInput(inputId);
+   auto signState = signer->evaluateSignedState();
+   auto signStateInput = signState.getSignedStateForInput(inputId);
 
    capnp::MallocMessageBuilder message;
    auto fromBridge = message.initRoot<FromBridge>();

@@ -1841,7 +1841,7 @@ BinaryData LMDBBlockDatabase::getRawBlock(shared_ptr<BlockHeader> bh) const
 
 ////////////////////////////////////////////////////////////////////////////////
 bool LMDBBlockDatabase::getStoredTx(StoredTx& stx,
-   BinaryData& txHashOrDBKey) const
+   BinaryDataRef txHashOrDBKey) const
 {
    uint32_t sz = txHashOrDBKey.getSize();
    if(sz == 32) {
@@ -2193,7 +2193,7 @@ bool LMDBBlockDatabase::getStoredTxOut(StoredTxOut& stxo,
 void LMDBBlockDatabase::getSpentness(StoredTxOut& stxo)
 {
    if (getDbType() != ARMORY_DB_TYPE::Super) {
-      throw runtime_error("need to implement this for full node");
+      throw LmdbWrapperException("need to implement this for full node");
    }
 
    //get spentness

@@ -70,7 +70,6 @@ namespace Armory
       class CppBridgeSignerStruct
       {
       private:
-         std::unique_ptr<Signing::TxEvalState> signState_{};
          const std::function<WalletPtr(const Wallets::WalletId&)> getWalletFunc_;
          const std::function<void(ServerPushWrapper)> writeFunc_;
 

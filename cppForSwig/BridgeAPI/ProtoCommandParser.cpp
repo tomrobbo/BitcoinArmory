@@ -600,12 +600,26 @@ namespace
          case CoinSelectionRequest::CLEANUP:
          {
             bridge->destroyCoinSelectionInstance(csId);
+
+            capnp::MallocMessageBuilder message;
+            auto fromBridge = message.initRoot<FromBridge>();
+            auto reply = fromBridge.initReply();
+            reply.setSuccess(true);
+            reply.setReferenceId(referenceId);
+            response = serializeCapnp(message);
             break;
          }
 
          case CoinSelectionRequest::RESET:
          {
             cs->resetRecipients();
+
+            capnp::MallocMessageBuilder message;
+            auto fromBridge = message.initRoot<FromBridge>();
+            auto reply = fromBridge.initReply();
+            reply.setSuccess(true);
+            reply.setReferenceId(referenceId);
+            response = serializeCapnp(message);
             break;
          }
 
@@ -861,6 +875,7 @@ namespace
          case SignerRequest::CLEANUP:
          {
             bridge->destroySigner(signerId);
+            replySuccess(true);
             break;
          }
 

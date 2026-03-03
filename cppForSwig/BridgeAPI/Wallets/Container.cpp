@@ -436,13 +436,13 @@ void WalletContainer::extendAddressChainToIndex(unsigned count)
 ////////////////////////////////////////////////////////////////////////////////
 bool WalletContainer::hasAddress(const BinaryData& addr) const
 {
-   return wallet_->hasScrAddr(addr);
+   return wallet_->hasScrAddr(addr, accountId_);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 bool WalletContainer::hasAddress(const std::string& addr) const
 {
-   return wallet_->hasAddrStr(addr);
+   return wallet_->hasAddrStr(addr, accountId_);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -46,7 +46,7 @@ namespace
       unsigned totalSize = 0;
       walletLedgers.reserve(mgr->getWalletContainerMap().size());
       for (const auto& wltCont : mgr->getWalletContainerMap()) {
-         auto txioMap = wltCont.second->getTxioMap();
+         const auto& txioMap = wltCont.second->getTxioMap();
          auto context = Ledgers::prepareContext(txioMap, mgr->getDbCache());
          walletLedgers.emplace_back(std::move(Ledgers::computeLedgerMap(
             txioMap, 0, UINT32_MAX, wltCont.first, context)));

@@ -156,7 +156,7 @@ struct Notification {
 
    #callbackId is set if this notification is the result
    #of a RPC request that provided said id
-   callbackId        @0 : Text;
+   callbackId        @0 : Types.CallbackId;
    counter           @1 : UInt32;
 
    union {

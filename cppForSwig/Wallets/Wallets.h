@@ -193,16 +193,20 @@ namespace Armory
          void extendPrivateChainToIndex(int32_t);
          void extendPrivateChainToIndex(const AddressAccountId&, int32_t);
 
-         bool hasScrAddr(const BinaryData&) const;
-         bool hasAddrStr(const std::string&) const;
+         bool hasScrAddr(const BinaryData&,
+            const AddressAccountId& = {}) const;
+         bool hasAddrStr(const std::string&,
+            const AddressAccountId& = {}) const;
          bool isAssetUsed(const AssetId&) const;
 
          std::shared_ptr<Assets::AssetEntry> getAssetForID(
             const AssetId&) const;
          const std::pair<AssetId, AddressEntryType>&
-            getAssetIDForAddrStr(const std::string&) const;
+         getAssetIDForAddrStr(const std::string&,
+            const AddressAccountId& = {}) const;
          const std::pair<AssetId, AddressEntryType>&
-            getAssetIDForScrAddr(const BinaryData&) const;
+         getAssetIDForScrAddr(const BinaryData&,
+            const AddressAccountId& = {}) const;
 
          AddressEntryType getAddrTypeForID(const AssetId&) const;
          std::shared_ptr<AddressEntry> getAddressEntryForID(
@@ -353,7 +357,7 @@ namespace Armory
          //imports
          const AddressAccountId& setupImportAccount(void);
          AssetId importPublicKey(SecureBinaryData&, AddressEntryType);
-         AssetId importPrivateKey(SecureBinaryData&);
+         AssetId importPrivateKey(SecureBinaryData&, AddressEntryType);
          AssetId importScrAddr(const BinaryData&);
          AssetId importRawScript(const BinaryData&);
 

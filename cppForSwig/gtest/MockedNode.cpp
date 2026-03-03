@@ -37,12 +37,12 @@ namespace
          auto txin = tx.getTxInCopy(i);
          auto outpoint = txin.getOutPoint();
 
-         StoredTxOut stxo;
-         if (iface->getStoredTxOut(
-            stxo, outpoint.getTxHash(), outpoint.getTxOutIndex())) {
+         StoredTx stx;
+         if (iface->getStoredTx(stx, outpoint.getTxHash())) {
+            auto stxo = stx.initAndGetStxoByIndex(outpoint.getTxOutIndex());
             UTXO utxo(
-               stxo.getValue(), stxo.getHeight(),
-               stxo.txIndex, outpoint.getTxOutIndex(),
+               stxo.getValue(), stx.blockHeight,
+               stx.txIndex, outpoint.getTxOutIndex(),
                outpoint.getTxHash(), stxo.getScriptRef());
 
             auto& idMap = utxoMap[outpoint.getTxHash()];
@@ -738,10 +738,14 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
                      stxo.duplicateID = headerPtr->getDuplicateID();
                      stxo.txOutIndex = outpoint.getTxOutIndex();
 
-                     iface_->getSpentness(stxo);
-                     if (stxo.isSpent()) {
-                        opFailure = true;
-                        break;
+                     try {
+                        iface_->getSpentness(stxo);
+                        if (stxo.isSpent()) {
+                           opFailure = true;
+                           break;
+                        }
+                     } catch (const LmdbWrapperException&) {
+                        //indulgent check in fullnode
                      }
                   }
 

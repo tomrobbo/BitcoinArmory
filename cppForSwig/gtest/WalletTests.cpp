@@ -54,7 +54,7 @@ namespace
 
             for (auto& cipherPair : cipherMap) {
                auto cipherData = cipherPair.second.get();
-               result.push_back(cipherData->cipher_->getIV());
+               result.push_back(cipherData->cipher->getIV());
             }
          }
          return result;
@@ -69,7 +69,7 @@ namespace
 
             for (auto& cipherPair : cipherMap) {
                auto cipherData = cipherPair.second.get();
-               result.push_back(cipherData->cipherText_);
+               result.push_back(cipherData->cipherText);
             }
          }
          return result;
@@ -8642,7 +8642,6 @@ TEST_F(WalletsTest, ImportPublicKeys)
             return false;
          }
       }
-
       return true;
    };
 
@@ -8814,6 +8813,121 @@ TEST_F(WalletsTest, ImportScrAddr)
       keyToAddrMap.emplace(TestChain::lb2ScrAddr, keyLB2);
    }
    ASSERT_TRUE(checkAddresses(wltWO));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(WalletsTest, ImportPrivateKeys)
+{
+   IO::CreateWalletParams params{
+      homedir_,
+      Passphrase::SetNew{100ms, 0, SecureBinaryData::fromString("privpass")},
+      Passphrase::SetNew{1ms, 0, {}},
+      nullptr, 10
+   };
+
+   //create a full wallet
+   std::unique_ptr<Seeds::ClearTextSeed> seed(
+      new Seeds::ClearTextSeed_BIP32(
+         Seeds::SeedType::BIP32_Structured));
+   auto wlt = AssetWallet_Single::createFromSeed(
+      std::move(seed), params);
+
+   //setup the import account
+   try {
+      auto importAccId = wlt->setupImportAccount();
+      ASSERT_EQ(importAccId.toHexStr(), "00001200");
+
+      auto importAddrAcc = wlt->getAccountForID(importAccId);
+      ASSERT_NE(importAddrAcc, nullptr);
+
+      auto outerAcc = importAddrAcc->getOuterAccount();
+      auto importAcc = dynamic_cast<Accounts::AssetAccount_Imports*>(outerAcc.get());
+      ASSERT_NE(importAcc, nullptr);
+   } catch (const std::exception& e) {
+      std::cout << e.what() << std::endl;
+      ASSERT_TRUE(false);
+   }
+
+   //import priv keys for address B, C, D & E
+   std::map<BinaryData, AssetId> keyToAddrMap;
+   unsigned unlockCount = 0;
+   {
+      //set unlock lambda
+      auto unlockFunc = [&unlockCount](const std::set<Wallets::EncryptionKeyId>&)
+      ->Passphrase::Result
+      {
+         ++unlockCount;
+         return {SecureBinaryData::fromString("privpass"), true};
+      };
+      wlt->setPassphrasePromptLambda(unlockFunc);
+
+      SecureBinaryData keyB{TestChain::privKeyAddrB};
+      auto idB = wlt->importPrivateKey(keyB,
+         AddressEntryType(AddressEntryType::P2PKH | AddressEntryType::Uncompressed));
+      keyToAddrMap.emplace(TestChain::scrAddrB, idB);
+
+      SecureBinaryData keyC{TestChain::privKeyAddrC};
+      auto idC = wlt->importPrivateKey(keyC,
+         AddressEntryType(AddressEntryType::P2PKH | AddressEntryType::Uncompressed));
+      keyToAddrMap.emplace(TestChain::scrAddrC, idC);
+
+      SecureBinaryData keyD{TestChain::privKeyAddrD};
+      auto idD = wlt->importPrivateKey(keyD,
+         AddressEntryType(AddressEntryType::P2PKH | AddressEntryType::Uncompressed));
+      keyToAddrMap.emplace(TestChain::scrAddrD, idD);
+
+      SecureBinaryData keyE{TestChain::privKeyAddrE};
+      auto idE = wlt->importPrivateKey(keyE,
+         AddressEntryType(AddressEntryType::P2PKH | AddressEntryType::Uncompressed));
+      keyToAddrMap.emplace(TestChain::scrAddrE, idE);
+   }
+   ASSERT_EQ(unlockCount, 4);
+
+   {
+      auto hashSet = wlt->getAddrHashSet();
+      EXPECT_EQ(hashSet.size(), 84);
+
+      auto iter = hashSet.find(TestChain::scrAddrB);
+      ASSERT_FALSE(iter == hashSet.end());
+
+      iter = hashSet.find(TestChain::scrAddrC);
+      ASSERT_FALSE(iter == hashSet.end());
+
+      iter = hashSet.find(TestChain::scrAddrD);
+      ASSERT_FALSE(iter == hashSet.end());
+
+      iter = hashSet.find(TestChain::scrAddrE);
+      ASSERT_FALSE(iter == hashSet.end());
+   }
+
+   //cleanup and reload the wallet
+   const auto wltPath = wlt->getDbFilename();
+   wlt.reset();
+   ASSERT_EQ(wlt, nullptr);
+
+   std::shared_ptr<AssetWallet_Single> wltLoaded;
+   {
+      auto load = AssetWallet::loadMainWalletFromFile({wltPath, nullptr});
+      wltLoaded = std::dynamic_pointer_cast<AssetWallet_Single>(load);
+   }
+   ASSERT_NE(wltLoaded, nullptr);
+
+   {
+      auto hashSet = wltLoaded->getAddrHashSet();
+      EXPECT_EQ(hashSet.size(), 84);
+
+      auto iter = hashSet.find(TestChain::scrAddrB);
+      ASSERT_FALSE(iter == hashSet.end());
+
+      iter = hashSet.find(TestChain::scrAddrC);
+      ASSERT_FALSE(iter == hashSet.end());
+
+      iter = hashSet.find(TestChain::scrAddrD);
+      ASSERT_FALSE(iter == hashSet.end());
+
+      iter = hashSet.find(TestChain::scrAddrE);
+      ASSERT_FALSE(iter == hashSet.end());
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

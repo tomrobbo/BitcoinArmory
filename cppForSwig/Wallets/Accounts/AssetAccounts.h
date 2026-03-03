@@ -6,15 +6,18 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _H_ASSET_ACCOUNT
-#define _H_ASSET_ACCOUNT
+#pragma once
 
 #include <memory>
 #include <functional>
 #include <string>
+#include <map>
+#include <set>
 
+#include <Utils/ReentrantLock.h>
+#include <Utils/SecureBinaryData.h>
 #include "../WalletIdTypes.h"
-#include "Utils/ReentrantLock.h"
+#include "../AddressEntryType.h"
 
 #define ASSET_ACCOUNT_PREFIX        0xE1
 #define ASSET_COUNT_PREFIX          0xE2
@@ -28,7 +31,7 @@ namespace Armory
    {
       enum class DerivationSchemeType : int;
       class DerivationScheme;
-      class Asset_PrivateKey;
+      struct Asset_PrivateKey;
    };
 
    namespace Wallets
@@ -42,6 +45,7 @@ namespace Armory
       namespace Encryption
       {
          class DecryptedDataContainer;
+         class Cipher;
       };
    };
 
@@ -253,9 +257,10 @@ namespace Armory
 
          //imports
          Wallets::AssetId importPrivateKey(
-            std::shared_ptr<Wallets::IO::WalletIfaceTransaction>,
+            std::shared_ptr<Wallets::IO::WalletDBInterface>,
             std::shared_ptr<Wallets::Encryption::DecryptedDataContainer>,
-            const SecureBinaryData&);
+            const SecureBinaryData&,
+            std::unique_ptr<Wallets::Encryption::Cipher>);
       };
 
       //////////////////////////////////////////////////////////////////////////
@@ -287,4 +292,3 @@ namespace Armory
 
    }; //namespace Accounts
 }; //namespace Armory
-#endif
