@@ -220,11 +220,11 @@ struct BDV_Error_Struct
 class NewBlockNotif
 {
 private:
-   uint32_t height_;
-   uint32_t branchHeight_;
+   uint32_t height_ = UINT32_MAX;
+   uint32_t branchHeight_ = UINT32_MAX;
 
 public:
-   NewBlockNotif(uint32_t = UINT32_MAX, uint32_t = UINT32_MAX);
+   NewBlockNotif(uint32_t, uint32_t);
 
    bool isValid(void) const;
    bool isReorg(void) const;
@@ -236,7 +236,7 @@ struct BdmNotification
 {
    const BDMAction action;
 
-   NewBlockNotif newBlock;
+   NewBlockNotif newBlock{UINT32_MAX, UINT32_MAX};
 
    std::vector<TxIOPair> txios;
    std::set<BinaryData> invalidatedZc;
@@ -247,9 +247,7 @@ struct BdmNotification
 
    std::string requestID;
 
-   BdmNotification(BDMAction action) :
-      action(action)
-   {}
+   BdmNotification(BDMAction);
 };
 
 ///////////////////////////////////////////////////////////////////////////////

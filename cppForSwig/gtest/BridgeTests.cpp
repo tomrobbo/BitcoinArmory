@@ -1182,6 +1182,7 @@ namespace {
             EXPECT_EQ(addrBal[0], balPair.second[0]);
             EXPECT_EQ(addrBal[1], balPair.second[1]);
             EXPECT_EQ(addrBal[2], balPair.second[2]);
+            //EXPECT_EQ(addrBal[3], balPair.second[3]);
          }
       } catch (const std::exception&) {
          ASSERT_TRUE(false);
@@ -7182,6 +7183,13 @@ TEST_F(BridgeLocalTests, ZeroConf)
    }
 
    //TODO: check balance, grab zc utxos
+   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   auto addrBBal = balances.at(TestChain::scrAddrB);
+   auto testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
+   EXPECT_EQ(addrBBal[0], testAddrBBal[0] - (20 * COIN));
+   EXPECT_EQ(addrBBal[1], testAddrBBal[1] - (20 * COIN));
+   EXPECT_EQ(addrBBal[2], testAddrBBal[2] - (20 * COIN));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

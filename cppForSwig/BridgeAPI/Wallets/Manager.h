@@ -59,6 +59,7 @@ namespace Armory
    {
       class Callback;
       class TxIOCache;
+      struct NotifStruct;
 
       class WalletManager : public Lockable
       {
@@ -112,8 +113,8 @@ namespace Armory
 
          /* utils */
          const std::filesystem::path& getWalletDir(void) const;
-         void updateStateFromDB(const std::function<void(void)>&,
-            const NewBlockNotif&);
+         void updateStateFromDB(std::shared_ptr<NotifStruct>);
+         std::shared_ptr<const TxIOCache> txioCache(void) const;
 
          /* loaded wallet getters */
          bool hasWallet(const Wallets::WalletId&);

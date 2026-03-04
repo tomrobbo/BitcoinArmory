@@ -224,7 +224,11 @@ const std::vector<BinaryData>& LedgerEntry::getScrAddrList() const
 // RemoteCallback
 //
 ///////////////////////////////////////////////////////////////////////////////
-RemoteCallback::~RemoteCallback(void)
+RemoteCallback::~RemoteCallback()
+{}
+
+BdmNotification::BdmNotification(BDMAction action) :
+   action(action)
 {}
 
 ///////////////////////////////////////////////////////////////////////////////

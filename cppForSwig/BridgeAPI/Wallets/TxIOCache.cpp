@@ -14,6 +14,7 @@
 #include <Ledgers/Context.h>
 #include <TxClasses.h>
 #include <AsyncClient.h>
+#include "Notifications.h"
 
 using namespace Armory;
 using namespace Armory::Bridge;
@@ -83,6 +84,32 @@ CacheResolveResult TxIOCache::resolve(
    return result;
 }
 
+CacheResolveResult TxIOCache::resolveZC(const AddressFilter& filter) const
+{
+   CacheResolveResult result{UINT32_MAX};
+   for (const auto& txio : zcTxios_) {
+      //do we have an unspent txio in the result map?
+      auto txioKey = txio.second.getDBKeyOfOutput();
+      auto iter = result.txioMap.find(txioKey);
+      if (iter != result.txioMap.end()) {
+         //we do, merge in the txin
+         iter->second.merge(txio.second);
+         continue;
+      }
+
+      //we don't, is the txout relevant then?
+      const auto& txKeyOutput = txio.second.getTxRefOfOutput().getDBKey();
+      const auto& tx = dbCache_->txMap.at(txKeyOutput);
+      auto scrAddr = tx.getScrAddrForTxOut(txio.second.getIndexOfOutput());
+      if (filter(scrAddr)) {
+         result.addTxio(txioKey, txio.second, scrAddr);
+      }
+   }
+   return result;
+
+}
+
+
 bool TxIOCache::txKeyIsValid(const BinaryData& txKey) const
 {
    auto height = DBUtils::hgtxToHeight(txKey.getSliceRef(0, 4));
@@ -93,12 +120,24 @@ bool TxIOCache::txKeyIsValid(const BinaryData& txKey) const
 ////////
 uint32_t TxIOCache::update(
    std::shared_ptr<AsyncClient::BlockDataViewer> bdvPtr,
-   const NewBlockNotif& blockNotif)
+   std::shared_ptr<NotifStruct> notif)
 {
+   if (notif->type == NotifType::ZC) {
+      auto zcPtr = std::dynamic_pointer_cast<NotifStruct_ZC>(notif);
+      updateZC(bdvPtr, zcPtr->txios);
+      return UINT32_MAX;
+   }
+
+   NewBlockNotif blockNotif{UINT32_MAX, UINT32_MAX};
+   if (notif->type == NotifType::NEWBLOCK) {
+      auto blockPtr =
+         std::dynamic_pointer_cast<NotifStruct_NewBlock>(notif);
+      blockNotif = blockPtr->blockNotif;
+   }
    uint32_t fromHeight = 0;
    if (blockNotif.isReorg()) {
       fromHeight = blockNotif.getBranchHeight() + 1;
-   } else if (blockNotif.isValid() && lastKnownBlock_ != UINT32_MAX) {
+   } else if (notif->type != NotifType::REFRESH) {
       fromHeight = lastKnownBlock_ + 1;
    }
 
@@ -112,8 +151,8 @@ uint32_t TxIOCache::update(
    });
    auto txios = std::move(futTxios.get());
 
-   auto fetchedHeight = blockNotif.isValid() ?
-      blockNotif.getHeight() : UINT32_MAX;
+   auto fetchedHeight = notif->type == NotifType::REFRESH ? 
+      UINT32_MAX : blockNotif.getHeight();
    auto missingStuff = addTxios(txios, fetchedHeight);
    auto missingTxKeys = std::move(missingStuff.first);
    auto missingHeights = std::move(missingStuff.second);
@@ -156,6 +195,45 @@ uint32_t TxIOCache::update(
    return fromHeight;
 }
 
+void TxIOCache::updateZC(
+   std::shared_ptr<AsyncClient::BlockDataViewer> bdvPtr,
+   const std::vector<TxIOPair>& zcTxios)
+{
+   std::set<BinaryData> missingTxKeys;
+   for (const auto& zcTxio : zcTxios) {
+      auto zcOutKey = zcTxio.getTxRefOfOutput().getDBKey();
+      if (dbCache_->txMap.find(zcOutKey) == dbCache_->txMap.end()) {
+         missingTxKeys.emplace(zcOutKey);
+      }
+
+      if (zcTxio.hasTxInZC()) {
+         auto zcInKey = zcTxio.getTxRefOfInput().getDBKey();
+         if (dbCache_->txMap.find(zcInKey) == dbCache_->txMap.end()) {
+            missingTxKeys.emplace(zcInKey);
+         }
+      }
+
+      auto iter = zcTxios_.emplace(zcTxio.getDBKeyOfOutput(), zcTxio);
+      if (!iter.second) {
+         iter.first->second.merge(zcTxio);
+      }
+   }
+
+   auto promTxs = std::make_shared<std::promise<std::vector<Tx>>>();
+   auto futTxs = promTxs->get_future();
+   bdvPtr->getTxsByKey(missingTxKeys, [prom = promTxs]
+      (ReturnMessage<std::vector<Tx>> result) {
+         prom->set_value(result.get());
+   });
+   auto txs = std::move(futTxs.get());
+
+   ReentrantLock lock(this);
+   for (auto& tx : txs) {
+      dbCache_->txMap.emplace(tx.getDBKey(), std::move(tx));
+   }
+}
+
+////////
 std::pair<std::set<BinaryData>, std::set<uint32_t>> TxIOCache::addTxios(
    std::vector<TxIOPair>& txios, uint32_t fetchedHeight)
 {
@@ -279,6 +357,35 @@ std::vector<UTXO> TxIOCache::getUTXOs(const AddressFilter& filter) const
    }
    return result;
 }
+
+/////////
+std::map<BinaryData, TxIOPair> TxIOCache::filterTxios(
+   const std::vector<TxIOPair>& txios, const AddressFilter& filter) const
+{
+   ReentrantLock lock(this);
+   std::map<BinaryData, TxIOPair> result;
+   for (const auto& txio : txios) {
+      const auto& txOutKey = txio.getTxRefOfOutput().getDBKey();
+      const auto& outTx = dbCache_->txMap.at(txOutKey);
+      auto scrAddrOut = outTx.getScrAddrForTxOut(txio.getIndexOfOutput());
+      if (filter(scrAddrOut)) {
+         result.emplace(txio.getDBKeyOfOutput(), txio);
+      }
+
+      if (!txio.hasTxIn()) {
+         continue;
+      }
+
+      const auto& txInKey = txio.getTxRefOfInput().getDBKey();
+      const auto& inTx = dbCache_->txMap.at(txInKey);
+      auto scrAddrIn = inTx.getScrAddrForTxOut(txio.getIndexOfOutput());
+      if (filter(scrAddrIn)) {
+         result.emplace(txio.getDBKeyOfOutput(), txio);
+      }
+   }
+   return result;
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // CacheResolveResult

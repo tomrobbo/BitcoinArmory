@@ -9,6 +9,7 @@
 #include "BDM_Server.h"
 #include <Utils/ArmoryErrors.h>
 #include <Utils/ArmoryConfig.h>
+#include <Utils/DBUtils.h>
 #include <BlockchainDatabase/BlockUtils.h>
 #include <BlockchainDatabase/lmdb_wrapper.h>
 #include <BlockchainDatabase/txio.h>
@@ -287,16 +288,18 @@ namespace {
             results.reserve(txKeyList.size());
             for (auto txKey : txKeyList) {
                BinaryDataRef keyBdr(txKey.begin(), txKey.end());
-               try {
-                  auto tx = bdv->getTxByKey(keyBdr);
-                  results.emplace_back(std::move(tx));
-               } catch (const std::exception&) {
-                  //could not get the tx, ignore
+               if (!DBUtils::keyIsZC(keyBdr)) {
+                  try {
+                     auto tx = bdv->getTxByKey(keyBdr);
+                     results.emplace_back(std::move(tx));
+                  } catch (const std::exception&) {
+                     //could not get the tx, ignore
+                  }
+               } else {
                   auto tx = mempool->getTxByKey(keyBdr);
                   if (tx != nullptr) {
                      results.emplace_back(tx->getTxObj());
                   }
-                  continue;
                }
             }
 

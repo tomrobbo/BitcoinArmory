@@ -877,6 +877,14 @@ unsigned Tx::getZcIndex() const
 ////////
 BinaryData Tx::getDBKey() const
 {
+   if (txHeight_ == UINT32_MAX && txIndex_ != UINT32_MAX) {
+      //this is a zc
+      BinaryWriter bw;
+      bw.reserve(6);
+      bw.put_uint16_t(0xFFFF);
+      bw.put_uint32_t(txIndex_, BE);
+      return bw.getData();
+   }
    return DBUtils::getBlkDataKeyNoPrefix(txHeight_, dupId_, txIndex_);
 }
 

@@ -46,7 +46,7 @@ namespace
       unsigned totalSize = 0;
       walletLedgers.reserve(mgr->getWalletContainerMap().size());
       for (const auto& wltCont : mgr->getWalletContainerMap()) {
-         const auto& txioMap = wltCont.second->getTxioMap();
+         const auto txioMap = wltCont.second->getTxioMap();
          auto context = Ledgers::prepareContext(txioMap, mgr->getDbCache());
          walletLedgers.emplace_back(std::move(Ledgers::computeLedgerMap(
             txioMap, 0, UINT32_MAX, wltCont.first, context)));
@@ -57,6 +57,39 @@ namespace
       result.reserve(totalSize);
       for (auto& ledgers : walletLedgers) {
          for (auto& lePair : ledgers) {
+            result.emplace_back(std::move(lePair.second));
+         }
+      }
+      std::sort(result.begin(), result.end(), Ledgers::DescendingOrder{});
+      return result;
+   }
+
+   std::vector<Ledgers::Entry> getLedgersForZCs(WalletManager* mgr,
+      const std::vector<TxIOPair>& txios)
+   {
+      //this is only used to generate ledgers for ZC notifs
+      auto txioCache = mgr->txioCache();
+      std::vector<std::map<BinaryData, Ledgers::Entry>> walletLedgers;
+      unsigned totalSize = 0;
+      walletLedgers.reserve(mgr->getWalletContainerMap().size());
+      for (const auto& wltCont : mgr->getWalletContainerMap()) {
+         const auto& txioMap = txioCache->filterTxios(txios,
+            [wltPtr=wltCont.second](const BinaryData& addr)->bool
+            { return wltPtr->hasScrAddr(addr); }
+         );
+         auto context = Ledgers::prepareContext(txioMap, mgr->getDbCache());
+         walletLedgers.emplace_back(std::move(Ledgers::computeLedgerMap(
+            txioMap, 0, UINT32_MAX, wltCont.first, context)));
+         totalSize += walletLedgers.back().size();
+      }
+
+      std::vector<Ledgers::Entry> result;
+      result.reserve(totalSize);
+      for (auto& ledgers : walletLedgers) {
+         for (auto& lePair : ledgers) {
+            if (lePair.second.getBlockNum() != UINT32_MAX) {
+               continue;
+            }
             result.emplace_back(std::move(lePair.second));
          }
       }
@@ -93,6 +126,11 @@ WalletManager::WalletManager(const std::filesystem::path& path) :
 const std::filesystem::path& WalletManager::getWalletDir() const
 {
    return path_;
+}
+
+std::shared_ptr<const TxIOCache> WalletManager::txioCache() const
+{
+   return std::const_pointer_cast<const TxIOCache>(txioCache_);
 }
 
 ////
@@ -161,30 +199,22 @@ void WalletManager::setupBdvCallback(
    The handler is very simple for now: either pass a capnp message along
    to the client or call updateStateFromDB.
    ***/
-   auto pushNotif = [writeFunc, this](NotifStruct notif)->void
+   auto pushNotif = [writeFunc, this](std::shared_ptr<NotifStruct> notif)
    {
-      switch (notif.type)
+      switch (notif->type)
       {
          case NotifType::PUSH:
          {
-            if (notif.packet.empty()) {
+            auto pushPtr = std::dynamic_pointer_cast<NotifStruct_Push>(notif);
+            if (pushPtr == nullptr || pushPtr->packet.empty()) {
                throw std::runtime_error("empty packet in push notif!");
             }
-            writeFunc(notif.packet);
-            return;
-         }
-
-         case NotifType::UPDATE:
-         {
-            if (notif.lbd == nullptr) {
-               throw std::runtime_error("notif lbd is not set!");
-            }
-            updateStateFromDB(notif.lbd, notif.blockNotif);
+            writeFunc(pushPtr->packet);
             return;
          }
 
          default:
-            throw std::runtime_error("invalid pushNotif type");
+            updateStateFromDB(notif);
       }
    };
    callbackPtr_ = std::make_shared<Callback>(pushNotif);
@@ -229,9 +259,9 @@ void WalletManager::registerWallet(const Wallets::WalletId& wltId,
    try {
       callbackPtr_->registerRefreshCallback(dbId,
          [this, dbId]() {
-            updateStateFromDB([this, dbId]() {
-               callbackPtr_->notifyRefresh({dbId});
-            }, {});
+            updateStateFromDB(std::make_shared<NotifStruct_Refresh>(
+               [this, dbId]() { callbackPtr_->notifyRefresh({dbId}); }
+            ));
          });
       container->registerWithBDV(isNew);
    } catch (const OfflineException& e) {
@@ -618,24 +648,60 @@ void WalletManager::loadWallets()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void WalletManager::updateStateFromDB(
-   const std::function<void(void)>& callback, const NewBlockNotif& blockNotif)
+void WalletManager::updateStateFromDB(std::shared_ptr<NotifStruct> notif)
 {
-   auto lbd = [this, callback, blockNotif](void)->void
+   auto lbd = [this, notif](void)->void
    {
       //update txio cache
-      auto checkFromHeight = txioCache_->update(bdvPtr_, blockNotif);
+      auto checkFromHeight = txioCache_->update(bdvPtr_, notif);
 
       //resolve wallets
       {
          ReentrantLock lock(this);
          for (auto wltCont : walletsByDbId_) {
             wltCont.second->resolveTxios(checkFromHeight);
+            wltCont.second->resolveZcTxios();
          }
       }
 
-      //5. fire the ready callback
-      callback();
+      //5. fire callback
+      switch (notif->type)
+      {
+         case NotifType::NEWBLOCK:
+         {
+            auto blockPtr =
+               std::dynamic_pointer_cast<NotifStruct_NewBlock>(notif);
+            blockPtr->callback();
+            break;
+         }
+
+         case NotifType::REFRESH:
+         {
+            auto refreshPtr =
+               std::dynamic_pointer_cast<NotifStruct_Refresh>(notif);
+            refreshPtr->callback();
+            break;
+         }
+
+         case NotifType::ZC:
+         {
+            ReentrantLock lock(this);
+            for (auto wltCont : walletsByDbId_) {
+               wltCont.second->resolveZcTxios();
+            }
+
+            //get ledgers for the zc txios
+            auto zcPtr = std::dynamic_pointer_cast<NotifStruct_ZC>(notif);
+            auto ledgers = getLedgersForZCs(this, zcPtr->txios);
+
+            //feed them to callback
+            zcPtr->callback(ledgers);
+            break;
+         }
+
+         default:
+            return;
+      }
    };
 
    std::thread thr(lbd);
@@ -746,7 +812,7 @@ const std::string& WalletManager::getDelegateIdForWallet(
       Ledgers::Delegate{ [this, wltId, accId](uint32_t pageId)->
          std::vector<Ledgers::Entry> {
          auto wltCont = this->getWalletContainer(wltId, accId);
-         const auto& txioMap = wltCont->getTxioMap();
+         const auto txioMap = wltCont->getTxioMap();
          auto context = Ledgers::prepareContext(txioMap,
             this->getDbCache());
          auto ledgers = Ledgers::computeLedgerMap(txioMap,
@@ -774,7 +840,7 @@ const std::string& WalletManager::getDelegateIdForScrAddr(
       Ledgers::Delegate{ [this, wltId, accId, scrAddr](uint32_t pageId)->
          std::vector<Ledgers::Entry> {
          auto wltCont = this->getWalletContainer(wltId, accId);
-         const auto& txioMap = wltCont->getTxioMap();
+         const auto txioMap = wltCont->getTxioMap();
          auto context = Ledgers::prepareContext(txioMap,
             this->getDbCache() /*, scrAddr as filter*/);
          auto ledgers = Ledgers::computeLedgerMap(txioMap,

@@ -36,6 +36,8 @@ namespace Armory
 
    namespace Bridge
    {
+      struct NotifStruct;
+
       using AddressFilter = std::function<bool(const BinaryData&)>;
       struct CacheResolveResult
       {
@@ -51,6 +53,7 @@ namespace Armory
       private:
          std::map<BinaryData, TxIOPair> unspentTxios_;
          std::map<BinaryData, TxIOPair> spentTxios_;
+         std::map<BinaryData, TxIOPair> zcTxios_;
          std::shared_ptr<Ledgers::DBCache> dbCache_;
          uint32_t lastKnownBlock_ = UINT32_MAX;
 
@@ -61,17 +64,22 @@ namespace Armory
          bool txKeyIsValid(const BinaryData&) const;
          std::pair<std::set<BinaryData>, std::set<uint32_t>> addTxios(
             std::vector<TxIOPair>&, uint32_t);
+         void updateZC(std::shared_ptr<AsyncClient::BlockDataViewer>,
+            const std::vector<TxIOPair>&);
 
       public:
          TxIOCache(void);
 
          uint32_t update(std::shared_ptr<AsyncClient::BlockDataViewer>,
-            const NewBlockNotif&);
+            std::shared_ptr<NotifStruct>);
          std::shared_ptr<const Ledgers::DBCache> getDBCache(void) const;
          CacheResolveResult resolve(const AddressFilter&, uint32_t) const;
+         CacheResolveResult resolveZC(const AddressFilter&) const;
          std::map<BinaryData, std::set<BinaryData>> getAddressBook(
             const AddressFilter&) const;
          std::vector<UTXO> getUTXOs(const AddressFilter&) const;
+         std::map<BinaryData, TxIOPair> filterTxios(
+            const std::vector<TxIOPair>&, const AddressFilter&) const;
       };
    } //namespace Bridge
 } //namespace Armory

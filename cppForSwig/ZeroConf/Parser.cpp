@@ -1779,8 +1779,9 @@ void ZcActionQueue::shutdown()
 BinaryData ZcActionQueue::getNewZCkey()
 {
    uint32_t newId = topId_.fetch_add(1, std::memory_order_relaxed);
-   BinaryData newKey = READHEX("ffff");
-   newKey.append(WRITE_UINT32_BE(newId));
+   BinaryData newKey(6);
+   memset(newKey.getPtr(), 0xFF, 2);
+   memcpy(newKey.getPtr() + 2, (uint8_t*)&newId, 4);
    return newKey;
 }
 

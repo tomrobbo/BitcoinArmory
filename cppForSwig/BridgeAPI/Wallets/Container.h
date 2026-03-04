@@ -45,8 +45,24 @@ namespace Armory
    namespace Bridge
    {
       class TxIOCache;
+      struct CacheResolveResult;
       struct OfflineException
       {};
+
+      struct ChainData
+      {
+         std::map<BinaryData, TxIOPair> txioMap;
+         std::map<BinaryData, std::vector<int64_t>> balanceMap;
+         std::map<BinaryData, uint64_t> countMap;
+
+         int64_t totalBalance       = 0;
+         int64_t spendableBalance   = 0;
+         int64_t unconfirmedBalance = 0;
+         int64_t txioCount          = 0;
+
+         ChainData(void);
+         ChainData(CacheResolveResult&);
+      };
 
       class WalletContainer
       {
@@ -56,7 +72,6 @@ namespace Armory
          const Wallets::WalletId wltId_;
          const Wallets::AddressAccountId accountId_;
          std::shared_ptr<TxIOCache> cache_;
-         std::map<BinaryData, TxIOPair> txioMap_;
 
          std::string dbId_;
          std::shared_ptr<Wallets::AssetWallet> wallet_;
@@ -64,13 +79,8 @@ namespace Armory
          std::shared_ptr<AsyncClient::BlockDataViewer> bdvPtr_;
          std::shared_ptr<AsyncClient::BtcWallet> asyncWlt_;
 
-         std::map<BinaryData, std::vector<uint64_t>> balanceMap_;
-         std::map<BinaryData, uint64_t> countMap_;
-
-         uint64_t totalBalance_ = 0;
-         uint64_t spendableBalance_ = 0;
-         uint64_t unconfirmedBalance_ = 0;
-         uint64_t txioCount_ = 0;
+         ChainData chainDataMain_;
+         ChainData chainDataZC_;
 
          std::map<Wallets::AssetAccountId, Wallets::AssetKeyType>
             highestUsedIndex_;
@@ -104,12 +114,13 @@ namespace Armory
          void updateAddressCountState(const AsyncClient::CombinedBalances&);
          void extendAddressChain(unsigned, const std::function<void(int)>&);
          void extendAddressChainToIndex(unsigned);
-         bool hasAddress(const BinaryData&) const;
+         bool hasScrAddr(const BinaryData&) const;
          bool hasAddress(const std::string&) const;
 
          std::vector<AddressBookEntry> getAddressBook(void) const;
-         const std::map<BinaryData, TxIOPair>& getTxioMap(void) const;
+         const std::map<BinaryData, TxIOPair> getTxioMap(void) const;
          void resolveTxios(uint32_t);
+         void resolveZcTxios(void);
          std::vector<UTXO> getUTXOs(uint64_t, bool, bool);
 
          uint64_t getFullBalance(void) const;

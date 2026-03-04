@@ -18,27 +18,55 @@
 
 namespace Armory
 {
+   namespace Ledgers
+   {
+      class Entry;
+   }
+
    namespace Bridge
    {
       enum class NotifType : int
       {
          PUSH,
-         UPDATE
+         NEWBLOCK,
+         ZC,
+         REFRESH
       };
 
       struct NotifStruct
       {
          const NotifType type;
-
-         //set when type is PUSH
-         BinaryData packet;
-
-         //set when type is UPDATE
-         std::function<void(void)> lbd;
-         NewBlockNotif blockNotif;
-         std::vector<TxIOPair> txios;
+         NotifStruct(NotifType);
+         virtual ~NotifStruct(void) = 0;
       };
-      typedef std::function<void(NotifStruct)> NotifFunc;
+      typedef std::function<void(std::shared_ptr<NotifStruct>)> NotifFunc;
+
+      struct NotifStruct_Push : public NotifStruct
+      {
+         BinaryData packet;
+         NotifStruct_Push(BinaryData);
+      };
+
+      struct NotifStruct_NewBlock : public NotifStruct
+      {
+         NewBlockNotif blockNotif;
+         const std::function<void(void)> callback;
+         NotifStruct_NewBlock(const NewBlockNotif&, const std::function<void(void)>&);
+      };
+
+      struct NotifStruct_ZC : public NotifStruct
+      {
+         std::vector<TxIOPair> txios;
+         const std::function<void(std::vector<Ledgers::Entry>)> callback;
+         NotifStruct_ZC(std::vector<TxIOPair>,
+            const std::function<void(const std::vector<Ledgers::Entry>&)>&);
+      };
+
+      struct NotifStruct_Refresh : public NotifStruct
+      {
+         const std::function<void(void)> callback;
+         NotifStruct_Refresh(const std::function<void(void)>&);
+      };
 
       ////////
       class Callback : public RemoteCallback
