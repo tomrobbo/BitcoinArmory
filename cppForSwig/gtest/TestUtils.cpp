@@ -14,6 +14,8 @@
 #include <Wallets/Accounts/AddressAccounts.h>
 #include <Ledgers/LedgerEntry.h>
 #include <BDM_mainthread.h>
+#include <ZeroConf/Parser.h>
+#include <ZeroConf/Utils.h>
 
 using namespace std;
 using namespace Armory;
@@ -99,6 +101,33 @@ namespace {
          ));
       }
       return result;
+   }
+
+   std::vector<TxIOPair> capnToTxios(
+      const capnp::List<Codec::Types::TxioPair, capnp::Kind::STRUCT>::Reader& capnTxios)
+   {
+      std::vector<TxIOPair> txios;
+      txios.reserve(capnTxios.size());
+
+      for (auto capnTxio : capnTxios) {
+         auto capnTxOut = capnTxio.getTxOut();
+         BinaryData txOutKey(capnTxOut.begin(), capnTxOut.end());
+         auto amount = capnTxio.getAmount();
+         TxIOPair txio{txOutKey, amount};
+
+         if (capnTxio.hasTxIn()) {
+            auto capnTxIn = capnTxio.getTxIn();
+            BinaryData txInKey(capnTxIn.begin(), capnTxIn.end());
+            txio.setTxIn(txInKey);
+         }
+
+         txio.setTxOutFromSelf(capnTxio.getFromSelf());
+         txio.setFromCoinbase(capnTxio.getCoinbase());
+         txio.setRBF(capnTxio.getRbf());
+         txio.setMultisig(capnTxio.getMultisig());
+         txios.emplace_back(std::move(txio));
+      }
+      return txios;
    }
 }
 
@@ -530,7 +559,117 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   pair<vector<DBClientClasses::LedgerEntry>, set<BinaryData>> waitOnNewZcSignal(
+   // UTCallback
+   void UTCallback::run(BdmNotification bdmNotif)
+   {
+      auto notif = std::make_unique<BdmNotif>();
+      notif->action = bdmNotif.action;
+      notif->requestID = bdmNotif.requestID;
+
+      if (bdmNotif.action == BDMAction_Refresh) {
+         notif->idSet = bdmNotif.ids;
+      } else if (bdmNotif.action == BDMAction_ZC) {
+         notif->txios = std::move(bdmNotif.txios);
+      } else if (bdmNotif.action == BDMAction_NewBlock) {
+         if (bdmNotif.newBlock.isReorg()) {
+            notif->reorgHeight = bdmNotif.newBlock.getBranchHeight();
+         } else {
+            notif->reorgHeight = UINT32_MAX;
+         }
+      } else if (bdmNotif.action == BDMAction_BDV_Error) {
+         notif->error = bdmNotif.error;
+      }
+      actionStack_.push_back(std::move(notif));
+   }
+
+   void UTCallback::waitOnZc(
+      std::shared_ptr<ZeroConf::ZeroConfContainer> zcPtr,
+      const std::set<BinaryData>& hashes)
+   {
+      auto bdHashes = hashes;
+      while (!bdHashes.empty()) {
+         auto action = waitOnNotification(BDMAction_ZC);
+         auto mempoolSnapshot = zcPtr->getSnapshot();
+         for (const auto& txio : action->txios) {
+            auto hashOut = mempoolSnapshot->getHashForKey(
+               txio.getTxRefOfOutput().getDBKey());
+            auto iterOut = bdHashes.find(hashOut);
+            if (iterOut != bdHashes.end()) {
+               bdHashes.erase(iterOut);
+            }
+
+            if (!txio.hasTxIn()) {
+               continue;
+            }
+            auto hashIn = mempoolSnapshot->getHashForKey(
+               txio.getTxRefOfInput().getDBKey());
+            auto iterIn = bdHashes.find(hashIn);
+            if (iterIn != bdHashes.end()) {
+               bdHashes.erase(iterIn);
+            }
+         }
+      }
+   }
+
+   void UTCallback::waitOnZc_OutOfOrder(
+      std::shared_ptr<ZeroConf::ZeroConfContainer> zcPtr,
+      const std::set<BinaryData>& hashes)
+   {
+      auto bdHashes = hashes;
+      for (auto& pastNotif : zcNotifVec_) {
+         auto mempoolSnapshot = zcPtr->getSnapshot();
+         for (const auto& txio : pastNotif.txios) {
+            auto hashOut = mempoolSnapshot->getHashForKey(
+               txio.getTxRefOfOutput().getDBKey());
+            auto iterOut = bdHashes.find(hashOut);
+            if (iterOut != bdHashes.end()) {
+               bdHashes.erase(iterOut);
+            }
+
+            if (!txio.hasTxIn()) {
+               continue;
+            }
+            auto hashIn = mempoolSnapshot->getHashForKey(
+               txio.getTxRefOfInput().getDBKey());
+            auto iterIn = bdHashes.find(hashIn);
+            if (iterIn != bdHashes.end()) {
+               bdHashes.erase(iterIn);
+            }
+         }
+
+         if (bdHashes.empty()) {
+            return;
+         }
+      }
+
+      while (!bdHashes.empty()) {
+         auto action = waitOnNotification(BDMAction_ZC);
+         zcNotifVec_.push_back(*action);
+         auto mempoolSnapshot = zcPtr->getSnapshot();
+
+         for (const auto& txio : action->txios) {
+            auto hashOut = mempoolSnapshot->getHashForKey(
+               txio.getTxRefOfOutput().getDBKey());
+            auto iterOut = bdHashes.find(hashOut);
+            if (iterOut != bdHashes.end()) {
+               bdHashes.erase(iterOut);
+            }
+
+            if (!txio.hasTxIn()) {
+               continue;
+            }
+            auto hashIn = mempoolSnapshot->getHashForKey(
+               txio.getTxRefOfInput().getDBKey());
+            auto iterIn = bdHashes.find(hashIn);
+            if (iterIn != bdHashes.end()) {
+               bdHashes.erase(iterIn);
+            }
+         }
+      }
+   }
+
+   /////////////////////////////////////////////////////////////////////////////
+   std::pair<vector<TxIOPair>, std::set<BinaryData>> waitOnNewZcSignal(
       Clients* clients, BdvIdKey bdvId)
    {
       auto result = waitOnSignal(clients, bdvId,
@@ -552,21 +691,20 @@ namespace DBTestUtils
          throw runtime_error("");
       }
 
-      auto capnPage = zcNotif.getZc();
-      auto capnLedgers = capnPage.getLedgers();
+      auto capnZcs = zcNotif.getZc();
 
-      pair<vector<DBClientClasses::LedgerEntry>, set<BinaryData>> levData;
-      levData.first = capnToLedgers(capnLedgers);
+      std::pair<vector<TxIOPair>, std::set<BinaryData>> txioData;
+      txioData.first = capnToTxios(capnZcs);
 
       if (notifList.size() >= (int)index + 2) {
          auto invalidatedNotif = notifList[index + 1];
          auto invalidatedZCs = invalidatedNotif.getInvalidatedZc();
          for (auto zcHash : invalidatedZCs) {
             BinaryDataRef hashRef(zcHash.begin(), zcHash.end());
-            levData.second.insert(hashRef);
+            txioData.second.emplace(hashRef);
          }
       }
-      return levData;
+      return txioData;
    }
 
    /////////////////////////////////////////////////////////////////////////////
@@ -707,6 +845,38 @@ namespace DBTestUtils
       auto reply = reader.getRoot<Codec::BDV::Reply>();
       auto bdvReply = reply.getBdv();
       auto capnTxs = bdvReply.getGetTxsByHash();
+      auto capnTx = capnTxs[0];
+      auto body = capnTx.getBody();
+      BinaryDataRef rawTx(body.begin(), body.end());
+
+      Tx txobj(rawTx);
+      txobj.setTxHeight(capnTx.getHeight());
+      txobj.setTxIndex(capnTx.getIndex());
+      txobj.setChainedZC(capnTx.getIsChainZc());
+      txobj.setRBF(capnTx.getIsRbf());
+      return txobj;
+   }
+
+   /////////////////////////////////////////////////////////////////////////////
+   Tx getTxByKey(Clients* clients, BdvIdKey bdvId,
+      const BinaryData& txKey)
+   {
+      capnp::MallocMessageBuilder message;
+      auto payload = message.initRoot<Codec::BDV::Request>();
+
+      auto bdvRequest = payload.initBdv();
+      auto keyReq = bdvRequest.initGetTxsByKey(1);
+      keyReq.set(0, capnp::Data::Builder(
+         (uint8_t*)txKey.getPtr(), txKey.getSize()));
+
+      auto result = processCommand(clients, bdvId, serializeCapnp(message));
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(result.getPtr()),
+         result.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+      auto reply = reader.getRoot<Codec::BDV::Reply>();
+      auto bdvReply = reply.getBdv();
+      auto capnTxs = bdvReply.getGetTxsByKey();
       auto capnTx = capnTxs[0];
       auto body = capnTx.getBody();
       BinaryDataRef rawTx(body.begin(), body.end());

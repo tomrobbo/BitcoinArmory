@@ -14,6 +14,7 @@
 #include <functional>
 
 #include <Utils/BinaryData.h>
+#include <BlockchainDatabase/txio.h>
 #include "bdmenums.h"
 #include "SocketObject.h"
 #include "nodeRPC.h"
@@ -237,9 +238,8 @@ struct BdmNotification
 
    NewBlockNotif newBlock;
 
+   std::vector<TxIOPair> txios;
    std::set<BinaryData> invalidatedZc;
-   std::vector<std::shared_ptr<DBClientClasses::LedgerEntry>> ledgers;
-
    std::set<std::string> ids;
 
    std::shared_ptr<DBClientClasses::NodeStatus> nodeStatus;

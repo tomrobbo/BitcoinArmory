@@ -180,15 +180,19 @@ void Callback::run(BdmNotification notif)
 
       case BDMAction_ZC:
       {
-         capnp::MallocMessageBuilder message;
-         auto fromBridge = message.initRoot<FromBridge>();
-         auto capnNotif = fromBridge.initNotification();
-         capnNotif.setCallbackId(BRIDGE_CALLBACK_BDM);
+         auto lbd = []()
+         {
+            capnp::MallocMessageBuilder message;
+            auto fromBridge = message.initRoot<FromBridge>();
+            auto capnNotif = fromBridge.initNotification();
+            capnNotif.setCallbackId(BRIDGE_CALLBACK_BDM);
 
-         auto capnZCs = capnNotif.initZeroConfs();
-         ledgersToCapnp(notif.ledgers, capnZCs);
+            /*auto capnZCs = capnNotif.initZeroConfs();
+            ledgersToCapnp(notif.ledgers, capnZCs);
 
-         notifFunc_({NotifType::PUSH, serializeCapnp(message)});
+            notifFunc_({NotifType::PUSH, serializeCapnp(message)});*/
+         };
+         notifFunc_({NotifType::UPDATE, {}, lbd, UINT32_MAX, notif.txios});
          break;
       }
 

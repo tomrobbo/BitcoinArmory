@@ -36,6 +36,7 @@ namespace Armory
          //set when type is UPDATE
          std::function<void(void)> lbd;
          NewBlockNotif blockNotif;
+         std::vector<TxIOPair> txios;
       };
       typedef std::function<void(NotifStruct)> NotifFunc;
 

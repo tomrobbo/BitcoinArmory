@@ -40,6 +40,16 @@ using namespace Armory::ZeroConf;
 using namespace std::string_view_literals;
 using namespace std::chrono_literals;
 
+namespace
+{
+   uint32_t getZcId(const BinaryData& zcKey)
+   {
+      BinaryRefReader brr(zcKey);
+      brr.advance(2);
+      return brr.get_uint32_t(BE);
+   }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<Signing::ScriptSpender> getSpenderPtr(const UTXO& utxo, bool RBF = false)
 {
@@ -3355,12 +3365,21 @@ TEST_F(ZeroConfTests_FullNode, ChainZC_RBFchild_Test)
 
       ZCHash1 = std::move(BtcUtils::getHash256(rawTx));
       DBTestUtils::pushNewZc(theBDMt_, zcVec);
-      auto ledgerVec = DBTestUtils::waitOnNewZcSignal(clients_, bdvID);
-      EXPECT_EQ(ledgerVec.first.size(), 2ULL);
-      EXPECT_EQ(ledgerVec.second.size(), 0ULL);
+      auto txioVec = DBTestUtils::waitOnNewZcSignal(clients_, bdvID);
+      EXPECT_EQ(txioVec.first.size(), 5ULL);
+      EXPECT_EQ(txioVec.second.size(), 0ULL);
 
-      for (auto& ledger : ledgerVec.first) {
-         EXPECT_EQ(ledger.getTxHash(), ZCHash1);
+      for (const auto& txio : txioVec.first) {
+         if (txio.hasTxOutZC()) {
+            auto txObj = DBTestUtils::getTxByKey(clients_, bdvID,
+               txio.getTxRefOfOutput().getDBKey());
+            EXPECT_EQ(txObj.getThisHash(), ZCHash1);
+         }
+         if (txio.hasTxInZC()) {
+            auto txObj = DBTestUtils::getTxByKey(clients_, bdvID,
+               txio.getTxRefOfInput().getDBKey());
+            EXPECT_EQ(txObj.getThisHash(), ZCHash1);
+         }
       }
    }
 
@@ -3442,12 +3461,35 @@ TEST_F(ZeroConfTests_FullNode, ChainZC_RBFchild_Test)
 
       ZCHash2 = std::move(BtcUtils::getHash256(rawTx));
       DBTestUtils::pushNewZc(theBDMt_, zcVec3);
-      auto ledgerVec = DBTestUtils::waitOnNewZcSignal(clients_, bdvID);
-      EXPECT_EQ(ledgerVec.first.size(), 2ULL);
-      EXPECT_EQ(ledgerVec.second.size(), 0ULL);
+      auto txioVec = DBTestUtils::waitOnNewZcSignal(clients_, bdvID);
+      EXPECT_EQ(txioVec.first.size(), 6ULL);
+      EXPECT_EQ(txioVec.second.size(), 0ULL);
 
-      for (auto& ledger : ledgerVec.first) {
-         EXPECT_EQ(ledger.getTxHash(), ZCHash2);
+      std::set<BinaryData> txKeys;
+      for (const auto& txio : txioVec.first) {
+         if (txio.hasTxOutZC()) {
+            txKeys.emplace(txio.getTxRefOfOutput().getDBKey());
+         }
+         if (txio.hasTxInZC()) {
+            txKeys.emplace(txio.getTxRefOfInput().getDBKey());
+         }
+      }
+      for (const auto& txKey : txKeys) {
+         auto txObj = DBTestUtils::getTxByKey(clients_, bdvID, txKey);
+         auto zcId = getZcId(txKey);
+         switch (zcId)
+         {
+            case 0:
+               EXPECT_EQ(txObj.getThisHash(), ZCHash1);
+               break;
+
+            case 1:
+               EXPECT_EQ(txObj.getThisHash(), ZCHash2);
+               break;
+
+            default:
+               EXPECT_TRUE(false);
+         }
       }
    }
 
@@ -3559,14 +3601,37 @@ TEST_F(ZeroConfTests_FullNode, ChainZC_RBFchild_Test)
 
       ZCHash3 = std::move(BtcUtils::getHash256(rawTx));
       DBTestUtils::pushNewZc(theBDMt_, zcVec2);
-      auto ledgerVec = DBTestUtils::waitOnNewZcSignal(clients_, bdvID);
-      EXPECT_EQ(ledgerVec.first.size(), 2ULL);
-      EXPECT_EQ(ledgerVec.second.size(), 1ULL);
+      auto txioVec = DBTestUtils::waitOnNewZcSignal(clients_, bdvID);
+      EXPECT_EQ(txioVec.first.size(), 5ULL);
+      EXPECT_EQ(txioVec.second.size(), 1ULL);
 
-      for (auto& ledger : ledgerVec.first) {
-         EXPECT_EQ(ledger.getTxHash(), ZCHash3);
+      std::set<BinaryData> txKeys;
+      for (const auto& txio : txioVec.first) {
+         if (txio.hasTxOutZC()) {
+            txKeys.emplace(txio.getTxRefOfOutput().getDBKey());
+         }
+         if (txio.hasTxInZC()) {
+            txKeys.emplace(txio.getTxRefOfInput().getDBKey());
+         }
       }
-      EXPECT_EQ(*ledgerVec.second.begin(), ZCHash2);
+      for (const auto& txKey : txKeys) {
+         auto txObj = DBTestUtils::getTxByKey(clients_, bdvID, txKey);
+         auto zcId = getZcId(txKey);
+         switch (zcId)
+         {
+            case 0:
+               EXPECT_EQ(txObj.getThisHash(), ZCHash1);
+               break;
+
+            case 2:
+               EXPECT_EQ(txObj.getThisHash(), ZCHash3);
+               break;
+
+            default:
+               EXPECT_TRUE(false);
+         }
+      }
+      EXPECT_EQ(*txioVec.second.begin(), ZCHash2);
    }
 
    //check balances
@@ -3807,12 +3872,21 @@ TEST_F(ZeroConfTests_FullNode, TwoZC_CheckLedgers)
 
       ZCHash1 = std::move(BtcUtils::getHash256(rawTx));
       DBTestUtils::pushNewZc(theBDMt_, zcVec);
-      auto ledgerVec = DBTestUtils::waitOnNewZcSignal(clients_, bdvID);
-      EXPECT_EQ(ledgerVec.first.size(), 1ULL);
-      EXPECT_EQ(ledgerVec.second.size(), 0ULL);
+      auto txioVec = DBTestUtils::waitOnNewZcSignal(clients_, bdvID);
+      EXPECT_EQ(txioVec.first.size(), 1ULL);
+      EXPECT_EQ(txioVec.second.size(), 0ULL);
 
-      for (auto& ledger : ledgerVec.first) {
-         EXPECT_EQ(ledger.getTxHash(), ZCHash1);
+      for (const auto& txio : txioVec.first) {
+         if (txio.hasTxOutZC()) {
+            auto txObj = DBTestUtils::getTxByKey(clients_, bdvID,
+               txio.getTxRefOfOutput().getDBKey());
+            EXPECT_EQ(txObj.getThisHash(), ZCHash1);
+         }
+         if (txio.hasTxInZC()) {
+            auto txObj = DBTestUtils::getTxByKey(clients_, bdvID,
+               txio.getTxRefOfInput().getDBKey());
+            EXPECT_EQ(txObj.getThisHash(), ZCHash1);
+         }
       }
    }
 
@@ -3909,9 +3983,18 @@ TEST_F(ZeroConfTests_FullNode, TwoZC_CheckLedgers)
 
       ZCHash2 = std::move(BtcUtils::getHash256(rawTx));
       DBTestUtils::pushNewZc(theBDMt_, zcVec2);
-      auto ledgerVec = DBTestUtils::waitOnNewZcSignal(clients_, bdvID);
-      for (auto& ledger : ledgerVec.first) {
-         EXPECT_EQ(ledger.getTxHash(), ZCHash2);
+      auto txioVec = DBTestUtils::waitOnNewZcSignal(clients_, bdvID);
+      for (const auto& txio : txioVec.first) {
+         if (txio.hasTxOutZC()) {
+            auto txObj = DBTestUtils::getTxByKey(clients_, bdvID,
+               txio.getTxRefOfOutput().getDBKey());
+            EXPECT_EQ(txObj.getThisHash(), ZCHash2);
+         }
+         if (txio.hasTxInZC()) {
+            auto txObj = DBTestUtils::getTxByKey(clients_, bdvID,
+               txio.getTxRefOfInput().getDBKey());
+            EXPECT_EQ(txObj.getThisHash(), ZCHash2);
+         }
       }
    }
 
@@ -5524,8 +5607,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, ZcUpdate)
 
    {
       std::set<BinaryData> zcHashes{ ZChash1, ZChash2 };
-      std::set<BinaryData> scrAddrSet{ TestChain::scrAddrB };
-      pCallback->waitOnZc(zcHashes, scrAddrSet);
+      pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), zcHashes);
    }
 
    //get the new ledgers
@@ -5770,8 +5852,8 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, ZcUpdate_RPC)
 
    bdvObj->broadcastThroughRPC(ZC1);
    bdvObj->broadcastThroughRPC(ZC2);
-   pCallback->waitOnZc({ZChash1}, {TestChain::scrAddrB});
-   pCallback->waitOnZc({ZChash2}, {TestChain::scrAddrB});
+   pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), {ZChash1});
+   pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), {ZChash2});
 
    //get the new ledgers
    auto ledger2_prom =
@@ -6000,8 +6082,8 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, ZcUpdate_RPC_Fallback)
    nodePtr_->skipZc(2);
    bdvObj->broadcastZC({ZC1});
    bdvObj->broadcastZC({ZC2});
-   pCallback->waitOnZc({ZChash1}, {TestChain::scrAddrB});
-   pCallback->waitOnZc({ZChash2}, {TestChain::scrAddrB});
+   pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), {ZChash1});
+   pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), {ZChash2});
 
    //get the new ledgers
    auto ledger2_prom =
@@ -6230,7 +6312,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, ZcUpdate_RPC_Fallback_SingleBatch)
    nodePtr_->skipZc(2);
    std::vector<BinaryData> zcVec = {ZC1, ZC2};
    bdvObj->broadcastZC(zcVec);
-   pCallback->waitOnZc({ZChash1, ZChash2}, {TestChain::scrAddrB});
+   pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), {ZChash1, ZChash2});
 
    //get the new ledgers
    auto ledger2_prom =
@@ -6459,8 +6541,8 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, ZcUpdate_AlreadyInMempool)
    //pushZC
    bdvObj->broadcastZC({ZC1});
    bdvObj->broadcastZC({ZC2});
-   pCallback->waitOnZc({ZChash1}, {TestChain::scrAddrB});
-   pCallback->waitOnZc({ZChash2}, {TestChain::scrAddrB});
+   pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), {ZChash1});
+   pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), {ZChash2});
 
    //push them again, should get already in mempool error
    bdvObj->broadcastZC({ZC1});
@@ -6695,13 +6777,13 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, ZcUpdate_AlreadyInMempool_Batched)
 
    //push the first zc
    bdvObj->broadcastZC({ZC1});
-   pCallback->waitOnZc({ZChash1}, {TestChain::scrAddrB});
+   pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), {ZChash1});
 
    //push them again, should get already in mempool error for first zc, notif for 2nd
    bdvObj->broadcastZC( { ZC1, ZC2 } );
    pCallback->waitOnError(
       ZChash1, ArmoryErrorCodes::ZcBroadcast_AlreadyInMempool);
-   pCallback->waitOnZc({ZChash2}, {TestChain::scrAddrB});
+   pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), {ZChash2});
 
    //get the new ledgers
    auto ledger2_prom =
@@ -6942,7 +7024,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, ZcUpdate_AlreadyInNodeMempool)
 
    std::vector<BinaryData> zcVec = {ZC1, ZC2};
    bdvObj->broadcastZC(zcVec);
-   pCallback->waitOnZc({ZChash1, ZChash2}, {TestChain::scrAddrB});
+   pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), {ZChash1, ZChash2});
 
    //get the new ledgers
    auto ledger2_prom =
@@ -7263,19 +7345,12 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, ZcUpdate_RBFLowFee)
       bdvObj->broadcastZC({bd_BtoC});
       bdvObj->broadcastZC({bd_FtoD});
 
-      std::set<BinaryData> scrAddrSet1, scrAddrSet2;
       {
          Tx tx1(bd_BtoC);
          Tx tx2(bd_FtoD);
 
-         scrAddrSet1.insert(TestChain::scrAddrB);
-         scrAddrSet1.insert(TestChain::scrAddrC);
-
-         scrAddrSet2.insert(TestChain::scrAddrF);
-         scrAddrSet2.insert(TestChain::scrAddrA);
-
-         pCallback->waitOnZc({tx1.getThisHash()}, scrAddrSet1);
-         pCallback->waitOnZc({tx2.getThisHash()}, scrAddrSet2);
+         pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), {tx1.getThisHash()});
+         pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), {tx2.getThisHash()});
       }
 
       //tx from B to A, should fail with RBF low fee
@@ -7578,16 +7653,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BatchZcChain)
       txHashes.insert(tx1.getThisHash());
       txHashes.insert(tx2.getThisHash());
       txHashes.insert(tx3.getThisHash());
-
-      std::set<BinaryData> scrAddrSet;
-      scrAddrSet.insert(TestChain::scrAddrA);
-      scrAddrSet.insert(TestChain::scrAddrB);
-      scrAddrSet.insert(TestChain::scrAddrC);
-      scrAddrSet.insert(TestChain::scrAddrD);
-      scrAddrSet.insert(TestChain::scrAddrE);
-      scrAddrSet.insert(TestChain::scrAddrF);
-
-      pCallback->waitOnZc(txHashes, scrAddrSet);
+      pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), txHashes);
 
       //check balances
       combineBalances = getBalances();
@@ -7861,13 +7927,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BatchZcChain_AlreadyInMempool)
 
       std::set<BinaryData> txHashes;
       txHashes.insert(tx1.getThisHash());
-
-      std::set<BinaryData> scrAddrSet {
-         TestChain::scrAddrA,
-         TestChain::scrAddrB,
-         TestChain::scrAddrD
-      };
-      pCallback->waitOnZc(txHashes, scrAddrSet);
+      pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), txHashes);
 
       //batch push all tx
       bdvObj->broadcastZC({ rawTx1, rawTx2, rawTx3 });
@@ -7875,19 +7935,12 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BatchZcChain_AlreadyInMempool)
       txHashes.insert(tx2.getThisHash());
       txHashes.insert(tx3.getThisHash());
 
-      scrAddrSet.clear();
-      scrAddrSet.insert(TestChain::scrAddrA);
-      scrAddrSet.insert(TestChain::scrAddrC);
-      scrAddrSet.insert(TestChain::scrAddrD);
-      scrAddrSet.insert(TestChain::scrAddrE);
-      scrAddrSet.insert(TestChain::scrAddrF);
-
       //wait on already in mempool error
       pCallback->waitOnError(tx1.getThisHash(),
          ArmoryErrorCodes::ZcBroadcast_AlreadyInMempool);
 
       //wait on zc notifs
-      pCallback->waitOnZc(txHashes, scrAddrSet);
+      pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), txHashes);
 
       //check balances
       combineBalances = getBalances();
@@ -8194,16 +8247,8 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BatchZcChain_AlreadyInNodeMempool)
       txHashes.insert(tx2.getThisHash());
       txHashes.insert(tx3.getThisHash());
 
-      std::set<BinaryData> scrAddrSet;
-      scrAddrSet.insert(TestChain::scrAddrA);
-      scrAddrSet.insert(TestChain::scrAddrB);
-      scrAddrSet.insert(TestChain::scrAddrC);
-      scrAddrSet.insert(TestChain::scrAddrD);
-      scrAddrSet.insert(TestChain::scrAddrE);
-      scrAddrSet.insert(TestChain::scrAddrF);
-
       //wait on zc notifs
-      pCallback->waitOnZc(txHashes, scrAddrSet);
+      pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), txHashes);
 
       //check balances
       combineBalances = getBalances();
@@ -8525,16 +8570,8 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BatchZcChain_AlreadyInChain)
       txHashes.insert(tx2.getThisHash());
       txHashes.insert(tx3.getThisHash());
 
-      std::set<BinaryData> scrAddrSet {
-         TestChain::scrAddrA,
-         TestChain::scrAddrC,
-         TestChain::scrAddrD,
-         TestChain::scrAddrE,
-         TestChain::scrAddrF
-      };
-
       //wait on zc notifs
-      pCallback->waitOnZc(txHashes, scrAddrSet);
+      pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), txHashes);
 
       //check balances
       combineBalances = getBalances();
@@ -8839,17 +8876,8 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BatchZcChain_MissInv)
       txHashes.insert(tx2.getThisHash());
       txHashes.insert(tx3.getThisHash());
 
-      std::set<BinaryData> scrAddrSet {
-         TestChain::scrAddrA,
-         TestChain::scrAddrB,
-         TestChain::scrAddrC,
-         TestChain::scrAddrD,
-         TestChain::scrAddrE,
-         TestChain::scrAddrF
-      };
-
       //wait on zc notifs
-      pCallback->waitOnZc(txHashes, scrAddrSet);
+      pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), txHashes);
 
       //check balances
       combineBalances = getBalances();
@@ -9139,21 +9167,12 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BatchZcChain_ConflictingChildren)
          tx2.getThisHash()
       };
 
-      std::set<BinaryData> scrAddrSet {
-         TestChain::scrAddrA,
-         TestChain::scrAddrB,
-         TestChain::scrAddrC,
-         TestChain::scrAddrD,
-         TestChain::scrAddrE,
-         TestChain::scrAddrF
-      };
-
       //wait on zc error for conflicting child
       pCallback->waitOnError(
          tx3.getThisHash(), ArmoryErrorCodes::ZcBroadcast_VerifyRejected);
 
       //wait on zc notifs
-      pCallback->waitOnZc(txHashes, scrAddrSet);
+      pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), txHashes);
 
       //check balances
       combineBalances = getBalances();
@@ -9437,17 +9456,11 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BatchZcChain_ConflictingChildren_Alrea
       Tx tx3(rawTx3);
 
       {
-         std::set<BinaryData> scrAddrSet{
-            TestChain::scrAddrA,
-            TestChain::scrAddrB,
-            TestChain::scrAddrD
-         };
-
          //push the first zc
          bdvObj->broadcastZC({rawTx1_B});
 
          //wait on notification
-         pCallback->waitOnZc({tx1_B.getThisHash()}, scrAddrSet);
+         pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), {tx1_B.getThisHash()});
       }
 
       //batch push all tx
@@ -9458,19 +9471,12 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BatchZcChain_ConflictingChildren_Alrea
          tx2.getThisHash()
       };
 
-      std::set<BinaryData> scrAddrSet {
-         TestChain::scrAddrC,
-         TestChain::scrAddrD,
-         TestChain::scrAddrE,
-         TestChain::scrAddrF
-      };
-
       //wait on zc error for conflicting child
       pCallback->waitOnError(
          tx3.getThisHash(), ArmoryErrorCodes::ZcBroadcast_VerifyRejected);
 
       //wait on zc notifs
-      pCallback->waitOnZc(txHashes, scrAddrSet);
+      pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), txHashes);
 
       //check balances
       combineBalances = getBalances();
@@ -9759,19 +9765,11 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BatchZcChain_ConflictingChildren_Alrea
             tx2.getThisHash()
          };
 
-         std::set<BinaryData> scrAddrSet {
-            TestChain::scrAddrA,
-            TestChain::scrAddrB,
-            TestChain::scrAddrD,
-            TestChain::scrAddrE,
-            TestChain::scrAddrF
-         };
-
          //push the first zc and its child through the node
          nodePtr_->pushZC({ {rawTx1_B, 0}, {rawTx2, 0} }, false);
 
          //wait on notification
-         pCallback->waitOnZc(txHashes, scrAddrSet);
+         pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), txHashes);
       }
 
       //batch push first zc (already in chain), C (unrelated) 
@@ -9779,17 +9777,12 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BatchZcChain_ConflictingChildren_Alrea
       bdvObj->broadcastZC({ rawTx1_B, rawTx1_C, rawTx3 });
       std::set<BinaryData> txHashes {tx1_C.getThisHash()};
 
-      std::set<BinaryData> scrAddrSet {
-         TestChain::scrAddrC,
-         TestChain::scrAddrE
-      };
-
       //wait on zc error for conflicting child
       pCallback->waitOnError(
          tx3.getThisHash(), ArmoryErrorCodes::ZcBroadcast_VerifyRejected);
 
       //wait on zc notifs
-      pCallback->waitOnZc(txHashes, scrAddrSet);
+      pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), txHashes);
 
       //check balances
       combineBalances = getBalances();
@@ -10079,19 +10072,11 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BatchZcChain_ConflictingChildren_Alrea
             tx2.getThisHash()
          };
 
-         std::set<BinaryData> scrAddrSet {
-            TestChain::scrAddrA,
-            TestChain::scrAddrB,
-            TestChain::scrAddrD,
-            TestChain::scrAddrE,
-            TestChain::scrAddrF
-         };
-
          //push the first zc and its child
          bdvObj->broadcastZC({ rawTx1_B, rawTx2 });
 
          //wait on notification
-         pCallback->waitOnZc(txHashes, scrAddrSet);
+         pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), txHashes);
       }
 
       //batch push first zc (already in chain), C (unrelated) 
@@ -10099,17 +10084,12 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BatchZcChain_ConflictingChildren_Alrea
       bdvObj->broadcastZC({ rawTx1_B, rawTx1_C, rawTx3 });
       std::set<BinaryData> txHashes {tx1_C.getThisHash()};
 
-      std::set<BinaryData> scrAddrSet {
-         TestChain::scrAddrC,
-         TestChain::scrAddrE
-      };
-
       //wait on zc error for conflicting child
       pCallback->waitOnError(
          tx3.getThisHash(), ArmoryErrorCodes::ZcBroadcast_VerifyRejected);
 
       //wait on zc notifs
-      pCallback->waitOnZc(txHashes, scrAddrSet);
+      pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), txHashes);
 
       //check balances
       combineBalances = getBalances();
@@ -10564,25 +10544,20 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BroadcastSameZC_ManyThreads)
       std::vector<unsigned> zcIds_skipped = {5, 6};
 
       std::vector<BinaryData> zcs;
-      std::set<BinaryData> addrSet;
       std::set<BinaryData> hashSet;
       for (const auto& id : zcIds) {
          zcs.push_back(rawTxVec[id - 1]);
          Tx tx(rawTxVec[id - 1]);
          hashSet.insert(tx.getThisHash());
-         auto localAddrSet = getAddressesForRawTx(tx);
-         addrSet.insert(localAddrSet.begin(), localAddrSet.end());
       }
 
       for (const auto& id : zcIds_skipped) {
          Tx tx(rawTxVec[id - 1]);
          hashSet.insert(tx.getThisHash());
-         auto localAddrSet = getAddressesForRawTx(tx);
-         addrSet.insert(localAddrSet.begin(), localAddrSet.end());
       }
 
       instance->bdvPtr_->broadcastZC(zcs);
-      instance->callbackPtr_->waitOnZc(hashSet, addrSet);
+      instance->callbackPtr_->waitOnZc(theBDMt_->bdm()->zeroConfCont(), hashSet);
 
       //wait on broadcast errors
       std::map<BinaryData, ArmoryErrorCodes> errorMap;
@@ -10602,25 +10577,22 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BroadcastSameZC_ManyThreads)
       std::vector<unsigned> zcIds_skipped = {1, 2, 3};
 
       std::vector<BinaryData> zcs;
-      std::set<BinaryData> addrSet;
       std::set<BinaryData> hashSet;
       for (const auto& id : zcIds) {
          zcs.push_back(rawTxVec[id - 1]);
          Tx tx(rawTxVec[id - 1]);
          hashSet.insert(tx.getThisHash());
          auto localAddrSet = getAddressesForRawTx(tx);
-         addrSet.insert(localAddrSet.begin(), localAddrSet.end());
       }
 
       for (const auto& id : zcIds_skipped) {
          Tx tx(rawTxVec[id - 1]);
          hashSet.insert(tx.getThisHash());
          auto localAddrSet = getAddressesForRawTx(tx);
-         addrSet.insert(localAddrSet.begin(), localAddrSet.end());
       }
 
       instance->bdvPtr_->broadcastZC(zcs);
-      instance->callbackPtr_->waitOnZc(hashSet, addrSet);
+      instance->callbackPtr_->waitOnZc(theBDMt_->bdm()->zeroConfCont(), hashSet);
 
       //wait on broadcast errors
       std::map<BinaryData, ArmoryErrorCodes> errorMap;
@@ -10645,24 +10617,19 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BroadcastSameZC_ManyThreads)
       std::vector<unsigned> zcIds = {1, 7};
       std::vector<unsigned> zcIds_skipped = {2, 3, 5, 6};
 
-      std::set<BinaryData> addrSet;
       std::set<BinaryData> hashSet;
       for (const auto& id : zcIds) {
          Tx tx(rawTxVec[id - 1]);
          hashSet.insert(tx.getThisHash());
-         auto localAddrSet = getAddressesForRawTx(tx);
-         addrSet.insert(localAddrSet.begin(), localAddrSet.end());
       }
 
       for (const auto& id : zcIds_skipped) {
          Tx tx(rawTxVec[id - 1]);
          hashSet.insert(tx.getThisHash());
-         auto localAddrSet = getAddressesForRawTx(tx);
-         addrSet.insert(localAddrSet.begin(), localAddrSet.end());
       }
 
       //wait on zc
-      instance->callbackPtr_->waitOnZc(hashSet, addrSet);
+      instance->callbackPtr_->waitOnZc(theBDMt_->bdm()->zeroConfCont(), hashSet);
 
       //wait on broadcast errors
       instance->callbackPtr_->waitOnError(
@@ -10682,25 +10649,20 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BroadcastSameZC_ManyThreads)
       std::vector<unsigned> zcIds_skipped = {1, 2, 3};
 
       std::vector<BinaryData> zcs;
-      std::set<BinaryData> addrSet;
       std::set<BinaryData> hashSet;
       for (const auto& id : zcIds) {
          zcs.push_back(rawTxVec[id - 1]);
          Tx tx(rawTxVec[id - 1]);
          hashSet.insert(tx.getThisHash());
-         auto localAddrSet = getAddressesForRawTx(tx);
-         addrSet.insert(localAddrSet.begin(), localAddrSet.end());
       }
 
       for (const auto& id : zcIds_skipped) {
          Tx tx(rawTxVec[id - 1]);
          hashSet.insert(tx.getThisHash());
-         auto localAddrSet = getAddressesForRawTx(tx);
-         addrSet.insert(localAddrSet.begin(), localAddrSet.end());
       }
 
       instance->bdvPtr_->broadcastZC(zcs);
-      instance->callbackPtr_->waitOnZc(hashSet, addrSet);
+      instance->callbackPtr_->waitOnZc(theBDMt_->bdm()->zeroConfCont(), hashSet);
 
       //wait on broadcast errors
       std::map<BinaryData, ArmoryErrorCodes> errorMap;
@@ -10725,24 +10687,19 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BroadcastSameZC_ManyThreads)
       std::vector<unsigned> zcIds = {5, 6};
       std::vector<unsigned> zcIds_skipped = {1, 2, 3};
 
-      std::set<BinaryData> addrSet;
       std::set<BinaryData> hashSet;
       for (const auto& id : zcIds) {
          Tx tx(rawTxVec[id - 1]);
          hashSet.insert(tx.getThisHash());
-         auto localAddrSet = getAddressesForRawTx(tx);
-         addrSet.insert(localAddrSet.begin(), localAddrSet.end());
       }
 
       for (const auto& id : zcIds_skipped) {
          Tx tx(rawTxVec[id - 1]);
          hashSet.insert(tx.getThisHash());
-         auto localAddrSet = getAddressesForRawTx(tx);
-         addrSet.insert(localAddrSet.begin(), localAddrSet.end());
       }
 
       //wait on zc
-      instance->callbackPtr_->waitOnZc(hashSet, addrSet);
+      instance->callbackPtr_->waitOnZc(theBDMt_->bdm()->zeroConfCont(), hashSet);
 
       //wait on broadcast errors
       std::map<BinaryData, ArmoryErrorCodes> errorMap;
@@ -10764,14 +10721,11 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BroadcastSameZC_ManyThreads)
       std::vector<unsigned> zcIds = {1, 2, 3, 5, 6};
 
       std::vector<BinaryData> zcs;
-      std::set<BinaryData> scrAddrSet;
       std::set<BinaryData> hashes;
       for (auto& id : zcIds) {
          zcs.push_back(rawTxVec[id - 1]);
          Tx tx(zcs.back());
          hashes.insert(tx.getThisHash());
-         auto localAddrSet = getAddressesForRawTx(tx);
-         scrAddrSet.insert(localAddrSet.begin(), localAddrSet.end());
       }
 
       mainInstance->bdvPtr_->broadcastZC(zcs);
@@ -10804,7 +10758,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BroadcastSameZC_ManyThreads)
       }
 
       //wait on zc
-      mainInstance->callbackPtr_->waitOnZc(hashes, scrAddrSet);
+      mainInstance->callbackPtr_->waitOnZc(theBDMt_->bdm()->zeroConfCont(), hashes);
 
       //wait on side jobs
       for (auto& thr : threads) {
@@ -11168,26 +11122,21 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BroadcastSameZC_ManyThreads_RPCFallbac
       std::vector<unsigned> zcIds_skipped = {5, 6};
 
       std::vector<BinaryData> zcs;
-      std::set<BinaryData> addrSet;
       std::set<BinaryData> hashSet;
       for (const auto& id : zcIds) {
          zcs.push_back(rawTxVec[id - 1]);
          Tx tx(rawTxVec[id - 1]);
          hashSet.insert(tx.getThisHash());
-         auto localAddrSet = getAddressesForRawTx(tx);
-         addrSet.insert(localAddrSet.begin(), localAddrSet.end());
       }
 
       for (const auto& id : zcIds_skipped) {
          Tx tx(rawTxVec[id - 1]);
          hashSet.insert(tx.getThisHash());
-         auto localAddrSet = getAddressesForRawTx(tx);
-         addrSet.insert(localAddrSet.begin(), localAddrSet.end());
       }
       instance->bdvPtr_->broadcastZC(zcs);
 
       //wait on zc
-      instance->callbackPtr_->waitOnZc(hashSet, addrSet);
+      instance->callbackPtr_->waitOnZc(theBDMt_->bdm()->zeroConfCont(), hashSet);
 
       //wait on broadcast errors
       std::map<BinaryData, ArmoryErrorCodes> errorMap;
@@ -11207,27 +11156,22 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BroadcastSameZC_ManyThreads_RPCFallbac
       std::vector<unsigned> zcIds_skipped = {1, 2, 3};
 
       std::vector<BinaryData> zcs;
-      std::set<BinaryData> addrSet;
       std::set<BinaryData> hashSet;
       for (const auto& id : zcIds) {
          zcs.push_back(rawTxVec[id - 1]);
          Tx tx(rawTxVec[id - 1]);
          hashSet.insert(tx.getThisHash());
-         auto localAddrSet = getAddressesForRawTx(tx);
-         addrSet.insert(localAddrSet.begin(), localAddrSet.end());
       }
 
       for (const auto& id : zcIds_skipped) {
          Tx tx(rawTxVec[id - 1]);
          hashSet.insert(tx.getThisHash());
-         auto localAddrSet = getAddressesForRawTx(tx);
-         addrSet.insert(localAddrSet.begin(), localAddrSet.end());
       }
 
       instance->bdvPtr_->broadcastZC(zcs);
 
       //wait on zc
-      instance->callbackPtr_->waitOnZc(hashSet, addrSet);
+      instance->callbackPtr_->waitOnZc(theBDMt_->bdm()->zeroConfCont(), hashSet);
 
       //wait on broadcast errors
       std::map<BinaryData, ArmoryErrorCodes> errorMap;
@@ -11252,24 +11196,19 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BroadcastSameZC_ManyThreads_RPCFallbac
       std::vector<unsigned> zcIds = {1, 7};
       std::vector<unsigned> zcIds_skipped = {2, 3, 5, 6};
 
-      std::set<BinaryData> addrSet;
       std::set<BinaryData> hashSet;
       for (const auto& id : zcIds) {
          Tx tx(rawTxVec[id - 1]);
          hashSet.insert(tx.getThisHash());
-         auto localAddrSet = getAddressesForRawTx(tx);
-         addrSet.insert(localAddrSet.begin(), localAddrSet.end());
       }
 
       for (const auto& id : zcIds_skipped) {
          Tx tx(rawTxVec[id - 1]);
          hashSet.insert(tx.getThisHash());
-         auto localAddrSet = getAddressesForRawTx(tx);
-         addrSet.insert(localAddrSet.begin(), localAddrSet.end());
       }
 
       //wait on zc
-      instance->callbackPtr_->waitOnZc_OutOfOrder(hashSet);
+      instance->callbackPtr_->waitOnZc_OutOfOrder(theBDMt_->bdm()->zeroConfCont(), hashSet);
 
       //wait on broadcast errors
       instance->callbackPtr_->waitOnError(
@@ -11289,25 +11228,20 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BroadcastSameZC_ManyThreads_RPCFallbac
       std::vector<unsigned> zcIds_skipped = {1, 2, 3};
 
       std::vector<BinaryData> zcs;
-      std::set<BinaryData> addrSet;
       std::set<BinaryData> hashSet;
       for (const auto& id : zcIds) {
          zcs.push_back(rawTxVec[id - 1]);
          Tx tx(rawTxVec[id - 1]);
          hashSet.insert(tx.getThisHash());
-         auto localAddrSet = getAddressesForRawTx(tx);
-         addrSet.insert(localAddrSet.begin(), localAddrSet.end());
       }
 
       for (const auto& id : zcIds_skipped) {
          Tx tx(rawTxVec[id - 1]);
          hashSet.insert(tx.getThisHash());
-         auto localAddrSet = getAddressesForRawTx(tx);
-         addrSet.insert(localAddrSet.begin(), localAddrSet.end());
       }
 
       instance->bdvPtr_->broadcastZC(zcs);
-      instance->callbackPtr_->waitOnZc(hashSet, addrSet);
+      instance->callbackPtr_->waitOnZc(theBDMt_->bdm()->zeroConfCont(), hashSet);
 
       //wait on broadcast errors
       std::map<BinaryData, ArmoryErrorCodes> errorMap;
@@ -11332,23 +11266,18 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BroadcastSameZC_ManyThreads_RPCFallbac
       std::vector<unsigned> zcIds = {5, 6};
       std::vector<unsigned> zcIds_skipped = {1, 2, 3};
 
-      std::set<BinaryData> addrSet;
       std::set<BinaryData> hashSet;
       for (const auto& id : zcIds) {
          Tx tx(rawTxVec[id - 1]);
          hashSet.insert(tx.getThisHash());
-         auto localAddrSet = getAddressesForRawTx(tx);
-         addrSet.insert(localAddrSet.begin(), localAddrSet.end());
       }
 
       for (const auto& id : zcIds_skipped) {
          Tx tx(rawTxVec[id - 1]);
          hashSet.insert(tx.getThisHash());
-         auto localAddrSet = getAddressesForRawTx(tx);
-         addrSet.insert(localAddrSet.begin(), localAddrSet.end());
       }
 
-      instance->callbackPtr_->waitOnZc(hashSet, addrSet);
+      instance->callbackPtr_->waitOnZc(theBDMt_->bdm()->zeroConfCont(), hashSet);
 
       //wait on broadcast errors
       std::map<BinaryData, ArmoryErrorCodes> errorMap;
@@ -11369,14 +11298,11 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BroadcastSameZC_ManyThreads_RPCFallbac
       std::vector<unsigned> zcIds = {1, 2, 3, 5, 6};
 
       std::vector<BinaryData> zcs;
-      std::set<BinaryData> scrAddrSet;
       std::set<BinaryData> hashes;
       for (auto& id : zcIds) {
          zcs.push_back(rawTxVec[id - 1]);
          Tx tx(zcs.back());
          hashes.insert(tx.getThisHash());
-         auto localAddrSet = getAddressesForRawTx(tx);
-         scrAddrSet.insert(localAddrSet.begin(), localAddrSet.end());
       }
       mainInstance->bdvPtr_->broadcastZC(zcs);
 
@@ -11409,7 +11335,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BroadcastSameZC_ManyThreads_RPCFallbac
       }
 
       //wait on zc
-      mainInstance->callbackPtr_->waitOnZc(hashes, scrAddrSet);
+      mainInstance->callbackPtr_->waitOnZc(theBDMt_->bdm()->zeroConfCont(), hashes);
 
       //wait on side jobs
       for (auto& thr : threads) {
@@ -11681,17 +11607,14 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BroadcastSameZC_RPCThenP2P)
       std::vector<unsigned> zcIds = {1, 2, 3};
 
       std::vector<BinaryData> zcs;
-      std::set<BinaryData> addrSet;
       std::set<BinaryData> hashSet;
       for (auto& id : zcIds) {
          zcs.push_back(rawTxVec[id - 1]);
          Tx tx(rawTxVec[id - 1]);
          hashSet.insert(tx.getThisHash());
-         auto localAddrSet = getAddressesForRawTx(tx);
-         addrSet.insert(localAddrSet.begin(), localAddrSet.end());
       }
       instance->bdvPtr_->broadcastZC(zcs);
-      instance->callbackPtr_->waitOnZc(hashSet, addrSet);
+      instance->callbackPtr_->waitOnZc(theBDMt_->bdm()->zeroConfCont(), hashSet);
 
       //wait on broadcast errors
       std::map<BinaryData, ArmoryErrorCodes> errorMap;
@@ -11707,18 +11630,15 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BroadcastSameZC_RPCThenP2P)
 
       //push 1-2
 
-      std::set<BinaryData> scrAddrSet1, scrAddrSet2;
       BinaryData hash1, hash2;
       {
          Tx tx(rawTxVec[0]);
          hash1 = tx.getThisHash();
-         scrAddrSet1 = getAddressesForRawTx(tx);
       }
 
       {
          Tx tx(rawTxVec[1]);
          hash2 = tx.getThisHash();
-         scrAddrSet2 = getAddressesForRawTx(tx);
       }
 
       mainInstance->bdvPtr_->broadcastThroughRPC(rawTxVec[0]);
@@ -11735,8 +11655,8 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, BroadcastSameZC_RPCThenP2P)
       threads.emplace_back(std::thread(case1, 0));
 
       //wait on zc
-      mainInstance->callbackPtr_->waitOnZc({hash1}, scrAddrSet1);
-      mainInstance->callbackPtr_->waitOnZc({hash2}, scrAddrSet2);
+      mainInstance->callbackPtr_->waitOnZc(theBDMt_->bdm()->zeroConfCont(), {hash1});
+      mainInstance->callbackPtr_->waitOnZc(theBDMt_->bdm()->zeroConfCont(), {hash2});
 
       //wait on side jobs
       for (auto& thr : threads) {

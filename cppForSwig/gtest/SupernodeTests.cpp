@@ -4373,14 +4373,7 @@ TEST_F(WebSocketTests, WebSocketStack_GetTxByHash)
       tx1.getThisHash(),
       tx2.getThisHash()
    };
-
-   std::set<BinaryData> zcAddresses{
-      TestChain::scrAddrA,
-      TestChain::scrAddrB,
-      TestChain::scrAddrC,
-      TestChain::scrAddrE,
-   };
-   pCallback->waitOnZc(zcHashes, zcAddresses);
+   pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), zcHashes);
 
    //grab them
    auto txBatch4 = getTxLbd(tx1.getThisHash()).get();
@@ -4453,18 +4446,8 @@ TEST_F(WebSocketTests, WebSocketStack_GetTxByHash)
    Tx tx4(rawTx4);
    zcHashes.clear();
 
-   set<BinaryData> zcAddresses1;
-   zcAddresses1.insert(TestChain::scrAddrA);
-   zcAddresses1.insert(TestChain::scrAddrC);
-   zcAddresses1.insert(TestChain::scrAddrE);
-
-   set<BinaryData> zcAddresses2;
-   zcAddresses2.insert(TestChain::scrAddrD);
-   zcAddresses2.insert(TestChain::scrAddrC);
-   zcAddresses2.insert(TestChain::scrAddrE);
-
-   pCallback->waitOnZc({tx3.getThisHash()}, zcAddresses1);
-   pCallback->waitOnZc({tx4.getThisHash()}, zcAddresses2);
+   pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), {tx3.getThisHash()});
+   pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), {tx4.getThisHash()});
 
    //grab them
    auto txBatch6 = getTxLbd(tx3.getThisHash()).get();

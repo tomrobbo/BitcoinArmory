@@ -253,7 +253,7 @@ struct Notification {
       continuePolling   @2 : Void;
       ready             @3 : Types.NewBlockNotif;
       newBlock          @4 : Types.NewBlockNotif;
-      zc                @5 : Types.TxLedger;
+      zc                @5 : List(Types.TxioPair);
       invalidatedZc     @6 : List(Data);
       refresh           @7 : Refresh;
       nodeStatus        @8 : Types.NodeStatus;

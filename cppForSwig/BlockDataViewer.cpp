@@ -48,7 +48,6 @@ BlockDataViewer::BlockDataViewer(std::shared_ptr<BlockDataManager> bdm) :
    db_ = bdm->getIFace();
    bc_ = bdm->blockchain();
    saf_ = bdm->getScrAddrFilter().get();
-   zc_ = bdm->zeroConfCont().get();
 
    groups_.push_back(WalletGroup(this, saf_));
    groups_.push_back(WalletGroup(this, saf_));
@@ -128,7 +127,7 @@ void BlockDataViewer::scanWallets(shared_ptr<BDV_Notification> action)
    bool refresh = false;
 
    ScanWalletStruct scanData;
-   vector<Ledgers::Entry>* leVecPtr = nullptr;
+   vector<TxIOPair>* txioVecPtr = nullptr;
 
    switch (action->actionType())
    {
@@ -189,7 +188,7 @@ void BlockDataViewer::scanWallets(shared_ptr<BDV_Notification> action)
                &zcAction->packet->purgePacket->invalidatedZcKeys;
          }
 
-         leVecPtr = &zcAction->leVec;
+         txioVecPtr = &zcAction->txios;
          prevTopBlock = startBlock = endBlock =
             blockchain().top()->getBlockHeight();
          break;
@@ -248,14 +247,9 @@ void BlockDataViewer::scanWallets(shared_ptr<BDV_Notification> action)
       sbIter++;
    }
 
-   if (leVecPtr != nullptr) {
-      for (auto& walletLedgerMap : scanData.saStruct_.zcLedgers_) {
-         for (auto& lePair : walletLedgerMap.second) {
-            leVecPtr->push_back(lePair.second);
-         }
-      }
+   if (txioVecPtr != nullptr) {
+      *txioVecPtr = std::move(scanData.saStruct_.txios);
    }
-
    lastScanned_ = endBlock;
 }
 
@@ -434,7 +428,7 @@ uint32_t BlockDataViewer::getTopBlockHeight() const
 
 ZeroConf::ZeroConfContainer* BlockDataViewer::zcContainer() const
 {
-   return zc_;
+   return zeroConfCont_.get();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -908,7 +902,7 @@ std::map<BinaryData, std::vector<Output>> BlockDataViewer::getAddressOutpoints(
 
    //zc outpoints, skip if zcCutoff is UINT32_MAX
    if (zcCutoff != UINT32_MAX) {
-      auto zcSnapshot = zc_->getSnapshot();
+      auto zcSnapshot = zeroConfCont_->getSnapshot();
       if (zcSnapshot == nullptr) {
          return outpointMap;
       }
@@ -1039,7 +1033,7 @@ std::vector<UTXO> BlockDataViewer::getUtxosForAddress(
    }
 
    //zc utxos
-   auto zcSnapshot = zc_->getSnapshot();
+   auto zcSnapshot = zeroConfCont_->getSnapshot();
    auto txioMapFromSS = zcSnapshot->getTxioMapForScrAddr(scrAddr);
 
    for (const auto& txiopair : txioMapFromSS) {
@@ -1077,7 +1071,7 @@ BlockDataViewer::getOutputsForOutpoints(
    const std::map<BinaryDataRef, std::set<unsigned>>& outpoints, bool withZc) const
 {
    std::vector<std::pair<StoredTxOut, BinaryDataRef>> result;
-   auto zcSS = !withZc ? nullptr : zc_->getSnapshot();
+   auto zcSS = !withZc ? nullptr : zeroConfCont_->getSnapshot();
 
    auto stxo_tx = db_->beginTransaction(DB_SELECT::STXO, LMDB::Mode::ReadOnly);
    for (auto& opSet : outpoints) {

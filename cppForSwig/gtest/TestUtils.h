@@ -129,7 +129,7 @@ namespace DBTestUtils
    void waitOnBDMError(std::shared_ptr<BlockDataManager>);
 
    std::tuple<BinaryData, unsigned> waitOnNewBlockSignal(Clients*, BdvIdKey);
-   std::pair<std::vector<DBClientClasses::LedgerEntry>, std::set<BinaryData>>
+   std::pair<std::vector<TxIOPair>, std::set<BinaryData>>
       waitOnNewZcSignal(Clients*, BdvIdKey);
    void waitOnWalletRefresh(Clients*, BdvIdKey, const std::string&);
    void triggerNewBlockNotification(BlockDataManagerThread*);
@@ -157,6 +157,7 @@ namespace DBTestUtils
       BinaryData privKey, bool compressed = false);
 
    Tx getTxByHash(Clients*, BdvIdKey, const BinaryData&);
+   Tx getTxByKey(Clients*, BdvIdKey, const BinaryData&);
    std::vector<UTXO> getUtxoForAddress(Clients*, BdvIdKey, const BinaryData&, bool);
 
    void addTxioToSsh(StoredScriptHistory&,
@@ -205,7 +206,7 @@ namespace DBTestUtils
       {
          BDMAction action;
          std::set<std::string> idSet;
-         std::set<BinaryData> addrSet;
+         std::vector<TxIOPair> txios;
          unsigned reorgHeight = UINT32_MAX;
          BDV_Error_Struct error;
          std::string requestID;
@@ -230,7 +231,6 @@ namespace DBTestUtils
                   actionDeque_.erase(iter);
                   return result;
                }
-
                ++iter;
             }
          }
@@ -240,42 +240,13 @@ namespace DBTestUtils
             if (action->action == actionType) {
                return action;
             }
-
             actionDeque_.push_back(std::move(action));
          }
       }
 
-      void run(BdmNotification bdmNotif)
-      {
-         auto notif = std::make_unique<BdmNotif>();
-         notif->action = bdmNotif.action;
-         notif->requestID = bdmNotif.requestID;
+      void run(BdmNotification);
 
-         if (bdmNotif.action == BDMAction_Refresh) {
-            notif->idSet = bdmNotif.ids;
-         } else if (bdmNotif.action == BDMAction_ZC) {
-            for (auto& le : bdmNotif.ledgers) {
-               notif->idSet.emplace(le->getTxHash().toHexStr());
-
-               auto addrVec = le->getScrAddrList();
-               for (auto& addrRef : addrVec) {
-                  notif->addrSet.insert(addrRef);
-               }
-            }
-         } else if (bdmNotif.action == BDMAction_NewBlock) {
-            if (bdmNotif.newBlock.isReorg()) {
-               notif->reorgHeight = bdmNotif.newBlock.getBranchHeight();
-            } else {
-               notif->reorgHeight = UINT32_MAX;
-            }
-         } else if (bdmNotif.action == BDMAction_BDV_Error) {
-            notif->error = bdmNotif.error;
-         }
-
-         actionStack_.push_back(move(notif));
-      }
-
-      void progress(BDMPhase, const std::vector<std::string> &,
+      void progress(BDMPhase, const std::vector<std::string>&,
          float ,unsigned , unsigned)
       {}
 
@@ -337,73 +308,11 @@ namespace DBTestUtils
       }
 
       void waitOnZc(
-         const std::set<BinaryData>& hashes,
-         std::set<BinaryData> scrAddrSet)
-      {
-         std::set<std::string> strHashes;
-         for (const auto& hash : hashes) {
-            strHashes.emplace(hash.toHexStr());
-         }
-         auto hashesToSee = strHashes;
-         std::set<BinaryData> addrSet;
-         while (true) {
-            auto action = waitOnNotification(BDMAction_ZC);
-
-            bool hasHashes = true;
-            for (const auto& txHash : action->idSet) {
-               if (strHashes.find(txHash) == strHashes.end()) {
-                  hasHashes = false;
-                  break;
-               } else {
-                  hashesToSee.erase(txHash);
-               }
-            }
-            if (!hasHashes) {
-               continue;
-            }
-
-            addrSet.insert(action->addrSet.begin(), action->addrSet.end());
-            if (addrSet == scrAddrSet && hashesToSee.empty()) {
-               break;
-            }
-         }
-      }
-
-      void waitOnZc_OutOfOrder(const std::set<BinaryData>& hashes)
-      {
-         std::set<std::string> hashSet;
-         std::set<std::string> strHashes;
-         for (const auto& hash : hashes) {
-            strHashes.emplace(hash.toHexStr());
-         }
-
-         for (auto& pastNotif : zcNotifVec_) {
-            for (auto& txHash : pastNotif.idSet) {
-               if (strHashes.find(txHash) != strHashes.end()) {
-                  hashSet.insert(txHash);
-               }
-            }
-
-            if (hashSet == strHashes) {
-               return;
-            }
-         }
-
-         while (true) {
-            auto action = waitOnNotification(BDMAction_ZC);
-            zcNotifVec_.push_back(*action);
-
-            for (auto& txHash : action->idSet) {
-               if (strHashes.find(txHash) != strHashes.end()) {
-                  hashSet.insert(txHash);
-               }
-            }
-
-            if (hashSet == strHashes) {
-               break;
-            }
-         }
-      }
+         std::shared_ptr<Armory::ZeroConf::ZeroConfContainer>,
+         const std::set<BinaryData>&);
+      void waitOnZc_OutOfOrder(
+         std::shared_ptr<Armory::ZeroConf::ZeroConfContainer>,
+         const std::set<BinaryData>&);
 
       void waitOnError(const BinaryData& hash, ArmoryErrorCodes errorCode)
       {

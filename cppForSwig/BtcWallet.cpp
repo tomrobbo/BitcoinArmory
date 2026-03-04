@@ -507,19 +507,8 @@ bool BtcWallet::scanWallet(ScanWalletStruct& scanInfo, int32_t updateID)
       //top block didnt change, only have to check for new ZC
       if (bdvPtr_->isZcEnabled()) {
          auto zcTxios = scanWalletZeroConf(scanInfo, updateID);
-         if (scanInfo.saStruct_.newKeysAndScrAddr_ != nullptr && !zcTxios.empty()) {
-            auto ledgerMap = updateWalletLedgersFromTxio(
-               zcTxios, scanInfo.endBlock_ + 1, UINT32_MAX);
-
-            for (const auto& zckey : *scanInfo.saStruct_.newKeysAndScrAddr_) {
-               auto iter = ledgerMap.find(zckey.first);
-               if (iter == ledgerMap.end()) {
-                  continue;
-               }
-               auto& walletZcLedgers =
-                  scanInfo.saStruct_.zcLedgers_[walletID()];
-               walletZcLedgers.insert(*iter);
-            }
+         for (auto& zcTxio : zcTxios) {
+            scanInfo.saStruct_.txios.emplace_back(std::move(zcTxio.second));
          }
          balance_ = getFullBalanceFromDB(updateID);
          updateID_ = updateID;

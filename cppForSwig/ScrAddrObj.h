@@ -62,7 +62,7 @@ struct ScanAddressStruct
    std::shared_ptr<const Armory::ZeroConf::MempoolSnapshot> zcState_;
 
    std::map<BinaryData, std::set<BinaryData>> scrAddrToTxioKeys_;
-   std::map<std::string, std::map<BinaryData, Armory::Ledgers::Entry>> zcLedgers_;
+   std::vector<TxIOPair> txios;
    std::shared_ptr<std::map<BinaryData,
       std::shared_ptr<std::set<BinaryDataRef>>>> newKeysAndScrAddr_;
 };

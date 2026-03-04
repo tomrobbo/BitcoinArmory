@@ -126,6 +126,27 @@ namespace {
       }
    }
 
+   void txioToCapn(const TxIOPair& txio,
+      Codec::Types::TxioPair::Builder& capnTxio)
+   {
+      capnTxio.setAmount(txio.getValue());
+
+      auto outputKey = txio.getDBKeyOfOutput();
+      capnTxio.setTxOut(capnp::Data::Builder(
+         (uint8_t*)outputKey.getPtr(), outputKey.getSize()));
+
+      if (txio.hasTxIn()) {
+         auto inputKey = txio.getDBKeyOfInput();
+         capnTxio.setTxIn(capnp::Data::Builder(
+            (uint8_t*)inputKey.getPtr(), inputKey.getSize()));
+      }
+
+      capnTxio.setFromSelf(txio.isTxOutFromSelf());
+      capnTxio.setCoinbase(txio.isFromCoinbase());
+      capnTxio.setRbf(txio.isRBF());
+      capnTxio.setMultisig(txio.isMultisig());
+   }
+
    ////
    struct ReplyBuilder
    {
@@ -261,6 +282,7 @@ namespace {
          case BdvRequest::GET_TXS_BY_KEY:
          {
             auto txKeyList = request.getGetTxsByKey();
+            auto mempool = bdv->zcContainer()->getSnapshot();
             std::vector<Tx> results;
             results.reserve(txKeyList.size());
             for (auto txKey : txKeyList) {
@@ -270,6 +292,10 @@ namespace {
                   results.emplace_back(std::move(tx));
                } catch (const std::exception&) {
                   //could not get the tx, ignore
+                  auto tx = mempool->getTxByKey(keyBdr);
+                  if (tx != nullptr) {
+                     results.emplace_back(tx->getTxObj());
+                  }
                   continue;
                }
             }
@@ -431,23 +457,7 @@ namespace {
             unsigned i=0;
             for (const auto& txioPair : txioMap) {
                auto capnTxio = txiosReply[i++];
-               const auto& txio = txioPair.second;
-               capnTxio.setAmount(txio.getValue());
-
-               auto outputKey = txio.getDBKeyOfOutput();
-               capnTxio.setTxOut(capnp::Data::Builder(
-                  (uint8_t*)outputKey.getPtr(), outputKey.getSize()));
-
-               if (txio.hasTxIn()) {
-                  auto inputKey = txio.getDBKeyOfInput();
-                  capnTxio.setTxIn(capnp::Data::Builder(
-                     (uint8_t*)inputKey.getPtr(), inputKey.getSize()));
-               }
-
-               capnTxio.setFromSelf(txio.isTxOutFromSelf());
-               capnTxio.setCoinbase(txio.isFromCoinbase());
-               capnTxio.setRbf(txio.isRBF());
-               capnTxio.setMultisig(txio.isMultisig());
+               txioToCapn(txioPair.second, capnTxio);
             }
             return builder;
          }
@@ -1111,6 +1121,16 @@ BDV_Server_Object::BDV_Server_Object(
    setup();
 }
 
+BDV_Server_Object::~BDV_Server_Object()
+{
+   haltThreads();
+}
+
+BdvIdKey BDV_Server_Object::getID() const
+{
+   return bdvID_;
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 void BDV_Server_Object::startThreads()
 {
@@ -1316,8 +1336,12 @@ void BDV_Server_Object::processNotification(
          //new zc legder entries
          auto notifList = notifs.initNotifs(notifCount);
          auto notif = notifList[0];
-         auto zcNotif = notif.initZc();
-         historyPageToCapn(payload->leVec, zcNotif);
+         auto zcNotif = notif.initZc(payload->txios.size());
+         unsigned i = 0;
+         for (const auto& txio : payload->txios) {
+            auto capnTxio = zcNotif[i++];
+            txioToCapn(txio, capnTxio);
+         }
 
          if (notifCount == 2) {
             //invalidated zc hashes

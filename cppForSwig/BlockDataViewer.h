@@ -223,7 +223,6 @@ protected:
    std::shared_ptr<BlockDataManager> bdm_;
    LMDBBlockDatabase* db_;
    std::shared_ptr<Blockchain> bc_;
-   Armory::ZeroConf::ZeroConfContainer* zc_;
    ScrAddrFilter* saf_;
 
    std::vector<WalletGroup> groups_;

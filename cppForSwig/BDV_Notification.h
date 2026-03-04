@@ -74,7 +74,7 @@ struct BDV_Notification_NewBlock : public BDV_Notification
 struct BDV_Notification_ZC : public BDV_Notification
 {
    const std::shared_ptr<Armory::ZeroConf::ZcNotificationPacket> packet;
-   std::vector<Armory::Ledgers::Entry> leVec;
+   std::vector<TxIOPair> txios;
 
    BDV_Notification_ZC(std::shared_ptr<Armory::ZeroConf::ZcNotificationPacket>);
    BDV_Action actionType(void) const override;

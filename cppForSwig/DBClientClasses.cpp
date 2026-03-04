@@ -20,43 +20,6 @@ using namespace DBClientClasses;
 using namespace Armory;
 
 namespace {
-   std::vector<std::shared_ptr<LedgerEntry>> capnToLedgers(
-      Armory::Codec::Types::TxLedger::Reader& page)
-   {
-      std::vector<std::shared_ptr<LedgerEntry>> result;
-      auto ledgers = page.getLedgers();
-      result.reserve(ledgers.size());
-
-      for (const auto& ledger : ledgers) {
-         //tx hash
-         auto capnTxHash = ledger.getTxHash();
-         auto hashBytes = capnTxHash.asBytes();
-         BinaryData txHash(hashBytes.begin(), hashBytes.end());
-
-         //scrAddr list
-         auto capnScrAddrs = ledger.getScrAddrs();
-         std::vector<BinaryData> scrAddrList;
-         scrAddrList.reserve(capnScrAddrs.size());
-         for (const auto& scrAddr : capnScrAddrs) {
-            auto asBytes = scrAddr.asBytes();
-            scrAddrList.emplace_back(BinaryData(
-               scrAddr.begin(), scrAddr.end()
-            ));
-         }
-
-         //instantiate ledger entry
-         result.emplace_back(std::make_shared<LedgerEntry>(
-            ledger.getWalletId(), ledger.getBalance(), ledger.getTxHeight(),
-            txHash, ledger.getTxOutIndex(), ledger.getTxTime(),
-            ledger.getIsCoinbase(), ledger.getIsSTS(),
-            ledger.getIsChangeBack(), ledger.getIsOptInRBF(),
-            ledger.getIsChainedZC(), ledger.getIsWitness(),
-            scrAddrList
-         ));
-      }
-      return result;
-   }
-
    std::shared_ptr<NodeStatus> capnToNodeStatus(
       Armory::Codec::Types::NodeStatus::Reader nodeStatus)
    {
@@ -85,6 +48,33 @@ namespace {
 
          return result;
       }
+   }
+
+   std::vector<TxIOPair> capnToTxios(
+      const capnp::List<Codec::Types::TxioPair, capnp::Kind::STRUCT>::Reader& capnTxios)
+   {
+      std::vector<TxIOPair> txios;
+      txios.reserve(capnTxios.size());
+
+      for (auto capnTxio : capnTxios) {
+         auto capnTxOut = capnTxio.getTxOut();
+         BinaryData txOutKey(capnTxOut.begin(), capnTxOut.end());
+         auto amount = capnTxio.getAmount();
+         TxIOPair txio{txOutKey, amount};
+
+         if (capnTxio.hasTxIn()) {
+            auto capnTxIn = capnTxio.getTxIn();
+            BinaryData txInKey(capnTxIn.begin(), capnTxIn.end());
+            txio.setTxIn(txInKey);
+         }
+
+         txio.setTxOutFromSelf(capnTxio.getFromSelf());
+         txio.setFromCoinbase(capnTxio.getCoinbase());
+         txio.setRBF(capnTxio.getRbf());
+         txio.setMultisig(capnTxio.getMultisig());
+         txios.emplace_back(std::move(txio));
+      }
+      return txios;
    }
 }
 
@@ -269,9 +259,9 @@ bool RemoteCallback::processNotifications(
 
          case BDV::Notification::Which::ZC:
          {
-            auto page = notif.getZc();
+            auto zcTxios = notif.getZc();
             BdmNotification bdmNotif(BDMAction_ZC);
-            bdmNotif.ledgers = capnToLedgers(page);
+            bdmNotif.txios = capnToTxios(zcTxios);
             bdmNotif.requestID = notif.getRequestId();
 
             run(std::move(bdmNotif));

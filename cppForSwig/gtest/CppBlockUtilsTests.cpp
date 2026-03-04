@@ -2172,14 +2172,11 @@ TEST_F(WebSocketTests_1Way, WebSocketStack)
    zcVec.push_back(rawZC, 14000000);
    zcVec.push_back(rawLBZC, 14100000);
 
-   std::vector<std::string> hashVec;
    auto hash1 = BtcUtils::getHash256(rawZC);
    auto hash2 = BtcUtils::getHash256(rawLBZC);
-   hashVec.push_back(hash1.toHexStr());
-   hashVec.push_back(hash2.toHexStr());
 
    DBTestUtils::pushNewZc(theBDMt_, zcVec);
-   pCallback->waitOnManySignals(BDMAction_ZC, hashVec);
+   pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), {hash1, hash2});
 
    w1AddrBalances = DBTestUtils::getAddrBalancesFromDB(bdvObj, "wallet1");
    balanceVec = w1AddrBalances[TestChain::scrAddrA];
@@ -2840,7 +2837,7 @@ TEST_F(WebSocketTests_2Way, WebSocketStack_ManyZC)
       auto ZCHash = BtcUtils::getHash256(rawTx);
       allZcHash.push_back(ZCHash);
       DBTestUtils::pushNewZc(theBDMt_, zcVec);
-      pCallback->waitOnSignal(BDMAction_ZC, ZCHash.toHexStr());
+      pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), {ZCHash});
    }
 
    //grab ledger, check all zc hash are in there
