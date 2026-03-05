@@ -566,6 +566,7 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
       actExportTx    = self.createAction(self.tr('&Export Transactions...'), exportTx)
       actSettings    = self.createAction(self.tr('&Settings...'), self.openSettings)
       actSetupMgr    = self.createAction(self.tr('S&etup Manager...'), self.openSetupManager)
+      actSetupMgr.setEnabled(False)
       actMinimApp    = self.createAction(self.tr('&Minimize Armory'), self.minimizeArmory)
       actExportLog   = self.createAction(self.tr('Export &Log File...'), self.exportLogFile)
       actCloseApp    = self.createAction(self.tr('&Quit Armory'), self.closeForReal)
