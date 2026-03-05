@@ -83,6 +83,7 @@ namespace Armory
             std::vector<TxIOPair>&, uint32_t);
          void updateZC(std::shared_ptr<AsyncClient::BlockDataViewer>,
             const std::vector<TxIOPair>&);
+         std::vector<UTXO> getZcUTXOs(bool, const AddressFilter&) const;
 
       public:
          TxIOCache(void);
@@ -94,7 +95,8 @@ namespace Armory
          CacheResolveResult resolveZC(const AddressFilter&) const;
          std::map<BinaryData, std::set<BinaryData>> getAddressBook(
             const AddressFilter&) const;
-         std::vector<UTXO> getUTXOs(const AddressFilter&) const;
+         std::vector<UTXO> getUTXOs(uint64_t, bool, bool,
+            const AddressFilter&) const;
          std::map<BinaryData, TxIOPair> filterTxios(
             const std::vector<TxIOPair>&, const AddressFilter&) const;
       };

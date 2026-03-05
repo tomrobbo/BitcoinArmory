@@ -355,8 +355,7 @@ namespace Armory
       public:
          CoinSelectionInstance(std::shared_ptr<Wallets::AssetWallet>,
             std::function<std::vector<UTXO>(uint64_t)>,
-            const std::vector<AddressBookEntry>& addrBook,
-            uint64_t spendableBalance, unsigned topHeight);
+            const std::vector<AddressBookEntry>&, uint64_t, unsigned);
 
          unsigned addRecipient(const BinaryData&, uint64_t);
          void updateRecipient(unsigned, const BinaryData&, uint64_t);

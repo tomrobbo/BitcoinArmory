@@ -497,7 +497,7 @@ std::filesystem::path WalletContainer::forkWatchingOnly(
 ////////////////////////////////////////////////////////////////////////////////
 std::vector<UTXO> WalletContainer::getUTXOs(uint64_t val, bool zc, bool rbf)
 {
-   return cache_->getUTXOs(
+   return cache_->getUTXOs(val, zc, rbf,
       [this](const BinaryData& scrAddr)->bool
       { return this->hasScrAddr(scrAddr); }
    );

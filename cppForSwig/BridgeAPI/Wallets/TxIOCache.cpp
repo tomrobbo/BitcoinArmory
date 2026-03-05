@@ -374,8 +374,61 @@ std::map<BinaryData, std::set<BinaryData>> TxIOCache::getAddressBook(
    return result;
 }
 
-std::vector<UTXO> TxIOCache::getUTXOs(const AddressFilter& filter) const
+std::vector<UTXO> TxIOCache::getZcUTXOs(bool rbf,
+   const AddressFilter& filter) const
 {
+   std::vector<UTXO> result;
+   auto addTxio = [&result, filter](const TxIOPair& txio, const Tx& tx)
+   {
+      auto scrAddr = tx.getScrAddrForTxOut(txio.getIndexOfOutput());
+      if (!filter(scrAddr)) {
+         return;
+      }
+
+      auto txOut = tx.getTxOutCopy(txio.getIndexOfOutput());
+      result.emplace_back(UTXO{txio.getValue(),
+         tx.getTxHeight(), tx.getTxIndex(), txio.getIndexOfOutput(),
+         tx.getThisHash(), txOut.getScript()
+      });
+   };
+
+   for (const auto& txio : zcTxios_) {
+      const auto& txKey = txio.second.getTxRefOfOutput().getDBKey();
+
+      if (rbf) {
+         //for rbf outputs, we consider all outputs that are RBF flagged
+         if (txio.second.isRBF()) {
+            const auto& tx = dbCache_->txMap.at(txKey);
+            addTxio(txio.second, tx);
+         }
+         continue;
+      }
+
+      if (txio.second.hasTxIn()) {
+         //for zc utxos, we ignore spent ones
+         continue;
+      }
+
+      if (!txio.second.hasTxOutZC()) {
+         //and the output has to be zc as well
+         continue;
+      }
+
+      const auto& tx = dbCache_->txMap.at(txKey);
+      addTxio(txio.second, tx);
+   }
+   return result;
+}
+
+std::vector<UTXO> TxIOCache::getUTXOs(
+   uint64_t value, bool zc, bool rbf,
+   const AddressFilter& filter) const
+{
+   if (zc || rbf) {
+      return getZcUTXOs(rbf, filter);
+   }
+
+   uint64_t total = 0;
    std::set<BinaryData> spentKeys;
    for (const auto& txio : spentTxios_) {
       auto outputKey = txio.second.getDBKeyOfOutput();
@@ -412,6 +465,10 @@ std::vector<UTXO> TxIOCache::getUTXOs(const AddressFilter& filter) const
          tx.getTxHeight(), tx.getTxIndex(), txio.second.getIndexOfOutput(),
          tx.getThisHash(), txOut.getScript()
       });
+      total += txio.second.getValue();
+      if (total >= value) {
+         break;
+      }
    }
    return result;
 }

@@ -573,9 +573,9 @@ uint64_t NodeUnitTest::getFeeForTx(const Tx& tx) const
       auto txin = tx.getTxInCopy(i);
       auto outpoint = txin.getOutPoint();
 
-      StoredTxOut stxo;
-      iface_->getStoredTxOut(
-         stxo, outpoint.getTxHash(), outpoint.getTxOutIndex());
+      StoredTx stx;
+      iface_->getStoredTx(stx, outpoint.getTxHash());
+      auto stxo = stx.initAndGetStxoByIndex(outpoint.getTxOutIndex());
 
       if (stxo.isInitialized()) {
          inputsVal += stxo.getValue();

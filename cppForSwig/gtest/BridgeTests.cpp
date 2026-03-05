@@ -1254,7 +1254,8 @@ namespace {
 
    const std::vector<UTXO> getUTXOs(
       std::shared_ptr<Bridge::CppBridge> bridge,
-      const std::string& walletId, const std::string& accountId)
+      const std::string& walletId, const std::string& accountId,
+      bool rbf)
    {
       auto refId = rand();
       capnp::MallocMessageBuilder message;
@@ -1265,7 +1266,11 @@ namespace {
       req.setAccountId(accountId);
 
       auto utxoReq = req.initGetUtxos();
-      utxoReq.setValue(UINT32_MAX);
+      if (!rbf) {
+         utxoReq.setValue(UINT64_MAX);
+      } else {
+         utxoReq.setRbf();
+      }
       auto rawReq = serializeCapnp(message);
       pushRequest(bridge, rawReq);
 
@@ -1423,6 +1428,52 @@ namespace {
       auto selectReq = req.initSelectUtxos();
       selectReq.setFlags(flags);
       selectReq.setFeeByte(feeByte);
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //process reply
+      auto resp = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+         resp->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return false;
+      }
+      auto reply = fromBridge.getReply();
+      return reply.getSuccess();
+   }
+
+   bool processCustomUtxoList(std::shared_ptr<Bridge::CppBridge> bridge,
+      const std::string& csId, const std::vector<UTXO>& utxos,
+      uint32_t flags, uint64_t flatFee)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initCoinSelection();
+      req.setId(csId);
+      auto customReq = req.initProcessCustomUtxoList();
+      customReq.setFlatFee(flatFee);
+      customReq.setFlags(flags);
+
+      auto capnUtxos = customReq.initUtxos(utxos.size());
+      for (unsigned i = 0; i < utxos.size(); i++) {
+         auto capnUtxo = capnUtxos[i];
+         const auto& utxo = utxos[i];
+
+         capnUtxo.setValue(utxo.getValue());
+         capnUtxo.setTxHeight(utxo.getHeight());
+         capnUtxo.setTxIndex(utxo.getTxIndex());
+         capnUtxo.setTxOutIndex(utxo.getTxOutIndex());
+         capnUtxo.setTxHash(capnp::Data::Builder(
+            (uint8_t*)utxo.getTxHash().getPtr(), utxo.getTxHash().getSize()));
+         capnUtxo.setScript(capnp::Data::Builder(
+            (uint8_t*)utxo.getScript().getPtr(), utxo.getScript().getSize()));
+      }
       auto rawReq = serializeCapnp(message);
       pushRequest(bridge, rawReq);
 
@@ -2001,8 +2052,9 @@ namespace {
    BinaryData createAndSignTx(
       std::shared_ptr<Bridge::CppBridge> bridge,
       const std::string& walletId, const std::string& accountId,
+      const std::vector<UTXO>& utxos,
       const std::map<std::string, uint64_t>& recipients,
-      const BinaryData& changeScrAddr, float feeByte,
+      const BinaryData& changeScrAddr, uint64_t fee, bool rbf,
       const std::string& passphrase)
    {
       /* coin selection leg */
@@ -2032,8 +2084,15 @@ namespace {
       }
 
       //get coin selection
-      if (!selectUtxos(bridge, csId, 0, feeByte)) {
-         throw std::runtime_error("selectUtxos error");
+      if (utxos.empty()) {
+         if (!selectUtxos(bridge, csId, 0, (float)fee)) {
+            throw std::runtime_error("selectUtxos error");
+         }
+      } else {
+         if (!processCustomUtxoList(bridge, csId, utxos,
+            rbf ? USE_FULL_CUSTOM_LIST : 0, fee)) {
+            throw std::runtime_error("processCustomUtxoList error");
+         }
       }
 
       auto utxoSelection = getUtxoSelection(bridge, csId);
@@ -2087,10 +2146,19 @@ namespace {
       }
 
       //set inputs
+      uint32_t sequence = UINT32_MAX;
+      if (rbf) {
+         sequence -= 2;
+         if (!utxos.empty()) {
+            //rbf and a set of utxos, we are probably replacing a tx,
+            //sequence should be lower than original zc
+            --sequence;
+         }
+      }
       for (const auto& utxo : utxoSelection) {
          if (!addSpenderByOutpoint(
             bridge, signerId,
-            utxo.getTxHash(), utxo.getTxOutIndex(), 0xFFFFFFFF)) {
+            utxo.getTxHash(), utxo.getTxOutIndex(), sequence)) {
             throw std::runtime_error("failed to add spender");
          }
          if (!populateUtxo(
@@ -2200,6 +2268,8 @@ namespace {
 
       auto notif = fromBridge.getNotification();
       if (notif.which() != Codec::Bridge::Notification::ZERO_CONFS) {
+         auto error = notif.getError();
+         std::cout << std::string(error) << std::endl;
          throw std::runtime_error("not a zc");
       }
       return capnToLedgers(notif.getZeroConfs());
@@ -7080,7 +7150,7 @@ TEST_F(BridgeLocalTests, getUTXOs)
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //grab BCDE utxos
-   auto utxos = getUTXOs(bridge_, walletId_BCDE_, accountId_BCDE_);
+   auto utxos = getUTXOs(bridge_, walletId_BCDE_, accountId_BCDE_, false);
    ASSERT_EQ(utxos.size(), 8);
 
    //Block 4, tx 2, output 0, 5 COINS
@@ -7148,7 +7218,7 @@ TEST_F(BridgeLocalTests, getUTXOs)
    ASSERT_EQ(utxo.getTxHash(), TestChain::hash31);
 
    //grab AFLB utxos
-   utxos = getUTXOs(bridge_, walletId_AFLB_, accountId_AFLB_);
+   utxos = getUTXOs(bridge_, walletId_AFLB_, accountId_AFLB_, false);
    ASSERT_EQ(utxos.size(), 5);
 
    //Block 4, tx 1, output 1, 5 COINS
@@ -7241,8 +7311,8 @@ TEST_F(BridgeLocalTests, ZeroConf)
    try {
       signedTx = createAndSignTx(bridge_,
          walletId_BCDE_, accountId_BCDE_,
-         {{ recipientAddr, 11 * COIN }},
-         TestChain::scrAddrA, 2.0,
+         {}, {{ recipientAddr, 11 * COIN }},
+         TestChain::scrAddrA, 2, false,
          "privPass1"
       );
    } catch (const std::exception& e) {
@@ -7312,6 +7382,200 @@ TEST_F(BridgeLocalTests, ZeroConf)
    ASSERT_EQ(lastEntry.getBlockNum(), 6);
 }
 
+TEST_F(BridgeLocalTests, ZeroConf_Replace)
+{
+   loadWallets({walletId_BCDE_});
+
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
+   WebSocketServer::initAuthPeers({
+      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+   WebSocketServer::start(theBDMt_->bdm(), true);
+
+   ASSERT_TRUE(connectToDb(bridge_));
+   ASSERT_TRUE(registerWallets(bridge_));
+
+   //start db, go online and wait on ready notif
+   theBDMt_->start(Config::DBSettings::initMode());
+   ASSERT_EQ(goOnline(bridge_), 5);
+
+   //check balances
+   auto balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   checkBalances(balances, 5, false);
+
+   //check ledgers
+   auto delegateId = getLedgerDelegateId(bridge_);
+   ASSERT_FALSE(delegateId.empty());
+
+   auto pageCount = getLedgersPageCount(bridge_, delegateId);
+   EXPECT_EQ(pageCount, 1);
+
+   auto ledgers = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgers.size(), 15);
+
+   for (unsigned i = 0; i < ledgers.size(); i++) {
+      EXPECT_TRUE(checkLedgers(ledgers[i], TestChain::ledgersBCDE[i])) << i;
+   }
+
+   //create recipient address
+   auto recipientPrivKey = Cryptography::ECDSA::createNewPrivateKey();
+   auto recipientPubKey = Cryptography::ECDSA::computePublicKey(
+      recipientPrivKey, true);
+   auto hash160 =  BtcUtils::getHash160(recipientPubKey);
+   auto recipientAddr = BtcUtils::scrAddrToSegWitAddress(hash160);
+
+   //get signed tx
+   BinaryData signedTx;
+   try {
+      signedTx = createAndSignTx(bridge_,
+         walletId_BCDE_, accountId_BCDE_,
+         {}, {{ recipientAddr, 11 * COIN }},
+         TestChain::scrAddrA, 2, true,
+         "privPass1"
+      );
+   } catch (const std::exception& e) {
+      ASSERT_TRUE(false) << e.what();
+   }
+   ASSERT_FALSE(signedTx.empty());
+
+   //broadcast
+   broadcastTx(bridge_, signedTx);
+
+   //wait on zc notif
+   Tx tx(signedTx);
+   try {
+      auto zcLedgers = waitOnZc();
+      ASSERT_EQ(zcLedgers.size(), 1);
+      ASSERT_EQ(zcLedgers[0].getTxHash(), tx.getThisHash());
+      EXPECT_EQ(zcLedgers[0].getValue(), -20 * (int64_t)COIN);
+      ASSERT_EQ(zcLedgers[0].getBlockNum(), UINT32_MAX);
+   } catch (const std::exception&) {
+      ASSERT_TRUE(false);
+   }
+
+   //check balances
+   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   auto addrBBal = balances.at(TestChain::scrAddrB);
+   auto testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
+   EXPECT_EQ(addrBBal[0], testAddrBBal[0] - (20 * COIN));
+   EXPECT_EQ(addrBBal[1], testAddrBBal[1] - (20 * COIN));
+   EXPECT_EQ(addrBBal[2], testAddrBBal[2] - (20 * COIN));
+
+   //check ledgers
+   ledgers = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgers.size(), 16);
+   for (unsigned i = 0; i < 15; i++) {
+      EXPECT_TRUE(checkLedgers(ledgers[i+1], TestChain::ledgersBCDE[i])) << i;
+   }
+
+   auto lastEntry = ledgers[0];
+   ASSERT_EQ(lastEntry.getTxHash(), tx.getThisHash());
+   EXPECT_EQ(lastEntry.getValue(), -20 * (int64_t)COIN);
+   ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
+
+   //get rbf UTXOs
+   auto rbfUtxos = getUTXOs(bridge_, walletId_BCDE_, accountId_BCDE_, true);
+   ASSERT_EQ(rbfUtxos.size(), 1);
+
+   /* RBF fee
+      There is no actual network requirement for this value. The test suite's
+      mocked node rejects RBFs with less than 100000000 satoshis in fees
+      as convention.
+      This has no bearing on mainnet operations and only serves as an easy
+      trick for test purposes. Do not set actual RBF fee to such ridiculous
+      amount on the mainnet!
+   */
+   uint64_t rbfFee = 110000000;
+   BinaryData signedTxRbf;
+   try {
+      //respend the output
+      signedTxRbf = createAndSignTx(bridge_,
+         walletId_BCDE_, accountId_BCDE_,
+         rbfUtxos, {{ recipientAddr, 13 * COIN }},
+         TestChain::scrAddrE, rbfFee, true,
+         "privPass1"
+      );
+   } catch (const std::exception& e) {
+      ASSERT_TRUE(false) << e.what();
+   }
+   ASSERT_FALSE(signedTxRbf.empty());
+
+   //broadcast
+   broadcastTx(bridge_, signedTxRbf);
+
+   //wait on zc notif
+   int64_t changeVal = 7 * COIN - rbfFee;
+   int64_t totalDiff = -20 * (int64_t)COIN + changeVal;
+   Tx txRbf(signedTxRbf);
+   try {
+      auto zcLedgers = waitOnZc();
+      ASSERT_EQ(zcLedgers.size(), 1);
+      ASSERT_EQ(zcLedgers[0].getTxHash(), txRbf.getThisHash());
+      EXPECT_EQ(zcLedgers[0].getValue(), totalDiff);
+      ASSERT_EQ(zcLedgers[0].getBlockNum(), UINT32_MAX);
+   } catch (const std::exception& e) {
+      ASSERT_TRUE(false) << e.what();
+   }
+
+   //check balances
+   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   addrBBal = balances.at(TestChain::scrAddrB);
+   testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
+   EXPECT_EQ(addrBBal[0], testAddrBBal[0] -20 * (int64_t)COIN);
+   EXPECT_EQ(addrBBal[1], testAddrBBal[1] -20 * (int64_t)COIN);
+   EXPECT_EQ(addrBBal[2], testAddrBBal[2] -20 * (int64_t)COIN);
+
+   addrBBal = balances.at(TestChain::scrAddrE);
+   testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrE);
+   EXPECT_EQ(addrBBal[0], testAddrBBal[0] + changeVal);
+   EXPECT_EQ(addrBBal[1], testAddrBBal[1]);
+   EXPECT_EQ(addrBBal[2], testAddrBBal[2] + changeVal);
+
+   //check ledgers
+   ledgers = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgers.size(), 16);
+   for (unsigned i = 0; i < 15; i++) {
+      EXPECT_TRUE(checkLedgers(ledgers[i+1], TestChain::ledgersBCDE[i])) << i;
+   }
+
+   lastEntry = ledgers[0];
+   ASSERT_EQ(lastEntry.getTxHash(), txRbf.getThisHash());
+   EXPECT_EQ(lastEntry.getValue(), totalDiff);
+   ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
+
+   /* mine the rbf */
+   DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrA, 1);
+   ASSERT_EQ(waitOnNewBlock(), 6);
+
+   //check balances again
+   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   addrBBal = balances.at(TestChain::scrAddrB);
+   testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
+   EXPECT_EQ(addrBBal[0], testAddrBBal[0] - (20 * COIN));
+   EXPECT_EQ(addrBBal[1], testAddrBBal[1] - (20 * COIN));
+   EXPECT_EQ(addrBBal[2], testAddrBBal[2] - (20 * COIN));
+
+   addrBBal = balances.at(TestChain::scrAddrE);
+   testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrE);
+   EXPECT_EQ(addrBBal[0], testAddrBBal[0] + changeVal);
+   EXPECT_EQ(addrBBal[1], testAddrBBal[1] + changeVal);
+   EXPECT_EQ(addrBBal[2], testAddrBBal[2] + changeVal);
+
+   //check ledgers
+   ledgers = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgers.size(), 16);
+   for (unsigned i = 0; i < 15; i++) {
+      EXPECT_TRUE(checkLedgers(ledgers[i+1], TestChain::ledgersBCDE[i])) << i;
+   }
+
+   lastEntry = ledgers[0];
+   ASSERT_EQ(lastEntry.getTxHash(), txRbf.getThisHash());
+   ASSERT_EQ(lastEntry.getValue(), totalDiff);
+   ASSERT_EQ(lastEntry.getBlockNum(), 6);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // BridgeWebsocketsAutoDB

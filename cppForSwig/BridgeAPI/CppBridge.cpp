@@ -2256,7 +2256,7 @@ void CppBridge::setupNewCoinSelectionInstance(const Wallets::WalletId& wltId,
 
    auto fetchLbd = [wltContainer](uint64_t val)->std::vector<::UTXO>
    {
-      return wltContainer->getUTXOs(val, false, false);
+      return wltContainer->getUTXOs(val * 10U, false, false);
    };
 
    *csPtr = std::make_shared<CoinSelection::CoinSelectionInstance>(
