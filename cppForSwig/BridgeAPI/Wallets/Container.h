@@ -45,24 +45,9 @@ namespace Armory
    namespace Bridge
    {
       class TxIOCache;
-      struct CacheResolveResult;
+      struct ChainData;
       struct OfflineException
       {};
-
-      struct ChainData
-      {
-         std::map<BinaryData, TxIOPair> txioMap;
-         std::map<BinaryData, std::vector<int64_t>> balanceMap;
-         std::map<BinaryData, uint64_t> countMap;
-
-         int64_t totalBalance       = 0;
-         int64_t spendableBalance   = 0;
-         int64_t unconfirmedBalance = 0;
-         int64_t txioCount          = 0;
-
-         ChainData(void);
-         ChainData(CacheResolveResult&);
-      };
 
       class WalletContainer
       {
@@ -79,8 +64,8 @@ namespace Armory
          std::shared_ptr<AsyncClient::BlockDataViewer> bdvPtr_;
          std::shared_ptr<AsyncClient::BtcWallet> asyncWlt_;
 
-         ChainData chainDataMain_;
-         ChainData chainDataZC_;
+         std::unique_ptr<ChainData> chainDataMain_;
+         std::unique_ptr<ChainData> chainDataZC_;
 
          std::map<Wallets::AssetAccountId, Wallets::AssetKeyType>
             highestUsedIndex_;

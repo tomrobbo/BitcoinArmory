@@ -1530,7 +1530,7 @@ namespace {
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   // signer stuff
+   // tx signing
    std::string getNewSigner(std::shared_ptr<Bridge::CppBridge> bridge)
    {
       auto refId = rand();
@@ -1998,6 +1998,178 @@ namespace {
       return reply.getSuccess();
    }
 
+   BinaryData createAndSignTx(
+      std::shared_ptr<Bridge::CppBridge> bridge,
+      const std::string& walletId, const std::string& accountId,
+      const std::map<std::string, uint64_t>& recipients,
+      const BinaryData& changeScrAddr, float feeByte,
+      const std::string& passphrase)
+   {
+      /* coin selection leg */
+
+      //create a coin selection instance
+      auto csId = getNewCoinSelector(bridge, walletId, accountId, 5);
+      if (csId.empty()) {
+         throw std::runtime_error("failed to create coin selection instance");
+      }
+
+      //set recipient
+      auto recipientPrivKey = Cryptography::ECDSA::createNewPrivateKey();
+      auto recipientPubKey = Cryptography::ECDSA::computePublicKey(
+         recipientPrivKey, true);
+      auto hash160 =  BtcUtils::getHash160(recipientPubKey);
+      auto recipientAddr = BtcUtils::scrAddrToSegWitAddress(hash160);
+
+      //arbitrary value, used for coin selection grouping, just needs to be unique
+      unsigned recipientId = 100;
+      uint64_t totalSpent = 0;
+      for (const auto& recipPair : recipients) {
+         if (!setNewCsRecipient(bridge, csId,
+            recipientId++, recipPair.first, recipPair.second)) {
+            throw std::runtime_error("failed to add recipient");
+         }
+         totalSpent += recipPair.second;
+      }
+
+      //get coin selection
+      if (!selectUtxos(bridge, csId, 0, feeByte)) {
+         throw std::runtime_error("selectUtxos error");
+      }
+
+      auto utxoSelection = getUtxoSelection(bridge, csId);
+      if (utxoSelection.empty()) {
+         throw std::runtime_error("empty utxo selection");
+      }
+
+      uint64_t totalInputs = 0;
+      std::set<BinaryData> supportingTxHashes;
+      for (const auto& utxo : utxoSelection) {
+         totalInputs += utxo.getValue();
+         supportingTxHashes.emplace(utxo.getTxHash());
+      }
+
+      auto totalFee = getFlatFee(bridge, csId);
+      if (totalFee == UINT64_MAX || totalFee == 0) {
+         throw std::runtime_error("invalid fee");
+      }
+      if (totalInputs < totalSpent + totalFee) {
+         throw std::runtime_error("fee overflow");
+      }
+
+      //cleanup coin selection instance
+      if (!cleanupCoinSelectionInstance(bridge, csId)) {
+         throw std::runtime_error("cs cleanup error");
+      }
+
+      /* signer leg */
+
+      //get the supporting tx
+      auto supportingTxMap = getTxsByHash(bridge, supportingTxHashes);
+      for (const auto& utxo : utxoSelection) {
+         auto iter = supportingTxMap.find(utxo.getTxHash());
+         if (iter == supportingTxMap.end()) {
+            throw std::runtime_error("missing supporting tx");
+         }
+         if (iter->second.empty()) {
+            throw std::runtime_error("empty supporting tx");
+         }
+      }
+
+      //create signer
+      auto signerId = getNewSigner(bridge);
+      if (signerId.empty()) {
+         throw std::runtime_error("failed to create signer instance");
+      }
+
+      //set version
+      if (!setSignerVersion(bridge, signerId, 2)) {
+         throw std::runtime_error("failed to set version");
+      }
+
+      //set inputs
+      for (const auto& utxo : utxoSelection) {
+         if (!addSpenderByOutpoint(
+            bridge, signerId,
+            utxo.getTxHash(), utxo.getTxOutIndex(), 0xFFFFFFFF)) {
+            throw std::runtime_error("failed to add spender");
+         }
+         if (!populateUtxo(
+            bridge, signerId,
+            utxo.getTxHash(), utxo.getTxOutIndex(),
+            utxo.getValue(), utxo.getScript())) {
+            throw std::runtime_error("failed to populate utxo");
+         }
+
+         auto rawTx = supportingTxMap.at(utxo.getTxHash());
+         if (!addSupportingTx(bridge, signerId, rawTx)) {
+            throw std::runtime_error("failed to add supporting tx");
+         }
+      }
+
+      //set recipients
+      for (const auto& recipPair : recipients) {
+         auto recipientScrAddr = BtcUtils::getScrAddrForAddrStr(recipPair.first);
+         if (!addSignerRecipient(bridge, signerId,
+            BtcUtils::getTxOutScriptForScrAddr(recipientScrAddr), recipPair.second)) {
+            throw std::runtime_error("failed to add recipient to signer");
+         }
+      }
+
+      //add change output
+      uint64_t changeAmount = totalInputs - totalSpent - totalFee;
+      if (!addSignerRecipient(bridge, signerId,
+         BtcUtils::getTxOutScriptForScrAddr(changeScrAddr), changeAmount
+      ))
+      for (unsigned i = 0; i < utxoSelection.size(); i++) {
+         auto inputState = getInputState(bridge, signerId, i);
+         if (inputState.isValid) {
+            throw std::runtime_error("input state should be invalid");
+         }
+         if (inputState.sigCount != 0) {
+            throw std::runtime_error("sig count should be 0");
+         }
+      }
+
+      //resolve
+      if (!resolveSigner(bridge, signerId, walletId)) {
+         throw std::runtime_error("failed to resolve signer");
+      }
+      for (unsigned i = 0; i < utxoSelection.size(); i++) {
+         auto inputState = getInputState(bridge, signerId, i);
+         if (inputState.isValid) {
+            throw std::runtime_error("input state should be invalid");
+         }
+         if (inputState.sigCount != 0) {
+            throw std::runtime_error("sig count should be 0");
+         }
+      }
+
+      //sign
+      if (!signTx(bridge, signerId, walletId, passphrase)) {
+         throw std::runtime_error("failed to sign tx");
+      }
+      for (unsigned i = 0; i < utxoSelection.size(); i++) {
+         auto inputState = getInputState(bridge, signerId, i);
+         if (!inputState.isValid) {
+            throw std::runtime_error("input state should be valid");
+         }
+         if (inputState.sigCount != 1) {
+            throw std::runtime_error("sig count should be 1");
+         }
+      }
+
+      //get signed tx
+      auto signedTx = getSignedTx(bridge, signerId);
+
+      //cleanup signer
+      if (!cleanupSigner(bridge, signerId)) {
+         throw std::runtime_error("failed to cleanup signer");
+      }
+      return signedTx;
+   }
+
+   /////////////////////////////////////////////////////////////////////////////
+   // zc stuff
    void broadcastTx(std::shared_ptr<Bridge::CppBridge> bridge,
       const BinaryData& rawTx)
    {
@@ -7057,122 +7229,33 @@ TEST_F(BridgeLocalTests, ZeroConf)
       EXPECT_TRUE(checkLedgers(ledgers[i], TestChain::ledgersBCDE[i])) << i;
    }
 
-   //create a coin selection instance
-   auto csId = getNewCoinSelector(bridge_, walletId_BCDE_, accountId_BCDE_, 5);
-   ASSERT_FALSE(csId.empty());
-
-   //set recipient
+   //create recipient address
    auto recipientPrivKey = Cryptography::ECDSA::createNewPrivateKey();
    auto recipientPubKey = Cryptography::ECDSA::computePublicKey(
       recipientPrivKey, true);
    auto hash160 =  BtcUtils::getHash160(recipientPubKey);
    auto recipientAddr = BtcUtils::scrAddrToSegWitAddress(hash160);
 
-   //arbitrary value, used for coin selection grouping, just needs to be unique
-   unsigned recipientId = 100;
-   uint64_t recipientAmount = 11 * COIN;
-   ASSERT_TRUE(setNewCsRecipient(bridge_, csId,
-      recipientId, recipientAddr, recipientAmount));
-
-   //get coin selection
-   ASSERT_TRUE(selectUtxos(bridge_, csId, 0, 2.0f));
-   auto utxoSelection = getUtxoSelection(bridge_, csId);
-   ASSERT_FALSE(utxoSelection.empty());
-   uint64_t totalInputs = 0;
-   std::set<BinaryData> supportingTxHashes;
-   for (const auto& utxo : utxoSelection) {
-      totalInputs += utxo.getValue();
-      supportingTxHashes.emplace(utxo.getTxHash());
-   }
-
-   auto totalFee = getFlatFee(bridge_, csId);
-   ASSERT_TRUE(totalFee != UINT64_MAX && totalFee != 0);
-   ASSERT_TRUE(totalInputs > recipientAmount + totalFee);
-
-   //cleanup
-   ASSERT_TRUE(cleanupCoinSelectionInstance(bridge_, csId));
-
-   //get the supporting tx
-   auto supportingTxMap = getTxsByHash(bridge_, supportingTxHashes);
-   for (const auto& utxo : utxoSelection) {
-      auto iter = supportingTxMap.find(utxo.getTxHash());
-      ASSERT_FALSE(iter == supportingTxMap.end());
-      ASSERT_FALSE(iter->second.empty());
-   }
-
-   //create signer
-   auto signerId = getNewSigner(bridge_);
-   ASSERT_FALSE(signerId.empty());
-
-   //set version
-   setSignerVersion(bridge_, signerId, 2);
-
-   //set inputs
-   for (const auto& utxo : utxoSelection) {
-      ASSERT_TRUE(addSpenderByOutpoint(
-         bridge_, signerId,
-         utxo.getTxHash(), utxo.getTxOutIndex(), 0xFFFFFFFF
-      ));
-      ASSERT_TRUE(populateUtxo(
-         bridge_, signerId,
-         utxo.getTxHash(), utxo.getTxOutIndex(),
-         utxo.getValue(), utxo.getScript()
-      ));
-
-      auto rawTx = supportingTxMap.at(utxo.getTxHash());
-      ASSERT_TRUE(addSupportingTx(bridge_, signerId, rawTx)
-      );
-   }
-
-   //set recipients
-   auto recipientScrAddr = BtcUtils::getScrAddrForAddrStr(recipientAddr);
-   ASSERT_TRUE(addSignerRecipient(
-      bridge_, signerId,
-      BtcUtils::getTxOutScriptForScrAddr(recipientScrAddr), recipientAmount
-   ));
-
-   //add change output
-   uint64_t changeAmount = totalInputs - recipientAmount - totalFee;
-   ASSERT_TRUE(addSignerRecipient(
-      bridge_, signerId,
-      BtcUtils::getTxOutScriptForScrAddr(TestChain::scrAddrA), changeAmount
-   ));
-
-   for (unsigned i = 0; i < utxoSelection.size(); i++) {
-      auto inputState = getInputState(bridge_, signerId, i);
-      ASSERT_FALSE(inputState.isValid);
-      ASSERT_EQ(inputState.sigCount, 0);
-   }
-
-   //resolve
-   ASSERT_TRUE(resolveSigner(bridge_, signerId, walletId_BCDE_));
-   for (unsigned i = 0; i < utxoSelection.size(); i++) {
-      auto inputState = getInputState(bridge_, signerId, i);
-      ASSERT_FALSE(inputState.isValid);
-      ASSERT_EQ(inputState.sigCount, 0);
-   }
-
-   //sign
-   ASSERT_TRUE(signTx(bridge_, signerId, walletId_BCDE_, "privPass1"));
-   for (unsigned i = 0; i < utxoSelection.size(); i++) {
-      auto inputState = getInputState(bridge_, signerId, i);
-      ASSERT_TRUE(inputState.isValid);
-      ASSERT_EQ(inputState.sigCount, 1);
-   }
-
    //get signed tx
-   auto signedTx = getSignedTx(bridge_, signerId);
+   BinaryData signedTx;
+   try {
+      signedTx = createAndSignTx(bridge_,
+         walletId_BCDE_, accountId_BCDE_,
+         {{ recipientAddr, 11 * COIN }},
+         TestChain::scrAddrA, 2.0,
+         "privPass1"
+      );
+   } catch (const std::exception& e) {
+      ASSERT_TRUE(false) << e.what();
+   }
    ASSERT_FALSE(signedTx.empty());
-
-   //cleanup signer
-   ASSERT_TRUE(cleanupSigner(bridge_, signerId));
 
    //broadcast
    broadcastTx(bridge_, signedTx);
 
    //wait on zc notif
+   Tx tx(signedTx);
    try {
-      Tx tx(signedTx);
       auto zcLedgers = waitOnZc();
       ASSERT_EQ(zcLedgers.size(), 1);
       ASSERT_EQ(zcLedgers[0].getTxHash(), tx.getThisHash());
@@ -7182,7 +7265,7 @@ TEST_F(BridgeLocalTests, ZeroConf)
       ASSERT_TRUE(false);
    }
 
-   //TODO: check balance, grab zc utxos
+   //check balances
    balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    auto addrBBal = balances.at(TestChain::scrAddrB);
@@ -7190,7 +7273,45 @@ TEST_F(BridgeLocalTests, ZeroConf)
    EXPECT_EQ(addrBBal[0], testAddrBBal[0] - (20 * COIN));
    EXPECT_EQ(addrBBal[1], testAddrBBal[1] - (20 * COIN));
    EXPECT_EQ(addrBBal[2], testAddrBBal[2] - (20 * COIN));
+
+   //check ledgers
+   ledgers = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgers.size(), 16);
+   for (unsigned i = 0; i < 15; i++) {
+      EXPECT_TRUE(checkLedgers(ledgers[i+1], TestChain::ledgersBCDE[i])) << i;
+   }
+
+   auto lastEntry = ledgers[0];
+   ASSERT_EQ(lastEntry.getTxHash(), tx.getThisHash());
+   ASSERT_EQ(lastEntry.getValue(), -20 * (int64_t)COIN);
+   ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
+
+   /* mine the tx */
+   DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrA, 1);
+   ASSERT_EQ(waitOnNewBlock(), 6);
+
+   //check balances again
+   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   addrBBal = balances.at(TestChain::scrAddrB);
+   testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
+   EXPECT_EQ(addrBBal[0], testAddrBBal[0] - (20 * COIN));
+   EXPECT_EQ(addrBBal[1], testAddrBBal[1] - (20 * COIN));
+   EXPECT_EQ(addrBBal[2], testAddrBBal[2] - (20 * COIN));
+
+   //check ledgers
+   ledgers = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgers.size(), 16);
+   for (unsigned i = 0; i < 15; i++) {
+      EXPECT_TRUE(checkLedgers(ledgers[i+1], TestChain::ledgersBCDE[i])) << i;
+   }
+
+   lastEntry = ledgers[0];
+   ASSERT_EQ(lastEntry.getTxHash(), tx.getThisHash());
+   ASSERT_EQ(lastEntry.getValue(), -20 * (int64_t)COIN);
+   ASSERT_EQ(lastEntry.getBlockNum(), 6);
 }
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // BridgeWebsocketsAutoDB

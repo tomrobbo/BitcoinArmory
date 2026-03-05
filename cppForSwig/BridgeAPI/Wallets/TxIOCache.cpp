@@ -19,6 +19,11 @@
 using namespace Armory;
 using namespace Armory::Bridge;
 
+namespace
+{
+   const BinaryData firstZCKey = READHEX("FFFF00000000");
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // TxIOCache
 TxIOCache::TxIOCache() :
@@ -151,7 +156,7 @@ uint32_t TxIOCache::update(
    });
    auto txios = std::move(futTxios.get());
 
-   auto fetchedHeight = notif->type == NotifType::REFRESH ? 
+   auto fetchedHeight = notif->type == NotifType::REFRESH ?
       UINT32_MAX : blockNotif.getHeight();
    auto missingStuff = addTxios(txios, fetchedHeight);
    auto missingTxKeys = std::move(missingStuff.first);
@@ -186,11 +191,56 @@ uint32_t TxIOCache::update(
    //4. commit it all to the cache
    auto txs = std::move(futTxs.get());
    auto blocks = std::move(futBlocks.get());
-
    ReentrantLock lock(this);
+
+   /* we're using this opportunity to detect mined ZCs */
+
+   //list ZC tx hashes, we'll check them again hash of grabbed txs
+   std::map<BinaryData, TxIOKey> zcHashes;
+   {
+      auto txIter = dbCache_->txMap.lower_bound(firstZCKey);
+      while (txIter != dbCache_->txMap.end()) {
+         zcHashes.emplace(txIter->second.getThisHash(), txIter->first);
+         ++txIter;
+      }
+   }
+
+   std::set<BinaryData> minedKeys;
    for (auto& tx : txs) {
+      auto zcIter = zcHashes.find(tx.getThisHash());
+      if (zcIter != zcHashes.end()) {
+         //we have a zc key for this tx hash, purge it
+         dbCache_->minedZcKeys_.emplace(zcIter->second);
+         dbCache_->txMap.erase(zcIter->second);
+         minedKeys.emplace(zcIter->second);
+      }
+
+      //add tx to db cache
       dbCache_->txMap.emplace(tx.getDBKey(), std::move(tx));
    }
+
+   //purge mined zc from map
+   auto zcIter = zcTxios_.begin();
+   while (zcIter != zcTxios_.end()) {
+      auto& zcTxio = zcIter->second;
+      if (zcTxio.hasTxOutZC() &&
+         minedKeys.find(zcTxio.getTxRefOfOutput().getDBKey()) !=
+         minedKeys.end()) {
+         zcTxios_.erase(zcIter++);
+         continue;
+      }
+
+      if (zcTxio.hasTxIn() &&
+         minedKeys.find(zcTxio.getTxRefOfInput().getDBKey()) !=
+         minedKeys.end()) {
+         zcTxios_.erase(zcIter++);
+         continue;
+      }
+
+      //zc is still valid, move on to next one
+      ++zcIter;
+   }
+
    dbCache_->addBlocks(blocks);
    return fromHeight;
 }
@@ -202,6 +252,9 @@ void TxIOCache::updateZC(
    std::set<BinaryData> missingTxKeys;
    for (const auto& zcTxio : zcTxios) {
       auto zcOutKey = zcTxio.getTxRefOfOutput().getDBKey();
+      if (dbCache_->isZcMined(zcOutKey)) {
+         continue;
+      }
       if (dbCache_->txMap.find(zcOutKey) == dbCache_->txMap.end()) {
          missingTxKeys.emplace(zcOutKey);
       }
@@ -237,21 +290,26 @@ void TxIOCache::updateZC(
 std::pair<std::set<BinaryData>, std::set<uint32_t>> TxIOCache::addTxios(
    std::vector<TxIOPair>& txios, uint32_t fetchedHeight)
 {
-   ReentrantLock lock(this);
-
    std::set<BinaryData> missingTxKeys;
    std::set<uint32_t> missingHeights;
-   for (auto& txio : txios) {
-      const auto& txRef = txio.getTxRefOfOutput();
-      auto height = DBUtils::hgtxToHeight(txRef.getDBKey().getSliceRef(0, 4));
+
+   auto addKey = [&missingTxKeys, &missingHeights, this](const BinaryData& key)
+   {
+      auto height = DBUtils::hgtxToHeight(key.getSliceRef(0, 4));
       if (dbCache_->blocks.find(height) == dbCache_->blocks.end()) {
          missingHeights.emplace(height);
       }
-      if (dbCache_->txMap.find(txRef.getDBKey()) == dbCache_->txMap.end()) {
-         missingTxKeys.emplace(txRef.getDBKey());
+      if (dbCache_->txMap.find(key) == dbCache_->txMap.end()) {
+         missingTxKeys.emplace(key);
       }
+   };
+
+   ReentrantLock lock(this);
+   for (auto& txio : txios) {
+      addKey(txio.getTxRefOfOutput().getDBKey());
 
       if (txio.hasTxIn()) {
+         addKey(txio.getTxRefOfInput().getDBKey());
          spentTxios_.emplace(txio.getDBKeyOfInput(), std::move(txio));
       } else {
          unspentTxios_.emplace(txio.getDBKeyOfOutput(), std::move(txio));
@@ -398,4 +456,58 @@ void CacheResolveResult::addTxio(const BinaryData& key, const TxIOPair& txio,
       addrIter = addrTxioMap.emplace(addr, std::vector<TxIOPair*>{}).first;
    }
    addrIter->second.emplace_back(&iter->second);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ChainData
+ChainData::ChainData(CacheResolveResult& data) :
+   txioMap(std::move(data.txioMap))
+{
+   for (const auto& addr : data.addrTxioMap) {
+      //tally address balance and count
+      int64_t total = 0;
+      int64_t spendable = 0;
+      int64_t unconfirmed = 0;
+      int64_t count = 0;
+      for (const auto& txio : addr.second) {
+         //+1 txio per output
+         int64_t val = static_cast<int64_t>(txio->getValue());
+         ++count;
+         if (txio->hasTxIn()) {
+            //+1 txio per input
+            //spent txios do not affect balance
+            ++count;
+            if (txio->hasTxInZC()) {
+               total -= val;
+               spendable -= val;
+               unconfirmed -= val;
+            }
+            continue;
+         }
+
+         //total tallies all unspent outputs indiscriminately
+         total += val;
+
+         //spendable only tracks mature outputs (cf mining reward maturity)
+         if (txio->isSpendable(data.topBlock)) {
+            spendable += val;
+         }
+
+         //unconfirmed adds up immature and unconfirmed outputs
+         if (txio->isUnconfirmed(data.topBlock, MIN_CONFIRMATIONS)) {
+            unconfirmed += val;
+         }
+      }
+
+      //set address data
+      balanceMap.emplace(addr.first,
+         std::vector<int64_t>{total, spendable, unconfirmed});
+      countMap.emplace(addr.first, count);
+
+      //update wallet aggregate
+      totalBalance        += total;
+      spendableBalance    += spendable;
+      unconfirmedBalance  += unconfirmed;
+      txioCount           += count;
+   }
 }

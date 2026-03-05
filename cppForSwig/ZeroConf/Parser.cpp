@@ -1779,10 +1779,11 @@ void ZcActionQueue::shutdown()
 BinaryData ZcActionQueue::getNewZCkey()
 {
    uint32_t newId = topId_.fetch_add(1, std::memory_order_relaxed);
-   BinaryData newKey(6);
-   memset(newKey.getPtr(), 0xFF, 2);
-   memcpy(newKey.getPtr() + 2, (uint8_t*)&newId, 4);
-   return newKey;
+   BinaryWriter bw;
+   bw.reserve(6);
+   bw.put_uint16_t(0xFFFF);
+   bw.put_uint32_t(newId, BE);
+   return bw.getData();
 }
 
 std::shared_ptr<ZeroConfBatch> ZcActionQueue::initiateZcBatch(

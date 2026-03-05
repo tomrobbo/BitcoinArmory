@@ -33,6 +33,8 @@ WalletContainer::WalletContainer(
    wltId_(wltId), accountId_(accId), cache_(cache)
 {
    dbId_ = Cryptography::PRNG::fortuna.generateRandom(6).toHexStr();
+   chainDataMain_.reset();
+   chainDataZC_.reset();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -89,8 +91,8 @@ WalletContainer::getAddressAccount() const
 void WalletContainer::resetCache()
 {
    std::unique_lock<std::mutex> lock(stateMutex_);
-   chainDataMain_ = ChainData();
-   chainDataZC_ = ChainData();
+   chainDataMain_.reset();
+   chainDataZC_.reset();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -132,22 +134,34 @@ void WalletContainer::unregisterFromBDV()
 
 uint64_t WalletContainer::getFullBalance() const
 {
-   return chainDataMain_.totalBalance + chainDataZC_.totalBalance;
+   if (chainDataMain_ == nullptr) {
+      return 0;
+   }
+   return chainDataMain_->totalBalance + chainDataZC_->totalBalance;
 }
 
 uint64_t WalletContainer::getSpendableBalance() const
 {
-   return chainDataMain_.spendableBalance + chainDataZC_.spendableBalance;
+   if (chainDataMain_ == nullptr) {
+      return 0;
+   }
+   return chainDataMain_->spendableBalance + chainDataZC_->spendableBalance;
 }
 
 uint64_t WalletContainer::getUnconfirmedBalance() const
 {
-   return chainDataMain_.unconfirmedBalance + chainDataZC_.unconfirmedBalance;
+   if (chainDataMain_ == nullptr) {
+      return 0;
+   }
+   return chainDataMain_->unconfirmedBalance + chainDataZC_->unconfirmedBalance;
 }
 
 uint64_t WalletContainer::getTxIOCount() const
 {
-   return chainDataMain_.txioCount + chainDataZC_.txioCount;
+   if (chainDataMain_ == nullptr) {
+      return 0;
+   }
+   return chainDataMain_->txioCount + chainDataZC_->txioCount;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -314,11 +328,15 @@ void WalletContainer::updateAddressCountState(
 std::map<BinaryData, std::vector<uint64_t>>
 WalletContainer::getAddrBalanceMap() const
 {
+   if (chainDataMain_ == nullptr) {
+      return {};
+   }
+
    std::map<BinaryData, std::vector<uint64_t>> result;
-   for (const auto& countPair : chainDataMain_.countMap) {
+   for (const auto& countPair : chainDataMain_->countMap) {
       std::vector<uint64_t> balVec;
-      auto iter = chainDataMain_.balanceMap.find(countPair.first);
-      if (iter == chainDataMain_.balanceMap.end()) {
+      auto iter = chainDataMain_->balanceMap.find(countPair.first);
+      if (iter == chainDataMain_->balanceMap.end()) {
          balVec = {0, 0, 0};
       } else {
          balVec = {
@@ -332,13 +350,13 @@ WalletContainer::getAddrBalanceMap() const
       result.emplace(countPair.first, balVec);
    }
 
-   for (const auto& balPair : chainDataZC_.balanceMap) {
+   for (const auto& balPair : chainDataZC_->balanceMap) {
       auto& balVec = result.at(balPair.first);
       balVec[0] += balPair.second[0];
       balVec[1] += balPair.second[1];
       balVec[2] += balPair.second[2];
    }
-   for (const auto& countPair : chainDataZC_.countMap) {
+   for (const auto& countPair : chainDataZC_->countMap) {
       auto& balVec = result.at(countPair.first);
       balVec[3] += countPair.second;
    }
@@ -488,9 +506,16 @@ std::vector<UTXO> WalletContainer::getUTXOs(uint64_t val, bool zc, bool rbf)
 ////////
 const std::map<BinaryData, TxIOPair> WalletContainer::getTxioMap() const
 {
-   auto txioMap = chainDataMain_.txioMap;
-   for (const auto& txioPair : chainDataZC_.txioMap) {
-      txioMap.emplace(txioPair);
+   if (chainDataMain_ == nullptr) {
+      return {};
+   }
+
+   auto txioMap = chainDataMain_->txioMap;
+   for (const auto& txioPair : chainDataZC_->txioMap) {
+      auto iter = txioMap.emplace(txioPair);
+      if (!iter.second) {
+         iter.first->second.merge(txioPair.second);
+      }
    }
    return txioMap;
 }
@@ -502,7 +527,7 @@ void WalletContainer::resolveTxios(uint32_t fromHeight)
       { return this->hasScrAddr(scrAddr); },
       fromHeight
    );
-   chainDataMain_ = ChainData{result};
+   chainDataMain_ = std::make_unique<ChainData>(result);
 }
 
 void WalletContainer::resolveZcTxios()
@@ -511,64 +536,5 @@ void WalletContainer::resolveZcTxios()
       [this](const BinaryData& scrAddr)->bool
       { return this->hasScrAddr(scrAddr); }
    );
-   chainDataZC_ = ChainData{result};
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// ChainData
-ChainData::ChainData()
-{}
-
-ChainData::ChainData(CacheResolveResult& data)
-{
-   for (const auto& addr : data.addrTxioMap) {
-      //tally address balance and count
-      int64_t total = 0;
-      int64_t spendable = 0;
-      int64_t unconfirmed = 0;
-      int64_t count = 0;
-      for (const auto& txio : addr.second) {
-         //+1 txio per output
-         int64_t val = static_cast<int64_t>(txio->getValue());
-         ++count;
-         if (txio->hasTxIn()) {
-            //+1 txio per input
-            //spent txios do not affect balance
-            ++count;
-            if (txio->hasTxInZC()) {
-               total -= val;
-               spendable -= val;
-               unconfirmed -= val;
-            }
-            continue;
-         }
-
-         //total tallies all unspent outputs indiscriminately
-         total += val;
-
-         //spendable only tracks mature outputs (cf mining reward maturity)
-         if (txio->isSpendable(data.topBlock)) {
-            spendable += val;
-         }
-
-         //unconfirmed adds up immature and unconfirmed outputs
-         if (txio->isUnconfirmed(data.topBlock, MIN_CONFIRMATIONS)) {
-            unconfirmed += val;
-         }
-      }
-
-      //set address data
-      balanceMap.emplace(addr.first,
-         std::vector<int64_t>{total, spendable, unconfirmed});
-      countMap.emplace(addr.first, count);
-
-      //update wallet aggregate
-      totalBalance        += total;
-      spendableBalance    += spendable;
-      unconfirmedBalance  += unconfirmed;
-      txioCount           += count;
-   }
-
-   //we're done
-   txioMap = std::move(data.txioMap);
+   chainDataZC_ = std::make_unique<ChainData>(result);
 }

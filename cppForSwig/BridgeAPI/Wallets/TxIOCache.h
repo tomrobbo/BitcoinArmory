@@ -38,22 +38,39 @@ namespace Armory
    {
       struct NotifStruct;
 
-      using AddressFilter = std::function<bool(const BinaryData&)>;
+      using TxIOKey = BinaryData;
+      using ScrAddr = BinaryData;
+      using AddressFilter = std::function<bool(const ScrAddr&)>;
+
       struct CacheResolveResult
       {
          const uint32_t topBlock;
-         std::map<BinaryData, TxIOPair> txioMap;
-         std::map<BinaryData, std::vector<TxIOPair*>> addrTxioMap;
+         std::map<TxIOKey, TxIOPair> txioMap;
+         std::map<ScrAddr, std::vector<TxIOPair*>> addrTxioMap;
 
-         void addTxio(const BinaryData&, const TxIOPair&, const BinaryData&);
+         void addTxio(const TxIOKey&, const TxIOPair&, const ScrAddr&);
+      };
+
+      struct ChainData
+      {
+         const std::map<TxIOKey, TxIOPair> txioMap;
+         std::map<ScrAddr, std::vector<int64_t>> balanceMap;
+         std::map<ScrAddr, uint64_t> countMap;
+
+         int64_t totalBalance       = 0;
+         int64_t spendableBalance   = 0;
+         int64_t unconfirmedBalance = 0;
+         int64_t txioCount          = 0;
+
+         ChainData(CacheResolveResult&);
       };
 
       class TxIOCache : public Lockable
       {
       private:
-         std::map<BinaryData, TxIOPair> unspentTxios_;
-         std::map<BinaryData, TxIOPair> spentTxios_;
-         std::map<BinaryData, TxIOPair> zcTxios_;
+         std::map<TxIOKey, TxIOPair> unspentTxios_;
+         std::map<TxIOKey, TxIOPair> spentTxios_;
+         std::map<TxIOKey, TxIOPair> zcTxios_;
          std::shared_ptr<Ledgers::DBCache> dbCache_;
          uint32_t lastKnownBlock_ = UINT32_MAX;
 

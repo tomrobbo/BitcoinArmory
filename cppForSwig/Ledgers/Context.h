@@ -11,6 +11,7 @@
 #include <memory>
 #include <vector>
 #include <map>
+#include <set>
 #include <stdint.h>
 
 class BinaryData;
@@ -44,9 +45,11 @@ namespace Armory
 
          std::map<BinaryData, Tx> txMap;
          std::map<uint32_t, Blocks> blocks;
+         std::set<BinaryData> minedZcKeys_;
 
          void addBlocks(std::vector<DBClientClasses::BlockHeader>&);
          bool isHeightValid(uint32_t, uint8_t) const;
+         bool isZcMined(const BinaryData&);
       };
 
       class Context
