@@ -1681,21 +1681,42 @@ uint32_t WalletGroup::getBlockInVicinity(uint32_t blk) const
    return hist_.getBlockInVicinity(blk);
 }
 
-////////////////////////////////////////////////////////////////////////////////
 uint32_t WalletGroup::getPageIdForBlockHeight(uint32_t blk) const
 {
    //same as above
    return hist_.getPageIdForBlockHeight(blk);
 }
 
+////////////////////////////////////////////////////////////////////////////////
 std::map<BinaryData, TxIOPair> WalletGroup::getTxioForRange(
    uint32_t from, uint32_t to) const
 {
    std::map<BinaryData, TxIOPair> result;
    ReadWriteLock::ReadLock rl(lock_);
-   for (auto& wlt : wallets_) {
+   for (const auto& wlt : wallets_) {
       auto txioRange = wlt.second->getTxioForRange(from, to);
       result.insert(txioRange.begin(), txioRange.end());
+   }
+   return result;
+}
+
+std::map<BinaryData, std::shared_ptr<const TxIOPair>>
+BlockDataViewer::getZcTxios() const
+{
+   auto snapshot = zcContainer()->getSnapshot();
+   if (snapshot == nullptr) {
+      return {};
+   }
+
+   std::map<BinaryData, std::shared_ptr<const TxIOPair>> result;
+   auto addrSet = getAddrSet();
+
+   for (const auto& addr : addrSet) {
+      auto txioMap = snapshot->getTxioMapForScrAddr(addr);
+      if (txioMap.empty()) {
+         continue;
+      }
+      result.insert(txioMap.begin(), txioMap.end());
    }
    return result;
 }

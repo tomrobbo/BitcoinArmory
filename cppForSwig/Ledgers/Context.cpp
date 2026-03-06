@@ -87,11 +87,6 @@ bool DBCache::isHeightValid(uint32_t height, uint8_t dupId) const
    return dupId == iter->second.mainChain;
 }
 
-bool DBCache::isZcMined(const BinaryData& zcKey)
-{
-   return minedZcKeys_.find(zcKey) != minedZcKeys_.end();
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 // namespace functions
 Context Ledgers::prepareContext(

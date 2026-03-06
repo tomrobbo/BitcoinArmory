@@ -453,14 +453,20 @@ namespace {
          {
             auto from = request.getGetTxios();
             auto txioMap = bdv->getTxioForRange(from);
+            auto zcTxioMap = bdv->getZcTxios();
 
             auto builder = ReplyBuilder::getNew(bdv);
             auto bdvReply = prepareReply(builder);
-            auto txiosReply = bdvReply.initGetTxios(txioMap.size());
+            auto txiosReply = bdvReply.initGetTxios(
+               txioMap.size() + zcTxioMap.size());
             unsigned i=0;
             for (const auto& txioPair : txioMap) {
                auto capnTxio = txiosReply[i++];
                txioToCapn(txioPair.second, capnTxio);
+            }
+            for (const auto& txioPair : zcTxioMap) {
+               auto capnTxio = txiosReply[i++];
+               txioToCapn(*txioPair.second, capnTxio);
             }
             return builder;
          }

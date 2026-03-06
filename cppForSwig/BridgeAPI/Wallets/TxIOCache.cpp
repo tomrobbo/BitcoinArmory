@@ -129,7 +129,7 @@ uint32_t TxIOCache::update(
 {
    if (notif->type == NotifType::ZC) {
       auto zcPtr = std::dynamic_pointer_cast<NotifStruct_ZC>(notif);
-      updateZC(bdvPtr, zcPtr->txios);
+      updateZC(bdvPtr, zcPtr->txios, true);
       return UINT32_MAX;
    }
 
@@ -193,9 +193,7 @@ uint32_t TxIOCache::update(
    auto blocks = std::move(futBlocks.get());
    ReentrantLock lock(this);
 
-   /* we're using this opportunity to detect mined ZCs */
-
-   //list ZC tx hashes, we'll check them again hash of grabbed txs
+   //5. prune mined tx from dbCache
    std::map<BinaryData, TxIOKey> zcHashes;
    {
       auto txIter = dbCache_->txMap.lower_bound(firstZCKey);
@@ -205,84 +203,70 @@ uint32_t TxIOCache::update(
       }
    }
 
-   std::set<BinaryData> minedKeys;
    for (auto& tx : txs) {
+      //prune mined tx from dbCache
       auto zcIter = zcHashes.find(tx.getThisHash());
       if (zcIter != zcHashes.end()) {
-         //we have a zc key for this tx hash, purge it
-         dbCache_->minedZcKeys_.emplace(zcIter->second);
          dbCache_->txMap.erase(zcIter->second);
-         minedKeys.emplace(zcIter->second);
       }
 
-      //add tx to db cache
+      //add fresh tx
       dbCache_->txMap.emplace(tx.getDBKey(), std::move(tx));
    }
-
-   //purge mined zc from map
-   auto zcIter = zcTxios_.begin();
-   while (zcIter != zcTxios_.end()) {
-      auto& zcTxio = zcIter->second;
-      if (zcTxio.hasTxOutZC() &&
-         minedKeys.find(zcTxio.getTxRefOfOutput().getDBKey()) !=
-         minedKeys.end()) {
-         zcTxios_.erase(zcIter++);
-         continue;
-      }
-
-      if (zcTxio.hasTxIn() &&
-         minedKeys.find(zcTxio.getTxRefOfInput().getDBKey()) !=
-         minedKeys.end()) {
-         zcTxios_.erase(zcIter++);
-         continue;
-      }
-
-      //zc is still valid, move on to next one
-      ++zcIter;
-   }
-
    dbCache_->addBlocks(blocks);
    return fromHeight;
 }
 
-void TxIOCache::updateZC(
+std::set<BinaryData> TxIOCache::updateZC(
    std::shared_ptr<AsyncClient::BlockDataViewer> bdvPtr,
-   const std::vector<TxIOPair>& zcTxios)
+   const std::vector<TxIOPair>& zcTxios, bool append)
 {
+   ReentrantLock lock(this);
+   auto& txMap = dbCache_->txMap;
+   if (!append) {
+      //append is false, clear up the zc map and apply
+      //fresh set of zc txios
+      zcTxios_.clear();
+   }
+
    std::set<BinaryData> missingTxKeys;
    for (const auto& zcTxio : zcTxios) {
       auto zcOutKey = zcTxio.getTxRefOfOutput().getDBKey();
-      if (dbCache_->isZcMined(zcOutKey)) {
-         continue;
-      }
-      if (dbCache_->txMap.find(zcOutKey) == dbCache_->txMap.end()) {
+      if (txMap.find(zcOutKey) == txMap.end()) {
          missingTxKeys.emplace(zcOutKey);
       }
 
-      if (zcTxio.hasTxInZC()) {
+      if (zcTxio.hasTxIn()) {
          auto zcInKey = zcTxio.getTxRefOfInput().getDBKey();
-         if (dbCache_->txMap.find(zcInKey) == dbCache_->txMap.end()) {
+         if (txMap.find(zcInKey) == txMap.end()) {
             missingTxKeys.emplace(zcInKey);
          }
       }
 
-      auto iter = zcTxios_.emplace(zcTxio.getDBKeyOfOutput(), zcTxio);
-      if (!iter.second) {
-         iter.first->second.merge(zcTxio);
+      auto insertResult = zcTxios_.emplace(zcTxio.getDBKeyOfOutput(), zcTxio);
+      if (!insertResult.second) {
+         insertResult.first->second.merge(zcTxio);
+      }
+      if (insertResult.first->second.hasTxOutZC()) {
+         insertResult.first->second.setChained(true);
       }
    }
 
-   auto promTxs = std::make_shared<std::promise<std::vector<Tx>>>();
-   auto futTxs = promTxs->get_future();
-   bdvPtr->getTxsByKey(missingTxKeys, [prom = promTxs]
-      (ReturnMessage<std::vector<Tx>> result) {
-         prom->set_value(result.get());
-   });
-   auto txs = std::move(futTxs.get());
+   if (append) {
+      auto promTxs = std::make_shared<std::promise<std::vector<Tx>>>();
+      auto futTxs = promTxs->get_future();
+      bdvPtr->getTxsByKey(missingTxKeys, [prom = promTxs]
+         (ReturnMessage<std::vector<Tx>> result) {
+            prom->set_value(result.get());
+      });
+      auto txs = std::move(futTxs.get());
 
-   ReentrantLock lock(this);
-   for (auto& tx : txs) {
-      dbCache_->txMap.emplace(tx.getDBKey(), std::move(tx));
+      for (auto& tx : txs) {
+         txMap.emplace(tx.getDBKey(), std::move(tx));
+      }
+      return {};
+   } else {
+      return missingTxKeys;
    }
 }
 
@@ -304,17 +288,30 @@ std::pair<std::set<BinaryData>, std::set<uint32_t>> TxIOCache::addTxios(
       }
    };
 
+   std::vector<TxIOPair> zcTxios;
+   zcTxios.reserve(5);
    ReentrantLock lock(this);
    for (auto& txio : txios) {
-      addKey(txio.getTxRefOfOutput().getDBKey());
+      if (!txio.hasTxOutZC()) {
+         addKey(txio.getTxRefOfOutput().getDBKey());
+      } else {
+         zcTxios.emplace_back(txio);
+      }
 
       if (txio.hasTxIn()) {
+         if (txio.hasTxInZC()) {
+            zcTxios.emplace_back(txio);
+            continue;
+         }
          addKey(txio.getTxRefOfInput().getDBKey());
          spentTxios_.emplace(txio.getDBKeyOfInput(), std::move(txio));
-      } else {
+      } else if (!txio.hasTxOutZC()) {
          unspentTxios_.emplace(txio.getDBKeyOfOutput(), std::move(txio));
       }
    }
+
+   auto zcMissingKeys = updateZC(nullptr, zcTxios, false);
+   missingTxKeys.insert(zcMissingKeys.begin(), zcMissingKeys.end());
 
    if (fetchedHeight != UINT32_MAX) {
       lastKnownBlock_ = fetchedHeight;
@@ -474,12 +471,13 @@ std::vector<UTXO> TxIOCache::getUTXOs(
 }
 
 /////////
-std::map<BinaryData, TxIOPair> TxIOCache::filterTxios(
-   const std::vector<TxIOPair>& txios, const AddressFilter& filter) const
+std::map<TxIOKey, TxIOPair> TxIOCache::getZcTxios(
+   const AddressFilter& filter) const
 {
    ReentrantLock lock(this);
-   std::map<BinaryData, TxIOPair> result;
-   for (const auto& txio : txios) {
+   std::map<TxIOKey, TxIOPair> result;
+   for (const auto& txioPair : zcTxios_) {
+      const auto& txio = txioPair.second;
       const auto& txOutKey = txio.getTxRefOfOutput().getDBKey();
       const auto& outTx = dbCache_->txMap.at(txOutKey);
       auto scrAddrOut = outTx.getScrAddrForTxOut(txio.getIndexOfOutput());
@@ -504,8 +502,8 @@ std::map<BinaryData, TxIOPair> TxIOCache::filterTxios(
 
 ////////////////////////////////////////////////////////////////////////////////
 // CacheResolveResult
-void CacheResolveResult::addTxio(const BinaryData& key, const TxIOPair& txio,
-   const BinaryData& addr)
+void CacheResolveResult::addTxio(const TxIOKey& key, const TxIOPair& txio,
+   const ScrAddr& addr)
 {
    auto iter = txioMap.emplace(key, txio).first;
    auto addrIter = addrTxioMap.find(addr);
@@ -532,9 +530,8 @@ ChainData::ChainData(CacheResolveResult& data) :
          ++count;
          if (txio->hasTxIn()) {
             //+1 txio per input
-            //spent txios do not affect balance
             ++count;
-            if (txio->hasTxInZC()) {
+            if (txio->hasTxInZC() && !txio->hasTxOutZC()) {
                total -= val;
                spendable -= val;
                unconfirmed -= val;

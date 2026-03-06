@@ -212,6 +212,7 @@ public:
    CombinedBalances getCombinedBalances(void) const;
 
    std::map<BinaryData, TxIOPair> getTxioForRange(uint32_t) const;
+   std::map<BinaryData, std::shared_ptr<const TxIOPair>> getZcTxios(void) const;
 
 protected:
    static void unregisterAddresses(

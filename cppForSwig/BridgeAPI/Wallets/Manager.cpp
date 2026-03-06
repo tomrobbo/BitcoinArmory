@@ -64,8 +64,7 @@ namespace
       return result;
    }
 
-   std::vector<Ledgers::Entry> getLedgersForZCs(WalletManager* mgr,
-      const std::vector<TxIOPair>& txios)
+   std::vector<Ledgers::Entry> getLedgersForZCs(WalletManager* mgr)
    {
       //this is only used to generate ledgers for ZC notifs
       auto txioCache = mgr->txioCache();
@@ -73,7 +72,7 @@ namespace
       unsigned totalSize = 0;
       walletLedgers.reserve(mgr->getWalletContainerMap().size());
       for (const auto& wltCont : mgr->getWalletContainerMap()) {
-         const auto& txioMap = txioCache->filterTxios(txios,
+         const auto& txioMap = txioCache->getZcTxios(
             [wltPtr=wltCont.second](const BinaryData& addr)->bool
             { return wltPtr->hasScrAddr(addr); }
          );
@@ -691,10 +690,10 @@ void WalletManager::updateStateFromDB(std::shared_ptr<NotifStruct> notif)
             }
 
             //get ledgers for the zc txios
-            auto zcPtr = std::dynamic_pointer_cast<NotifStruct_ZC>(notif);
-            auto ledgers = getLedgersForZCs(this, zcPtr->txios);
+            auto ledgers = getLedgersForZCs(this);
 
             //feed them to callback
+            auto zcPtr = std::dynamic_pointer_cast<NotifStruct_ZC>(notif);
             zcPtr->callback(ledgers);
             break;
          }
