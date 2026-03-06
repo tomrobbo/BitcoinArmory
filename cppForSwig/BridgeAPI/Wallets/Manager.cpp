@@ -694,7 +694,7 @@ void WalletManager::updateStateFromDB(std::shared_ptr<NotifStruct> notif)
 
             //feed them to callback
             auto zcPtr = std::dynamic_pointer_cast<NotifStruct_ZC>(notif);
-            zcPtr->callback(ledgers);
+            zcPtr->callback(ledgers, zcPtr->invalidatedZCs);
             break;
          }
 

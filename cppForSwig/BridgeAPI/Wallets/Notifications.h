@@ -57,9 +57,15 @@ namespace Armory
       struct NotifStruct_ZC : public NotifStruct
       {
          std::vector<TxIOPair> txios;
-         const std::function<void(std::vector<Ledgers::Entry>)> callback;
-         NotifStruct_ZC(std::vector<TxIOPair>,
-            const std::function<void(const std::vector<Ledgers::Entry>&)>&);
+         std::set<BinaryData> invalidatedZCs;
+         const std::function<void(
+            const std::vector<Ledgers::Entry>&,
+            const std::set<BinaryData>&)> callback;
+         NotifStruct_ZC(std::vector<TxIOPair>, std::set<BinaryData>,
+            const std::function<void(
+               const std::vector<Ledgers::Entry>&,
+               const std::set<BinaryData>&)>&
+         );
       };
 
       struct NotifStruct_Refresh : public NotifStruct

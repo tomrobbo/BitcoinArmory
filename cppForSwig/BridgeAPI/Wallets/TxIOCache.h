@@ -83,7 +83,8 @@ namespace Armory
             std::vector<TxIOPair>&, uint32_t);
          std::set<BinaryData> updateZC(
             std::shared_ptr<AsyncClient::BlockDataViewer>,
-            const std::vector<TxIOPair>&, bool);
+            const std::vector<TxIOPair>&,
+            const std::set<BinaryData>&, bool);
          std::vector<UTXO> getZcUTXOs(bool, const AddressFilter&) const;
 
       public:

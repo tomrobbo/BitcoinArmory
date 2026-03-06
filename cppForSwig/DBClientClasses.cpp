@@ -240,13 +240,14 @@ bool RemoteCallback::processNotifications(
    auto notifsCapn = reader->getRoot<BDV::Notifications>();
    auto notifs = notifsCapn.getNotifs();
 
-   for (auto notif : notifs) {
+   for (unsigned i = 0; i < notifs.size(); i++) {
+      auto notif = notifs[i];
       switch (notif.which())
       {
-         case BDV::Notification::Which::CONTINUE_POLLING:
+         case BDV::Notification::CONTINUE_POLLING:
             break;
 
-         case BDV::Notification::Which::NEW_BLOCK:
+         case BDV::Notification::NEW_BLOCK:
          {
             auto newblock = notif.getNewBlock();
             auto height = newblock.getHeight();
@@ -261,34 +262,51 @@ bool RemoteCallback::processNotifications(
             break;
          }
 
-         case BDV::Notification::Which::ZC:
+         case BDV::Notification::ZC:
          {
             auto zcTxios = notif.getZc();
             BdmNotification bdmNotif(BDMAction_ZC);
             bdmNotif.txios = capnToTxios(zcTxios);
             bdmNotif.requestID = notif.getRequestId();
 
-            run(std::move(bdmNotif));
-            break;
-         }
+            //zc notifs are sometimes delivered along with an
+            //invalidated zc notif, let's package both together
+            if (i < notifs.size() - 1) {
+               auto peekNext = notifs[i+1];
+               if (peekNext.which() != BDV::Notification::INVALIDATED_ZC) {
+                  continue;
+               }
+               ++i;
 
-         case BDV::Notification::Which::INVALIDATED_ZC:
-         {
-            auto ids = notif.getInvalidatedZc();
-            std::set<BinaryData> idSet;
-
-            BdmNotification bdmNotif(BDMAction_InvalidatedZC);
-            for (auto id : ids) {
-               bdmNotif.invalidatedZc.emplace(BinaryData(
-                  id.begin(), id.end()
-               ));
+               auto ids = peekNext.getInvalidatedZc();
+               for (auto id : ids) {
+                  bdmNotif.invalidatedZc.emplace(BinaryData{
+                     id.begin(), id.end()
+                  });
+               }
             }
 
             run(std::move(bdmNotif));
             break;
          }
 
-         case BDV::Notification::Which::REFRESH:
+         case BDV::Notification::INVALIDATED_ZC:
+         {
+            auto ids = notif.getInvalidatedZc();
+            std::set<BinaryData> idSet;
+
+            BdmNotification bdmNotif(BDMAction_InvalidatedZC);
+            for (auto id : ids) {
+               bdmNotif.invalidatedZc.emplace(BinaryData{
+                  id.begin(), id.end()
+               });
+            }
+
+            run(std::move(bdmNotif));
+            break;
+         }
+
+         case BDV::Notification::REFRESH:
          {
             auto refresh = notif.getRefresh();
             auto refreshType = (BDV_refresh)refresh.getType();
@@ -307,7 +325,7 @@ bool RemoteCallback::processNotifications(
             break;
          }
 
-         case BDV::Notification::Which::READY:
+         case BDV::Notification::READY:
          {
             BdmNotification bdmNotif(BDMAction_Ready);
             auto newBlock = notif.getReady();
@@ -317,7 +335,7 @@ bool RemoteCallback::processNotifications(
             break;
          }
 
-         case BDV::Notification::Which::PROGRESS:
+         case BDV::Notification::PROGRESS:
          {
             auto capnProgress = notif.getProgress();
             auto capnIds = capnProgress.getIds();
@@ -333,13 +351,13 @@ bool RemoteCallback::processNotifications(
             break;
          }
 
-         case BDV::Notification::Which::TERMINATE:
+         case BDV::Notification::TERMINATE:
          {
             //shut down command from server
             return false;
          }
 
-         case BDV::Notification::Which::NODE_STATUS:
+         case BDV::Notification::NODE_STATUS:
          {
             BdmNotification bdmNotif(BDMAction_NodeStatus);
             auto capnNodeStatus = notif.getNodeStatus();
@@ -349,7 +367,7 @@ bool RemoteCallback::processNotifications(
             break;
          }
 
-         case BDV::Notification::Which::ERROR:
+         case BDV::Notification::ERROR:
          {
             auto error = notif.getError();
 

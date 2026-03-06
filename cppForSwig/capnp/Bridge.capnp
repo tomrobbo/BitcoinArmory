@@ -176,6 +176,7 @@ struct Notification {
       walletProgress @15: WalletProgress;
       setPassphrase  @16: SetPassphraseRequest;
       restore        @17: RestorePrompt;
+      invalidatedZcs @18: List(Types.Hash);
    }
 }
 

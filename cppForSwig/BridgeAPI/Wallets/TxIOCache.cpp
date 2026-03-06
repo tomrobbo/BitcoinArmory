@@ -129,7 +129,7 @@ uint32_t TxIOCache::update(
 {
    if (notif->type == NotifType::ZC) {
       auto zcPtr = std::dynamic_pointer_cast<NotifStruct_ZC>(notif);
-      updateZC(bdvPtr, zcPtr->txios, true);
+      updateZC(bdvPtr, zcPtr->txios, zcPtr->invalidatedZCs, true);
       return UINT32_MAX;
    }
 
@@ -219,7 +219,8 @@ uint32_t TxIOCache::update(
 
 std::set<BinaryData> TxIOCache::updateZC(
    std::shared_ptr<AsyncClient::BlockDataViewer> bdvPtr,
-   const std::vector<TxIOPair>& zcTxios, bool append)
+   const std::vector<TxIOPair>& zcTxios,
+   const std::set<BinaryData>& invalidatedZC, bool append)
 {
    ReentrantLock lock(this);
    auto& txMap = dbCache_->txMap;
@@ -227,6 +228,42 @@ std::set<BinaryData> TxIOCache::updateZC(
       //append is false, clear up the zc map and apply
       //fresh set of zc txios
       zcTxios_.clear();
+   }
+   if (!invalidatedZC.empty()) {
+      //we have invalidated zc txs, let's purge them
+      std::set<BinaryData> invalidatedKeys;
+      auto txIter = txMap.lower_bound(firstZCKey);
+      while (txIter != txMap.end()) {
+         auto& tx = txIter->second;
+         if (invalidatedZC.find(tx.getThisHash()) != invalidatedZC.end()) {
+            //also gather the invalidated keys
+            invalidatedKeys.emplace(tx.getDBKey());
+            txMap.erase(txIter++);
+         } else {
+            ++txIter;
+         }
+      }
+
+      //now purge the txio map
+      auto txioIter = zcTxios_.begin();
+      while (txioIter != zcTxios_.end()) {
+         auto& zcTxio = txioIter->second;
+         const auto& outKey = zcTxio.getTxRefOfOutput().getDBKey();
+         if (invalidatedKeys.find(outKey) != invalidatedKeys.end()) {
+            //output is invalidated, get rid of the txio
+            zcTxios_.erase(txioIter++);
+            continue;
+         }
+
+         if (zcTxio.hasTxIn()) {
+            const auto& inKey = zcTxio.getTxRefOfInput().getDBKey();
+            if (invalidatedKeys.find(inKey) != invalidatedKeys.end()) {
+               //input is invalidated, reset it
+               zcTxio.setTxIn({});
+            }
+         }
+         ++txioIter;
+      }
    }
 
    std::set<BinaryData> missingTxKeys;
@@ -310,7 +347,7 @@ std::pair<std::set<BinaryData>, std::set<uint32_t>> TxIOCache::addTxios(
       }
    }
 
-   auto zcMissingKeys = updateZC(nullptr, zcTxios, false);
+   auto zcMissingKeys = updateZC(nullptr, zcTxios, {}, false);
    missingTxKeys.insert(zcMissingKeys.begin(), zcMissingKeys.end());
 
    if (fetchedHeight != UINT32_MAX) {

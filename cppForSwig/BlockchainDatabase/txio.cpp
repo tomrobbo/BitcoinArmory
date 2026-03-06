@@ -181,28 +181,6 @@ uint32_t TxIOPair::getIndexOfInput() const
 }
 
 ////////
-bool TxIOPair::setTxIn(const TxRef& txref, uint32_t index)
-{
-   txRefOfInput_ = txref;
-   indexOfInput_ = index;
-   return true;
-}
-
-bool TxIOPair::setTxIn(const BinaryData& dbKey8B)
-{
-   if (dbKey8B.getSize() == 8) {
-      BinaryRefReader brr(dbKey8B);
-      BinaryDataRef txKey6B = brr.get_BinaryDataRef(6);
-      uint16_t      txInIdx = brr.get_uint16_t(BE);
-      return setTxIn(TxRef{txKey6B}, (uint32_t)txInIdx);
-   } else {
-      //pass a 0 byte dbkey to reset the txin
-      setTxIn({}, 0);
-      return false;
-   }
-}
-
-////////
 bool TxIOPair::isTxOutFromSelf() const
 {
    return isTxOutFromSelf_;
@@ -340,6 +318,28 @@ bool TxIOPair::operator>=(const BinaryData& dbKey) const
       return true;
    }
    return false;
+}
+
+////////
+bool TxIOPair::setTxIn(const TxRef& txref, uint32_t index)
+{
+   txRefOfInput_ = txref;
+   indexOfInput_ = index;
+   return true;
+}
+
+bool TxIOPair::setTxIn(const BinaryData& dbKey8B)
+{
+   if (dbKey8B.getSize() == 8) {
+      BinaryRefReader brr(dbKey8B);
+      BinaryDataRef txKey6B = brr.get_BinaryDataRef(6);
+      uint16_t      txInIdx = brr.get_uint16_t(BE);
+      return setTxIn(TxRef{txKey6B}, (uint32_t)txInIdx);
+   } else {
+      //pass a 0 byte dbkey to reset the txin
+      setTxIn({}, 0);
+      return false;
+   }
 }
 
 void TxIOPair::merge(const TxIOPair& rhs)

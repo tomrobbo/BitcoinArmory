@@ -179,24 +179,50 @@ void Callback::run(BdmNotification notif)
 
       case BDMAction_ZC:
       {
-         auto lbd = [pushLbd = notifFunc_](const std::vector<Ledgers::Entry>& zcLedgers)
+         auto lbd = [pushLbd = notifFunc_](
+            const std::vector<Ledgers::Entry>& zcLedgers,
+            const std::set<BinaryData>& invalidatedZCs)
          {
-            capnp::MallocMessageBuilder message;
-            auto fromBridge = message.initRoot<Codec::Bridge::FromBridge>();
+            //ledgers
+            capnp::MallocMessageBuilder messageLedgers;
+            auto fromBridge = messageLedgers.initRoot<Codec::Bridge::FromBridge>();
             auto capnNotif = fromBridge.initNotification();
             capnNotif.setCallbackId(BRIDGE_CALLBACK_BDM);
 
             auto capnZCs = capnNotif.initZeroConfs();
             ledgersToCapnp(zcLedgers, capnZCs);
-            pushLbd(std::make_shared<NotifStruct_Push>(serializeCapnp(message)));
+            pushLbd(std::make_shared<NotifStruct_Push>(
+               serializeCapnp(messageLedgers)));
+
+            //invalidated ZCs
+            if (invalidatedZCs.empty()) {
+               return;
+            }
+
+            capnp::MallocMessageBuilder messageIZC;
+            fromBridge = messageIZC.initRoot<Codec::Bridge::FromBridge>();
+            capnNotif = fromBridge.initNotification();
+            capnNotif.setCallbackId(BRIDGE_CALLBACK_BDM);
+
+            auto zcHashes = capnNotif.initInvalidatedZcs(
+               invalidatedZCs.size());
+            unsigned i = 0;
+            for (const auto& hash : invalidatedZCs) {
+               zcHashes.set(i++, capnp::Data::Builder(
+                  (uint8_t*)hash.getPtr(), hash.getSize()));
+            }
+            pushLbd(std::make_shared<NotifStruct_Push>(
+               serializeCapnp(messageIZC)));
          };
-         notifFunc_(std::make_shared<NotifStruct_ZC>(notif.txios, lbd));
+         notifFunc_(std::make_shared<NotifStruct_ZC>(
+            std::move(notif.txios), std::move(notif.invalidatedZc), lbd));
          break;
       }
 
       case BDMAction_InvalidatedZC:
       {
-         //notify zc
+         //Ignore these for now, they come along new blocks to signal
+         //mined zcs. We handle zc mining differently in bridge.
          break;
       }
 
@@ -337,9 +363,13 @@ NotifStruct_Push::NotifStruct_Push(BinaryData pushData) :
    NotifStruct(NotifType::PUSH), packet(std::move(pushData))
 {}
 
-NotifStruct_ZC::NotifStruct_ZC(std::vector<TxIOPair> txioVec,
-   const std::function<void(const std::vector<Ledgers::Entry>&)>& lbd) :
-   NotifStruct(NotifType::ZC), txios(std::move(txioVec)), callback(lbd)
+NotifStruct_ZC::NotifStruct_ZC(
+   std::vector<TxIOPair> txioVec, std::set<BinaryData> invalidatedZc,
+   const std::function<void(
+      const std::vector<Ledgers::Entry>&,
+      const std::set<BinaryData>&)>& lbd) :
+   NotifStruct(NotifType::ZC), txios(std::move(txioVec)),
+   invalidatedZCs(std::move(invalidatedZc)), callback(lbd)
 {}
 
 NotifStruct_Refresh::NotifStruct_Refresh(const std::function<void(void)>& lbd) :
