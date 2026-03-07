@@ -8340,10 +8340,13 @@ TEST_F(BridgeLocalTests, ZeroConf_ChainRBF)
 
       auto invalidatedHashes = waitOnInvalidatedZCs();
       ASSERT_EQ(invalidatedHashes.size(), 2);
+      std::set<BinaryData> ihSet{
+         invalidatedHashes.begin(),
+         invalidatedHashes.end()
+      };
 
-      auto iter = invalidatedHashes.begin();
-      ASSERT_EQ(*iter++, tx.getThisHash());
-      ASSERT_EQ(*iter, tx2.getThisHash());
+      ASSERT_NE(ihSet.find(tx.getThisHash()), ihSet.end());
+      ASSERT_NE(ihSet.find(tx2.getThisHash()), ihSet.end());
    } catch (const std::exception&) {
       ASSERT_TRUE(false);
    }
@@ -8382,10 +8385,431 @@ TEST_F(BridgeLocalTests, ZeroConf_ChainRBF)
    EXPECT_FALSE(ledgers[0].isChainedZC());
 }
 
+TEST_F(BridgeLocalTests, ZeroConf_Reload)
+{
+   loadWallets({walletId_BCDE_});
+
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
+   WebSocketServer::initAuthPeers({
+      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+   WebSocketServer::start(theBDMt_->bdm(), true);
+
+   ASSERT_TRUE(connectToDb(bridge_));
+   ASSERT_TRUE(registerWallets(bridge_));
+
+   //start db, go online and wait on ready notif
+   theBDMt_->start(Config::DBSettings::initMode());
+   ASSERT_EQ(goOnline(bridge_), 5);
+
+   //check balances
+   auto balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   checkBalances(balances, 5, false);
+
+   //check ledgers
+   auto delegateId = getLedgerDelegateId(bridge_);
+   ASSERT_FALSE(delegateId.empty());
+
+   auto pageCount = getLedgersPageCount(bridge_, delegateId);
+   EXPECT_EQ(pageCount, 1);
+
+   auto ledgers = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgers.size(), 15);
+
+   for (unsigned i = 0; i < ledgers.size(); i++) {
+      EXPECT_TRUE(checkLedgers(ledgers[i], TestChain::ledgersBCDE[i])) << i;
+   }
+
+   //create recipient address
+   auto recipientPrivKey = Cryptography::ECDSA::createNewPrivateKey();
+   auto recipientPubKey = Cryptography::ECDSA::computePublicKey(
+      recipientPrivKey, true);
+   auto hash160 =  BtcUtils::getHash160(recipientPubKey);
+   auto recipientAddr1 = BtcUtils::scrAddrToSegWitAddress(hash160);
+
+   //get signed tx
+   BinaryData signedTx;
+   try {
+      signedTx = createAndSignTx(bridge_,
+         walletId_BCDE_, accountId_BCDE_,
+         {}, {{ recipientAddr1, 11 * COIN }},
+         TestChain::scrAddrC, 2, true,
+         "privPass1"
+      );
+   } catch (const std::exception& e) {
+      ASSERT_TRUE(false) << e.what();
+   }
+   ASSERT_FALSE(signedTx.empty());
+
+   //broadcast
+   broadcastTx(bridge_, signedTx);
+
+   //grab amount for change output
+   Tx tx(signedTx);
+   auto changeOutput = tx.getTxOutCopy(1);
+   int64_t changeAmount = changeOutput.getValue();
+   EXPECT_TRUE(changeAmount > 8 * COIN);
+   EXPECT_TRUE(changeAmount < 9 * COIN);
+
+   //wait on zc notif
+   try {
+      auto zcLedgers = waitOnZc();
+      ASSERT_EQ(zcLedgers.size(), 1);
+      ASSERT_EQ(zcLedgers[0].getTxHash(), tx.getThisHash());
+      EXPECT_EQ(zcLedgers[0].getValue(), -20 * (int64_t)COIN + changeAmount);
+      ASSERT_EQ(zcLedgers[0].getBlockNum(), UINT32_MAX);
+   } catch (const std::exception&) {
+      ASSERT_TRUE(false);
+   }
+
+   //check balances
+   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   auto addrBBal = balances.at(TestChain::scrAddrB);
+   auto testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
+   EXPECT_EQ(addrBBal[0], testAddrBBal[0] - (20 * COIN));
+   EXPECT_EQ(addrBBal[1], testAddrBBal[1] - (20 * COIN));
+   EXPECT_EQ(addrBBal[2], testAddrBBal[2] - (20 * COIN));
+
+   addrBBal = balances.at(TestChain::scrAddrC);
+   testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrC);
+   EXPECT_EQ(addrBBal[0], testAddrBBal[0] + changeAmount);
+   EXPECT_EQ(addrBBal[1], testAddrBBal[1]);
+   EXPECT_EQ(addrBBal[2], testAddrBBal[2] + changeAmount);
+
+   //check ledgers
+   ledgers = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgers.size(), 16);
+   for (unsigned i = 0; i < 15; i++) {
+      EXPECT_TRUE(checkLedgers(ledgers[i+1], TestChain::ledgersBCDE[i])) << i;
+   }
+
+   auto lastEntry = ledgers[0];
+   ASSERT_EQ(lastEntry.getTxHash(), tx.getThisHash());
+   EXPECT_EQ(lastEntry.getValue(), -20 * (int64_t)COIN + changeAmount);
+   ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
+
+   /* second zc */
+
+   //get ZC utxo
+   auto zcUtxos = getUTXOs(bridge_, walletId_BCDE_, accountId_BCDE_, 1);
+   ASSERT_EQ(zcUtxos.size(), 1);
+
+   //create second recipient address
+   recipientPrivKey = Cryptography::ECDSA::createNewPrivateKey();
+   recipientPubKey = Cryptography::ECDSA::computePublicKey(
+      recipientPrivKey, true);
+   hash160 =  BtcUtils::getHash160(recipientPubKey);
+   auto recipientAddr2 = BtcUtils::scrAddrToSegWitAddress(hash160);
+
+   //spend the zc utxo
+   BinaryData signedTx2;
+   try {
+      signedTx2 = createAndSignTx(bridge_,
+         walletId_BCDE_, accountId_BCDE_,
+         zcUtxos, {{ recipientAddr2, 5 * COIN }},
+         TestChain::scrAddrC, 1000, true,
+         "privPass1"
+      );
+   } catch (const std::exception& e) {
+      ASSERT_TRUE(false) << e.what();
+   }
+   ASSERT_FALSE(signedTx2.empty());
+
+   Tx tx2(signedTx2);
+   changeOutput = tx2.getTxOutCopy(1);
+   int64_t changeAmount2 = changeOutput.getValue();
+   EXPECT_TRUE(changeAmount2 > 3 * COIN);
+   EXPECT_TRUE(changeAmount2 < 4 * COIN);
+
+   //broadcast & wait on zc notif
+   broadcastTx(bridge_, signedTx2);
+   try {
+      auto zcLedgers = waitOnZc();
+      ASSERT_EQ(zcLedgers.size(), 2);
+      ASSERT_EQ(zcLedgers[0].getTxHash(), tx2.getThisHash());
+      EXPECT_EQ(zcLedgers[0].getValue(), -changeAmount + changeAmount2);
+      ASSERT_EQ(zcLedgers[0].getBlockNum(), UINT32_MAX);
+      EXPECT_TRUE(zcLedgers[0].isChainedZC());
+
+      ASSERT_EQ(zcLedgers[1].getTxHash(), tx.getThisHash());
+      EXPECT_EQ(zcLedgers[1].getValue(), -20 * (int64_t)COIN + changeAmount);
+      ASSERT_EQ(zcLedgers[1].getBlockNum(), UINT32_MAX);
+      EXPECT_FALSE(zcLedgers[1].isChainedZC());
+   } catch (const std::exception&) {
+      ASSERT_TRUE(false);
+   }
+
+   //check balances
+   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   addrBBal = balances.at(TestChain::scrAddrB);
+   testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
+   EXPECT_EQ(addrBBal[0], testAddrBBal[0] - (20 * COIN));
+   EXPECT_EQ(addrBBal[1], testAddrBBal[1] - (20 * COIN));
+   EXPECT_EQ(addrBBal[2], testAddrBBal[2] - (20 * COIN));
+
+   addrBBal = balances.at(TestChain::scrAddrC);
+   testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrC);
+   EXPECT_EQ(addrBBal[0], testAddrBBal[0] + changeAmount2);
+   EXPECT_EQ(addrBBal[1], testAddrBBal[1]);
+   EXPECT_EQ(addrBBal[2], testAddrBBal[2] + changeAmount2);
+
+   //check ledgers
+   ledgers = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgers.size(), 17);
+   for (unsigned i = 0; i < 15; i++) {
+      EXPECT_TRUE(checkLedgers(ledgers[i+2], TestChain::ledgersBCDE[i])) << i;
+   }
+
+   ASSERT_EQ(ledgers[1].getTxHash(), tx.getThisHash());
+   EXPECT_EQ(ledgers[1].getValue(), -20 * (int64_t)COIN + changeAmount);
+   ASSERT_EQ(ledgers[1].getBlockNum(), UINT32_MAX);
+   EXPECT_FALSE(ledgers[1].isChainedZC());
+
+   ASSERT_EQ(ledgers[0].getTxHash(), tx2.getThisHash());
+   EXPECT_EQ(ledgers[0].getValue(), -changeAmount + changeAmount2);
+   ASSERT_EQ(ledgers[0].getBlockNum(), UINT32_MAX);
+   EXPECT_TRUE(ledgers[0].isChainedZC());
+
+   /* cycle bridge */
+   bridge_.reset();
+   replyQueue.clear();
+   bridge_ = std::make_shared<Bridge::CppBridge>();
+   bridge_->setWriteLambda([](MsgPtr payload) {
+      std::unique_lock<std::mutex> lock(commsMutex);
+         replyQueue.emplace_back(std::move(payload));
+      commsCV.notify_all();
+   });
+
+   loadWallets({walletId_BCDE_});
+   ASSERT_TRUE(connectToDb(bridge_));
+   ASSERT_TRUE(registerWallets(bridge_));
+   ASSERT_EQ(goOnline(bridge_), 5);
+
+   //check balances
+   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   addrBBal = balances.at(TestChain::scrAddrB);
+   testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
+   EXPECT_EQ(addrBBal[0], testAddrBBal[0] - (20 * COIN));
+   EXPECT_EQ(addrBBal[1], testAddrBBal[1] - (20 * COIN));
+   EXPECT_EQ(addrBBal[2], testAddrBBal[2] - (20 * COIN));
+
+   addrBBal = balances.at(TestChain::scrAddrC);
+   testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrC);
+   EXPECT_EQ(addrBBal[0], testAddrBBal[0] + changeAmount2);
+   EXPECT_EQ(addrBBal[1], testAddrBBal[1]);
+   EXPECT_EQ(addrBBal[2], testAddrBBal[2] + changeAmount2);
+
+   //check ledgers
+   ledgers = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgers.size(), 17);
+   for (unsigned i = 0; i < 15; i++) {
+      EXPECT_TRUE(checkLedgers(ledgers[i+2], TestChain::ledgersBCDE[i])) << i;
+   }
+
+   ASSERT_EQ(ledgers[1].getTxHash(), tx.getThisHash());
+   EXPECT_EQ(ledgers[1].getValue(), -20 * (int64_t)COIN + changeAmount);
+   ASSERT_EQ(ledgers[1].getBlockNum(), UINT32_MAX);
+   EXPECT_FALSE(ledgers[1].isChainedZC());
+
+   ASSERT_EQ(ledgers[0].getTxHash(), tx2.getThisHash());
+   EXPECT_EQ(ledgers[0].getValue(), -changeAmount + changeAmount2);
+   ASSERT_EQ(ledgers[0].getBlockNum(), UINT32_MAX);
+   EXPECT_TRUE(ledgers[0].isChainedZC());
+
+   /* mine the 2 tx */
+   DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrA, 1);
+   ASSERT_EQ(waitOnNewBlock(), 6);
+
+   //check balances
+   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   addrBBal = balances.at(TestChain::scrAddrB);
+   testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
+   EXPECT_EQ(addrBBal[0], testAddrBBal[0] - (20 * COIN));
+   EXPECT_EQ(addrBBal[1], testAddrBBal[1] - (20 * COIN));
+   EXPECT_EQ(addrBBal[2], testAddrBBal[2] - (20 * COIN));
+
+   addrBBal = balances.at(TestChain::scrAddrC);
+   testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrC);
+   EXPECT_EQ(addrBBal[0], testAddrBBal[0] + changeAmount2);
+   EXPECT_EQ(addrBBal[1], testAddrBBal[1] + changeAmount2);
+   EXPECT_EQ(addrBBal[2], testAddrBBal[2] + changeAmount2);
+
+   //check ledgers
+   ledgers = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgers.size(), 17);
+   for (unsigned i = 0; i < 15; i++) {
+      EXPECT_TRUE(checkLedgers(ledgers[i+2], TestChain::ledgersBCDE[i])) << i;
+   }
+
+   ASSERT_EQ(ledgers[1].getTxHash(), tx.getThisHash());
+   EXPECT_EQ(ledgers[1].getValue(), -20 * (int64_t)COIN + changeAmount);
+   ASSERT_EQ(ledgers[1].getBlockNum(), 6);
+   EXPECT_FALSE(ledgers[1].isChainedZC());
+
+   ASSERT_EQ(ledgers[0].getTxHash(), tx2.getThisHash());
+   EXPECT_EQ(ledgers[0].getValue(), -changeAmount + changeAmount2);
+   ASSERT_EQ(ledgers[0].getBlockNum(), 6);
+   EXPECT_FALSE(ledgers[0].isChainedZC());
+}
+
+TEST_F(BridgeLocalTests, ZeroConf_Reorg)
+{
+   loadWallets({walletId_BCDE_});
+
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4A" }, blk0dat_);
+   WebSocketServer::initAuthPeers({
+      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+   WebSocketServer::start(theBDMt_->bdm(), true);
+
+   ASSERT_TRUE(connectToDb(bridge_));
+   ASSERT_TRUE(registerWallets(bridge_));
+
+   //start db, go online and wait on ready notif
+   theBDMt_->start(Config::DBSettings::initMode());
+   ASSERT_EQ(goOnline(bridge_), 4);
+
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4A", "4", "5" }, blk0dat_);
+   nodePtr_->notifyNewBlock();
+   ASSERT_EQ(waitOnNewBlock(), 5);
+
+   //check balances
+   auto balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   checkBalances(balances, 5, false);
+
+   //check ledgers
+   auto delegateId = getLedgerDelegateId(bridge_);
+   ASSERT_FALSE(delegateId.empty());
+
+   auto pageCount = getLedgersPageCount(bridge_, delegateId);
+   EXPECT_EQ(pageCount, 1);
+
+   auto ledgers = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgers.size(), 15);
+
+   for (unsigned i = 0; i < ledgers.size(); i++) {
+      EXPECT_TRUE(checkLedgers(ledgers[i], TestChain::ledgersBCDE[i])) << i;
+   }
+
+   //get UTXOs
+   auto utxos = getUTXOs(bridge_, walletId_BCDE_, accountId_BCDE_, 0);
+   ASSERT_EQ(utxos.size(), 8);
+
+   //we want to spend output from block 5, tx2, index 0, since it
+   //does not exist on our reorg chain
+   unsigned utxoId = UINT32_MAX;
+   for (unsigned i = 0; i < utxos.size(); i++) {
+      const auto& utxo = utxos[i];
+      if (utxo.getHeight() == 5 && utxo.getTxIndex() == 2 && utxo.getTxOutIndex() == 0) {
+         utxoId = i;
+         break;
+      }
+   }
+   ASSERT_NE(utxoId, UINT32_MAX);
+
+   //create recipient address
+   auto recipientPrivKey = Cryptography::ECDSA::createNewPrivateKey();
+   auto recipientPubKey = Cryptography::ECDSA::computePublicKey(
+      recipientPrivKey, true);
+   auto hash160 =  BtcUtils::getHash160(recipientPubKey);
+   auto recipientAddr1 = BtcUtils::scrAddrToSegWitAddress(hash160);
+
+   //get signed tx
+   BinaryData signedTx;
+   try {
+      signedTx = createAndSignTx(bridge_,
+         walletId_BCDE_, accountId_BCDE_,
+         {utxos[utxoId]}, {{ recipientAddr1, 2 * COIN }},
+         TestChain::scrAddrC, 2, true,
+         "privPass1"
+      );
+   } catch (const std::exception& e) {
+      ASSERT_TRUE(false) << e.what();
+   }
+   ASSERT_FALSE(signedTx.empty());
+
+   //broadcast
+   broadcastTx(bridge_, signedTx);
+
+   //grab amount for change output
+   Tx tx(signedTx);
+   auto changeOutput = tx.getTxOutCopy(1);
+   int64_t changeAmount = changeOutput.getValue();
+   EXPECT_TRUE(changeAmount > 2 * COIN);
+   EXPECT_TRUE(changeAmount < 3 * COIN);
+
+   //wait on zc notif
+   try {
+      auto zcLedgers = waitOnZc();
+      ASSERT_EQ(zcLedgers.size(), 1);
+      ASSERT_EQ(zcLedgers[0].getTxHash(), tx.getThisHash());
+      EXPECT_EQ(zcLedgers[0].getValue(), -5 * (int64_t)COIN + changeAmount);
+      ASSERT_EQ(zcLedgers[0].getBlockNum(), UINT32_MAX);
+   } catch (const std::exception&) {
+      ASSERT_TRUE(false);
+   }
+
+   //check balances
+   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   auto addrBBal = balances.at(TestChain::scrAddrD);
+   auto testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrD);
+   EXPECT_EQ(addrBBal[0], testAddrBBal[0] - (5 * COIN));
+   EXPECT_EQ(addrBBal[1], testAddrBBal[1] - (5 * COIN));
+   EXPECT_EQ(addrBBal[2], testAddrBBal[2] - (5 * COIN));
+
+   addrBBal = balances.at(TestChain::scrAddrC);
+   testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrC);
+   EXPECT_EQ(addrBBal[0], testAddrBBal[0] + changeAmount);
+   EXPECT_EQ(addrBBal[1], testAddrBBal[1]);
+   EXPECT_EQ(addrBBal[2], testAddrBBal[2] + changeAmount);
+
+   //check ledgers
+   ledgers = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgers.size(), 16);
+   for (unsigned i = 0; i < 15; i++) {
+      EXPECT_TRUE(checkLedgers(ledgers[i+1], TestChain::ledgersBCDE[i])) << i;
+   }
+
+   auto lastEntry = ledgers[0];
+   ASSERT_EQ(lastEntry.getTxHash(), tx.getThisHash());
+   EXPECT_EQ(lastEntry.getValue(), -5 * (int64_t)COIN + changeAmount);
+   ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
+
+   /* reorg to block 5A*/
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4A", "4", "5", "5A" }, blk0dat_);
+   nodePtr_->notifyNewBlock();
+   ASSERT_EQ(waitOnNewBlock(), 5);
+
+   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   checkBalances(balances, 5, true);
+
+   //ledgers
+   pageCount = getLedgersPageCount(bridge_, delegateId);
+   EXPECT_EQ(pageCount, 1);
+
+   auto ledgersAt5Blocks = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgersAt5Blocks.size(), 11);
+
+   for (unsigned i = 0; i < ledgersAt5Blocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAt5Blocks[i],
+         TestChain::ledgersBCDE_Reorg[i]));
+   }
+}
+
 //TODO:
-// zc into reorg
-// zc chain into reload
-// zc invalidated at mining
+// zc into wallet registration
+//
+// possible SNAFU: review reorg code, it yields a different output when it
+// goes 4A, 4, 5, 5A vs 4, 5, 4A, 5A.
+// could be the test chain is weird too, it seems too big to have been
+// missing for so long
 
 ////////////////////////////////////////////////////////////////////////////////
 // BridgeWebsocketsAutoDB

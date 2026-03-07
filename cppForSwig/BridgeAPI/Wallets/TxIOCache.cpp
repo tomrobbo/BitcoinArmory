@@ -111,7 +111,6 @@ CacheResolveResult TxIOCache::resolveZC(const AddressFilter& filter) const
       }
    }
    return result;
-
 }
 
 
