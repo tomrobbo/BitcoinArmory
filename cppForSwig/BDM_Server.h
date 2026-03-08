@@ -201,6 +201,7 @@ private:
    mutable Armory::Threading::BlockingQueue<bool> gcCommands_;
    std::shared_ptr<BlockDataManager> bdm_;
    std::atomic<bool> run_;
+   std::atomic<bool> masterIsConnected_;
 
    std::vector<std::thread> controlThreads_;
    std::thread unregThread_;
@@ -239,4 +240,5 @@ public:
       std::shared_ptr<BDV_Payload>);
    void rpcBroadcast(RpcBroadcastPacket&);
    void p2pBroadcast(BdvIdKey, std::vector<BinaryDataRef>&);
+   void setMasterIsConnected(bool);
 };

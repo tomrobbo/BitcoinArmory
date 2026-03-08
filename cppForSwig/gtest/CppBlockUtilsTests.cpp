@@ -540,7 +540,6 @@ protected:
          "--datadir=./fakehomedir",
          "--dbdir=./ldbtestdir",
          "--satoshi-datadir=./blkfiletest",
-         "--public",
          "--db-type=DB_FULL",
          "--thread-count=3",
          "--public"},
@@ -1885,7 +1884,7 @@ protected:
 
       std::stringstream serverAddr;
       serverAddr << "127.0.0.1:" << Config::NetworkSettings::dbPort();
-      clientPeers.addPeer(serverPubkey, serverAddr.str());
+      clientPeers.addPeer(serverPubkey, {serverAddr.str()}, {}, true);
 
       serverPubkey_ = BinaryData(serverPubkey.pubkey, 33);
       serverAddr_ = serverAddr.str();
@@ -2174,12 +2173,9 @@ TEST_F(WebSocketTests_1Way, WebSocketStack_Reconnect)
    WebSocketServer::start(theBDMt_->bdm(), true);
 
 
-   auto pubkeyPrompt = [this](const BinaryData& pubkey, const std::string& name)->bool
+   auto pubkeyPrompt = [this](const BinaryData& pubkey)->bool
    {
-      if (pubkey != serverPubkey_ || name != serverAddr_) {
-         return false;
-      }
-      return true;
+      return pubkey == serverPubkey_;
    };
 
    auto createNAddresses = [](unsigned count)->std::vector<BinaryData>
@@ -2492,8 +2488,8 @@ protected:
 
       std::stringstream serverAddr;
       serverAddr << "127.0.0.1:" << Config::NetworkSettings::dbPort();
-      clientPeers.addPeer(serverPubkey, serverAddr.str());
-      serverPeers.addPeer(clientPubkey, "127.0.0.1");
+      clientPeers.addPeer(serverPubkey, {serverAddr.str()}, {}, false);
+      serverPeers.addPeer(clientPubkey, {"127.0.0.1"}, {}, false);
       serverPeers.setMasterKey(clientPubkey);
 
       serverPubkey_ = BinaryData(serverPubkey.pubkey, 33);

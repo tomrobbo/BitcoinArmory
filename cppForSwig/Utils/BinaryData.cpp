@@ -1685,6 +1685,12 @@ uint8_t BinaryWriter::put_var_int(const uint64_t& val)
 void BinaryWriter::put_BinaryData(const BinaryData& str,
    size_t offset, uint32_t sz)
 {
+   put_BinaryDataRef(str.getRef(), offset, sz);
+}
+
+void BinaryWriter::put_BinaryDataRef(const BinaryDataRef& str,
+   size_t offset, uint32_t sz)
+{
    if (offset==0) {
       if (sz==0) {
          theString_.append(str);
@@ -1698,11 +1704,6 @@ void BinaryWriter::put_BinaryData(const BinaryData& str,
          theString_.append(str.getPtr() + offset, sz);
       }
    }
-}
-
-void BinaryWriter::put_BinaryDataRef(const BinaryDataRef& str)
-{
-   theString_.append(str);
 }
 
 void BinaryWriter::put_BinaryData(uint8_t const * targPtr, uint32_t nBytes)

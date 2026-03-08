@@ -354,7 +354,7 @@ bool BlockDataViewer::connectToRemote()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-void BlockDataViewer::addPublicKey(const SecureBinaryData& pubkey)
+void BlockDataViewer::addPublicKey(const SecureBinaryData& pubkey, bool oneWay)
 {
    auto wsSock = std::dynamic_pointer_cast<WebSocketClient>(sock_);
    if (wsSock == nullptr)
@@ -363,7 +363,7 @@ void BlockDataViewer::addPublicKey(const SecureBinaryData& pubkey)
       return;
    }
 
-   wsSock->addPublicKey(pubkey);
+   wsSock->addPublicKey(pubkey, oneWay);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -786,12 +786,12 @@ void BlockDataViewer::getFeeSchedule(const std::string& strategy,
 
 ///////////////////////////////////////////////////////////////////////////////
 void BlockDataViewer::setCheckServerKeyPromptLambda(
-   std::function<bool(const BinaryData&, const std::string&)> lbd)
+   const std::function<bool(const BinaryData&)>& lbd)
 {
    auto wsSock = std::dynamic_pointer_cast<WebSocketClient>(sock_);
-   if (wsSock == nullptr)
+   if (wsSock == nullptr) {
       return;
-
+   }
    wsSock->setPubkeyPromptLambda(lbd);
 }
 

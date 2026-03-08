@@ -12,6 +12,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 #include <chrono>
 #include <filesystem>
+#include <cstring>
 
 #include "TestUtils.h"
 #include <Utils/ArmoryConfig.h>
@@ -21,6 +22,7 @@
 #include <BlockchainDatabase/TxHashFilters.h>
 #include <Wallets/KDF.h>
 #include <hkdf.h>
+#include <Wallets/AuthorizedPeers.h>
 
 using namespace std;
 using namespace Armory;
@@ -267,7 +269,7 @@ TEST_F(BIP150_151Test, checkData_151_Only)
       throw runtime_error("");
    };
 
-   auto getauthset = [](void)->const set<SecureBinaryData>&
+   auto getauthset = [](void)->const std::map<SecureBinaryData, std::string>&
    {
       throw runtime_error("");
    };
@@ -570,11 +572,11 @@ TEST_F(BIP150_151Test, checkData_150_151)
    cliPrivMap.insert(make_pair(pubCli, privCli));
 
    //create auth peer sets
-   set<SecureBinaryData> servSet;
-   servSet.insert(pubCli);
+   std::map<SecureBinaryData, std::string> servSet;
+   servSet.emplace(pubCli, "");
 
-   set<SecureBinaryData> clientSet;
-   clientSet.insert(pubServ);
+   std::map<SecureBinaryData, std::string> clientSet;
+   clientSet.emplace(pubServ, "");
 
    //create server auth key lambdas
    auto serv_getPubKeyMap = [&servMap](void)->const map<string, btc_pubkey>&
@@ -590,7 +592,7 @@ TEST_F(BIP150_151Test, checkData_150_151)
       return iter->second;
    };
 
-   auto serv_getauthset = [servSet](void)->const set<SecureBinaryData>&
+   auto serv_getauthset = [servSet](void)->const std::map<SecureBinaryData, std::string>&
    {
       return servSet;
    };
@@ -609,7 +611,7 @@ TEST_F(BIP150_151Test, checkData_150_151)
       return iter->second;
    };
 
-   auto cli_getauthset = [clientSet](void)->const set<SecureBinaryData>&
+   auto cli_getauthset = [clientSet](void)->const std::map<SecureBinaryData, std::string>&
    {
       return clientSet;
    };
@@ -830,11 +832,11 @@ TEST_F(BIP150_151Test, checkData_150_151_1Way)
    cliPrivMap.insert(make_pair(pubCli, privCli));
 
    //create auth peer sets
-   set<SecureBinaryData> servSet;
-   servSet.insert(pubCli);
+   std::map<SecureBinaryData, std::string> servSet;
+   servSet.emplace(pubCli, "");
 
-   set<SecureBinaryData> clientSet;
-   clientSet.insert(pubServ);
+   std::map<SecureBinaryData, std::string> clientSet;
+   clientSet.emplace(pubServ, "");
 
    //create server auth key lambdas
    auto serv_getPubKeyMap = [&servMap](void)->const map<string, btc_pubkey>&
@@ -850,7 +852,7 @@ TEST_F(BIP150_151Test, checkData_150_151_1Way)
       return iter->second;
    };
 
-   auto serv_getauthset = [servSet](void)->const set<SecureBinaryData>&
+   auto serv_getauthset = [servSet](void)->const std::map<SecureBinaryData, std::string>&
    {
       return servSet;
    };
@@ -869,7 +871,7 @@ TEST_F(BIP150_151Test, checkData_150_151_1Way)
       return iter->second;
    };
 
-   auto cli_getauthset = [clientSet](void)->const set<SecureBinaryData>&
+   auto cli_getauthset = [clientSet](void)->const std::map<SecureBinaryData, std::string>&
    {
       return clientSet;
    };
@@ -1074,11 +1076,11 @@ TEST_F(BIP150_151Test, checkData_150_151_privateClientToPublicServer)
    cliPrivMap.insert(make_pair(pubCli, privCli));
 
    //create auth peer sets
-   set<SecureBinaryData> servSet;
-   servSet.insert(pubCli);
+   std::map<SecureBinaryData, std::string> servSet;
+   servSet.emplace(pubCli, "");
 
-   set<SecureBinaryData> clientSet;
-   clientSet.insert(pubServ);
+   std::map<SecureBinaryData, std::string> clientSet;
+   clientSet.emplace(pubServ, "");
 
    //create server auth key lambdas
    auto serv_getPubKeyMap = [&servMap](void)->const map<string, btc_pubkey>&
@@ -1094,7 +1096,7 @@ TEST_F(BIP150_151Test, checkData_150_151_privateClientToPublicServer)
       return iter->second;
    };
 
-   auto serv_getauthset = [servSet](void)->const set<SecureBinaryData>&
+   auto serv_getauthset = [servSet](void)->const std::map<SecureBinaryData, std::string>&
    {
       return servSet;
    };
@@ -1113,7 +1115,7 @@ TEST_F(BIP150_151Test, checkData_150_151_privateClientToPublicServer)
       return iter->second;
    };
 
-   auto cli_getauthset = [clientSet](void)->const set<SecureBinaryData>&
+   auto cli_getauthset = [clientSet](void)->const std::map<SecureBinaryData, std::string>&
    {
       return clientSet;
    };
@@ -1287,11 +1289,11 @@ TEST_F(BIP150_151Test, checkData_150_151_publicClientToPrivateServer)
    cliPrivMap.insert(make_pair(pubCli, privCli));
 
    //create auth peer sets
-   set<SecureBinaryData> servSet;
-   servSet.insert(pubCli);
+   std::map<SecureBinaryData, std::string> servSet;
+   servSet.emplace(pubCli, "");
 
-   set<SecureBinaryData> clientSet;
-   clientSet.insert(pubServ);
+   std::map<SecureBinaryData, std::string> clientSet;
+   clientSet.emplace(pubServ, "");
 
    //create server auth key lambdas
    auto serv_getPubKeyMap = [&servMap](void)->const map<string, btc_pubkey>&
@@ -1307,7 +1309,7 @@ TEST_F(BIP150_151Test, checkData_150_151_publicClientToPrivateServer)
       return iter->second;
    };
 
-   auto serv_getauthset = [servSet](void)->const set<SecureBinaryData>&
+   auto serv_getauthset = [servSet](void)->const std::map<SecureBinaryData, std::string>&
    {
       return servSet;
    };
@@ -1326,7 +1328,7 @@ TEST_F(BIP150_151Test, checkData_150_151_publicClientToPrivateServer)
       return iter->second;
    };
 
-   auto cli_getauthset = [clientSet](void)->const set<SecureBinaryData>&
+   auto cli_getauthset = [clientSet](void)->const std::map<SecureBinaryData, std::string>&
    {
       return clientSet;
    };
@@ -1459,7 +1461,7 @@ TEST_F(BIP150_151Test, handshakeCases_151_Only)
       throw runtime_error("");
    };
 
-   auto getauthset = [](void)->const set<SecureBinaryData>&
+   auto getauthset = [](void)->const std::map<SecureBinaryData, std::string>&
    {
       throw runtime_error("");
    };
@@ -6563,6 +6565,60 @@ TEST_F(KdfTests, Romix_TargetMemory)
       auto diff = end - start;
       EXPECT_GE(diff, 4000ms) << diff.count();
    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+class TestPeerKey : public ::testing::Test
+{
+protected:
+   virtual void SetUp()
+   {}
+
+   virtual void TearDown()
+   {}
+};
+
+TEST_F(TestPeerKey, HumanReadable)
+{
+   auto key1 = Cryptography::ECDSA::createNewPrivateKey();
+   auto key2 = Cryptography::ECDSA::createNewPrivateKey();
+   auto key3 = Cryptography::ECDSA::createNewPrivateKey();
+
+   auto pubkey1 = Cryptography::ECDSA::computePublicKey(key1, true);
+   auto pubkey2 = Cryptography::ECDSA::computePublicKey(key2, true);
+   auto pubkey3 = Cryptography::ECDSA::computePublicKey(key3, true);
+
+   auto peer1 = Wallets::PeerKey{pubkey1, true, true};  //1 way server
+   auto peer2 = Wallets::PeerKey{pubkey2, false, true}; //2 way server
+   auto peer3 = Wallets::PeerKey{pubkey3, true, false}; //client
+
+   //convert
+   auto str1 = peer1.toHumanReadable();
+   auto str2 = peer2.toHumanReadable();
+   auto str3 = peer3.toHumanReadable();
+
+   ASSERT_EQ(std::memcmp(str1.c_str(), "AR1", 3), 0);
+   ASSERT_EQ(std::memcmp(str2.c_str(), "AR2", 3), 0);
+   ASSERT_EQ(std::memcmp(str3.c_str(), "ARc", 3), 0);
+
+   //revert
+   auto readPeer1 = Wallets::PeerKey::fromHumanReadable(str1);
+   auto readPeer2 = Wallets::PeerKey::fromHumanReadable(str2);
+   auto readPeer3 = Wallets::PeerKey::fromHumanReadable(str3);
+
+   ASSERT_EQ(readPeer1.getKey(), pubkey1);
+   ASSERT_EQ(readPeer1.isOneWay(), true);
+   ASSERT_EQ(readPeer1.isServer(), true);
+
+   ASSERT_EQ(readPeer2.getKey(), pubkey2);
+   ASSERT_EQ(readPeer2.isOneWay(), false);
+   ASSERT_EQ(readPeer2.isServer(), true);
+
+   ASSERT_EQ(readPeer3.getKey(), pubkey3);
+   ASSERT_EQ(readPeer3.isOneWay(), false);
+   ASSERT_EQ(readPeer3.isServer(), false);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

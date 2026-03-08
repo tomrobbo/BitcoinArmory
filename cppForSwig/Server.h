@@ -89,7 +89,7 @@ struct PendingMessage
 };
 
 ///////////////////////////////////////////////////////////////////////////////
-struct ClientConnection
+class ClientConnection
 {
 public:
    struct lws *wsiPtr_ = nullptr;
@@ -114,6 +114,7 @@ public:
 
    void closeConnection(void);
    void processReadQueue(std::shared_ptr<Clients>);
+   bool isMaster(void) const;
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -158,7 +159,7 @@ private:
 
    void prepareWriteThread(void);
 
-   AuthPeersLambdas getAuthPeerLambda(void) const;
+   AuthPeersLambdas getAuthPeerLambda(bool) const;
    void closeClientConnection(uint64_t);
    void clientInterruptThread(void);
 
