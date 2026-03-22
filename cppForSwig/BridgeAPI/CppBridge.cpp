@@ -9,6 +9,7 @@
 #include "CppBridge.h"
 #include "BridgeSocket.h"
 #include "./Wallets/Manager.h"
+#include "./Wallets/Notifications.h"
 
 #include <Utils/ArmoryConfig.h>
 #include <Utils/BtcUtils.h>
@@ -355,7 +356,7 @@ namespace
    }
 
    Wallets::Progress::Func getWalletProgressLbd(
-      CppBridge* bridgePtr, const std::string& callbackId)
+      CppBridge* bridgePtr, const CallbackId& callbackId)
    {
       return [bridgePtr, callbackId](
          std::unique_ptr<Wallets::Progress::State> statePtr)
@@ -439,7 +440,7 @@ namespace
       bridgePtr->writeToClient(serialized);
    }
 
-   void sendCallbackCleanup(CppBridge* bridgePtr, const std::string& callbackId)
+   void sendCallbackCleanup(CppBridge* bridgePtr, const CallbackId& callbackId)
    {
       capnp::MallocMessageBuilder message;
       auto notif = message.initRoot<FromBridge>().initNotification();
@@ -480,11 +481,11 @@ namespace
    }
 
    std::function<std::unique_ptr<Passphrase::Params>(void)> getSetPassFunc(
-      CppBridge* bridgePtr, const std::string& callbackId, bool priv)
+      CppBridge* bridgePtr, const CallbackId& callbackId, bool priv)
    {
       return [bridgePtr, callbackId, priv]()->std::unique_ptr<Passphrase::Params>
       {
-         auto counterBd = bridgePtr->generateRandom(4);
+         auto counterBd = fortuna.generateRandom(4);
          auto notifCounter = *(uint32_t*)counterBd.getPtr();
 
          //create set passphrase notif
@@ -654,7 +655,7 @@ BinaryData CppBridge::listWallets(MessageId msgId)
 
 ////////
 void CppBridge::unlockControlHeader(const std::string& path,
-   const std::string& callbackId, MessageId refId)
+   const CallbackId& callbackId, MessageId refId)
 {
    auto thrLbd = [this, callbackId, path, refId](void)->void
    {
@@ -704,7 +705,7 @@ bool CppBridge::stageWallet(const Wallets::WalletId& walletId, bool stage)
 
 ////////////////////////////////////////////////////////////////////////////////
 void CppBridge::migrateWallet(const std::filesystem::path& wltPath,
-   const std::string& callbackId, MessageId refId)
+   const CallbackId& callbackId, MessageId refId)
 {
    auto migrateLbd = [this] (const std::filesystem::path wltPath,
       const std::string callbackId, MessageId refId)
@@ -758,10 +759,10 @@ void CppBridge::migrateWallet(const std::filesystem::path& wltPath,
 }
 
 void CppBridge::forkWatchingOnly(const Wallets::WalletId& wltId,
-   const std::string& callbackId, MessageId refId)
+   const CallbackId& callbackId, MessageId refId)
 {
    auto forkLbd = [this](const Wallets::WalletId wltId,
-      const std::string callbackId, MessageId refId)
+      const CallbackId callbackId, MessageId refId)
    {
       //prepare reply
       capnp::MallocMessageBuilder message;
@@ -861,12 +862,246 @@ bool CppBridge::deleteWallet(const Wallets::WalletId& wltId)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void CppBridge::setupDB(MessageId refId)
+// peers db stuff
+void CppBridge::loadPeersDb(const CallbackId& callbackId, MessageId refId)
 {
    /*
-   * should call this method from a dedicated thread
+   * Should call this method from a dedicated thread
    */
-   LOGINFO << "connecting to ArmoryDB";
+   if (peersDb_ != nullptr) {
+      return;
+   }
+
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   reply.setReferenceId(refId);
+
+   try {
+      auto passPromptObj = std::make_shared<BridgePassphrasePrompt>(
+         callbackId, [this](ServerPushWrapper wrapper) {
+            this->callbackWriter(wrapper);
+      });
+      peersDb_ = std::make_shared<Wallets::AuthorizedPeers>(
+         Wallets::IO::ReadOnlyFileParams{
+            path_ / CLIENT_AUTH_PEER_FILENAME,
+            passPromptObj->getLambda()
+      });
+      reply.setSuccess(true);
+   } catch (const Wallets::PeerFileMissing&) {
+      //NOTE (SHORT TERM SOLUTION): auto generation of auth peer db
+      auto setCtrlPassFunc = getSetPassFunc(this, callbackId, false);
+      peersDb_ = Wallets::AuthorizedPeers::createWallet(
+         Wallets::IO::CreateFileParams{
+            path_ / CLIENT_AUTH_PEER_FILENAME,
+            Passphrase::SetNew{setCtrlPassFunc}
+      });
+      reply.setSuccess(true);
+   } catch (const std::exception& e) {
+      reply.setError(
+         std::string{"failed to setup peers db with error: "} + e.what());
+      reply.setSuccess(false);
+   }
+
+   auto response = serializeCapnp(message);
+   this->writeToClient(response);
+}
+
+void CppBridge::listPeers(MessageId refId)
+{
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   reply.setReferenceId(refId);
+
+   try {
+      if (peersDb_ == nullptr) {
+         throw std::runtime_error("have to load peers db before listing peers");
+      }
+
+      //grab 1way peers, sort by key
+      std::map<BinaryDataRef, std::set<std::string>> keysOneWay;
+      for (const auto& namePair : peersDb_->getPeerNameMap(true)) {
+         if (namePair.first == "own") {
+            continue;
+         }
+         BinaryDataRef keyRef{namePair.second.pubkey, BIP151PUBKEYSIZE};
+         auto iter = keysOneWay.find(keyRef);
+         if (iter == keysOneWay.end()) {
+            iter = keysOneWay.emplace(keyRef, std::set<std::string>{}).first;
+         }
+         iter->second.emplace(namePair.first);
+      }
+
+      //same with 2way peers
+      std::map<BinaryDataRef, std::set<std::string>> keysTwoWay;
+      for (const auto& namePair : peersDb_->getPeerNameMap(false)) {
+         if (namePair.first == "own") {
+            continue;
+         }
+         BinaryDataRef keyRef{namePair.second.pubkey, BIP151PUBKEYSIZE};
+         auto iter = keysTwoWay.find(keyRef);
+         if (iter == keysTwoWay.end()) {
+            iter = keysTwoWay.emplace(keyRef, std::set<std::string>{}).first;
+         }
+         iter->second.emplace(namePair.first);
+      }
+
+      //prepare capnp reply list
+      auto setupReply = reply.initSetup();
+      auto peersCapnp = setupReply.initListPeers(
+         keysOneWay.size() + keysTwoWay.size() + 1);
+
+      //set own key
+      auto ownKey = peersDb_->getOwnPublicKey();
+      Wallets::PeerKey ownPeer{ownKey, false, false};
+      auto ownKeyCapnp = peersCapnp[0];
+      ownKeyCapnp.setOneWay(false);
+      auto ownKeyDataCapnp = ownKeyCapnp.initPeer();
+      ownKeyDataCapnp.setKey(ownPeer.toHumanReadable());
+      auto keyNames = ownKeyDataCapnp.initNames(1);
+      keyNames.set(0, "own");
+      ownKeyDataCapnp.setLabel("N/A");
+
+      //function to populate the capnp peer list
+      size_t counter = 1;
+      auto addKeys = [this, &counter, &peersCapnp]
+      (std::map<BinaryDataRef, std::set<std::string>> keyMap, bool oneWay)
+      {
+         for (const auto& keyNames : keyMap) {
+            auto peerDataCapnp = peersCapnp[counter++];
+            peerDataCapnp.setOneWay(oneWay);
+
+            auto peerCapnp = peerDataCapnp.initPeer();
+            auto namesCapnp = peerCapnp.initNames(keyNames.second.size());
+            unsigned y = 0;
+            for (const auto& name : keyNames.second) {
+               namesCapnp.set(y++, name);
+            }
+
+            //TODO: get mode from peer store instead of hardcoding it
+            Wallets::PeerKey peer{keyNames.first, oneWay, true};
+            peerCapnp.setKey(peer.toHumanReadable());
+            try {
+               const auto& label = peersDb_->getLabel(keyNames.first, oneWay);
+               peerCapnp.setLabel(label);
+            } catch (const std::exception&) {
+               peerCapnp.setLabel("N/A");
+            }
+         }
+      };
+
+      //feed the keymaps to the function
+      addKeys(keysOneWay, true);
+      addKeys(keysTwoWay, false);
+
+      reply.setSuccess(true);
+   } catch (const std::exception& e) {
+      reply.setError(std::string{"failed to list peers with error: "} + e.what());
+      reply.setSuccess(false);
+   }
+
+   auto response = serializeCapnp(message);
+   this->writeToClient(response);
+}
+
+void CppBridge::addPeer(const std::string& peerKey,
+   std::vector<std::string>& names, const std::string& label, MessageId refId)
+{
+   LOGINFO << "adding peer";
+
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   reply.setReferenceId(refId);
+
+   try {
+      if (peersDb_ == nullptr) {
+         throw std::runtime_error("have to load peers db before adding a peer");
+      }
+      auto peer = Wallets::PeerKey::fromHumanReadable(peerKey);
+      if (!peer.isServer()) {
+         throw std::runtime_error("cannot add a client key to a client peer store");
+      }
+      peersDb_->addPeer(peer, names, label);
+      reply.setSuccess(true);
+   } catch (const std::exception& e) {
+      reply.setError(std::string{"failed to add peer with error: "} + e.what());
+      reply.setSuccess(false);
+   }
+
+   auto response = serializeCapnp(message);
+   this->writeToClient(response);
+}
+
+void CppBridge::removePeer(const std::string& peerKey, MessageId refId)
+{
+   LOGINFO << "removing peer";
+
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   reply.setReferenceId(refId);
+
+   try {
+      if (peersDb_ == nullptr) {
+         throw std::runtime_error("have to load peers db before adding a peer");
+      }
+      auto peer = Wallets::PeerKey::fromHumanReadable(peerKey);
+      if (!peer.isServer()) {
+         throw std::runtime_error("cannot remove a client key from a client peer store");
+      }
+      peersDb_->erasePeer(peer);
+      reply.setSuccess(true);
+   } catch (const std::exception& e) {
+      reply.setError(std::string{"failed to remove peer with error: "} + e.what());
+      reply.setSuccess(false);
+   }
+
+   auto response = serializeCapnp(message);
+   this->writeToClient(response);
+}
+
+void CppBridge::setPeerLabel(
+   const std::string& peerKey, const std::string& label, MessageId refId)
+{
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   reply.setReferenceId(refId);
+
+   try {
+      if (peersDb_ == nullptr) {
+         throw std::runtime_error("have to load peers db before updating labels");
+      }
+      auto peer = Wallets::PeerKey::fromHumanReadable(peerKey);
+      peersDb_->setLabel(peer, label);
+      reply.setSuccess(true);
+   } catch (const std::exception& e) {
+      reply.setError(std::string{"failed to remove peer with error: "} + e.what());
+      reply.setSuccess(false);
+   }
+
+   auto response = serializeCapnp(message);
+   this->writeToClient(response);
+
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// db connection routines
+void CppBridge::connectToIp(const std::string& ip, const std::string& port,
+   const CallbackId& callbackId, MessageId refId)
+{
+   /*
+   * Should call this method from a dedicated thread
+   * Connect to db by port + ip. Expect db to present it's public key, which
+   * will be served to the caller by callback. 1-way authentication only (client
+   * auths the db)
+   * Peers store is ignored, a throw away public key is generated by the client
+   * at connection time.
+   */
+   LOGINFO << "connecting to ip";
 
    capnp::MallocMessageBuilder message;
    auto fromBridge = message.initRoot<FromBridge>();
@@ -891,47 +1126,174 @@ void CppBridge::setupDB(MessageId refId)
       return;
    }
 
-   if (wltManager_ == nullptr) {
-      LOGERR << "null wallet manager!";
-      reply.setError("null wallet manager!");
+   auto presentServerKeyCallback = [callbackId, this]
+   (const BinaryData& key)->bool
+   {
+      auto counterBd = fortuna.generateRandom(4);
+      auto notifCounter = *(uint32_t*)counterBd.getPtr();
+      Wallets::PeerKey peerKey{key, true, true};
+
+      //create present pubkey notif
+      capnp::MallocMessageBuilder notifMessage;
+      auto fromBridge = notifMessage.initRoot<FromBridge>();
+      auto notif = fromBridge.initNotification();
+      notif.setCallbackId(callbackId);
+      notif.setCounter(notifCounter);
+      notif.setPresentPubkey(peerKey.toHumanReadable());
+      auto notifSerialized = serializeCapnp(notifMessage);
+
+      //reply handler
+      auto prom = std::make_shared<std::promise<Seeds::PromptReply>>();
+      auto fut = prom->get_future();
+      auto replyLbd = [prom](const Seeds::PromptReply& reply)->bool
+      {
+         prom->set_value(reply);
+         return true;
+      };
+
+      //push prompt to caller
+      ServerPushWrapper wrapper{
+         notifCounter, replyLbd,
+         std::move(notifSerialized)};
+      callbackWriter(wrapper);
+
+      //wait on reply
+      auto reply = std::move(fut.get());
+      return reply.success;
+   };
+
+   //connect to db
+   try {
+      bdvPtr_ = setupClientConnection(
+         std::make_shared<Wallets::AuthorizedPeers>(),
+         ip, port, true, presentServerKeyCallback,
+         wltManager_->getBdvCallback());
+      if (bdvPtr_ == nullptr) {
+         throw std::runtime_error("connectToIP failed");
+      }
+      wltManager_->setBdvPtr(bdvPtr_);
+
+      //reply to caller
+      reply.setSuccess(true);
+   } catch (const std::exception& e) {
+      reply.setSuccess(false);
+      reply.setError(e.what());
+   }
+
+   auto response = serializeCapnp(message);
+   this->writeToClient(response);
+}
+
+void CppBridge::connectToPeer(const std::string& peerKey, MessageId refId)
+{
+   /*
+   * Should call this method from a dedicated thread
+   * Connect to a db by resolving the peer's ip and port from the
+   * peers db.
+   * The peers db has to be loaded prior to calling this. Can operate in
+   * both 1-way or 2-way auth
+   * TODO: add way to stored associated 1-way or 2-way auth mode with peer entry
+   */
+   LOGINFO << "connecting to peer";
+
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   reply.setReferenceId(refId);
+
+   if (dbOffline_) {
+      LOGWARN << "attempt to connect to DB in offline mode, ignoring";
+      reply.setError("cannot setup db offline mode");
       reply.setSuccess(false);
       auto response = serializeCapnp(message);
       this->writeToClient(response);
       return;
    }
 
-   //do we have to spawn the db?
-   std::shared_ptr<Wallets::AuthorizedPeers> peers = nullptr;
-   if (Config::NetworkSettings::automateDb()) {
-      peers = spawnDb();
-   } else {
-      try {
-         peers = std::make_shared<Wallets::AuthorizedPeers>(
-            Wallets::IO::ReadOnlyFileParams{
-               path_ / CLIENT_AUTH_PEER_FILENAME,
-               TerminalPassphrasePrompt::getLambda("db identification key")
-         });
-      } catch (const Wallets::PeerFileMissing&) {
-         //NOTE (SHORT TERM SOLUTION): auto generation of auth peer db
-         Wallets::IO::CreateFileParams parms{
-            path_ / CLIENT_AUTH_PEER_FILENAME, {}};
-         peers = Wallets::AuthorizedPeers::createWallet(
-            Wallets::IO::CreateFileParams{
-               path_ / CLIENT_AUTH_PEER_FILENAME, {}
-         });
-      }
+   if (bdvPtr_ != nullptr) {
+      LOGWARN << "already connected to db!";
+      reply.setError("already connected to db!");
+      reply.setSuccess(false);
+      auto response = serializeCapnp(message);
+      this->writeToClient(response);
+      return;
    }
 
    //connect to db
    try {
-      if (peers == nullptr) {
-         throw std::runtime_error("failed to setup client peers db");
+      if (peersDb_ == nullptr) {
+         throw std::runtime_error(
+            "have to load peers db before attemping connection to a peer");
       }
+      auto peerObj = Wallets::PeerKey::fromHumanReadable(peerKey);
+      auto peers = peersDb_->getNarrowSet(peerObj);
 
-      bdvPtr_ = setupClientConnection(peers, wltManager_);
+      bdvPtr_ = setupClientConnection(peers, peerObj,
+         wltManager_->getBdvCallback());
       if (bdvPtr_ == nullptr) {
-         throw std::runtime_error("failed to instantiate bdv object");
+         throw std::runtime_error("connecToPeer failed");
       }
+      wltManager_->setBdvPtr(bdvPtr_);
+
+      //reply to caller
+      reply.setSuccess(true);
+   } catch (const std::exception& e) {
+      reply.setSuccess(false);
+      reply.setError(std::string{"failed connect to peer with error: "} +
+         e.what());
+   }
+
+   auto response = serializeCapnp(message);
+   this->writeToClient(response);
+}
+
+void CppBridge::automateDb(
+   const std::filesystem::path& satoshiPath,
+   const std::filesystem::path& dbDir,
+   MessageId refId)
+{
+   /*
+   * should call this method from a dedicated thread
+   */
+   LOGINFO << "automating ArmoryDB";
+
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   reply.setReferenceId(refId);
+
+   if (dbOffline_) {
+      LOGWARN << "attempt to connect to DB in offline mode, ignoring";
+      reply.setError("cannot setup db offline mode");
+      reply.setSuccess(false);
+      auto response = serializeCapnp(message);
+      this->writeToClient(response);
+      return;
+   }
+
+   if (bdvPtr_ != nullptr) {
+      LOGWARN << "already connected to db!";
+      reply.setError("already connected to db!");
+      reply.setSuccess(false);
+      auto response = serializeCapnp(message);
+      this->writeToClient(response);
+      return;
+   }
+
+   auto result = spawnDb(satoshiPath, dbDir);
+   auto peers = result.first;
+   auto port = std::to_string(result.second);
+
+   //connect to db
+   try {
+      bdvPtr_ = setupClientConnection(peers,
+         "127.0.0.1", port,
+         false, nullptr,
+         wltManager_->getBdvCallback());
+      if (bdvPtr_ == nullptr) {
+         throw std::runtime_error("automatedDb connection failed");
+      }
+      wltManager_->setBdvPtr(bdvPtr_);
 
       //reply to caller
       reply.setSuccess(true);
@@ -952,10 +1314,7 @@ void CppBridge::cleanupDb(MessageId refId)
    auto reply = fromBridge.initReply();
    reply.setReferenceId(refId);
 
-   if (!Config::NetworkSettings::automateDb()) {
-      reply.setSuccess(false);
-      reply.setError("db is not automated");
-   } else if (bdvPtr_ == nullptr) {
+   if (bdvPtr_ == nullptr) {
       reply.setSuccess(false);
       reply.setError("no connection to db");
    } else if (!isDbRunning()) {
@@ -970,9 +1329,17 @@ void CppBridge::cleanupDb(MessageId refId)
    this->writeToClient(response);
 }
 
+void CppBridge::disconnect()
+{
+   bdvPtr_->unregisterFromDB();
+}
+
 ////
 void CppBridge::goOnline()
 {
+   if (bdvPtr_ == nullptr) {
+      throw std::runtime_error("have to connect to db first!");
+   }
    bdvPtr_->goOnline();
 }
 
@@ -1000,7 +1367,7 @@ void CppBridge::registerWallet(const Wallets::WalletId& wltId,
 
 ////////////////////////////////////////////////////////////////////////////////
 void CppBridge::createBackupStringForWallet(const Wallets::WalletId& wltId,
-   bool isPriv, const std::string& callbackId, MessageId msgId)
+   bool isPriv, const CallbackId& callbackId, MessageId msgId)
 {
    auto func = [this, wltId, isPriv, callbackId, msgId]()
    {
@@ -1138,7 +1505,7 @@ void CppBridge::createBackupStringForWallet(const Wallets::WalletId& wltId,
 
 ////////////////////////////////////////////////////////////////////////////////
 void CppBridge::changeWalletPassphrase(const Wallets::WalletId& wltId,
-   const std::string& callbackId, bool isPriv, MessageId msgId)
+   const CallbackId& callbackId, bool isPriv, MessageId msgId)
 {
    auto func = [this, wltId, callbackId, isPriv, msgId]()
    {
@@ -1176,7 +1543,7 @@ void CppBridge::changeWalletPassphrase(const Wallets::WalletId& wltId,
 void CppBridge::restoreWallet(
    const std::vector<std::string_view>& lines_sv,
    const std::string_view& spPass_sv,
-   const std::string_view& callbackId, MessageId refId)
+   const CallbackId& callbackId, MessageId refId)
 {
    //NOTE: easy16 only for now, will need a dedicated call for BIP39
 
@@ -1199,7 +1566,7 @@ void CppBridge::restoreWallet(
 
    //
    auto restoreLbd = [
-      this, refId, callbackId=std::string{callbackId}, isWO](
+      this, refId, callbackId, isWO](
       std::unique_ptr<Seeds::WalletBackup> backup)
    {
       auto createCallbackMessage = [callbackId](
@@ -1772,7 +2139,7 @@ BinaryData CppBridge::getHighestUsedIndex(const Wallets::WalletId& wltId,
 ////////////////////////////////////////////////////////////////////////////////
 void CppBridge::extendAddressPool(const Wallets::WalletId& wltId,
    const Wallets::AddressAccountId& accId, unsigned count, bool isNew,
-   const std::string& callbackId, MessageId msgId)
+   const CallbackId& callbackId, MessageId msgId)
 {
    auto extendChain = [this, msgId, callbackId](
       const Wallets::WalletId& wltId,
@@ -1849,7 +2216,7 @@ void CppBridge::extendAddressPool(const Wallets::WalletId& wltId,
 ////////////////////////////////////////////////////////////////////////////////
 void CppBridge::createWallet(Seeds::SeedType sType,
    SecureBinaryData extraEntropy, Wallets::IO::CreateWalletParams params,
-   const std::string& callbackId, MessageId refId)
+   const CallbackId& callbackId, MessageId refId)
 {
    auto setCtrlPassFunc = getSetPassFunc(this, callbackId, false);
    auto setPrivPassFunc = getSetPassFunc(this, callbackId, true);
@@ -2512,12 +2879,6 @@ CallbackHandler CppBridge::getCallbackHandler(uint32_t id)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-SecureBinaryData CppBridge::generateRandom(size_t count) const
-{
-   return fortuna.generateRandom(count);
-}
-
-////////////////////////////////////////////////////////////////////////////////
 void CppBridge::getUnlockTime(const Wallets::WalletId& walletId, MessageId refId)
 {
    using namespace std::chrono;
@@ -2585,7 +2946,7 @@ CppBridgeSignerStruct::CppBridgeSignerStruct(
 
 ////////////////////////////////////////////////////////////////////////////////
 void CppBridgeSignerStruct::signTx(const Wallets::WalletId& wltId,
-   const std::string& callbackId, MessageId referenceId)
+   const CallbackId& callbackId, MessageId referenceId)
 {
    //grab wallet
    auto wltPtr = getWalletFunc_(wltId);

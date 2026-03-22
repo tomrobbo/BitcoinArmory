@@ -25,7 +25,7 @@
 #define PUBKEY_COMPRESSED_VERSION      0x00000001
 #define PUBKEY_UNCOMPRESSED_VERSION    0x00000001
 
-#define PEER_PUBLICDATA_VERSION        0x00000001
+#define PEER_PUBLICDATA_VERSION        0x00000002
 #define PEER_ROOTKEY_VERSION           0x00000001
 #define PEER_ROOTSIG_VERSION           0x00000001
 #define PEER_MASTERKEY_VERSION         0x00000001
@@ -1279,6 +1279,9 @@ BinaryData PeerPublicData::serialize() const
       bdrName.setRef(name);
       bw.put_BinaryDataRef(bdrName);
    }
+   bw.put_var_int(label_.size());
+   bw.put_String(label_);
+   bw.put_uint8_t((uint8_t)oneWay_);
 
    BinaryWriter bwWithSize;
    bwWithSize.put_var_int(bw.getSize());
@@ -1296,29 +1299,51 @@ void PeerPublicData::deserializeDBValue(const BinaryDataRef& data)
    }
    auto version = brrData.get_uint32_t();
 
+   auto getKey = [&brrData]()->SecureBinaryData
+   {
+      auto keyLen = brrData.get_var_int();
+      return SecureBinaryData{brrData.get_BinaryDataRef(keyLen)};
+   };
+
+   auto getNames = [&brrData]()->std::set<std::string>
+   {
+      std::set<std::string> result;
+      auto count = brrData.get_var_int();
+      for (unsigned i = 0; i < count; i++) {
+         auto nameLen = brrData.get_var_int();
+         auto bdrName = brrData.get_BinaryDataRef(nameLen);
+         result.emplace(std::string{(char*)bdrName.getPtr(), nameLen});
+      }
+      return result;
+   };
+
    switch (version)
    {
       case 0x00000001:
       {
-         auto keyLen = brrData.get_var_int();
-         publicKey_ = SecureBinaryData{brrData.get_BinaryDataRef(keyLen)};
+         publicKey_ = getKey();
+         names_ = getNames();
+         break;
+      }
 
-         //check pubkey is valid
-         if (!Cryptography::ECDSA::verifyPublicKeyValid(publicKey_)) {
-            throw AssetException("invalid pubkey in peer metadata");
-         }
+      case 0x00000002:
+      {
+         publicKey_ = getKey();
+         names_ = getNames();
 
-         auto count = brrData.get_var_int();
-         for (unsigned i = 0; i < count; i++) {
-            auto nameLen = brrData.get_var_int();
-            auto bdrName = brrData.get_BinaryDataRef(nameLen);
-            names_.emplace(std::string{(char*)bdrName.getPtr(), nameLen});
-         }
+         //v2 carries a label per key and mode
+         auto labelLen = brrData.get_var_int();
+         label_ = brrData.get_String(labelLen);
+         oneWay_ = bool(brrData.get_uint8_t());
          break;
       }
 
    default:
       throw AssetException("unsupported peer data version");
+   }
+
+   if (!Cryptography::ECDSA::verifyPublicKeyValid(publicKey_)) {
+      throw AssetException("invalid pubkey in peer metadata");
    }
 }
 
@@ -1327,6 +1352,17 @@ void PeerPublicData::setPublicKey(const SecureBinaryData& key)
 {
    publicKey_ = key;
    flagForCommit();
+}
+
+void PeerPublicData::setLabel(const std::string& label)
+{
+   label_ = label;
+   flagForCommit();
+}
+
+void PeerPublicData::setOneWay(bool val)
+{
+   oneWay_ = val;
 }
 
 void PeerPublicData::addName(const std::string& name)
@@ -1349,6 +1385,7 @@ bool PeerPublicData::eraseName(const std::string& name)
 void PeerPublicData::clear()
 {
    names_.clear();
+   label_.clear();
    flagForCommit();
 }
 
@@ -1359,6 +1396,8 @@ std::shared_ptr<MetaData> PeerPublicData::copy() const
       getAccountID(), getIndex());
    copyPtr->names_ = names_;
    copyPtr->publicKey_ = publicKey_;
+   copyPtr->label_ = label_;
+   copyPtr->oneWay_ = oneWay_;
    return copyPtr;
 }
 
@@ -1371,6 +1410,16 @@ const std::set<std::string>& PeerPublicData::getNames() const
 const SecureBinaryData& PeerPublicData::getPublicKey() const
 {
    return publicKey_;
+}
+
+const std::string& PeerPublicData::getLabel() const
+{
+   return label_;
+}
+
+bool PeerPublicData::oneWay() const
+{
+   return oneWay_;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

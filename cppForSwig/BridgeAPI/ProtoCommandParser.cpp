@@ -32,6 +32,7 @@ using namespace std::chrono_literals;
 namespace
 {
    using namespace Codec::Bridge;
+   Cryptography::PRNG::Fortuna fortuna;
 
    // helpers //
    BinaryData serializeCapnp(capnp::MallocMessageBuilder& msg)
@@ -74,6 +75,136 @@ namespace
    }
 
    // switchers //
+   bool processDbSetupCommands(
+      std::shared_ptr<CppBridge> bridge, MessageId referenceId,
+      Codec::Bridge::DbSetupRequest::Reader& request)
+   {
+      BinaryData response;
+      switch (request.which())
+      {
+         case DbSetupRequest::AUTOMATE_DB:
+         {
+            auto autoDbReq = request.getAutomateDb();
+            std::filesystem::path satoshiPath{autoDbReq.getSatoshiPath()};
+            std::filesystem::path dbDir{autoDbReq.getDbDir()};
+
+            std::thread thr([bridge, satoshiPath, dbDir, referenceId]{
+               bridge->automateDb(satoshiPath, dbDir, referenceId);});
+            if (thr.joinable()) {
+               thr.detach();
+            }
+            return true;
+         }
+
+         case DbSetupRequest::CONNECT_TO_IP:
+         {
+            auto connectReq = request.getConnectToIp();
+            std::string ip = connectReq.getIp();
+            std::string port = connectReq.getPort();
+            std::string callbackId = connectReq.getCallbackId();
+
+            std::thread thr([bridge, ip, port, callbackId, referenceId]{
+               bridge->connectToIp(ip, port, callbackId, referenceId);});
+            if (thr.joinable()) {
+               thr.detach();
+            }
+            return true;
+         }
+
+         case DbSetupRequest::CONNECT_TO_PEER:
+         {
+            std::string key = request.getConnectToPeer();
+
+            std::thread thr([bridge, key=std::move(key), referenceId]{
+               bridge->connectToPeer(key, referenceId);});
+            if (thr.joinable()) {
+               thr.detach();
+            }
+            return true;
+         }
+
+         case DbSetupRequest::CLEANUP_DB:
+         {
+            std::thread thr([bridge, referenceId]{
+               bridge->cleanupDb(referenceId);});
+            if (thr.joinable()) {
+               thr.detach();
+            }
+            return true;
+         }
+
+         case DbSetupRequest::GO_ONLINE:
+         {
+            bridge->goOnline();
+            break;
+         }
+
+         case DbSetupRequest::DISCONNECT:
+         {
+            bridge->disconnect();
+            break;
+         }
+
+         case DbSetupRequest::SHUTDOWN:
+         {
+            bridge->reset();
+            return false;
+         }
+
+         case DbSetupRequest::LOAD_PEERS_DB:
+         {
+            std::string callbackId(request.getLoadPeersDb());
+            std::thread thr([bridge, callbackId, referenceId]() {
+               bridge->loadPeersDb(callbackId, referenceId);
+            });
+            if (thr.joinable()) {
+               thr.detach();
+            }
+            return true;
+         }
+
+         case DbSetupRequest::LIST_PEERS:
+         {
+            bridge->listPeers(referenceId);
+            return true;
+         }
+
+         case DbSetupRequest::ADD_PEER:
+         {
+            auto peerReq = request.getAddPeer();
+            std::vector<std::string> names;
+            for (auto capnName : peerReq.getNames()) {
+               names.emplace_back(std::string(capnName));
+            }
+            bridge->addPeer(peerReq.getKey(),
+               names, peerReq.getLabel(), referenceId);
+            return true;
+         }
+
+         case DbSetupRequest::REMOVE_PEER:
+         {
+            auto peer = std::string(request.getRemovePeer());
+            bridge->removePeer(peer, referenceId);
+            return true;
+         }
+
+         case DbSetupRequest::SET_LABEL:
+         {
+            auto labelReq = request.getSetLabel();
+            bridge->setPeerLabel(
+               labelReq.getKey(), labelReq.getLabel(), referenceId);
+            return true;
+         }
+      }
+
+      if (!response.empty()) {
+         //write response to socket
+         bridge->writeToClient(response);
+      }
+
+      return true;
+   }
+
    bool processBlockchainServiceCommands(
       std::shared_ptr<CppBridge> bridge, MessageId referenceId,
       Codec::Bridge::BlockchainServiceRequest::Reader& request)
@@ -86,38 +217,6 @@ namespace
             auto strat = request.getGetFeeSchedule();
             bridge->getFeeSchedule(strat, referenceId);
             break;
-         }
-
-         case BlockchainServiceRequest::SETUP_DB:
-         {
-            std::thread thr([bridge, referenceId]{
-               bridge->setupDB(referenceId);});
-            if (thr.joinable()) {
-               thr.detach();
-            }
-            return true;
-         }
-
-         case BlockchainServiceRequest::CLEANUP_DB:
-         {
-            std::thread thr([bridge, referenceId]{
-               bridge->cleanupDb(referenceId);});
-            if (thr.joinable()) {
-               thr.detach();
-            }
-            return true;
-         }
-
-         case BlockchainServiceRequest::GO_ONLINE:
-         {
-            bridge->goOnline();
-            break;
-         }
-
-         case BlockchainServiceRequest::SHUTDOWN:
-         {
-            bridge->reset();
-            return false;
          }
 
          case BlockchainServiceRequest::REGISTER_WALLETS:
@@ -1160,7 +1259,7 @@ namespace
             std::string_view spPass{spPassCapnp.begin(), spPassCapnp.size()};
 
             auto callbackIdCapnp = walletRequest.getCallbackId();
-            std::string_view callbackId{callbackIdCapnp.begin(), callbackIdCapnp.size()};
+            std::string callbackId{callbackIdCapnp.begin(), callbackIdCapnp.size()};
 
             bridge->restoreWallet(lines, spPass,
                callbackId, referenceId);
@@ -1176,7 +1275,7 @@ namespace
 
          case UtilsRequest::GENERATE_RANDOM_HEX:
          {
-            auto str = bridge->generateRandom(
+            auto str = fortuna.generateRandom(
                request.getGenerateRandomHex()).toHexStr();
 
             capnp::MallocMessageBuilder message;
@@ -1334,20 +1433,40 @@ namespace
                auto pass = SecureBinaryData::fromString(
                   capnpPassStruct.getPassphrase());
 
-               if (capnpPassStruct.getReuseKdf()) {
+               if (notif.getSuccess() == false) {
                   return handler(Seeds::PromptReply{
-                     notif.getSuccess(), false,
-                     Passphrase::Params{std::move(pass), true}
+                     false, false, Passphrase::Params{}
                   });
-               } else {
-                  auto kdfMs = std::chrono::milliseconds{
-                     capnpPassStruct.getKdfTargetMs()};
-                  return handler(Seeds::PromptReply{
-                     notif.getSuccess(), false,
-                     Passphrase::Params{
-                        kdfMs, capnpPassStruct.getKdfTargetMB(),
-                        std::move(pass)
-                     }});
+               }
+
+               switch (capnpPassStruct.which())
+               {
+                  case NotificationReply::SetPassphraseReply::KDF_TARGET_MS:
+                  {
+                     auto kdfMs = std::chrono::milliseconds{
+                        capnpPassStruct.getKdfTargetMs()};
+                     return handler(Seeds::PromptReply{
+                        true, false, Passphrase::Params{
+                           kdfMs, 1, std::move(pass) }
+                     });
+                  }
+
+                  case NotificationReply::SetPassphraseReply::KDF_TARGET_M_B:
+                  {
+                     uint32_t kdfMB = capnpPassStruct.getKdfTargetMB();
+                     return handler(Seeds::PromptReply{
+                        true, false, Passphrase::Params{
+                           1ms, kdfMB, std::move(pass) }
+                     });
+                  }
+
+                  case NotificationReply::SetPassphraseReply::REUSE_KDF:
+                  {
+                     return handler(Seeds::PromptReply{
+                        true, false, Passphrase::Params{
+                           std::move(pass), true }
+                     });
+                  }
                }
             }
 
@@ -1367,6 +1486,11 @@ namespace
                   notif.getSuccess(), false,
                   Passphrase::Params{std::move(pass)}
                });
+            }
+
+            case NotificationReply::PRESENT_PUBKEY:
+            {
+               return handler(Seeds::PromptReply{notif.getSuccess(), false, {}});
             }
 
             default:
@@ -1393,6 +1517,13 @@ bool ProtoCommandParser::processData(
 
    switch (toBridge.which())
    {
+      case Codec::Bridge::ToBridge::SETUP:
+      {
+         auto setup = toBridge.getSetup();
+         return processDbSetupCommands(
+            bridge, referenceId, setup);
+      }
+
       case Codec::Bridge::ToBridge::SERVICE:
       {
          auto service = toBridge.getService();

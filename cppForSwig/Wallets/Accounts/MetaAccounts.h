@@ -88,8 +88,11 @@ namespace Armory
       struct AuthPeerAssetMap
       {
          //<name, authorized pubkey>
-         std::map<std::string, const SecureBinaryData*> nameKeyPair;
-         
+         std::map<std::string,
+            std::pair<const SecureBinaryData*, const std::string*>> nameKeyMapOneWay;
+         std::map<std::string,
+            std::pair<const SecureBinaryData*, const std::string*>> nameKeyMapTwoWay;
+
          //<pubkey, sig>
          std::pair<SecureBinaryData, SecureBinaryData> rootSignature;
 
@@ -106,10 +109,10 @@ namespace Armory
          static AuthPeerAssetMap getAssetMap(
             const MetaDataAccount*);
          static std::map<SecureBinaryData, std::set<unsigned>> getKeyIndexMap(
-            const MetaDataAccount*);
+            const MetaDataAccount*, bool);
 
          static int addAsset(MetaDataAccount*, const SecureBinaryData&,
-            const std::vector<std::string>&,
+            const std::vector<std::string>&, const std::string&, bool,
             std::shared_ptr<Wallets::IO::DBIfaceTransaction>);
 
          static void addRootSignature(MetaDataAccount*,

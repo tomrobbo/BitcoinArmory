@@ -415,6 +415,8 @@ namespace Armory
       private:
          std::set<std::string> names_; //IPs, domain names
          SecureBinaryData publicKey_;
+         std::string label_;
+         bool oneWay_;
 
       public:
          PeerPublicData(const BinaryData&, uint32_t);
@@ -430,10 +432,14 @@ namespace Armory
          void addName(const std::string&);
          bool eraseName(const std::string&);
          void setPublicKey(const SecureBinaryData&);
+         void setLabel(const std::string&);
+         void setOneWay(bool);
 
          //
          const std::set<std::string>& getNames(void) const;
          const SecureBinaryData& getPublicKey(void) const;
+         const std::string& getLabel(void) const;
+         bool oneWay(void) const;
       };
 
       //////////////////////////////////////////////////////////////////////////
