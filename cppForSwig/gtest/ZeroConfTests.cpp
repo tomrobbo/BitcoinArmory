@@ -5434,6 +5434,7 @@ protected:
       startupBIP151CTX();
       startupBIP150CTX(4);
 
+      WebSocketServer::init();
       Config::DBSettings::setServiceType(SERVICE_UNITTEST_WITHWS);
       Config::parseArgs({
          "--datadir=./fakehomedir",

@@ -1955,6 +1955,7 @@ protected:
       blk0dat_ = FileUtils::getBlkFilename(blkdir_ / "blocks", 0);
       TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
 
+      WebSocketServer::init();
       Config::parseArgs({
          "--datadir=./fakehomedir",
          "--dbdir=./ldbtestdir",
@@ -2556,6 +2557,7 @@ protected:
       blk0dat_ = FileUtils::getBlkFilename(blkdir_ / "blocks", 0);
       TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
 
+      WebSocketServer::init();
       Config::parseArgs({
          "--datadir=./fakehomedir",
          "--dbdir=./ldbtestdir",

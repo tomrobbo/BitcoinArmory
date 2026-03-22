@@ -847,7 +847,7 @@ namespace {
             if (shutdownThr.joinable()) {
                shutdownThr.detach();
             }
-            break;
+            return nullptr;
          }
 
          case StaticRequest::Which::SHUTDOWN_NODE:

@@ -37,6 +37,7 @@ int main(int argc, char* argv[])
    Cryptography::ECDSA::setupContext();
    startupBIP151CTX();
    startupBIP150CTX(4);
+   WebSocketServer::init();
 
 #ifdef _WIN32
    WSADATA wsaData;
