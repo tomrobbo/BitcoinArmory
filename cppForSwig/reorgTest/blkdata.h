@@ -96,7 +96,7 @@ static const std::vector<std::map<BinaryData, std::vector<uint64_t>>> testAddrBa
    { /* block 5 */
       { TestChain::scrAddrA,        { 50 * COIN,  0 * COIN, 50 * COIN, 1 } },
       { TestChain::scrAddrB,        { 70 * COIN, 20 * COIN, 70 * COIN, 7 } },
-      { TestChain::scrAddrC,        { 20 * COIN, 20 * COIN, 20 * COIN, 5 } },
+      { TestChain::scrAddrC,        { 20 * COIN, 20 * COIN, 20 * COIN, 4 } },
       { TestChain::scrAddrD,        { 65 * COIN, 15 * COIN, 65 * COIN, 4 } },
       { TestChain::scrAddrE,        { 30 * COIN, 30 * COIN, 30 * COIN, 2 } },
       { TestChain::scrAddrF,        {  5 * COIN,  5 * COIN,  5 * COIN, 5 } },
@@ -119,10 +119,10 @@ static const std::vector<std::map<BinaryData, std::vector<uint64_t>>> testAddrBa
       { TestChain::scrAddrD,        {  5 * COIN,  5 * COIN,  5 * COIN, 1 } },
       { TestChain::scrAddrE,        { 30 * COIN, 30 * COIN, 30 * COIN, 2 } },
       { TestChain::scrAddrF,        { 55 * COIN,  5 * COIN, 55 * COIN, 4 } },
-      { TestChain::lb1ScrAddr,      { 10 * COIN, 10 * COIN, 10 * COIN, 2 } },
+      { TestChain::lb1ScrAddr,      { 10 * COIN, 10 * COIN, 10 * COIN, 1 } },
       { TestChain::lb1ScrAddrP2SH,  {  0 * COIN,  0 * COIN,  0 * COIN, 2 } },
       { TestChain::lb2ScrAddr,      { 10 * COIN, 10 * COIN, 10 * COIN, 3 } },
-      { TestChain::lb2ScrAddrP2SH,  {  5 * COIN,  5 * COIN,  5 * COIN, 2 } },
+      { TestChain::lb2ScrAddrP2SH,  {  5 * COIN,  5 * COIN,  5 * COIN, 1 } },
    },
    { /* block 5A */
       { TestChain::scrAddrA,        { 50 * COIN,  0 * COIN, 50 * COIN, 1 } },
@@ -131,10 +131,10 @@ static const std::vector<std::map<BinaryData, std::vector<uint64_t>>> testAddrBa
       { TestChain::scrAddrD,        { 60 * COIN, 10 * COIN, 60 * COIN, 3 } },
       { TestChain::scrAddrE,        { 30 * COIN, 30 * COIN, 30 * COIN, 2 } },
       { TestChain::scrAddrF,        { 60 * COIN, 10 * COIN, 60 * COIN, 5 } },
-      { TestChain::lb1ScrAddr,      {  5 * COIN,  5 * COIN,  5 * COIN, 3 } },
+      { TestChain::lb1ScrAddr,      {  5 * COIN,  5 * COIN,  5 * COIN, 2 } },
       { TestChain::lb1ScrAddrP2SH,  {  0 * COIN,  0 * COIN,  0 * COIN, 2 } },
       { TestChain::lb2ScrAddr,      { 10 * COIN, 10 * COIN, 10 * COIN, 3 } },
-      { TestChain::lb2ScrAddrP2SH,  {  0 * COIN,  0 * COIN,  0 * COIN, 3 } },
+      { TestChain::lb2ScrAddrP2SH,  {  0 * COIN,  0 * COIN,  0 * COIN, 2 } },
    }
 };
 
@@ -320,13 +320,16 @@ static const std::vector<LedgerEntryValue> ledgersLB1_P2SH_Reorg{
 
 //LB2
 static const std::vector<LedgerEntryValue> ledgersLB2{
-   { 20 * COIN          , 4, 3, 1231008309, hash43},
+   { 20 * COIN          , 4, 3, 1231008909, hash43},
    { 10 * COIN          , 3, 5, 1231008309, hash35},
    { -10 * (int64_t)COIN, 3, 3, 1231008309, hash33},
+   { 10 * COIN          , 2, 1, 1231007708, hash21}
 };
 
 static const std::vector<LedgerEntryValue> ledgersLB2_Reorg{
-   { 10 * COIN          , 3, 2, 1231008309, hash32},
+   { 10 * COIN          , 3, 5, 1231008309, hash35},
+   { -10 * (int64_t)COIN, 3, 3, 1231008309, hash33},
+   { 10 * COIN          , 2, 1, 1231007708, hash21}
 };
 
 static const std::vector<LedgerEntryValue> ledgersLB2_P2SH{

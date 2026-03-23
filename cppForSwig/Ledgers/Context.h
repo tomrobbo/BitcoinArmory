@@ -58,12 +58,14 @@ namespace Armory
          //TODO: setup with transparent bdr/bd comparator
          const std::map<BinaryData, Tx> txMap_;
          const std::map<BinaryData, std::map<uint32_t, BinaryData>> txioKeyToScrAddr_;
+         const std::set<BinaryData> scrAddrSet_;
 
       public:
          Context(
             std::map<uint32_t, uint32_t>,
             std::map<BinaryData, Tx>&,
-            std::map<BinaryData, std::map<uint32_t, BinaryData>>&
+            std::map<BinaryData, std::map<uint32_t, BinaryData>>&,
+            std::set<BinaryData>
          );
 
          uint32_t getTimestampForBlockHeight(uint32_t) const;
@@ -71,6 +73,7 @@ namespace Armory
          size_t getTxOutCount(BinaryDataRef) const;
          const Tx& getTx(BinaryDataRef) const;
          const BinaryData& getScrAddrForTxOut(const TxIOPair&) const;
+         bool filterTxio(const TxIOPair&) const;
       };
 
       Context prepareContext(
@@ -81,7 +84,7 @@ namespace Armory
 
       Context prepareContext(
          const std::map<BinaryData, TxIOPair>&,
-         std::shared_ptr<const DBCache>
+         std::shared_ptr<const DBCache>, std::set<BinaryData>
       );
    }
 }

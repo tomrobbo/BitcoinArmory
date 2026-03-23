@@ -113,7 +113,6 @@ CacheResolveResult TxIOCache::resolveZC(const AddressFilter& filter) const
    return result;
 }
 
-
 bool TxIOCache::txKeyIsValid(const BinaryData& txKey) const
 {
    auto height = DBUtils::hgtxToHeight(txKey.getSliceRef(0, 4));
@@ -549,24 +548,30 @@ void CacheResolveResult::addTxio(const TxIOKey& key, const TxIOPair& txio,
    addrIter->second.emplace_back(&iter->second);
 }
 
+bool CacheResolveResult::isZC() const
+{
+   return topBlock == UINT32_MAX;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // ChainData
 ChainData::ChainData(CacheResolveResult& data) :
    txioMap(std::move(data.txioMap))
 {
+   std::set<BinaryDataRef> allTxKeys;
    for (const auto& addr : data.addrTxioMap) {
       //tally address balance and count
       int64_t total = 0;
       int64_t spendable = 0;
       int64_t unconfirmed = 0;
-      int64_t count = 0;
+      std::set<BinaryDataRef> addrTxKeys;
       for (const auto& txio : addr.second) {
-         //+1 txio per output
          int64_t val = static_cast<int64_t>(txio->getValue());
-         ++count;
+         if (!data.isZC() || txio->hasTxOutZC()) {
+            addrTxKeys.emplace(txio->getTxRefOfOutput().getDBKey());
+         }
          if (txio->hasTxIn()) {
-            //+1 txio per input
-            ++count;
+            addrTxKeys.emplace(txio->getTxRefOfInput().getDBKey());
             if (txio->hasTxInZC() && !txio->hasTxOutZC()) {
                total -= val;
                spendable -= val;
@@ -592,12 +597,13 @@ ChainData::ChainData(CacheResolveResult& data) :
       //set address data
       balanceMap.emplace(addr.first,
          std::vector<int64_t>{total, spendable, unconfirmed});
-      countMap.emplace(addr.first, count);
+      countMap.emplace(addr.first, addrTxKeys.size());
 
       //update wallet aggregate
       totalBalance        += total;
       spendableBalance    += spendable;
       unconfirmedBalance  += unconfirmed;
-      txioCount           += count;
+      allTxKeys.insert(addrTxKeys.begin(), addrTxKeys.end());
    }
+   txioCount = allTxKeys.size();
 }

@@ -49,6 +49,7 @@ namespace Armory
          std::map<ScrAddr, std::vector<TxIOPair*>> addrTxioMap;
 
          void addTxio(const TxIOKey&, const TxIOPair&, const ScrAddr&);
+         bool isZC(void) const;
       };
 
       struct ChainData

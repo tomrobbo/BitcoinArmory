@@ -36,10 +36,15 @@ namespace
    };
 
    std::map<TxDbKey, TxData> sortByTx(
-      const std::map<BinaryData, TxIOPair>& txioMap)
+      const std::map<BinaryData, TxIOPair>& txioMap,
+      const Context& ctx)
    {
       std::map<TxDbKey, TxData> txnTxIOMap;
       for (const auto& txio : txioMap) {
+         if (!ctx.filterTxio(txio.second)) {
+            continue;
+         }
+
          //txout
          auto txOutDBKey = txio.second.getTxRefOfOutput().getDBKeyRef();
          auto txOutIter = txnTxIOMap.find(txOutDBKey);
@@ -285,7 +290,7 @@ std::map<BinaryData, Entry> Ledgers::computeLedgerMap(
    uint32_t startBlock, uint32_t endBlock, const std::string& id,
    const Context& ctx)
 {
-   auto txnTxIOMap = sortByTx(txioMap);
+   auto txnTxIOMap = sortByTx(txioMap, ctx);
    resolveTxnData(txnTxIOMap, ctx);
 
    //convert TxIO to ledgers

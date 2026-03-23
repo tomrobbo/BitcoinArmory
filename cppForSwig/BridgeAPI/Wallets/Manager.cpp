@@ -49,7 +49,7 @@ namespace
       walletLedgers.reserve(mgr->getWalletContainerMap().size());
       for (const auto& wltCont : mgr->getWalletContainerMap()) {
          const auto txioMap = wltCont.second->getTxioMap();
-         auto context = Ledgers::prepareContext(txioMap, mgr->getDbCache());
+         auto context = Ledgers::prepareContext(txioMap, mgr->getDbCache(), {});
          walletLedgers.emplace_back(std::move(Ledgers::computeLedgerMap(
             txioMap, 0, UINT32_MAX, wltCont.first, context)));
          totalSize += walletLedgers.back().size();
@@ -78,7 +78,7 @@ namespace
             [wltPtr=wltCont.second](const BinaryData& addr)->bool
             { return wltPtr->hasScrAddr(addr); }
          );
-         auto context = Ledgers::prepareContext(txioMap, mgr->getDbCache());
+         auto context = Ledgers::prepareContext(txioMap, mgr->getDbCache(), {});
          walletLedgers.emplace_back(std::move(Ledgers::computeLedgerMap(
             txioMap, 0, UINT32_MAX, wltCont.first, context)));
          totalSize += walletLedgers.back().size();
@@ -822,7 +822,7 @@ const std::string& WalletManager::getDelegateIdForWallet(
          auto wltCont = this->getWalletContainer(wltId, accId);
          const auto txioMap = wltCont->getTxioMap();
          auto context = Ledgers::prepareContext(txioMap,
-            this->getDbCache());
+            this->getDbCache(), {});
          auto ledgers = Ledgers::computeLedgerMap(txioMap,
             0, UINT32_MAX, wltId, context);
 
@@ -850,9 +850,9 @@ const std::string& WalletManager::getDelegateIdForScrAddr(
          auto wltCont = this->getWalletContainer(wltId, accId);
          const auto txioMap = wltCont->getTxioMap();
          auto context = Ledgers::prepareContext(txioMap,
-            this->getDbCache() /*, scrAddr as filter*/);
+            this->getDbCache(), {scrAddr});
          auto ledgers = Ledgers::computeLedgerMap(txioMap,
-            0, UINT32_MAX, wltId, context /*, scrAddr as filter*/);
+            0, UINT32_MAX, wltId, context);
 
          std::vector<Ledgers::Entry> result;
          result.reserve(ledgers.size());

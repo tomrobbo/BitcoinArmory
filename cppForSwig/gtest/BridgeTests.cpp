@@ -1095,7 +1095,7 @@ namespace {
       return -1;
    }
 
-   std::map<BinaryData, std::vector<uint64_t>> getBalances(
+   std::map<BinaryData, std::vector<uint64_t>> getAddrBalances(
       std::shared_ptr<Bridge::CppBridge> bridge,
       const std::string& wltId, const std::string& accId)
    {
@@ -1223,6 +1223,45 @@ namespace {
       return serviceReply.getGetLedgerDelegateId();
    }
 
+   std::string getLedgerDelegateIdForScrAddr(
+      std::shared_ptr<Bridge::CppBridge> bridge,
+      const std::string& wltId, const std::string& accId,
+      const BinaryData& scrAddr)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initWallet();
+      req.setWalletId(wltId);
+      req.setAccountId(accId);
+      req.setGetLedgerDelegateIdForScrAddr(capnp::Data::Builder(
+         (uint8_t*)scrAddr.getPtr(), scrAddr.getSize()));
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //process reply
+      auto resp = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+         resp->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return {};
+      }
+      auto reply = fromBridge.getReply();
+      if (!reply.getSuccess()) {
+         return {};
+      }
+      if (reply.which() != Codec::Bridge::RpcReply::WALLET) {
+         return {};
+      }
+      auto serviceReply = reply.getWallet();
+      return serviceReply.getGetLedgerDelegateIdForScrAddr();
+   }
+
    size_t getLedgersPageCount(std::shared_ptr<Bridge::CppBridge> bridge,
       const std::string& delegateId)
    {
@@ -1324,7 +1363,7 @@ namespace {
             EXPECT_EQ(addrBal[0], balPair.second[0]);
             EXPECT_EQ(addrBal[1], balPair.second[1]);
             EXPECT_EQ(addrBal[2], balPair.second[2]);
-            //EXPECT_EQ(addrBal[3], balPair.second[3]);
+            EXPECT_EQ(addrBal[3], balPair.second[3]) << balPair.first.toHexStr();
          }
       } catch (const std::exception&) {
          ASSERT_TRUE(false);
@@ -5661,7 +5700,7 @@ TEST_F(BridgeBlocksDBTests, Connect)
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
-   auto balances = getBalances(bridge_, wltId, accountId);
+   auto balances = getAddrBalances(bridge_, wltId, accountId);
    ASSERT_EQ(balances.size(), 4);
 
    try {
@@ -5704,7 +5743,7 @@ TEST_F(BridgeBlocksDBTests, CycleConnection)
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
-   auto balances = getBalances(bridge_, wltId, accountId);
+   auto balances = getAddrBalances(bridge_, wltId, accountId);
    ASSERT_EQ(balances.size(), 4);
 
    try {
@@ -5756,7 +5795,7 @@ TEST_F(BridgeBlocksDBTests, DeleteWallet)
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
-   auto balances = getBalances(bridge_, walletId_, importAccId);
+   auto balances = getAddrBalances(bridge_, walletId_, importAccId);
    ASSERT_EQ(balances.size(), 4);
    try {
       for (const auto& balPair : balances) {
@@ -5769,7 +5808,7 @@ TEST_F(BridgeBlocksDBTests, DeleteWallet)
       ASSERT_TRUE(false);
    }
 
-   balances = getBalances(bridge_, wltId, accountId);
+   balances = getAddrBalances(bridge_, wltId, accountId);
    ASSERT_EQ(balances.size(), 0);
 
    //get the wallet path, check it
@@ -5843,7 +5882,7 @@ TEST_F(BridgeBlocksDBTests, ExtendAddressChain)
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
-   auto balances = getBalances(bridge_, walletId_, importAccId);
+   auto balances = getAddrBalances(bridge_, walletId_, importAccId);
    ASSERT_EQ(balances.size(), 4);
    try {
       for (const auto& balPair : balances) {
@@ -5856,7 +5895,7 @@ TEST_F(BridgeBlocksDBTests, ExtendAddressChain)
       ASSERT_TRUE(false);
    }
 
-   balances = getBalances(bridge_, wltId, accountId);
+   balances = getAddrBalances(bridge_, wltId, accountId);
    ASSERT_EQ(balances.size(), 0);
 
    /* extend address chain */
@@ -5922,7 +5961,7 @@ TEST_F(BridgeBlocksDBTests, AddNewAddress)
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
-   auto balances = getBalances(bridge_, walletId_, importAccId);
+   auto balances = getAddrBalances(bridge_, walletId_, importAccId);
    ASSERT_EQ(balances.size(), 4);
    try {
       for (const auto& balPair : balances) {
@@ -5935,7 +5974,7 @@ TEST_F(BridgeBlocksDBTests, AddNewAddress)
       ASSERT_TRUE(false);
    }
 
-   balances = getBalances(bridge_, wltId, accountId);
+   balances = getAddrBalances(bridge_, wltId, accountId);
    ASSERT_EQ(balances.size(), 0);
 
    /* get 4 addresses, wallet should have the data for that */
@@ -6116,7 +6155,7 @@ protected:
       return {};
    }
 
-   /////////////////////////////////////////////////////////////////////////////
+   ////////
    virtual void SetUp()
    {
       FileUtils::removeDirectory(blkdir_);
@@ -6181,7 +6220,7 @@ protected:
       hexMagicBytes = Config::BitcoinSettings::getMagicBytes().toHexStr();
    }
 
-   /////////////////////////////////////////////////////////////////////////////
+   ////////
    virtual void TearDown()
    {
       bridge_.reset();
@@ -6243,7 +6282,7 @@ TEST_F(BridgeLocalTests, Check5Blocks_BCDE)
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
-   auto balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   auto balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 5, false);
 
@@ -6283,7 +6322,7 @@ TEST_F(BridgeLocalTests, AddBlocks_BCDE)
    /* block 3 */
 
    //balances
-   auto balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   auto balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 3, false);
 
@@ -6308,7 +6347,7 @@ TEST_F(BridgeLocalTests, AddBlocks_BCDE)
    nodePtr_->notifyNewBlock();
    ASSERT_EQ(waitOnNewBlock(), 4);
 
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 4, false);
 
@@ -6330,7 +6369,7 @@ TEST_F(BridgeLocalTests, AddBlocks_BCDE)
    nodePtr_->notifyNewBlock();
    ASSERT_EQ(waitOnNewBlock(), 5);
 
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 5, false);
 
@@ -6368,10 +6407,10 @@ TEST_F(BridgeLocalTests, AddBlocks_BC_DE)
    /* block 3 */
 
    //balances
-   auto balances1 = getBalances(bridge_, walletId_BC_, accountId_BC_);
+   auto balances1 = getAddrBalances(bridge_, walletId_BC_, accountId_BC_);
    ASSERT_EQ(balances1.size(), 2);
    checkBalances(balances1, 3, false);
-   auto balances2 = getBalances(bridge_, walletId_DE_, accountId_DE_);
+   auto balances2 = getAddrBalances(bridge_, walletId_DE_, accountId_DE_);
    ASSERT_EQ(balances2.size(), 2);
    checkBalances(balances2, 3, false);
 
@@ -6435,10 +6474,10 @@ TEST_F(BridgeLocalTests, AddBlocks_BC_DE)
    ASSERT_EQ(waitOnNewBlock(), 4);
 
    //balances
-   balances1 = getBalances(bridge_, walletId_BC_, accountId_BC_);
+   balances1 = getAddrBalances(bridge_, walletId_BC_, accountId_BC_);
    ASSERT_EQ(balances1.size(), 2);
    checkBalances(balances1, 4, false);
-   balances2 = getBalances(bridge_, walletId_DE_, accountId_DE_);
+   balances2 = getAddrBalances(bridge_, walletId_DE_, accountId_DE_);
    ASSERT_EQ(balances2.size(), 2);
    checkBalances(balances2, 4, false);
 
@@ -6486,10 +6525,10 @@ TEST_F(BridgeLocalTests, AddBlocks_BC_DE)
    ASSERT_EQ(waitOnNewBlock(), 5);
 
    //balances
-   balances1 = getBalances(bridge_, walletId_BC_, accountId_BC_);
+   balances1 = getAddrBalances(bridge_, walletId_BC_, accountId_BC_);
    ASSERT_EQ(balances1.size(), 2);
    checkBalances(balances1, 5, false);
-   balances2 = getBalances(bridge_, walletId_DE_, accountId_DE_);
+   balances2 = getAddrBalances(bridge_, walletId_DE_, accountId_DE_);
    ASSERT_EQ(balances2.size(), 2);
    checkBalances(balances2, 5, false);
 
@@ -6551,15 +6590,15 @@ TEST_F(BridgeLocalTests, AddBlocks_BCDE_AFLB)
 
    /* block 3 */
 
-   //balances
-   auto balances1 = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   //address balances
+   auto balances1 = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances1.size(), 4);
    checkBalances(balances1, 3, false);
-   auto balances2 = getBalances(bridge_, walletId_AFLB_, accountId_AFLB_);
+   auto balances2 = getAddrBalances(bridge_, walletId_AFLB_, accountId_AFLB_);
    ASSERT_EQ(balances2.size(), 6);
    checkBalances(balances2, 3, false);
 
-   //ledgers
+   //setup wallet ledger delegates
    auto delegateId = getLedgerDelegateId(bridge_);
    auto delegateIdWlt1 = getLedgerDelegateIdForWallet(
       bridge_, walletId_BCDE_, accountId_BCDE_);
@@ -6573,6 +6612,59 @@ TEST_F(BridgeLocalTests, AddBlocks_BCDE_AFLB)
    pageCount = getLedgersPageCount(bridge_, delegateIdWlt1);
    EXPECT_EQ(pageCount, 1);
    pageCount = getLedgersPageCount(bridge_, delegateIdWlt2);
+   EXPECT_EQ(pageCount, 1);
+
+   //setup address ledger delegates
+   auto delegateScrAddrA = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_AFLB_, accountId_AFLB_, TestChain::scrAddrA);
+   ASSERT_FALSE(delegateScrAddrA.empty());
+   auto delegateScrAddrB = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_BCDE_, accountId_BCDE_, TestChain::scrAddrB);
+   ASSERT_FALSE(delegateScrAddrB.empty());
+   auto delegateScrAddrC = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_BCDE_, accountId_BCDE_, TestChain::scrAddrC);
+   ASSERT_FALSE(delegateScrAddrC.empty());
+   auto delegateScrAddrD = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_BCDE_, accountId_BCDE_, TestChain::scrAddrD);
+   ASSERT_FALSE(delegateScrAddrD.empty());
+   auto delegateScrAddrE = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_BCDE_, accountId_BCDE_, TestChain::scrAddrE);
+   ASSERT_FALSE(delegateScrAddrE.empty());
+   auto delegateScrAddrF = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_AFLB_, accountId_AFLB_, TestChain::scrAddrF);
+   ASSERT_FALSE(delegateScrAddrF.empty());
+   auto delegateScrAddrLB1 = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_AFLB_, accountId_AFLB_, TestChain::lb1ScrAddr);
+   ASSERT_FALSE(delegateScrAddrLB1.empty());
+   auto delegateP2SHLB1 = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_AFLB_, accountId_AFLB_, TestChain::lb1ScrAddrP2SH);
+   ASSERT_FALSE(delegateP2SHLB1.empty());
+   auto delegateScrAddrLB2 = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_AFLB_, accountId_AFLB_, TestChain::lb2ScrAddr);
+   ASSERT_FALSE(delegateScrAddrLB2.empty());
+   auto delegateP2SHLB2 = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_AFLB_, accountId_AFLB_, TestChain::lb2ScrAddrP2SH);
+   ASSERT_FALSE(delegateP2SHLB2.empty());
+
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrA);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrB);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrC);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrD);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrE);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrF);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrLB1);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateP2SHLB1);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrLB2);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateP2SHLB2);
    EXPECT_EQ(pageCount, 1);
 
    //wlt1 ledgers
@@ -6613,16 +6705,108 @@ TEST_F(BridgeLocalTests, AddBlocks_BCDE_AFLB)
          combinedLedgers[i])) << i;
    }
 
+   /* address ledgers */
+
+   //A
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrA, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 1);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersA[i]));
+   }
+
+   //B
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrB, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 5);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersB[i + 2]));
+   }
+
+   //C
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrC, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersC[i + 2]));
+   }
+
+   //D
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrD, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 1);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersD[i + 3]));
+   }
+
+   //E
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrE, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersE[i]));
+   }
+
+   //F
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrF, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 3);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersF[i + 2]));
+   }
+
+   //LB1
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrLB1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 1);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB1[i + 1]));
+   }
+
+   //LB1_P2SH
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateP2SHLB1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB1_P2SH[i + 1]));
+   }
+
+   //LB2
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrLB2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 3);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB2[i + 1])) << i;
+   }
+
+   //LB2_P2SH
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateP2SHLB2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 1);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB2_P2SH[i + 1]));
+   }
+
    /* block 4 */
    TestUtils::setBlocks({ "0", "1", "2", "3", "4" }, blk0dat_);
    nodePtr_->notifyNewBlock();
    ASSERT_EQ(waitOnNewBlock(), 4);
 
    //balances
-   balances1 = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances1 = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances1.size(), 4);
    checkBalances(balances1, 4, false);
-   balances2 = getBalances(bridge_, walletId_AFLB_, accountId_AFLB_);
+   balances2 = getAddrBalances(bridge_, walletId_AFLB_, accountId_AFLB_);
    ASSERT_EQ(balances2.size(), 6);
    checkBalances(balances2, 4, false);
 
@@ -6664,16 +6848,108 @@ TEST_F(BridgeLocalTests, AddBlocks_BCDE_AFLB)
             combinedLedgers[i])) << i;
    }
 
+   /* address ledgers */
+
+   //A
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrA, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 1);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersA[i]));
+   }
+
+   //B
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrB, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 5);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersB[i + 2]));
+   }
+
+   //C
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrC, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 3);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersC[i + 1]));
+   }
+
+   //D
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrD, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 3);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersD[i + 1]));
+   }
+
+   //E
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrE, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersE[i]));
+   }
+
+   //F
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrF, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 4);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersF[i + 1]));
+   }
+
+   //LB1
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrLB1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB1[i]));
+   }
+
+   //LB1_P2SH
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateP2SHLB1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 3);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB1_P2SH[i]));
+   }
+
+   //LB2
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrLB2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 4);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB2[i])) << i;
+   }
+
+   //LB2_P2SH
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateP2SHLB2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB2_P2SH[i]));
+   }
+
    /* block 5 */
    TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
    nodePtr_->notifyNewBlock();
    ASSERT_EQ(waitOnNewBlock(), 5);
 
    //balances
-   balances1 = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances1 = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances1.size(), 4);
    checkBalances(balances1, 5, false);
-   balances2 = getBalances(bridge_, walletId_AFLB_, accountId_AFLB_);
+   balances2 = getAddrBalances(bridge_, walletId_AFLB_, accountId_AFLB_);
    ASSERT_EQ(balances2.size(), 6);
    checkBalances(balances2, 5, false);
 
@@ -6714,6 +6990,98 @@ TEST_F(BridgeLocalTests, AddBlocks_BCDE_AFLB)
          checkLedgers(ledgersAtBlocks[i],
             combinedLedgers[i])) << i;
    }
+
+   /* address ledgers */
+
+   //A
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrA, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 1);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersA[i]));
+   }
+
+   //B
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrB, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 7);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersB[i]));
+   }
+
+   //C
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrC, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 4);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersC[i]));
+   }
+
+   //D
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrD, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 4);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersD[i]));
+   }
+
+   //E
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrE, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersE[i]));
+   }
+
+   //F
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrF, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 5);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersF[i]));
+   }
+
+   //LB1
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrLB1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB1[i]));
+   }
+
+   //LB1_P2SH
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateP2SHLB1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 3);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB1_P2SH[i]));
+   }
+
+   //LB2
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrLB2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 4);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB2[i]));
+   }
+
+   //LB2_P2SH
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateP2SHLB2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB2_P2SH[i]));
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -6737,7 +7105,7 @@ TEST_F(BridgeLocalTests, Reorg_BCDE)
    /* block 3 */
 
    //balances
-   auto balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   auto balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 3, false);
 
@@ -6762,7 +7130,7 @@ TEST_F(BridgeLocalTests, Reorg_BCDE)
    nodePtr_->notifyNewBlock();
    ASSERT_EQ(waitOnNewBlock(), 4);
 
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 4, true);
 
@@ -6784,7 +7152,7 @@ TEST_F(BridgeLocalTests, Reorg_BCDE)
    nodePtr_->notifyNewBlock();
    ASSERT_EQ(waitOnNewBlock(), 5);
 
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 5, false);
 
@@ -6806,7 +7174,7 @@ TEST_F(BridgeLocalTests, Reorg_BCDE)
    nodePtr_->notifyNewBlock();
    ASSERT_EQ(waitOnNewBlock(), 5);
 
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 5, true);
 
@@ -6843,10 +7211,10 @@ TEST_F(BridgeLocalTests, Reorg_BC_DE)
    /* block 3 */
 
    //balances
-   auto balances1 = getBalances(bridge_, walletId_BC_, accountId_BC_);
+   auto balances1 = getAddrBalances(bridge_, walletId_BC_, accountId_BC_);
    ASSERT_EQ(balances1.size(), 2);
    checkBalances(balances1, 3, false);
-   auto balances2 = getBalances(bridge_, walletId_DE_, accountId_DE_);
+   auto balances2 = getAddrBalances(bridge_, walletId_DE_, accountId_DE_);
    ASSERT_EQ(balances2.size(), 2);
    checkBalances(balances2, 3, false);
 
@@ -6910,10 +7278,10 @@ TEST_F(BridgeLocalTests, Reorg_BC_DE)
    ASSERT_EQ(waitOnNewBlock(), 4);
 
    //balances
-   balances1 = getBalances(bridge_, walletId_BC_, accountId_BC_);
+   balances1 = getAddrBalances(bridge_, walletId_BC_, accountId_BC_);
    ASSERT_EQ(balances1.size(), 2);
    checkBalances(balances1, 4, true);
-   balances2 = getBalances(bridge_, walletId_DE_, accountId_DE_);
+   balances2 = getAddrBalances(bridge_, walletId_DE_, accountId_DE_);
    ASSERT_EQ(balances2.size(), 2);
    checkBalances(balances2, 4, true);
 
@@ -6961,10 +7329,10 @@ TEST_F(BridgeLocalTests, Reorg_BC_DE)
    ASSERT_EQ(waitOnNewBlock(), 5);
 
    //balances
-   balances1 = getBalances(bridge_, walletId_BC_, accountId_BC_);
+   balances1 = getAddrBalances(bridge_, walletId_BC_, accountId_BC_);
    ASSERT_EQ(balances1.size(), 2);
    checkBalances(balances1, 5, false);
-   balances2 = getBalances(bridge_, walletId_DE_, accountId_DE_);
+   balances2 = getAddrBalances(bridge_, walletId_DE_, accountId_DE_);
    ASSERT_EQ(balances2.size(), 2);
    checkBalances(balances2, 5, false);
 
@@ -7012,10 +7380,10 @@ TEST_F(BridgeLocalTests, Reorg_BC_DE)
    ASSERT_EQ(waitOnNewBlock(), 5);
 
    //balances
-   balances1 = getBalances(bridge_, walletId_BC_, accountId_BC_);
+   balances1 = getAddrBalances(bridge_, walletId_BC_, accountId_BC_);
    ASSERT_EQ(balances1.size(), 2);
    checkBalances(balances1, 5, true);
-   balances2 = getBalances(bridge_, walletId_DE_, accountId_DE_);
+   balances2 = getAddrBalances(bridge_, walletId_DE_, accountId_DE_);
    ASSERT_EQ(balances2.size(), 2);
    checkBalances(balances2, 5, true);
 
@@ -7077,14 +7445,14 @@ TEST_F(BridgeLocalTests, Reorg_BCDE_AFLB)
    /* block 3 */
 
    //balances
-   auto balances1 = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   auto balances1 = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances1.size(), 4);
    checkBalances(balances1, 3, false);
-   auto balances2 = getBalances(bridge_, walletId_AFLB_, accountId_AFLB_);
+   auto balances2 = getAddrBalances(bridge_, walletId_AFLB_, accountId_AFLB_);
    ASSERT_EQ(balances2.size(), 6);
    checkBalances(balances2, 3, false);
 
-   //ledgers
+   //setup wallet ledger delegates
    auto delegateId = getLedgerDelegateId(bridge_);
    auto delegateIdWlt1 = getLedgerDelegateIdForWallet(
       bridge_, walletId_BCDE_, accountId_BCDE_);
@@ -7098,6 +7466,59 @@ TEST_F(BridgeLocalTests, Reorg_BCDE_AFLB)
    pageCount = getLedgersPageCount(bridge_, delegateIdWlt1);
    EXPECT_EQ(pageCount, 1);
    pageCount = getLedgersPageCount(bridge_, delegateIdWlt2);
+   EXPECT_EQ(pageCount, 1);
+
+   //setup address ledger delegates
+   auto delegateScrAddrA = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_AFLB_, accountId_AFLB_, TestChain::scrAddrA);
+   ASSERT_FALSE(delegateScrAddrA.empty());
+   auto delegateScrAddrB = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_BCDE_, accountId_BCDE_, TestChain::scrAddrB);
+   ASSERT_FALSE(delegateScrAddrB.empty());
+   auto delegateScrAddrC = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_BCDE_, accountId_BCDE_, TestChain::scrAddrC);
+   ASSERT_FALSE(delegateScrAddrC.empty());
+   auto delegateScrAddrD = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_BCDE_, accountId_BCDE_, TestChain::scrAddrD);
+   ASSERT_FALSE(delegateScrAddrD.empty());
+   auto delegateScrAddrE = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_BCDE_, accountId_BCDE_, TestChain::scrAddrE);
+   ASSERT_FALSE(delegateScrAddrE.empty());
+   auto delegateScrAddrF = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_AFLB_, accountId_AFLB_, TestChain::scrAddrF);
+   ASSERT_FALSE(delegateScrAddrF.empty());
+   auto delegateScrAddrLB1 = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_AFLB_, accountId_AFLB_, TestChain::lb1ScrAddr);
+   ASSERT_FALSE(delegateScrAddrLB1.empty());
+   auto delegateP2SHLB1 = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_AFLB_, accountId_AFLB_, TestChain::lb1ScrAddrP2SH);
+   ASSERT_FALSE(delegateP2SHLB1.empty());
+   auto delegateScrAddrLB2 = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_AFLB_, accountId_AFLB_, TestChain::lb2ScrAddr);
+   ASSERT_FALSE(delegateScrAddrLB2.empty());
+   auto delegateP2SHLB2 = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_AFLB_, accountId_AFLB_, TestChain::lb2ScrAddrP2SH);
+   ASSERT_FALSE(delegateP2SHLB2.empty());
+
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrA);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrB);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrC);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrD);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrE);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrF);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrLB1);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateP2SHLB1);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrLB2);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateP2SHLB2);
    EXPECT_EQ(pageCount, 1);
 
    //wlt1 ledgers
@@ -7138,16 +7559,108 @@ TEST_F(BridgeLocalTests, Reorg_BCDE_AFLB)
          combinedLedgers[i])) << i;
    }
 
+   /* address ledgers */
+
+   //A
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrA, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 1);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersA[i]));
+   }
+
+   //B
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrB, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 5);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersB[i + 2]));
+   }
+
+   //C
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrC, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersC[i + 2]));
+   }
+
+   //D
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrD, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 1);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersD[i + 3]));
+   }
+
+   //E
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrE, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersE[i]));
+   }
+
+   //F
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrF, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 3);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersF[i + 2]));
+   }
+
+   //LB1
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrLB1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 1);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB1[i + 1]));
+   }
+
+   //LB1_P2SH
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateP2SHLB1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB1_P2SH[i + 1]));
+   }
+
+   //LB2
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrLB2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 3);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB2[i + 1])) << i;
+   }
+
+   //LB2_P2SH
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateP2SHLB2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 1);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB2_P2SH[i + 1]));
+   }
+
    /* block 4A */
    TestUtils::setBlocks({ "0", "1", "2", "3", "4A" }, blk0dat_);
    nodePtr_->notifyNewBlock();
    ASSERT_EQ(waitOnNewBlock(), 4);
 
    //balances
-   balances1 = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances1 = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances1.size(), 4);
    checkBalances(balances1, 4, true);
-   balances2 = getBalances(bridge_, walletId_AFLB_, accountId_AFLB_);
+   balances2 = getAddrBalances(bridge_, walletId_AFLB_, accountId_AFLB_);
    ASSERT_EQ(balances2.size(), 6);
    checkBalances(balances2, 4, true);
 
@@ -7189,16 +7702,108 @@ TEST_F(BridgeLocalTests, Reorg_BCDE_AFLB)
             combinedLedgers[i])) << i;
    }
 
+   /* address ledgers */
+
+   //A
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrA, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 1);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersA_Reorg[i]));
+   }
+
+   //B
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrB, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 5);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersB_Reorg[i]));
+   }
+
+   //C
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrC, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersC_Reorg[i]));
+   }
+
+   //D
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrD, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 1);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersD_Reorg[i + 2]));
+   }
+
+   //E
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrE, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersE_Reorg[i]));
+   }
+
+   //F
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrF, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 4);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersF_Reorg[i + 1]));
+   }
+
+   //LB1
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrLB1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 1);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB1_Reorg[i + 1]));
+   }
+
+   //LB1_P2SH
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateP2SHLB1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB1_P2SH_Reorg[i]));
+   }
+
+   //LB2
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrLB2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 3);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB2_Reorg[i])) << i;
+   }
+
+   //LB2_P2SH
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateP2SHLB2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 1);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB2_P2SH_Reorg[i + 1]));
+   }
+
    /* block 5 */
    TestUtils::setBlocks({ "0", "1", "2", "3", "4A", "4", "5" }, blk0dat_);
    nodePtr_->notifyNewBlock();
    ASSERT_EQ(waitOnNewBlock(), 5);
 
    //balances
-   balances1 = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances1 = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances1.size(), 4);
    checkBalances(balances1, 5, false);
-   balances2 = getBalances(bridge_, walletId_AFLB_, accountId_AFLB_);
+   balances2 = getAddrBalances(bridge_, walletId_AFLB_, accountId_AFLB_);
    ASSERT_EQ(balances2.size(), 6);
    checkBalances(balances2, 5, false);
 
@@ -7240,16 +7845,108 @@ TEST_F(BridgeLocalTests, Reorg_BCDE_AFLB)
             combinedLedgers[i])) << i;
    }
 
+   /* address ledgers */
+
+   //A
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrA, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 1);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersA[i]));
+   }
+
+   //B
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrB, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 7);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersB[i]));
+   }
+
+   //C
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrC, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 4);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersC[i]));
+   }
+
+   //D
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrD, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 4);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersD[i]));
+   }
+
+   //E
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrE, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersE[i]));
+   }
+
+   //F
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrF, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 5);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersF[i]));
+   }
+
+   //LB1
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrLB1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB1[i]));
+   }
+
+   //LB1_P2SH
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateP2SHLB1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 3);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB1_P2SH[i]));
+   }
+
+   //LB2
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrLB2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 4);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB2[i]));
+   }
+
+   //LB2_P2SH
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateP2SHLB2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB2_P2SH[i]));
+   }
+
    /* block 5A */
    TestUtils::setBlocks({ "0", "1", "2", "3", "4A", "4", "5", "5A" }, blk0dat_);
    nodePtr_->notifyNewBlock();
    ASSERT_EQ(waitOnNewBlock(), 5);
 
    //balances
-   balances1 = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances1 = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances1.size(), 4);
    checkBalances(balances1, 5, true);
-   balances2 = getBalances(bridge_, walletId_AFLB_, accountId_AFLB_);
+   balances2 = getAddrBalances(bridge_, walletId_AFLB_, accountId_AFLB_);
    ASSERT_EQ(balances2.size(), 6);
    checkBalances(balances2, 5, true);
 
@@ -7290,6 +7987,98 @@ TEST_F(BridgeLocalTests, Reorg_BCDE_AFLB)
          checkLedgers(ledgersAtBlocks[i],
             combinedLedgers[i])) << i;
    }
+
+   /* address ledgers */
+
+   //A
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrA, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 1);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersA_Reorg[i]));
+   }
+
+   //B
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrB, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 5);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersB_Reorg[i]));
+   }
+
+   //C
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrC, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersC_Reorg[i]));
+   }
+
+   //D
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrD, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 3);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersD_Reorg[i]));
+   }
+
+   //E
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrE, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersE_Reorg[i]));
+   }
+
+   //F
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrF, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 5);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersF_Reorg[i]));
+   }
+
+   //LB1
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrLB1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB1_Reorg[i]));
+   }
+
+   //LB1_P2SH
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateP2SHLB1, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB1_P2SH_Reorg[i]));
+   }
+
+   //LB2
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrLB2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 3);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB2_Reorg[i])) << i;
+   }
+
+   //LB2_P2SH
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateP2SHLB2, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersLB2_P2SH_Reorg[i]));
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -7311,7 +8100,7 @@ TEST_F(BridgeLocalTests, AddressBook)
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
-   auto balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   auto balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 5, false);
 
@@ -7521,22 +8310,83 @@ TEST_F(BridgeLocalTests, ZeroConf)
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
-   auto balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   auto balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 5, false);
 
-   //check ledgers
+   //setup wallet ledger delegate
    auto delegateId = getLedgerDelegateId(bridge_);
    ASSERT_FALSE(delegateId.empty());
-
    auto pageCount = getLedgersPageCount(bridge_, delegateId);
    EXPECT_EQ(pageCount, 1);
 
+   //setup address ledger delegates
+   auto delegateScrAddrB = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_BCDE_, accountId_BCDE_, TestChain::scrAddrB);
+   ASSERT_FALSE(delegateScrAddrB.empty());
+   auto delegateScrAddrC = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_BCDE_, accountId_BCDE_, TestChain::scrAddrC);
+   ASSERT_FALSE(delegateScrAddrC.empty());
+   auto delegateScrAddrD = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_BCDE_, accountId_BCDE_, TestChain::scrAddrD);
+   ASSERT_FALSE(delegateScrAddrD.empty());
+   auto delegateScrAddrE = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_BCDE_, accountId_BCDE_, TestChain::scrAddrE);
+   ASSERT_FALSE(delegateScrAddrE.empty());
+
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrB);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrC);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrD);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrE);
+   EXPECT_EQ(pageCount, 1);
+
+   //check wallet ledgers
    auto ledgers = getLedgersPage(bridge_, delegateId, 0);
    ASSERT_EQ(ledgers.size(), 15);
 
    for (unsigned i = 0; i < ledgers.size(); i++) {
       EXPECT_TRUE(checkLedgers(ledgers[i], TestChain::ledgersBCDE[i])) << i;
+   }
+
+   /* address ledgers */
+
+   //B
+   auto ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrB, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 7);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersB[i]));
+   }
+
+   //C
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrC, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 4);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersC[i]));
+   }
+
+   //D
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrD, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 4);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersD[i]));
+   }
+
+   //E
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrE, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersE[i]));
    }
 
    //create recipient address
@@ -7576,15 +8426,16 @@ TEST_F(BridgeLocalTests, ZeroConf)
    }
 
    //check balances
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    auto addrBBal = balances.at(TestChain::scrAddrB);
    auto testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
    EXPECT_EQ(addrBBal[0], testAddrBBal[0] - (20 * COIN));
    EXPECT_EQ(addrBBal[1], testAddrBBal[1] - (20 * COIN));
    EXPECT_EQ(addrBBal[2], testAddrBBal[2] - (20 * COIN));
+   EXPECT_EQ(addrBBal[3], testAddrBBal[3] + 1);
 
-   //check ledgers
+   //check wallet ledgers
    ledgers = getLedgersPage(bridge_, delegateId, 0);
    ASSERT_EQ(ledgers.size(), 16);
    for (unsigned i = 0; i < 15; i++) {
@@ -7596,18 +8447,34 @@ TEST_F(BridgeLocalTests, ZeroConf)
    ASSERT_EQ(lastEntry.getValue(), -20 * (int64_t)COIN);
    ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
 
+   /* address ledgers */
+
+   //B
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrB, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 8);
+   for (unsigned i = 0; i < TestChain::ledgersB.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i+1],
+            TestChain::ledgersB[i]));
+   }
+   lastEntry = ledgersAtBlocks[0];
+   ASSERT_EQ(lastEntry.getTxHash(), tx.getThisHash());
+   ASSERT_EQ(lastEntry.getValue(), -20 * (int64_t)COIN);
+   ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
+
    /* mine the tx */
    DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrA, 1);
    ASSERT_EQ(waitOnNewBlock(), 6);
 
    //check balances again
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    addrBBal = balances.at(TestChain::scrAddrB);
    testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
    EXPECT_EQ(addrBBal[0], testAddrBBal[0] - (20 * COIN));
    EXPECT_EQ(addrBBal[1], testAddrBBal[1] - (20 * COIN));
    EXPECT_EQ(addrBBal[2], testAddrBBal[2] - (20 * COIN));
+   EXPECT_EQ(addrBBal[3], testAddrBBal[3] + 1);
 
    //check ledgers
    ledgers = getLedgersPage(bridge_, delegateId, 0);
@@ -7617,6 +8484,19 @@ TEST_F(BridgeLocalTests, ZeroConf)
    }
 
    lastEntry = ledgers[0];
+   ASSERT_EQ(lastEntry.getTxHash(), tx.getThisHash());
+   ASSERT_EQ(lastEntry.getValue(), -20 * (int64_t)COIN);
+   ASSERT_EQ(lastEntry.getBlockNum(), 6);
+
+   //B
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrB, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 8);
+   for (unsigned i = 0; i < TestChain::ledgersB.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i+1],
+            TestChain::ledgersB[i]));
+   }
+   lastEntry = ledgersAtBlocks[0];
    ASSERT_EQ(lastEntry.getTxHash(), tx.getThisHash());
    ASSERT_EQ(lastEntry.getValue(), -20 * (int64_t)COIN);
    ASSERT_EQ(lastEntry.getBlockNum(), 6);
@@ -7639,7 +8519,7 @@ TEST_F(BridgeLocalTests, ZeroConf_Replace)
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
-   auto balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   auto balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 5, false);
 
@@ -7694,7 +8574,7 @@ TEST_F(BridgeLocalTests, ZeroConf_Replace)
    }
 
    //check balances
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    auto addrBBal = balances.at(TestChain::scrAddrB);
    auto testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
@@ -7763,7 +8643,7 @@ TEST_F(BridgeLocalTests, ZeroConf_Replace)
    }
 
    //check balances
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    addrBBal = balances.at(TestChain::scrAddrB);
    testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
@@ -7794,7 +8674,7 @@ TEST_F(BridgeLocalTests, ZeroConf_Replace)
    ASSERT_EQ(waitOnNewBlock(), 6);
 
    //check balances again
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    addrBBal = balances.at(TestChain::scrAddrB);
    testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
@@ -7838,7 +8718,7 @@ TEST_F(BridgeLocalTests, ZeroConf_Chain)
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
-   auto balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   auto balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 5, false);
 
@@ -7899,7 +8779,7 @@ TEST_F(BridgeLocalTests, ZeroConf_Chain)
    }
 
    //check balances
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    auto addrBBal = balances.at(TestChain::scrAddrB);
    auto testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
@@ -7977,7 +8857,7 @@ TEST_F(BridgeLocalTests, ZeroConf_Chain)
    }
 
    //check balances
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    addrBBal = balances.at(TestChain::scrAddrB);
    testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
@@ -8013,7 +8893,7 @@ TEST_F(BridgeLocalTests, ZeroConf_Chain)
    ASSERT_EQ(waitOnNewBlock(), 6);
 
    //check balances
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    addrBBal = balances.at(TestChain::scrAddrB);
    testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
@@ -8062,22 +8942,83 @@ TEST_F(BridgeLocalTests, ZeroConf_StaggeredChain)
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
-   auto balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   auto balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 5, false);
 
-   //check ledgers
+   //grab wallet ledger delegates
    auto delegateId = getLedgerDelegateId(bridge_);
    ASSERT_FALSE(delegateId.empty());
-
    auto pageCount = getLedgersPageCount(bridge_, delegateId);
    EXPECT_EQ(pageCount, 1);
 
+   //setup address ledger delegates
+   auto delegateScrAddrB = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_BCDE_, accountId_BCDE_, TestChain::scrAddrB);
+   ASSERT_FALSE(delegateScrAddrB.empty());
+   auto delegateScrAddrC = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_BCDE_, accountId_BCDE_, TestChain::scrAddrC);
+   ASSERT_FALSE(delegateScrAddrC.empty());
+   auto delegateScrAddrD = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_BCDE_, accountId_BCDE_, TestChain::scrAddrD);
+   ASSERT_FALSE(delegateScrAddrD.empty());
+   auto delegateScrAddrE = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_BCDE_, accountId_BCDE_, TestChain::scrAddrE);
+   ASSERT_FALSE(delegateScrAddrE.empty());
+
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrB);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrC);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrD);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrE);
+   EXPECT_EQ(pageCount, 1);
+
+   //check wallet ledgers
    auto ledgers = getLedgersPage(bridge_, delegateId, 0);
    ASSERT_EQ(ledgers.size(), 15);
 
    for (unsigned i = 0; i < ledgers.size(); i++) {
       EXPECT_TRUE(checkLedgers(ledgers[i], TestChain::ledgersBCDE[i])) << i;
+   }
+
+   /* check address ledgers */
+
+   //B
+   auto ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrB, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 7);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersB[i]));
+   }
+
+   //C
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrC, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 4);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersC[i]));
+   }
+
+   //D
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrD, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 4);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersD[i]));
+   }
+
+   //E
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrE, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersE[i]));
    }
 
    //create recipient address
@@ -8123,21 +9064,23 @@ TEST_F(BridgeLocalTests, ZeroConf_StaggeredChain)
    }
 
    //check balances
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    auto addrBBal = balances.at(TestChain::scrAddrB);
    auto testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
    EXPECT_EQ(addrBBal[0], testAddrBBal[0] - (20 * COIN));
    EXPECT_EQ(addrBBal[1], testAddrBBal[1] - (20 * COIN));
    EXPECT_EQ(addrBBal[2], testAddrBBal[2] - (20 * COIN));
+   EXPECT_EQ(addrBBal[3], testAddrBBal[3] + 1);
 
    addrBBal = balances.at(TestChain::scrAddrC);
    testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrC);
    EXPECT_EQ(addrBBal[0], testAddrBBal[0] + changeAmount);
    EXPECT_EQ(addrBBal[1], testAddrBBal[1]);
    EXPECT_EQ(addrBBal[2], testAddrBBal[2] + changeAmount);
+   EXPECT_EQ(addrBBal[3], testAddrBBal[3] + 1);
 
-   //check ledgers
+   //check wallet ledgers
    ledgers = getLedgersPage(bridge_, delegateId, 0);
    ASSERT_EQ(ledgers.size(), 16);
    for (unsigned i = 0; i < 15; i++) {
@@ -8148,6 +9091,37 @@ TEST_F(BridgeLocalTests, ZeroConf_StaggeredChain)
    ASSERT_EQ(lastEntry.getTxHash(), tx.getThisHash());
    EXPECT_EQ(lastEntry.getValue(), -20 * (int64_t)COIN + changeAmount);
    ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
+
+   /* address ledgers */
+   //B
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrB, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 8);
+   for (unsigned i = 0; i < TestChain::ledgersB.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i + 1],
+            TestChain::ledgersB[i]));
+   }
+
+   lastEntry = ledgersAtBlocks[0];
+   ASSERT_EQ(lastEntry.getTxHash(), tx.getThisHash());
+   EXPECT_EQ(lastEntry.getValue(), -20 * (int64_t)COIN);
+   ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
+   EXPECT_FALSE(lastEntry.isChainedZC());
+
+   //C
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrC, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 5);
+   for (unsigned i = 0; i < TestChain::ledgersC.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i + 1],
+            TestChain::ledgersC[i]));
+   }
+
+   lastEntry = ledgersAtBlocks[0];
+   ASSERT_EQ(lastEntry.getTxHash(), tx.getThisHash());
+   EXPECT_EQ(lastEntry.getValue(), changeAmount);
+   ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
+   EXPECT_FALSE(lastEntry.isChainedZC());
 
    /* second zc */
 
@@ -8204,21 +9178,23 @@ TEST_F(BridgeLocalTests, ZeroConf_StaggeredChain)
    }
 
    //check balances
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    addrBBal = balances.at(TestChain::scrAddrB);
    testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
    EXPECT_EQ(addrBBal[0], testAddrBBal[0] - (20 * COIN));
    EXPECT_EQ(addrBBal[1], testAddrBBal[1] - (20 * COIN));
    EXPECT_EQ(addrBBal[2], testAddrBBal[2] - (20 * COIN));
+   EXPECT_EQ(addrBBal[3], testAddrBBal[3] + 1);
 
    addrBBal = balances.at(TestChain::scrAddrC);
    testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrC);
    EXPECT_EQ(addrBBal[0], testAddrBBal[0] + changeAmount2);
    EXPECT_EQ(addrBBal[1], testAddrBBal[1]);
    EXPECT_EQ(addrBBal[2], testAddrBBal[2] + changeAmount2);
+   EXPECT_EQ(addrBBal[3], testAddrBBal[3] + 2);
 
-   //check ledgers
+   //check wallet ledgers
    ledgers = getLedgersPage(bridge_, delegateId, 0);
    ASSERT_EQ(ledgers.size(), 17);
    for (unsigned i = 0; i < 15; i++) {
@@ -8235,26 +9211,65 @@ TEST_F(BridgeLocalTests, ZeroConf_StaggeredChain)
    ASSERT_EQ(ledgers[0].getBlockNum(), UINT32_MAX);
    EXPECT_TRUE(ledgers[0].isChainedZC());
 
+   /* address ledgers */
+   //B
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrB, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 8);
+   for (unsigned i = 0; i < TestChain::ledgersB.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i + 1],
+            TestChain::ledgersB[i]));
+   }
+
+   lastEntry = ledgersAtBlocks[0];
+   ASSERT_EQ(lastEntry.getTxHash(), tx.getThisHash());
+   EXPECT_EQ(lastEntry.getValue(), -20 * (int64_t)COIN);
+   ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
+   EXPECT_FALSE(lastEntry.isChainedZC());
+
+   //C
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrC, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 6);
+   for (unsigned i = 0; i < TestChain::ledgersC.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i + 2],
+            TestChain::ledgersC[i]));
+   }
+
+   lastEntry = ledgersAtBlocks[1];
+   ASSERT_EQ(lastEntry.getTxHash(), tx.getThisHash());
+   EXPECT_EQ(lastEntry.getValue(), changeAmount);
+   ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
+   EXPECT_FALSE(lastEntry.isChainedZC());
+
+   lastEntry = ledgersAtBlocks[0];
+   ASSERT_EQ(lastEntry.getTxHash(), tx2.getThisHash());
+   EXPECT_EQ(lastEntry.getValue(), -(int64_t)changeAmount + int64_t(changeAmount2));
+   ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
+   EXPECT_TRUE(lastEntry.isChainedZC());
+
    /* mine first tx */
    DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrA, 1);
    ASSERT_EQ(waitOnNewBlock(), 6);
 
    //check balances
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    addrBBal = balances.at(TestChain::scrAddrB);
    testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
    EXPECT_EQ(addrBBal[0], testAddrBBal[0] - (20 * COIN));
    EXPECT_EQ(addrBBal[1], testAddrBBal[1] - (20 * COIN));
    EXPECT_EQ(addrBBal[2], testAddrBBal[2] - (20 * COIN));
+   EXPECT_EQ(addrBBal[3], testAddrBBal[3] + 1);
 
    addrBBal = balances.at(TestChain::scrAddrC);
    testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrC);
    EXPECT_EQ(addrBBal[0], testAddrBBal[0] + changeAmount2);
    EXPECT_EQ(addrBBal[1], testAddrBBal[1]);
    EXPECT_EQ(addrBBal[2], testAddrBBal[2] + changeAmount2);
+   EXPECT_EQ(addrBBal[3], testAddrBBal[3] + 2);
 
-   //check ledgers
+   //check wallet ledgers
    ledgers = getLedgersPage(bridge_, delegateId, 0);
    ASSERT_EQ(ledgers.size(), 17);
    for (unsigned i = 0; i < 15; i++) {
@@ -8271,26 +9286,65 @@ TEST_F(BridgeLocalTests, ZeroConf_StaggeredChain)
    ASSERT_EQ(ledgers[0].getBlockNum(), UINT32_MAX);
    EXPECT_FALSE(ledgers[0].isChainedZC());
 
+   /* address ledgers */
+   //B
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrB, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 8);
+   for (unsigned i = 0; i < TestChain::ledgersB.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i + 1],
+            TestChain::ledgersB[i]));
+   }
+
+   lastEntry = ledgersAtBlocks[0];
+   ASSERT_EQ(lastEntry.getTxHash(), tx.getThisHash());
+   EXPECT_EQ(lastEntry.getValue(), -20 * (int64_t)COIN);
+   ASSERT_EQ(lastEntry.getBlockNum(), 6);
+   EXPECT_FALSE(lastEntry.isChainedZC());
+
+   //C
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrC, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 6);
+   for (unsigned i = 0; i < TestChain::ledgersC.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i + 2],
+            TestChain::ledgersC[i]));
+   }
+
+   lastEntry = ledgersAtBlocks[1];
+   ASSERT_EQ(lastEntry.getTxHash(), tx.getThisHash());
+   EXPECT_EQ(lastEntry.getValue(), changeAmount);
+   ASSERT_EQ(lastEntry.getBlockNum(), 6);
+   EXPECT_FALSE(lastEntry.isChainedZC());
+
+   lastEntry = ledgersAtBlocks[0];
+   ASSERT_EQ(lastEntry.getTxHash(), tx2.getThisHash());
+   EXPECT_EQ(lastEntry.getValue(), -(int64_t)changeAmount + int64_t(changeAmount2));
+   ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
+   EXPECT_FALSE(lastEntry.isChainedZC());
+
    /* mine second tx */
    DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrA, 1);
    ASSERT_EQ(waitOnNewBlock(), 7);
 
    //check balances
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    addrBBal = balances.at(TestChain::scrAddrB);
    testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
    EXPECT_EQ(addrBBal[0], testAddrBBal[0] - (20 * COIN));
    EXPECT_EQ(addrBBal[1], testAddrBBal[1] - (20 * COIN));
    EXPECT_EQ(addrBBal[2], testAddrBBal[2] - (20 * COIN));
+   EXPECT_EQ(addrBBal[3], testAddrBBal[3] + 1);
 
    addrBBal = balances.at(TestChain::scrAddrC);
    testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrC);
    EXPECT_EQ(addrBBal[0], testAddrBBal[0] + changeAmount2);
    EXPECT_EQ(addrBBal[1], testAddrBBal[1] + changeAmount2);
    EXPECT_EQ(addrBBal[2], testAddrBBal[2] + changeAmount2);
+   EXPECT_EQ(addrBBal[3], testAddrBBal[3] + 2);
 
-   //check ledgers
+   //check wallet ledgers
    ledgers = getLedgersPage(bridge_, delegateId, 0);
    ASSERT_EQ(ledgers.size(), 17);
    for (unsigned i = 0; i < 15; i++) {
@@ -8306,6 +9360,43 @@ TEST_F(BridgeLocalTests, ZeroConf_StaggeredChain)
    EXPECT_EQ(ledgers[0].getValue(), -changeAmount + changeAmount2);
    ASSERT_EQ(ledgers[0].getBlockNum(), 7);
    EXPECT_FALSE(ledgers[0].isChainedZC());
+
+   /* address ledgers */
+   //B
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrB, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 8);
+   for (unsigned i = 0; i < TestChain::ledgersB.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i + 1],
+            TestChain::ledgersB[i]));
+   }
+
+   lastEntry = ledgersAtBlocks[0];
+   ASSERT_EQ(lastEntry.getTxHash(), tx.getThisHash());
+   EXPECT_EQ(lastEntry.getValue(), -20 * (int64_t)COIN);
+   ASSERT_EQ(lastEntry.getBlockNum(), 6);
+   EXPECT_FALSE(lastEntry.isChainedZC());
+
+   //C
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrC, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 6);
+   for (unsigned i = 0; i < TestChain::ledgersC.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i + 2],
+            TestChain::ledgersC[i]));
+   }
+
+   lastEntry = ledgersAtBlocks[1];
+   ASSERT_EQ(lastEntry.getTxHash(), tx.getThisHash());
+   EXPECT_EQ(lastEntry.getValue(), changeAmount);
+   ASSERT_EQ(lastEntry.getBlockNum(), 6);
+   EXPECT_FALSE(lastEntry.isChainedZC());
+
+   lastEntry = ledgersAtBlocks[0];
+   ASSERT_EQ(lastEntry.getTxHash(), tx2.getThisHash());
+   EXPECT_EQ(lastEntry.getValue(), -(int64_t)changeAmount + int64_t(changeAmount2));
+   ASSERT_EQ(lastEntry.getBlockNum(), 7);
+   EXPECT_FALSE(lastEntry.isChainedZC());
 }
 
 TEST_F(BridgeLocalTests, ZeroConf_ChainRBF)
@@ -8325,22 +9416,83 @@ TEST_F(BridgeLocalTests, ZeroConf_ChainRBF)
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
-   auto balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   auto balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 5, false);
 
-   //check ledgers
+   //setup wallet ledger delegates
    auto delegateId = getLedgerDelegateId(bridge_);
    ASSERT_FALSE(delegateId.empty());
-
    auto pageCount = getLedgersPageCount(bridge_, delegateId);
    EXPECT_EQ(pageCount, 1);
 
+   //setup address ledger delegates
+   auto delegateScrAddrB = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_BCDE_, accountId_BCDE_, TestChain::scrAddrB);
+   ASSERT_FALSE(delegateScrAddrB.empty());
+   auto delegateScrAddrC = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_BCDE_, accountId_BCDE_, TestChain::scrAddrC);
+   ASSERT_FALSE(delegateScrAddrC.empty());
+   auto delegateScrAddrD = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_BCDE_, accountId_BCDE_, TestChain::scrAddrD);
+   ASSERT_FALSE(delegateScrAddrD.empty());
+   auto delegateScrAddrE = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_BCDE_, accountId_BCDE_, TestChain::scrAddrE);
+   ASSERT_FALSE(delegateScrAddrE.empty());
+
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrB);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrC);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrD);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrE);
+   EXPECT_EQ(pageCount, 1);
+
+   // check wallet ledgers
    auto ledgers = getLedgersPage(bridge_, delegateId, 0);
    ASSERT_EQ(ledgers.size(), 15);
 
    for (unsigned i = 0; i < ledgers.size(); i++) {
       EXPECT_TRUE(checkLedgers(ledgers[i], TestChain::ledgersBCDE[i])) << i;
+   }
+
+   /* check address ledgers */
+
+   //B
+   auto ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrB, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 7);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersB[i]));
+   }
+
+   //C
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrC, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 4);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersC[i]));
+   }
+
+   //D
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrD, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 4);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersD[i]));
+   }
+
+   //E
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrE, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersE[i]));
    }
 
    //create recipient address
@@ -8381,26 +9533,29 @@ TEST_F(BridgeLocalTests, ZeroConf_ChainRBF)
       ASSERT_EQ(zcLedgers[0].getTxHash(), tx.getThisHash());
       EXPECT_EQ(zcLedgers[0].getValue(), -20 * (int64_t)COIN + changeAmount);
       ASSERT_EQ(zcLedgers[0].getBlockNum(), UINT32_MAX);
+      EXPECT_TRUE(zcLedgers[0].isOptInRBF());
    } catch (const std::exception&) {
       ASSERT_TRUE(false);
    }
 
    //check balances
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    auto addrBBal = balances.at(TestChain::scrAddrB);
    auto testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
    EXPECT_EQ(addrBBal[0], testAddrBBal[0] - (20 * COIN));
    EXPECT_EQ(addrBBal[1], testAddrBBal[1] - (20 * COIN));
    EXPECT_EQ(addrBBal[2], testAddrBBal[2] - (20 * COIN));
+   EXPECT_EQ(addrBBal[3], testAddrBBal[3] + 1);
 
    addrBBal = balances.at(TestChain::scrAddrC);
    testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrC);
    EXPECT_EQ(addrBBal[0], testAddrBBal[0] + changeAmount);
    EXPECT_EQ(addrBBal[1], testAddrBBal[1]);
    EXPECT_EQ(addrBBal[2], testAddrBBal[2] + changeAmount);
+   EXPECT_EQ(addrBBal[3], testAddrBBal[3] + 1);
 
-   //check ledgers
+   //check wallet ledgers
    ledgers = getLedgersPage(bridge_, delegateId, 0);
    ASSERT_EQ(ledgers.size(), 16);
    for (unsigned i = 0; i < 15; i++) {
@@ -8411,6 +9566,41 @@ TEST_F(BridgeLocalTests, ZeroConf_ChainRBF)
    ASSERT_EQ(lastEntry.getTxHash(), tx.getThisHash());
    EXPECT_EQ(lastEntry.getValue(), -20 * (int64_t)COIN + changeAmount);
    ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
+   EXPECT_TRUE(lastEntry.isOptInRBF());
+
+   /* address ledgers */
+
+   //B
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrB, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 8);
+   for (unsigned i = 0; i < TestChain::ledgersB.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i + 1],
+            TestChain::ledgersB[i]));
+   }
+
+   lastEntry = ledgersAtBlocks[0];
+   ASSERT_EQ(lastEntry.getTxHash(), tx.getThisHash());
+   EXPECT_EQ(lastEntry.getValue(), -20 * (int64_t)COIN);
+   ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
+   EXPECT_TRUE(lastEntry.isOptInRBF());
+   EXPECT_FALSE(lastEntry.isChainedZC());
+
+   //C
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrC, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 5);
+   for (unsigned i = 0; i < TestChain::ledgersC.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i + 1],
+            TestChain::ledgersC[i]));
+   }
+
+   lastEntry = ledgersAtBlocks[0];
+   ASSERT_EQ(lastEntry.getTxHash(), tx.getThisHash());
+   EXPECT_EQ(lastEntry.getValue(), changeAmount);
+   ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
+   EXPECT_TRUE(lastEntry.isOptInRBF());
+   EXPECT_FALSE(lastEntry.isChainedZC());
 
    /* second zc */
 
@@ -8454,31 +9644,35 @@ TEST_F(BridgeLocalTests, ZeroConf_ChainRBF)
       EXPECT_EQ(zcLedgers[0].getValue(), -changeAmount + changeAmount2);
       ASSERT_EQ(zcLedgers[0].getBlockNum(), UINT32_MAX);
       EXPECT_TRUE(zcLedgers[0].isChainedZC());
+      EXPECT_TRUE(zcLedgers[0].isOptInRBF());
 
       ASSERT_EQ(zcLedgers[1].getTxHash(), tx.getThisHash());
       EXPECT_EQ(zcLedgers[1].getValue(), -20 * (int64_t)COIN + changeAmount);
       ASSERT_EQ(zcLedgers[1].getBlockNum(), UINT32_MAX);
       EXPECT_FALSE(zcLedgers[1].isChainedZC());
+      EXPECT_TRUE(zcLedgers[1].isOptInRBF());
    } catch (const std::exception&) {
       ASSERT_TRUE(false);
    }
 
    //check balances
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    addrBBal = balances.at(TestChain::scrAddrB);
    testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
    EXPECT_EQ(addrBBal[0], testAddrBBal[0] - (20 * COIN));
    EXPECT_EQ(addrBBal[1], testAddrBBal[1] - (20 * COIN));
    EXPECT_EQ(addrBBal[2], testAddrBBal[2] - (20 * COIN));
+   EXPECT_EQ(addrBBal[3], testAddrBBal[3] + 1);
 
    addrBBal = balances.at(TestChain::scrAddrC);
    testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrC);
    EXPECT_EQ(addrBBal[0], testAddrBBal[0] + changeAmount2);
    EXPECT_EQ(addrBBal[1], testAddrBBal[1]);
    EXPECT_EQ(addrBBal[2], testAddrBBal[2] + changeAmount2);
+   EXPECT_EQ(addrBBal[3], testAddrBBal[3] + 2);
 
-   //check ledgers
+   //check wallet ledgers
    ledgers = getLedgersPage(bridge_, delegateId, 0);
    ASSERT_EQ(ledgers.size(), 17);
    for (unsigned i = 0; i < 15; i++) {
@@ -8488,12 +9682,55 @@ TEST_F(BridgeLocalTests, ZeroConf_ChainRBF)
    ASSERT_EQ(ledgers[1].getTxHash(), tx.getThisHash());
    EXPECT_EQ(ledgers[1].getValue(), -20 * (int64_t)COIN + changeAmount);
    ASSERT_EQ(ledgers[1].getBlockNum(), UINT32_MAX);
+   EXPECT_TRUE(ledgers[1].isOptInRBF());
    EXPECT_FALSE(ledgers[1].isChainedZC());
 
    ASSERT_EQ(ledgers[0].getTxHash(), tx2.getThisHash());
    EXPECT_EQ(ledgers[0].getValue(), -changeAmount + changeAmount2);
    ASSERT_EQ(ledgers[0].getBlockNum(), UINT32_MAX);
+   EXPECT_TRUE(ledgers[0].isOptInRBF());
    EXPECT_TRUE(ledgers[0].isChainedZC());
+
+   /* address ledgers */
+
+   //B
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrB, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 8);
+   for (unsigned i = 0; i < TestChain::ledgersB.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i + 1],
+            TestChain::ledgersB[i]));
+   }
+
+   lastEntry = ledgersAtBlocks[0];
+   ASSERT_EQ(lastEntry.getTxHash(), tx.getThisHash());
+   EXPECT_EQ(lastEntry.getValue(), -20 * (int64_t)COIN);
+   ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
+   EXPECT_TRUE(lastEntry.isOptInRBF());
+   EXPECT_FALSE(lastEntry.isChainedZC());
+
+   //C
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrC, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 6);
+   for (unsigned i = 0; i < TestChain::ledgersC.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i + 2],
+            TestChain::ledgersC[i]));
+   }
+
+   lastEntry = ledgersAtBlocks[1];
+   ASSERT_EQ(lastEntry.getTxHash(), tx.getThisHash());
+   EXPECT_EQ(lastEntry.getValue(), changeAmount);
+   ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
+   EXPECT_TRUE(lastEntry.isOptInRBF());
+   EXPECT_FALSE(lastEntry.isChainedZC());
+
+   lastEntry = ledgersAtBlocks[0];
+   ASSERT_EQ(lastEntry.getTxHash(), tx2.getThisHash());
+   EXPECT_EQ(lastEntry.getValue(), -changeAmount + changeAmount2);
+   ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
+   EXPECT_TRUE(lastEntry.isOptInRBF());
+   EXPECT_TRUE(lastEntry.isChainedZC());
 
    //get rbf UTXOs
    auto rbfUtxos = getUTXOs(bridge_, walletId_BCDE_, accountId_BCDE_, 2);
@@ -8554,27 +9791,30 @@ TEST_F(BridgeLocalTests, ZeroConf_ChainRBF)
    }
 
    //check balances
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    addrBBal = balances.at(TestChain::scrAddrB);
    testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
    EXPECT_EQ(addrBBal[0], testAddrBBal[0] - (20 * COIN));
    EXPECT_EQ(addrBBal[1], testAddrBBal[1] - (20 * COIN));
    EXPECT_EQ(addrBBal[2], testAddrBBal[2] - (20 * COIN));
+   EXPECT_EQ(addrBBal[3], testAddrBBal[3] + 1);
 
    addrBBal = balances.at(TestChain::scrAddrC);
    testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrC);
    EXPECT_EQ(addrBBal[0], testAddrBBal[0]);
    EXPECT_EQ(addrBBal[1], testAddrBBal[1]);
    EXPECT_EQ(addrBBal[2], testAddrBBal[2]);
+   EXPECT_EQ(addrBBal[3], testAddrBBal[3]);
 
    addrBBal = balances.at(TestChain::scrAddrE);
    testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrE);
    EXPECT_EQ(addrBBal[0], testAddrBBal[0] + changeAmountRbf);
    EXPECT_EQ(addrBBal[1], testAddrBBal[1]);
    EXPECT_EQ(addrBBal[2], testAddrBBal[2] + changeAmountRbf);
+   EXPECT_EQ(addrBBal[3], testAddrBBal[3] + 1);
 
-   //check ledgers
+   //check wallet ledgers
    ledgers = getLedgersPage(bridge_, delegateId, 0);
    ASSERT_EQ(ledgers.size(), 16);
    for (unsigned i = 0; i < 15; i++) {
@@ -8584,7 +9824,49 @@ TEST_F(BridgeLocalTests, ZeroConf_ChainRBF)
    ASSERT_EQ(ledgers[0].getTxHash(), tx3.getThisHash());
    EXPECT_EQ(ledgers[0].getValue(), -8 * (int64_t)COIN -rbfFee);
    ASSERT_EQ(ledgers[0].getBlockNum(), UINT32_MAX);
+   EXPECT_TRUE(ledgers[0].isOptInRBF());
    EXPECT_FALSE(ledgers[0].isChainedZC());
+
+   //B
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrB, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 8);
+   for (unsigned i = 0; i < TestChain::ledgersB.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i + 1],
+            TestChain::ledgersB[i]));
+   }
+
+   lastEntry = ledgersAtBlocks[0];
+   ASSERT_EQ(lastEntry.getTxHash(), tx3.getThisHash());
+   EXPECT_EQ(lastEntry.getValue(), -20 * (int64_t)COIN);
+   ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
+   EXPECT_TRUE(lastEntry.isOptInRBF());
+   EXPECT_FALSE(lastEntry.isChainedZC());
+
+   //C
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrC, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 4);
+   for (unsigned i = 0; i < TestChain::ledgersC.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersC[i]));
+   }
+
+   //E
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrE, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 3);
+   for (unsigned i = 0; i < TestChain::ledgersE.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i + 1],
+            TestChain::ledgersE[i]));
+   }
+
+   lastEntry = ledgersAtBlocks[0];
+   ASSERT_EQ(lastEntry.getTxHash(), tx3.getThisHash());
+   EXPECT_EQ(lastEntry.getValue(), changeAmountRbf);
+   ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
+   EXPECT_TRUE(lastEntry.isOptInRBF());
+   EXPECT_FALSE(lastEntry.isChainedZC());
 }
 
 TEST_F(BridgeLocalTests, ZeroConf_Reload)
@@ -8604,7 +9886,7 @@ TEST_F(BridgeLocalTests, ZeroConf_Reload)
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
-   auto balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   auto balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 5, false);
 
@@ -8665,7 +9947,7 @@ TEST_F(BridgeLocalTests, ZeroConf_Reload)
    }
 
    //check balances
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    auto addrBBal = balances.at(TestChain::scrAddrB);
    auto testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
@@ -8743,7 +10025,7 @@ TEST_F(BridgeLocalTests, ZeroConf_Reload)
    }
 
    //check balances
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    addrBBal = balances.at(TestChain::scrAddrB);
    testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
@@ -8790,7 +10072,7 @@ TEST_F(BridgeLocalTests, ZeroConf_Reload)
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    addrBBal = balances.at(TestChain::scrAddrB);
    testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
@@ -8826,7 +10108,7 @@ TEST_F(BridgeLocalTests, ZeroConf_Reload)
    ASSERT_EQ(waitOnNewBlock(), 6);
 
    //check balances
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    addrBBal = balances.at(TestChain::scrAddrB);
    testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
@@ -8879,23 +10161,86 @@ TEST_F(BridgeLocalTests, ZeroConf_Reorg)
    ASSERT_EQ(waitOnNewBlock(), 5);
 
    //check balances
-   auto balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   auto balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 5, false);
 
-   //check ledgers
+   //setup wallet ledger delegate
    auto delegateId = getLedgerDelegateId(bridge_);
    ASSERT_FALSE(delegateId.empty());
-
    auto pageCount = getLedgersPageCount(bridge_, delegateId);
    EXPECT_EQ(pageCount, 1);
 
+   //setup address ledger delegates
+   auto delegateScrAddrB = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_BCDE_, accountId_BCDE_, TestChain::scrAddrB);
+   ASSERT_FALSE(delegateScrAddrB.empty());
+   auto delegateScrAddrC = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_BCDE_, accountId_BCDE_, TestChain::scrAddrC);
+   ASSERT_FALSE(delegateScrAddrC.empty());
+   auto delegateScrAddrD = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_BCDE_, accountId_BCDE_, TestChain::scrAddrD);
+   ASSERT_FALSE(delegateScrAddrD.empty());
+   auto delegateScrAddrE = getLedgerDelegateIdForScrAddr(bridge_,
+      walletId_BCDE_, accountId_BCDE_, TestChain::scrAddrE);
+   ASSERT_FALSE(delegateScrAddrE.empty());
+
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrB);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrC);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrD);
+   EXPECT_EQ(pageCount, 1);
+   pageCount = getLedgersPageCount(bridge_, delegateScrAddrE);
+   EXPECT_EQ(pageCount, 1);
+
+   //check wallet ledgers
    auto ledgers = getLedgersPage(bridge_, delegateId, 0);
    ASSERT_EQ(ledgers.size(), 15);
 
    for (unsigned i = 0; i < ledgers.size(); i++) {
       EXPECT_TRUE(checkLedgers(ledgers[i], TestChain::ledgersBCDE[i])) << i;
    }
+
+   /* address ledgers */
+
+   //B
+   auto ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrB, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 7);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersB[i]));
+   }
+
+   //C
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrC, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 4);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersC[i]));
+   }
+
+   //D
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrD, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 4);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersD[i]));
+   }
+
+   //E
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrE, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersE[i]));
+   }
+
+   /* create & push zc */
 
    //get UTXOs
    auto utxos = getUTXOs(bridge_, walletId_BCDE_, accountId_BCDE_, 0);
@@ -8956,21 +10301,23 @@ TEST_F(BridgeLocalTests, ZeroConf_Reorg)
    }
 
    //check balances
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    auto addrBBal = balances.at(TestChain::scrAddrD);
    auto testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrD);
    EXPECT_EQ(addrBBal[0], testAddrBBal[0] - (5 * COIN));
    EXPECT_EQ(addrBBal[1], testAddrBBal[1] - (5 * COIN));
    EXPECT_EQ(addrBBal[2], testAddrBBal[2] - (5 * COIN));
+   EXPECT_EQ(addrBBal[3], testAddrBBal[3] + 1);
 
    addrBBal = balances.at(TestChain::scrAddrC);
    testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrC);
    EXPECT_EQ(addrBBal[0], testAddrBBal[0] + changeAmount);
    EXPECT_EQ(addrBBal[1], testAddrBBal[1]);
    EXPECT_EQ(addrBBal[2], testAddrBBal[2] + changeAmount);
+   EXPECT_EQ(addrBBal[3], testAddrBBal[3] + 1);
 
-   //check ledgers
+   //check wallet ledgers
    ledgers = getLedgersPage(bridge_, delegateId, 0);
    ASSERT_EQ(ledgers.size(), 16);
    for (unsigned i = 0; i < 15; i++) {
@@ -8982,16 +10329,44 @@ TEST_F(BridgeLocalTests, ZeroConf_Reorg)
    EXPECT_EQ(lastEntry.getValue(), -5 * (int64_t)COIN + changeAmount);
    ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
 
+   /* check address ledgers */
+
+   //C
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrC, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 5);
+   for (unsigned i = 0; i < TestChain::ledgersC.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i + 1],
+            TestChain::ledgersC[i]));
+   }
+   lastEntry = ledgersAtBlocks[0];
+   ASSERT_EQ(lastEntry.getTxHash(), tx.getThisHash());
+   EXPECT_EQ(lastEntry.getValue(), changeAmount);
+   ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
+
+   //D
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrD, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 5);
+   for (unsigned i = 0; i < TestChain::ledgersD.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i + 1],
+            TestChain::ledgersD[i]));
+   }
+   lastEntry = ledgersAtBlocks[0];
+   ASSERT_EQ(lastEntry.getTxHash(), tx.getThisHash());
+   EXPECT_EQ(lastEntry.getValue(), -5 * (int64_t)COIN);
+   ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
+
    /* reorg to block 5A*/
    TestUtils::setBlocks({ "0", "1", "2", "3", "4A", "4", "5", "5A" }, blk0dat_);
    nodePtr_->notifyNewBlock();
    ASSERT_EQ(waitOnNewBlock(), 5);
 
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 5, true);
 
-   //ledgers
+   //wallet ledgers
    pageCount = getLedgersPageCount(bridge_, delegateId);
    EXPECT_EQ(pageCount, 1);
 
@@ -9002,6 +10377,44 @@ TEST_F(BridgeLocalTests, ZeroConf_Reorg)
       EXPECT_TRUE(
          checkLedgers(ledgersAt5Blocks[i],
          TestChain::ledgersBCDE_Reorg[i]));
+   }
+
+   /* address ledgers */
+
+   //B
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrB, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 5);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersB_Reorg[i]));
+   }
+
+   //C
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrC, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersC_Reorg[i]));
+   }
+
+   //D
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrD, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 3);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersD_Reorg[i]));
+   }
+
+   //E
+   ledgersAtBlocks = getLedgersPage(bridge_, delegateScrAddrE, 0);
+   ASSERT_EQ(ledgersAtBlocks.size(), 2);
+   for (unsigned i = 0; i < ledgersAtBlocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAtBlocks[i],
+            TestChain::ledgersE_Reorg[i]));
    }
 }
 
@@ -9052,7 +10465,7 @@ TEST_F(BridgeLocalTests, ZeroConf_RegisterWallet)
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
-   auto balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   auto balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 5, false);
 
@@ -9101,7 +10514,7 @@ TEST_F(BridgeLocalTests, ZeroConf_RegisterWallet)
    }
 
    //check balances
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    auto addrBBal = balances.at(TestChain::scrAddrB);
    auto testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
@@ -9127,7 +10540,7 @@ TEST_F(BridgeLocalTests, ZeroConf_RegisterWallet)
    ASSERT_TRUE(registerWallet(bridge_, walletId_AFLB_, accountId_AFLB_, dbId));
 
    //recheck bcde balances
-   balances = getBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    addrBBal = balances.at(TestChain::scrAddrB);
    testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrB);
@@ -9136,7 +10549,7 @@ TEST_F(BridgeLocalTests, ZeroConf_RegisterWallet)
    EXPECT_EQ(addrBBal[2], testAddrBBal[2] + spentAmount);
 
    //check aflb balances
-   balances = getBalances(bridge_, walletId_AFLB_, accountId_AFLB_);
+   balances = getAddrBalances(bridge_, walletId_AFLB_, accountId_AFLB_);
    ASSERT_EQ(balances.size(), 6);
    addrBBal = balances.at(TestChain::scrAddrA);
    testAddrBBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrA);
@@ -9337,7 +10750,7 @@ TEST_F(BridgeBlocksAutoDBTests, Connect)
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
-   auto balances = getBalances(bridge_, wltId, accountId);
+   auto balances = getAddrBalances(bridge_, wltId, accountId);
    ASSERT_EQ(balances.size(), 4);
 
    try {
@@ -9382,7 +10795,7 @@ TEST_F(BridgeBlocksAutoDBTests, Connect_NoCleanup)
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
-   auto balances = getBalances(bridge_, wltId, accountId);
+   auto balances = getAddrBalances(bridge_, wltId, accountId);
    ASSERT_EQ(balances.size(), 4);
 
    try {

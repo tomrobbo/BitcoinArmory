@@ -23,10 +23,12 @@ using namespace Armory::Ledgers;
 // Context
 Context::Context(std::map<uint32_t, uint32_t> timestamps,
    std::map<BinaryData, Tx>& txMap,
-   std::map<BinaryData, std::map<uint32_t, BinaryData>>& txioKeyToScrAddr) :
+   std::map<BinaryData, std::map<uint32_t, BinaryData>>& txioKeyToScrAddr,
+   std::set<BinaryData> scrAddrSet) :
    timestamps_(std::move(timestamps)),
    txMap_{std::move(txMap)},
-   txioKeyToScrAddr_{std::move(txioKeyToScrAddr)}
+   txioKeyToScrAddr_{std::move(txioKeyToScrAddr)},
+   scrAddrSet_{std::move(scrAddrSet)}
 {}
 
 uint32_t Context::getTimestampForBlockHeight(uint32_t blockNum) const
@@ -60,6 +62,15 @@ const BinaryData& Context::getScrAddrForTxOut(const TxIOPair& txio) const
 {
    return txioKeyToScrAddr_.at(txio.getTxRefOfOutput().getDBKey()).at(
       txio.getIndexOfOutput());
+}
+
+bool Context::filterTxio(const TxIOPair& txio) const
+{
+   if (scrAddrSet_.empty()) {
+      return true;
+   }
+   const auto& scrAddr = getScrAddrForTxOut(txio);
+   return scrAddrSet_.find(scrAddr) != scrAddrSet_.end();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -171,12 +182,13 @@ Context Ledgers::prepareContext(
       auto indexOut = txioPair.second.getIndexOfOutput();
       iterOut->second.emplace(indexOut, outTx.getScrAddrForTxOut(indexOut));
    }
-   return Context{timestamps, txMap, txioKeyToScrAddr};
+   return Context{timestamps, txMap, txioKeyToScrAddr, {}};
 }
 
 Context Ledgers::prepareContext(
    const std::map<BinaryData, TxIOPair>& txioMap,
-   std::shared_ptr<const DBCache> dbCache)
+   std::shared_ptr<const DBCache> dbCache,
+   std::set<BinaryData> scrAddrSet)
 {
    std::set<BinaryData> txKeys;
 
@@ -224,5 +236,5 @@ Context Ledgers::prepareContext(
          continue;
       }
    }
-   return Context{timestamps, txMap, txioKeyToScrAddr};
+   return Context{timestamps, txMap, txioKeyToScrAddr, std::move(scrAddrSet)};
 }
