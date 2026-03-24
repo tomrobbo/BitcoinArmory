@@ -1095,6 +1095,55 @@ namespace {
       return -1;
    }
 
+   /////////////////////////////////////////////////////////////////////////////
+   // balances
+   std::vector<uint64_t> getWalletBalance(
+      std::shared_ptr<Bridge::CppBridge> bridge,
+      const std::string& wltId, const std::string& accId)
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto req = toBridge.initWallet();
+      req.setWalletId(wltId);
+      req.setAccountId(accId);
+      req.setGetBalanceAndCount();
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //process reply
+      auto resp = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(resp->data.getPtr()),
+         resp->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         return {};
+      }
+      auto reply = fromBridge.getReply();
+      if (!reply.getSuccess()) {
+         return {};
+      }
+      if (reply.which() != Codec::Bridge::RpcReply::WALLET) {
+         return {};
+      }
+
+      auto walletReply = reply.getWallet();
+      if (walletReply.which() != Codec::Bridge::WalletReply::GET_BALANCE_AND_COUNT) {
+         return {};
+      }
+      auto balStruct = walletReply.getGetBalanceAndCount();
+      return {
+         balStruct.getFull(),
+         balStruct.getSpendable(),
+         balStruct.getUnconfirmed(),
+         balStruct.getTxnCount()
+      };
+   }
+
    std::map<BinaryData, std::vector<uint64_t>> getAddrBalances(
       std::shared_ptr<Bridge::CppBridge> bridge,
       const std::string& wltId, const std::string& accId)
@@ -6281,7 +6330,15 @@ TEST_F(BridgeLocalTests, Check5Blocks_BCDE)
    theBDMt_->start(Config::DBSettings::initMode());
    ASSERT_EQ(goOnline(bridge_), 5);
 
-   //check balances
+   //check wallet balance
+   auto wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3]);
+
+   //check address balances
    auto balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 5, false);
@@ -6321,7 +6378,15 @@ TEST_F(BridgeLocalTests, AddBlocks_BCDE)
 
    /* block 3 */
 
-   //balances
+   //wallet balance
+   auto wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[3][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[3][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[3][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[3][3]);
+
+   //addr balances
    auto balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 3, false);
@@ -6347,6 +6412,15 @@ TEST_F(BridgeLocalTests, AddBlocks_BCDE)
    nodePtr_->notifyNewBlock();
    ASSERT_EQ(waitOnNewBlock(), 4);
 
+   //wallet balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[4][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[4][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[4][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[4][3]);
+
+   //addr balances
    balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 4, false);
@@ -6369,6 +6443,15 @@ TEST_F(BridgeLocalTests, AddBlocks_BCDE)
    nodePtr_->notifyNewBlock();
    ASSERT_EQ(waitOnNewBlock(), 5);
 
+   //wallet balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3]);
+
+   //addr balances
    balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 5, false);
@@ -6590,6 +6673,21 @@ TEST_F(BridgeLocalTests, AddBlocks_BCDE_AFLB)
 
    /* block 3 */
 
+   //wlt balance
+   auto wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[3][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[3][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[3][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[3][3]);
+
+   wltBal = getWalletBalance(bridge_, walletId_AFLB_, accountId_AFLB_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_AFLB[3][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_AFLB[3][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_AFLB[3][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_AFLB[3][3]);
+
    //address balances
    auto balances1 = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances1.size(), 4);
@@ -6802,7 +6900,22 @@ TEST_F(BridgeLocalTests, AddBlocks_BCDE_AFLB)
    nodePtr_->notifyNewBlock();
    ASSERT_EQ(waitOnNewBlock(), 4);
 
-   //balances
+   //wlt balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[4][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[4][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[4][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[4][3]);
+
+   wltBal = getWalletBalance(bridge_, walletId_AFLB_, accountId_AFLB_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_AFLB[4][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_AFLB[4][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_AFLB[4][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_AFLB[4][3]);
+
+   //addr balances
    balances1 = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances1.size(), 4);
    checkBalances(balances1, 4, false);
@@ -6945,7 +7058,22 @@ TEST_F(BridgeLocalTests, AddBlocks_BCDE_AFLB)
    nodePtr_->notifyNewBlock();
    ASSERT_EQ(waitOnNewBlock(), 5);
 
-   //balances
+   //wlt balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3]);
+
+   wltBal = getWalletBalance(bridge_, walletId_AFLB_, accountId_AFLB_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_AFLB[5][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_AFLB[5][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_AFLB[5][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_AFLB[5][3]);
+
+   //addr balances
    balances1 = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances1.size(), 4);
    checkBalances(balances1, 5, false);
@@ -7104,7 +7232,15 @@ TEST_F(BridgeLocalTests, Reorg_BCDE)
 
    /* block 3 */
 
-   //balances
+   //wlt balance
+   auto wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[3][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[3][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[3][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[3][3]);
+
+   //addr balances
    auto balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 3, false);
@@ -7130,6 +7266,15 @@ TEST_F(BridgeLocalTests, Reorg_BCDE)
    nodePtr_->notifyNewBlock();
    ASSERT_EQ(waitOnNewBlock(), 4);
 
+   //wlt balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE_Reorg[4][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE_Reorg[4][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE_Reorg[4][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE_Reorg[4][3]);
+
+   //addr balances
    balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 4, true);
@@ -7152,6 +7297,15 @@ TEST_F(BridgeLocalTests, Reorg_BCDE)
    nodePtr_->notifyNewBlock();
    ASSERT_EQ(waitOnNewBlock(), 5);
 
+   //wlt balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3]);
+
+   //addr balances
    balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 5, false);
@@ -7174,6 +7328,15 @@ TEST_F(BridgeLocalTests, Reorg_BCDE)
    nodePtr_->notifyNewBlock();
    ASSERT_EQ(waitOnNewBlock(), 5);
 
+   //wlt balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE_Reorg[5][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE_Reorg[5][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE_Reorg[5][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE_Reorg[5][3]);
+
+   //addr balances
    balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 5, true);
@@ -7444,7 +7607,22 @@ TEST_F(BridgeLocalTests, Reorg_BCDE_AFLB)
 
    /* block 3 */
 
-   //balances
+   //wlt balance
+   auto wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[3][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[3][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[3][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[3][3]);
+
+   wltBal = getWalletBalance(bridge_, walletId_AFLB_, accountId_AFLB_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_AFLB[3][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_AFLB[3][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_AFLB[3][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_AFLB[3][3]);
+
+   //addr balances
    auto balances1 = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances1.size(), 4);
    checkBalances(balances1, 3, false);
@@ -7656,7 +7834,22 @@ TEST_F(BridgeLocalTests, Reorg_BCDE_AFLB)
    nodePtr_->notifyNewBlock();
    ASSERT_EQ(waitOnNewBlock(), 4);
 
-   //balances
+   //wlt balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE_Reorg[4][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE_Reorg[4][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE_Reorg[4][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE_Reorg[4][3]);
+
+   wltBal = getWalletBalance(bridge_, walletId_AFLB_, accountId_AFLB_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_AFLB_Reorg[4][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_AFLB_Reorg[4][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_AFLB_Reorg[4][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_AFLB_Reorg[4][3]);
+
+   //addr balances
    balances1 = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances1.size(), 4);
    checkBalances(balances1, 4, true);
@@ -7798,6 +7991,21 @@ TEST_F(BridgeLocalTests, Reorg_BCDE_AFLB)
    TestUtils::setBlocks({ "0", "1", "2", "3", "4A", "4", "5" }, blk0dat_);
    nodePtr_->notifyNewBlock();
    ASSERT_EQ(waitOnNewBlock(), 5);
+
+   //wlt balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3]);
+
+   wltBal = getWalletBalance(bridge_, walletId_AFLB_, accountId_AFLB_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_AFLB[5][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_AFLB[5][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_AFLB[5][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_AFLB[5][3]);
 
    //balances
    balances1 = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
@@ -7942,7 +8150,22 @@ TEST_F(BridgeLocalTests, Reorg_BCDE_AFLB)
    nodePtr_->notifyNewBlock();
    ASSERT_EQ(waitOnNewBlock(), 5);
 
-   //balances
+   //wlt balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE_Reorg[5][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE_Reorg[5][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE_Reorg[5][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE_Reorg[5][3]);
+
+   wltBal = getWalletBalance(bridge_, walletId_AFLB_, accountId_AFLB_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_AFLB_Reorg[5][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_AFLB_Reorg[5][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_AFLB_Reorg[5][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_AFLB_Reorg[5][3]);
+
+   //addr balances
    balances1 = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances1.size(), 4);
    checkBalances(balances1, 5, true);
@@ -8309,7 +8532,15 @@ TEST_F(BridgeLocalTests, ZeroConf)
    theBDMt_->start(Config::DBSettings::initMode());
    ASSERT_EQ(goOnline(bridge_), 5);
 
-   //check balances
+   //check wallet balance
+   auto wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3]);
+
+   //check addr balances
    auto balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 5, false);
@@ -8425,7 +8656,15 @@ TEST_F(BridgeLocalTests, ZeroConf)
       ASSERT_TRUE(false);
    }
 
-   //check balances
+   //check wallet balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0] - (20 * COIN));
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1] - (20 * COIN));
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2] - (20 * COIN));
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3] + 1);
+
+   //check addr balances
    balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    auto addrBBal = balances.at(TestChain::scrAddrB);
@@ -8466,7 +8705,15 @@ TEST_F(BridgeLocalTests, ZeroConf)
    DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrA, 1);
    ASSERT_EQ(waitOnNewBlock(), 6);
 
-   //check balances again
+   //check wallet balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0] - (20 * COIN));
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1] - (20 * COIN));
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2] - (20 * COIN));
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3] + 1);
+
+   //check addr balances again
    balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    addrBBal = balances.at(TestChain::scrAddrB);
@@ -8941,7 +9188,15 @@ TEST_F(BridgeLocalTests, ZeroConf_StaggeredChain)
    theBDMt_->start(Config::DBSettings::initMode());
    ASSERT_EQ(goOnline(bridge_), 5);
 
-   //check balances
+   //check wallet balance
+   auto wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3]);
+
+   //check addr balances
    auto balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 5, false);
@@ -9063,7 +9318,15 @@ TEST_F(BridgeLocalTests, ZeroConf_StaggeredChain)
       ASSERT_TRUE(false);
    }
 
-   //check balances
+   //check wallet balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0] - (20 * COIN) + changeAmount);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1] - (20 * COIN));
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2] - (20 * COIN) + changeAmount);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3] + 1);
+
+   //check addr balances
    balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    auto addrBBal = balances.at(TestChain::scrAddrB);
@@ -9177,7 +9440,15 @@ TEST_F(BridgeLocalTests, ZeroConf_StaggeredChain)
       ASSERT_TRUE(false);
    }
 
-   //check balances
+   //check wallet balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0] - (20 * COIN) + changeAmount2);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1] - (20 * COIN));
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2] - (20 * COIN) + changeAmount2);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3] + 2);
+
+   //check addr balances
    balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    addrBBal = balances.at(TestChain::scrAddrB);
@@ -9252,7 +9523,15 @@ TEST_F(BridgeLocalTests, ZeroConf_StaggeredChain)
    DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrA, 1);
    ASSERT_EQ(waitOnNewBlock(), 6);
 
-   //check balances
+   //check wallet balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0] - (20 * COIN) + changeAmount2);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1] - (20 * COIN));
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2] - (20 * COIN) + changeAmount2);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3] + 2);
+
+   //check addr balances
    balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    addrBBal = balances.at(TestChain::scrAddrB);
@@ -9327,7 +9606,15 @@ TEST_F(BridgeLocalTests, ZeroConf_StaggeredChain)
    DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrA, 1);
    ASSERT_EQ(waitOnNewBlock(), 7);
 
-   //check balances
+   //check wallet balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0] - (20 * COIN) + changeAmount2);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1] - (20 * COIN) + changeAmount2);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2] - (20 * COIN) + changeAmount2);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3] + 2);
+
+   //check addr balances
    balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    addrBBal = balances.at(TestChain::scrAddrB);
@@ -9415,7 +9702,15 @@ TEST_F(BridgeLocalTests, ZeroConf_ChainRBF)
    theBDMt_->start(Config::DBSettings::initMode());
    ASSERT_EQ(goOnline(bridge_), 5);
 
-   //check balances
+   //check wallet balance
+   auto wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3]);
+
+   //check addr balances
    auto balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 5, false);
@@ -9538,7 +9833,15 @@ TEST_F(BridgeLocalTests, ZeroConf_ChainRBF)
       ASSERT_TRUE(false);
    }
 
-   //check balances
+   //check wallet balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0] - (20 * COIN) + changeAmount);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1] - (20 * COIN));
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2] - (20 * COIN) + changeAmount);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3] + 1);
+
+   //check addr balances
    balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    auto addrBBal = balances.at(TestChain::scrAddrB);
@@ -9655,7 +9958,15 @@ TEST_F(BridgeLocalTests, ZeroConf_ChainRBF)
       ASSERT_TRUE(false);
    }
 
-   //check balances
+   //check wallet balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0] - (20 * COIN) + changeAmount2);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1] - (20 * COIN));
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2] - (20 * COIN) + changeAmount2);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3] + 2);
+
+   //check addr balances
    balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    addrBBal = balances.at(TestChain::scrAddrB);
@@ -9790,7 +10101,15 @@ TEST_F(BridgeLocalTests, ZeroConf_ChainRBF)
       ASSERT_TRUE(false);
    }
 
-   //check balances
+   //check wallet balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0] - (20 * COIN) + changeAmountRbf);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1] - (20 * COIN));
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2] - (20 * COIN) + changeAmountRbf);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3] + 1);
+
+   //check addr balances
    balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    addrBBal = balances.at(TestChain::scrAddrB);
@@ -10160,7 +10479,15 @@ TEST_F(BridgeLocalTests, ZeroConf_Reorg)
    nodePtr_->notifyNewBlock();
    ASSERT_EQ(waitOnNewBlock(), 5);
 
-   //check balances
+   //check wallet balance
+   auto wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3]);
+
+   //check addr balances
    auto balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 5, false);
@@ -10300,7 +10627,15 @@ TEST_F(BridgeLocalTests, ZeroConf_Reorg)
       ASSERT_TRUE(false);
    }
 
-   //check balances
+   //check wallet balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0] -(5 * COIN) + changeAmount);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1] -(5 * COIN));
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2] -(5 * COIN) + changeAmount);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3] + 1);
+
+   //check addr balances
    balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    auto addrBBal = balances.at(TestChain::scrAddrD);
@@ -10362,6 +10697,15 @@ TEST_F(BridgeLocalTests, ZeroConf_Reorg)
    nodePtr_->notifyNewBlock();
    ASSERT_EQ(waitOnNewBlock(), 5);
 
+   //check wallet balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE_Reorg[5][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE_Reorg[5][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE_Reorg[5][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE_Reorg[5][3]);
+
+   //check addr balances
    balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 5, true);
@@ -10464,7 +10808,15 @@ TEST_F(BridgeLocalTests, ZeroConf_RegisterWallet)
    theBDMt_->start(Config::DBSettings::initMode());
    ASSERT_EQ(goOnline(bridge_), 5);
 
-   //check balances
+   //check wallet balance
+   auto wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3]);
+
+   //check addr balances
    auto balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    checkBalances(balances, 5, false);
@@ -10513,7 +10865,15 @@ TEST_F(BridgeLocalTests, ZeroConf_RegisterWallet)
       ASSERT_TRUE(false);
    }
 
-   //check balances
+   //check wallet balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0] + spentAmount);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1] - (20 * COIN));
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2] + spentAmount);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3] + 1);
+
+   //check addr balances
    balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    auto addrBBal = balances.at(TestChain::scrAddrB);
@@ -10540,6 +10900,13 @@ TEST_F(BridgeLocalTests, ZeroConf_RegisterWallet)
    ASSERT_TRUE(registerWallet(bridge_, walletId_AFLB_, accountId_AFLB_, dbId));
 
    //recheck bcde balances
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0] + spentAmount);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1] - (20 * COIN));
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2] + spentAmount);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3] + 1);
+
    balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(balances.size(), 4);
    addrBBal = balances.at(TestChain::scrAddrB);
@@ -10549,6 +10916,13 @@ TEST_F(BridgeLocalTests, ZeroConf_RegisterWallet)
    EXPECT_EQ(addrBBal[2], testAddrBBal[2] + spentAmount);
 
    //check aflb balances
+   wltBal = getWalletBalance(bridge_, walletId_AFLB_, accountId_AFLB_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_AFLB[5][0] + 11 * COIN);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_AFLB[5][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_AFLB[5][2] + 11 * COIN);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_AFLB[5][3] + 1);
+
    balances = getAddrBalances(bridge_, walletId_AFLB_, accountId_AFLB_);
    ASSERT_EQ(balances.size(), 6);
    addrBBal = balances.at(TestChain::scrAddrA);

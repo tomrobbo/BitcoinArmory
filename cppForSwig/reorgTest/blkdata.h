@@ -138,6 +138,55 @@ static const std::vector<std::map<BinaryData, std::vector<uint64_t>>> testAddrBa
    }
 };
 
+////////
+static const std::vector<std::vector<uint64_t>> wltBal_BCDE {
+   { /* block 0 */ },
+   { /* block 1 */ },
+   { /* block 2 */ },
+   { /* block 3 */
+      120 * COIN, 70 * COIN, 120 * COIN, 9 },
+   { /* block 4 */
+      130 * COIN, 80 * COIN, 130 * COIN, 12 },
+   { /* block 5 */
+      185 * COIN, 85 * COIN, 185 * COIN, 15 }
+};
+
+static const std::vector<std::vector<uint64_t>> wltBal_BCDE_Reorg {
+   { /* block 0 */ },
+   { /* block 1 */ },
+   { /* block 2 */ },
+   { /* block 3 */
+      120 * COIN, 70 * COIN, 120 * COIN, 9 },
+   { /* block 4 */
+      120 * COIN, 70 * COIN, 120 * COIN, 9 },
+   { /* block 5 */
+      175 * COIN, 75 * COIN, 175 * COIN, 11 }
+};
+
+static const std::vector<std::vector<uint64_t>> wltBal_AFLB {
+   { /* block 0 */ },
+   { /* block 1 */ },
+   { /* block 2 */ },
+   { /* block 3 */
+      80 * COIN, 30 * COIN, 80 * COIN, 7 },
+   { /* block 4 */
+      120 * COIN, 70 * COIN, 120 * COIN, 10 },
+   { /* block 5 */
+      115 * COIN, 65 * COIN, 115 * COIN, 11 }
+};
+
+static const std::vector<std::vector<uint64_t>> wltBal_AFLB_Reorg {
+   { /* block 0 */ },
+   { /* block 1 */ },
+   { /* block 2 */ },
+   { /* block 3 */
+      80 * COIN, 30 * COIN, 80 * COIN, 7 },
+   { /* block 4 */
+      130 * COIN, 30 * COIN, 130 * COIN, 8 },
+   { /* block 5 */
+      125 * COIN, 25 * COIN, 125 * COIN, 10 }
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 struct LedgerEntryValue
 {
