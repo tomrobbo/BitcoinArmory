@@ -192,6 +192,9 @@ namespace Armory
          size_t getAssetCount(void) const;
          int32_t getLastComputedIndex(void) const;
          int32_t getHighestUsedIndex(void) const;
+         void setHighestUsedIndex(
+            std::shared_ptr<Wallets::IO::WalletDBInterface>,
+            const Wallets::AssetKeyType&);
          bool isAssetInUse(const Wallets::AssetId&) const;
          AssetPtr getLastAssetWithPrivateKey(void) const;
 

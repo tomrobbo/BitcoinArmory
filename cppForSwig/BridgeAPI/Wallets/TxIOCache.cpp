@@ -505,7 +505,7 @@ std::vector<UTXO> TxIOCache::getUTXOs(
    return result;
 }
 
-/////////
+////////
 std::map<TxIOKey, TxIOPair> TxIOCache::getZcTxios(
    const AddressFilter& filter) const
 {
@@ -519,21 +519,9 @@ std::map<TxIOKey, TxIOPair> TxIOCache::getZcTxios(
       if (filter(scrAddrOut)) {
          result.emplace(txio.getDBKeyOfOutput(), txio);
       }
-
-      if (!txio.hasTxIn()) {
-         continue;
-      }
-
-      const auto& txInKey = txio.getTxRefOfInput().getDBKey();
-      const auto& inTx = dbCache_->txMap.at(txInKey);
-      auto scrAddrIn = inTx.getScrAddrForTxOut(txio.getIndexOfOutput());
-      if (filter(scrAddrIn)) {
-         result.emplace(txio.getDBKeyOfOutput(), txio);
-      }
    }
    return result;
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 // CacheResolveResult

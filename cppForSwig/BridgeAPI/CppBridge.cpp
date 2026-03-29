@@ -1514,7 +1514,7 @@ void CppBridge::changeWalletPassphrase(const Wallets::WalletId& wltId,
          callbackId, [this](ServerPushWrapper wrapper){
             this->callbackWriter(wrapper);
          });
-      Armory::Passphrase::SetNew setNewFunc = getSetPassFunc(
+      Passphrase::SetNew setNewFunc = getSetPassFunc(
          this, callbackId, isPriv);
 
       try {
@@ -1727,7 +1727,7 @@ void CppBridge::restoreWallet(
             0 //address lookup
          };
 
-         auto restoreResult = Armory::Seeds::Helpers::restoreFromBackup(
+         auto restoreResult = Seeds::Helpers::restoreFromBackup(
             std::move(backup), callback, params);
 
          if (restoreResult.wltPtr == nullptr) {
@@ -1763,8 +1763,8 @@ void CppBridge::restoreWallet(
                );
             }
          } else {
-            //we didnt have an old wallet merge into the new one, extend
-            //the address chain for some baseline count
+            //we dont have an existing wallet to merge into the new one,
+            //extend the address chain for some baseline count
             progFunc(std::make_unique<Wallets::Progress::ExtendChain>(500));
             if (isWO) {
                restoreResult.wltPtr->extendPublicChain(499);
@@ -1776,15 +1776,15 @@ void CppBridge::restoreWallet(
             restoreResult.wltPtr.reset();
          }
 
-         //unload old wallet & rename it
          if (wltManager_->hasWallet(newWltID)) {
+            //unload existing wallet & rename it
             oldWltPath = wltManager_->unloadWallet(newWltID);
             if (!oldWltPath.empty()) {
                oldWltPath = FileUtils::appendTagToPath(oldWltPath, "_old");
             }
          }
 
-         //move new wallet
+         //move new wallet file in datadir
          auto newPath = wltManager_->getWalletDir() / newWltPath.filename();
          std::filesystem::rename(newWltPath, newPath);
 
@@ -1792,8 +1792,8 @@ void CppBridge::restoreWallet(
          wltManager_->loadWallet(Wallets::IO::ReadOnlyFileParams{
             newPath, params.setCtrlPassObj.getUnlockFunc()});
 
-         //delete old wallet if there's one
          if (!oldWltPath.empty() && std::filesystem::exists(oldWltPath)) {
+            //delete existing wallet
             std::filesystem::remove(oldWltPath);
          }
 
@@ -1808,7 +1808,7 @@ void CppBridge::restoreWallet(
          //cleanup & success
          sendCallbackCleanup(this, callbackId);
          sendSuccess(this, refId);
-      } catch (const Armory::Seeds::RestoreUserException& e) {
+      } catch (const Seeds::RestoreUserException& e) {
          /*
          These type of errors are the result of user actions. They should have
          an opportunity to fix the issue. Consequently, no error flag will be
@@ -1908,14 +1908,12 @@ const std::string& CppBridge::getLedgerDelegateId()
    return wltManager_->getDelegateId();
 }
 
-////////////////////////////////////////////////////////////////////////////////
 const std::string& CppBridge::getLedgerDelegateIdForWallet(
    const Wallets::WalletId& walletId, const Wallets::AddressAccountId& accId)
 {
    return wltManager_->getDelegateIdForWallet(walletId, accId);
 }
 
-////////////////////////////////////////////////////////////////////////////////
 const std::string& CppBridge::getLedgerDelegateIdForScrAddr(
    const Wallets::WalletId& wltId, const Wallets::AddressAccountId& accId,
    const BinaryDataRef& addrHash)
@@ -2072,7 +2070,6 @@ BinaryData CppBridge::getBalanceAndCount(const Wallets::WalletId& wltId,
    return serializeCapnp(message);
 }
 
-////////////////////////////////////////////////////////////////////////////////
 BinaryData CppBridge::getAddrCombinedList(const Wallets::WalletId& wltId,
    const Wallets::AddressAccountId& accId, MessageId msgId)
 {
@@ -2113,23 +2110,6 @@ BinaryData CppBridge::getAddrCombinedList(const Wallets::WalletId& wltId,
          keyId
       );
    }
-
-   reply.setSuccess(true);
-   reply.setReferenceId(msgId);
-   return serializeCapnp(message);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-BinaryData CppBridge::getHighestUsedIndex(const Wallets::WalletId& wltId,
-   const Wallets::AddressAccountId& accId, MessageId msgId)
-{
-   auto wltContainer = wltManager_->getWalletContainer(wltId, accId);
-
-   capnp::MallocMessageBuilder message;
-   auto fromBridge = message.initRoot<FromBridge>();
-   auto reply = fromBridge.initReply();
-   auto walletReply = reply.initWallet();
-   walletReply.setGetHighestUsedIndex(wltContainer->getHighestUsedIndex());
 
    reply.setSuccess(true);
    reply.setReferenceId(msgId);
@@ -2267,6 +2247,31 @@ void CppBridge::createWallet(Seeds::SeedType sType,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+BinaryData CppBridge::getAccountIds(const Wallets::WalletId& wltId,
+   MessageId msgId) const
+{
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   reply.setReferenceId(msgId);
+
+   try {
+      auto addrAccountIds = wltManager_->getAddressAccountIds(wltId);
+      reply.setSuccess(true);
+      auto walletReply = reply.initWallet();
+      auto accList = walletReply.initGetAccountIds(addrAccountIds.size());
+
+      unsigned i = 0;
+      for (const auto& addrAcc : addrAccountIds) {
+         accList.set(i++, addrAcc.toHexStr());
+      }
+   } catch (const std::exception& e) {
+      reply.setSuccess(false);
+      reply.setError(e.what());
+   }
+   return serializeCapnp(message);
+}
+
 BinaryData CppBridge::getWalletPacket(const Wallets::WalletId& wltId,
    Wallets::AddressAccountId accId, MessageId msgId) const
 {
@@ -2396,7 +2401,6 @@ BinaryData CppBridge::getTxInScriptType(
    return serializeCapnp(message);;
 }
 
-////////////////////////////////////////////////////////////////////////////////
 BinaryData CppBridge::getTxOutScriptType(
    const BinaryData& script, MessageId msgId) const
 {
@@ -2432,7 +2436,6 @@ BinaryData CppBridge::getScrAddrForScript(
    return serializeCapnp(message);
 }
 
-////////////////////////////////////////////////////////////////////////////////
 BinaryData CppBridge::getScrAddrForAddrStr(
    const std::string& addrStr, MessageId msgId) const
 {
@@ -2549,7 +2552,7 @@ BinaryData CppBridge::setAddressTypeFor(const Wallets::WalletId& wltId,
 {
    auto wltContainer = wltManager_->getWalletContainer(wltId, accId);
    auto wltPtr = wltContainer->getWalletPtr();
-   auto assetId = Armory::Wallets::AssetId::deserializeKey(
+   auto assetId = Wallets::AssetId::deserializeKey(
       idRef, PROTO_ASSETID_PREFIX);
 
    //set address type in wallet

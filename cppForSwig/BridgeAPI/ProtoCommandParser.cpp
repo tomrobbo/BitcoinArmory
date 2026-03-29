@@ -557,23 +557,19 @@ namespace
             break;
          }
 
-         case WalletRequest::GET_HIGHEST_USED_INDEX:
-         {
-            if (!checkOnline()) {
-               break;
-            }
-
-            response = bridge->getHighestUsedIndex(
-               walletId, accountId, referenceId);
-            break;
-         }
-
          case WalletRequest::EXTEND_ADDRESS_POOL:
          {
             auto args = request.getExtendAddressPool();
             bridge->extendAddressPool(walletId, accountId,
                args.getCount(), args.getIsNew(), args.getCallbackId(),
                referenceId);
+            break;
+         }
+
+         case WalletRequest::GET_ACCOUNT_IDS:
+         {
+            response = bridge->getAccountIds(
+               walletId, referenceId);
             break;
          }
 
@@ -1238,11 +1234,11 @@ namespace
 
             auto roots = walletRequest.getRoot();
             auto chaincodes = walletRequest.getChaincode();
-            auto backupId = walletRequest.getBackupId();
             std::vector<std::string_view> lines;
             lines.reserve(roots.size() + chaincodes.size() + 1);
 
-            if (backupId.size() != 0) {
+            if (walletRequest.hasBackupId()) {
+               auto backupId = walletRequest.getBackupId();
                lines.emplace_back(std::string_view{
                   backupId.begin(), backupId.size()});
             }
@@ -1258,8 +1254,8 @@ namespace
             auto spPassCapnp = walletRequest.getSpPass();
             std::string_view spPass{spPassCapnp.begin(), spPassCapnp.size()};
 
-            auto callbackIdCapnp = walletRequest.getCallbackId();
-            std::string callbackId{callbackIdCapnp.begin(), callbackIdCapnp.size()};
+            auto cbIdCapnp = walletRequest.getCallbackId();
+            std::string callbackId{cbIdCapnp.begin(), cbIdCapnp.size()};
 
             bridge->restoreWallet(lines, spPass,
                callbackId, referenceId);

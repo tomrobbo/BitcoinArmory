@@ -81,7 +81,8 @@ namespace Armory
 
       public:
          LMDBWalletInfo(const std::filesystem::path&,
-            std::shared_ptr<Wallets::AssetWallet>);
+            std::shared_ptr<Wallets::AssetWallet>,
+            bool = false);
 
          void unlockControlHeader(const Passphrase::UnlockFunc&);
          const Wallets::WalletId& walletId(void) const override;

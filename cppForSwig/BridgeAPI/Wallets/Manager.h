@@ -124,6 +124,8 @@ namespace Armory
             const Wallets::WalletId&, const Wallets::AddressAccountId&) const;
          const std::map<std::string, std::shared_ptr<WalletContainer>>&
          getWalletContainerMap(void) const;
+         std::set<Wallets::AddressAccountId> getAddressAccountIds(
+            const Wallets::WalletId&) const;
 
          /* wallet add/create/delete */
          void loadWallet(const Wallets::IO::ReadOnlyFileParams&);

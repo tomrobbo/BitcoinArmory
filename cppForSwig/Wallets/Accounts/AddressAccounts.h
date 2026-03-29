@@ -179,20 +179,24 @@ namespace Armory
 
          std::shared_ptr<AddressEntry> getNewAddress(
             std::shared_ptr<Wallets::IO::WalletDBInterface>,
-            AddressEntryType aeType=AddressEntryType::Default,
-            const ProgressFunc& progFunc=nullptr);
+            AddressEntryType = AddressEntryType::Default,
+            const ProgressFunc& = nullptr);
          std::shared_ptr<AddressEntry> getNewAddress(
             std::shared_ptr<Wallets::IO::WalletDBInterface>,
             const Wallets::AssetAccountId&, AddressEntryType,
             const ProgressFunc&);
          std::shared_ptr<AddressEntry> getNewChangeAddress(
             std::shared_ptr<Wallets::IO::WalletDBInterface>,
-            AddressEntryType aeType=AddressEntryType::Default,
-            const ProgressFunc& progFunc=nullptr);
+            AddressEntryType = AddressEntryType::Default,
+            const ProgressFunc& = nullptr);
          std::shared_ptr<AddressEntry> peekNextChangeAddress(
             std::shared_ptr<Wallets::IO::WalletDBInterface>,
-            AddressEntryType aeType=AddressEntryType::Default,
-            const ProgressFunc& progFunc=nullptr);
+            AddressEntryType = AddressEntryType::Default,
+            const ProgressFunc& = nullptr);
+         void markAssetAsHighestUsed(
+            std::shared_ptr<Wallets::IO::WalletDBInterface>,
+            const Wallets::AssetId&);
+
          bool isAssetChange(const Wallets::AssetId&) const;
          bool isAssetInUse(const Wallets::AssetId&) const;
 

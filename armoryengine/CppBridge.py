@@ -592,6 +592,7 @@ class BlockchainService(ProtoWrapper):
    ## setup ##
    def __init__(self, bridgeSocket):
       super().__init__(bridgeSocket)
+      self.blockTimeByHeightCache = {}
 
    ####
    def registerWallets(self):
@@ -680,6 +681,22 @@ class BlockchainService(ProtoWrapper):
       fut = self.send(packet)
       reply = fut.getVal()
       return reply.service.getHeadersByHeight
+
+   ####
+   def getBlockTimeByHeight(self, height):
+      if height in self.blockTimeByHeightCache:
+         return self.blockTimeByHeightCache[height]
+
+      packet = Bridge.ToBridge.new_message()
+      packet.init("service").getBlockTimeByHeight = height
+      fut = self.send(packet)
+      reply = fut.getVal()
+      blockTime = reply.service.getBlockTimeByHeight
+
+      if blockTime == 2**32 - 1:
+         raise BridgeError("invalid block time")
+      self.blockTimeByHeightCache[height] = blockTime
+      return blockTime
 
    ####
    def getFeeSchedule(self, strat):
@@ -898,15 +915,6 @@ class BridgeWalletWrapper(ProtoWrapper):
       return reply.wallet.getAddrCombinedList
 
    ####
-   def getHighestUsedIndex(self):
-      packet = self._getPacket()
-      packet.wallet.getHighestUsedIndex = None
-
-      fut = self.send(packet)
-      reply = fut.getVal()
-      return reply.wallet.getHighestUsedIndex
-
-   ####
    def extendAddressPool(self, count: int,
       isNew: bool, progressId: str, callback: callable):
       packet = self._getPacket()
@@ -1080,7 +1088,12 @@ class BridgeCoinSelectionWrapper(ProtoWrapper):
    def destroyCoinSelectionInstance(self):
       packet = self._getPacket()
       packet.coinSelection.cleanup = None
-      self.send(packet, False)
+
+      fut = self.send(packet)
+      reply = fut.getVal(nothrow=True)
+      if reply.success == False:
+         raise BridgeError(
+            f"failed to cleanup coin selection instance with error: {reply.error}")
 
    #############################################################################
    def setCoinSelectionRecipient(self, addrStr: str, value: int, recId: int):
@@ -1100,7 +1113,12 @@ class BridgeCoinSelectionWrapper(ProtoWrapper):
    def reset(self):
       packet = self._getPacket()
       packet.coinSelection.reset = None
-      self.send(packet, False)
+
+      fut = self.send(packet)
+      reply = fut.getVal(nothrow=True)
+      if reply.success == False:
+         raise BridgeError(
+            f"failed to reset coin selection instance with error: {reply.error}")
 
    #############################################################################
    def selectUTXOs(self, fee: int, feePerByte: float, processFlags: int):
@@ -1496,7 +1514,6 @@ class BridgeSigner(ProtoWrapper):
 ################################################################################
 class ArmoryBridge(object):
    def __init__(self):
-      self.blockTimeByHeightCache = {}
       self.bridgeSocket = BridgeSocket()
 
       self.dbSetup      = DbSetupService(self.bridgeSocket)
@@ -1513,27 +1530,6 @@ class ArmoryBridge(object):
       msgType=BRIDGE_CLIENT_HEADER):
       self.bridgeSocket.sendToBridgeProto(msg,
          needsReply, callback, cbArgs, msgType)
-
-   #############################################################################
-   def getBlockTimeByHeight(self, height):
-      if height in self.blockTimeByHeightCache:
-         return self.blockTimeByHeightCache[height]
-
-      packet = Bridge.ToBridge.new_message()
-      packet.init("service").getBlockTimeByHeight = height
-
-      fut = self.send(packet)
-      socketResponse = fut.getVal()
-
-      response = BridgeProto_pb2.ReplyNumbers()
-      response.ParseFromString(socketResponse)
-
-      blockTime = response.ints[0]
-      if blockTime == 2**32 - 1:
-         raise BridgeError("invalid block time")
-
-      self.blockTimeByHeightCache[height] = blockTime
-      return blockTime
 
    #############################################################################
    def getHistoryForWalletSelection(self, wltIDList, order):

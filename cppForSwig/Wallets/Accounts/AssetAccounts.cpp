@@ -609,7 +609,6 @@ void AssetAccount::updateHighestUsedIndex(
    tx->insert(idKey, bwData.getData());
 }
 
-////////////////////////////////////////////////////////////////////////////////
 unsigned AssetAccount::getAndBumpHighestUsedIndex(
    std::shared_ptr<Wallets::IO::WalletDBInterface> iface)
 {
@@ -618,6 +617,21 @@ unsigned AssetAccount::getAndBumpHighestUsedIndex(
    ++data_->lastUsedIndex_;
    updateHighestUsedIndex(iface);
    return data_->lastUsedIndex_;
+}
+
+void AssetAccount::setHighestUsedIndex(
+   std::shared_ptr<Wallets::IO::WalletDBInterface> iface,
+   const Wallets::AssetKeyType& assetId)
+{
+   auto entryIter = data_->assets_.find(assetId);
+   if (entryIter == data_->assets_.end()) {
+      throw AccountException("requested index has not been computed");
+   }
+   if (data_->lastUsedIndex_ > assetId) {
+      return;
+   }
+   data_->lastUsedIndex_ = assetId;
+   updateHighestUsedIndex(iface);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

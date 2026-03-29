@@ -69,8 +69,6 @@ namespace Armory
 
          std::map<Wallets::AssetAccountId, Wallets::AssetKeyType>
             highestUsedIndex_;
-         std::mutex stateMutex_;
-
          std::map<BinaryData, std::shared_ptr<AddressEntry>> updatedAddressMap_;
 
       private:
@@ -96,7 +94,7 @@ namespace Armory
             getAddressAccount(void) const;
          const Wallets::AddressAccountId& getAccountId(void) const;
 
-         void updateAddressCountState(const AsyncClient::CombinedBalances&);
+         void synchronizeAddressChainState(void);
          void extendAddressChain(unsigned, const std::function<void(int)>&);
          void extendAddressChainToIndex(unsigned);
          bool hasScrAddr(const BinaryData&) const;

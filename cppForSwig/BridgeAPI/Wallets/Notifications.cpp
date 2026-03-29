@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2025, goatpig                                               //
+//  Copyright (C) 2025-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -157,7 +157,8 @@ void Callback::run(BdmNotification notif)
             pushLbd(std::make_shared<NotifStruct_Push>(serializeCapnp(message)));
          };
 
-         notifFunc_(std::make_shared<NotifStruct_NewBlock>(notif.newBlock, lbd));
+         notifFunc_(std::make_shared<NotifStruct_NewBlock>(
+            notif.newBlock, lbd, false));
          break;
       }
 
@@ -173,7 +174,8 @@ void Callback::run(BdmNotification notif)
             pushLbd(std::make_shared<NotifStruct_Push>(serializeCapnp(message)));
          };
 
-         notifFunc_(std::make_shared<NotifStruct_NewBlock>(notif.newBlock, lbd));
+         notifFunc_(std::make_shared<NotifStruct_NewBlock>(
+            notif.newBlock, lbd, true));
          break;
       }
 
@@ -359,6 +361,12 @@ NotifStruct::NotifStruct(NotifType t) :
 NotifStruct::~NotifStruct()
 {}
 
+bool NotifStruct::syncWalletState() const
+{
+   return false;
+}
+
+////////
 NotifStruct_Push::NotifStruct_Push(BinaryData pushData) :
    NotifStruct(NotifType::PUSH), packet(std::move(pushData))
 {}
@@ -372,12 +380,26 @@ NotifStruct_ZC::NotifStruct_ZC(
    invalidatedZCs(std::move(invalidatedZc)), callback(lbd)
 {}
 
+////////
 NotifStruct_Refresh::NotifStruct_Refresh(const std::function<void(void)>& lbd) :
    NotifStruct(NotifType::REFRESH), callback(lbd)
 {}
 
+bool NotifStruct_Refresh::syncWalletState() const
+{
+   return true;
+}
+
+////////
 NotifStruct_NewBlock::NotifStruct_NewBlock(
    const NewBlockNotif& notif,
-   const std::function<void(void)>& lbd) :
-   NotifStruct(NotifType::NEWBLOCK), blockNotif(notif), callback(lbd)
+   const std::function<void(void)>& lbd,
+   bool isReady) :
+   NotifStruct(NotifType::NEWBLOCK),
+   blockNotif(notif), isReadyNotif(isReady), callback(lbd)
 {}
+
+bool NotifStruct_NewBlock::syncWalletState() const
+{
+   return isReadyNotif;
+}

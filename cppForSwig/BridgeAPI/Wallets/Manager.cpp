@@ -150,6 +150,23 @@ WalletManager::getWalletContainerMap() const
 
 
 ////////////////////////////////////////////////////////////////////////////////
+std::set<Wallets::AddressAccountId> WalletManager::getAddressAccountIds(
+   const Wallets::WalletId& wltId) const
+{
+   auto iter = wallets_.find(wltId);
+   if (iter == wallets_.end()) {
+      std::string errStr{"no wallet for id "sv};
+      errStr += wltId;
+      throw std::runtime_error(errStr);
+   }
+
+   std::set<Wallets::AddressAccountId> result;
+   for (const auto& accPair : iter->second) {
+      result.emplace(accPair.first);
+   }
+   return result;
+}
+
 std::shared_ptr<WalletContainer> WalletManager::getWalletContainer(
    const Wallets::WalletId& wltId) const
 {
@@ -340,6 +357,14 @@ Wallets::WalletId WalletManager::createNewWallet(
          auto wallet = Wallets::AssetWallet_Single::createFromSeed(
             std::move(seed), params);
 
+         //add wallet path to file map, so that it doesn't appear in
+         //subsequent calls to listWallets
+         auto wltPath = wallet->getDbFilename();
+         walletFiles_.emplace(
+            wltPath.filename().string(),
+            std::make_shared<LMDBWalletInfo>(wltPath, nullptr, true)
+         );
+
          //put first address in use, or the GUI will have nothing to display
          auto accPtr = wallet->getAccountForID(wallet->getMainAccountID());
          accPtr->getNewAddress(wallet->getIface());
@@ -354,10 +379,16 @@ Wallets::WalletId WalletManager::createNewWallet(
             root, sType);
          auto wallet = Wallets::AssetWallet_Single::createFromSeed(
             std::move(seed), params);
-         const auto& accIds = wallet->getAccountIDs();
+
+         //add wallet path to file map
+         auto wltPath = wallet->getDbFilename();
+         walletFiles_.emplace(
+            wltPath.filename().string(),
+            std::make_shared<LMDBWalletInfo>(wltPath, nullptr, true)
+         );
 
          //put first address in use for each account
-         for (const auto& accId : accIds) {
+         for (const auto& accId : wallet->getAccountIDs()) {
             auto accPtr = wallet->getAccountForID(accId);
             accPtr->getNewAddress(wallet->getIface());
             addAccount(wallet, accId);
@@ -667,10 +698,14 @@ void WalletManager::updateStateFromDB(std::shared_ptr<NotifStruct> notif)
          for (auto wltCont : walletsByDbId_) {
             wltCont.second->resolveTxios(checkFromHeight);
             wltCont.second->resolveZcTxios();
+
+            if (notif->syncWalletState()) {
+               wltCont.second->synchronizeAddressChainState();
+            }
          }
       }
 
-      //5. fire callback
+      //fire callback
       switch (notif->type)
       {
          case NotifType::NEWBLOCK:
@@ -691,11 +726,6 @@ void WalletManager::updateStateFromDB(std::shared_ptr<NotifStruct> notif)
 
          case NotifType::ZC:
          {
-            ReentrantLock lock(this);
-            for (auto wltCont : walletsByDbId_) {
-               wltCont.second->resolveZcTxios();
-            }
-
             //get ledgers for the zc txios
             auto ledgers = getLedgersForZCs(this);
 
@@ -801,7 +831,7 @@ std::shared_ptr<AddressEntry> WalletManager::getNewAddress(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// ledger stuff
+// chain state stuff
 std::shared_ptr<const Ledgers::DBCache> WalletManager::getDbCache() const
 {
    return txioCache_->getDBCache();

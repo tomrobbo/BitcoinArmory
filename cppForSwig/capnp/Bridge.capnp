@@ -455,14 +455,14 @@ struct WalletRequest {
       unset                         @2 : Void;
 
       getAddress                    @3 : AddressRequest;
-      getHighestUsedIndex           @4 : Void;
-      extendAddressPool             @5 : ExtendAddressPool;
+      extendAddressPool             @4 : ExtendAddressPool;
 
-      createBackupString            @6 : BackupStringStruct;
-      changePassphrase              @7 : ChangePassphraseRequest;
+      createBackupString            @5 : BackupStringStruct;
+      changePassphrase              @6 : ChangePassphraseRequest;
+      getAccountIds                 @7 : Void;
       getData                       @8 : Void;
 
-      getAddrCombinedList           @9 : Void;
+      getAddrCombinedList           @9: Void;
       setAddressTypeFor             @10: SetAddressTypeFor;
 
       getLedgerDelegateId           @11: Void;
@@ -501,21 +501,22 @@ struct WalletReply {
       getHighestUsedIndex           @2 : Int32;
 
       createBackupString            @3 : WalletBackup;
-      getData                       @4 : WalletData;
+      getAccountIds                 @4 : List(Types.AccountId);
+      getData                       @5 : WalletData;
 
-      getAddrCombinedList           @5 : AddressAndBalanceData;
-      setAddressTypeFor             @6 : WalletData.AddressData;
+      getAddrCombinedList           @6 : AddressAndBalanceData;
+      setAddressTypeFor             @7 : WalletData.AddressData;
 
-      getLedgerDelegateId           @7 : Types.DelegateId;
-      getLedgerDelegateIdForScrAddr @8 : Types.DelegateId;
-      getBalanceAndCount            @9 : Types.BalanceAndCount;
+      getLedgerDelegateId           @8 : Types.DelegateId;
+      getLedgerDelegateIdForScrAddr @9 : Types.DelegateId;
+      getBalanceAndCount            @10: Types.BalanceAndCount;
 
-      setupNewCoinSelectionInstance @10: Types.CoinSelectionId;
-      getUtxos                      @11: List(UTXO);
+      setupNewCoinSelectionInstance @11: Types.CoinSelectionId;
+      getUtxos                      @12: List(UTXO);
 
-      createAddressBook             @12: Types.AddressBook;
-      getUnlockTime                 @13: UInt32; #unlock time in ms
-      forkWatchingOnly              @14: Text; #path to new WO wallet
+      createAddressBook             @13: Types.AddressBook;
+      getUnlockTime                 @14: UInt32; #unlock time in ms
+      forkWatchingOnly              @15: Text; #path to new WO wallet
    }
 }
 

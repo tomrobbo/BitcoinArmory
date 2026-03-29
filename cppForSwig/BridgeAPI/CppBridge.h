@@ -134,11 +134,12 @@ namespace Armory
             const CallbackId&, MessageId);
          BinaryData loadWallets(MessageId);
 
-         //wallet setup
+         //wallets
          const std::filesystem::path& getDataDir(void) const;
          BinaryData createWalletsPacket(MessageId);
          bool unloadWallet(const Wallets::WalletId&);
          bool deleteWallet(const Wallets::WalletId&);
+         BinaryData getAccountIds(const Wallets::WalletId&, MessageId) const;
          BinaryData getWalletPacket(const Wallets::WalletId&,
             Wallets::AddressAccountId, MessageId) const;
 
@@ -171,8 +172,6 @@ namespace Armory
          BinaryData getBalanceAndCount(const Wallets::WalletId&,
             const Wallets::AddressAccountId&, MessageId);
          BinaryData getAddrCombinedList(const Wallets::WalletId&,
-            const Wallets::AddressAccountId&, MessageId);
-         BinaryData getHighestUsedIndex(const Wallets::WalletId&,
             const Wallets::AddressAccountId&, MessageId);
 
          //create/generate wallet & addresses

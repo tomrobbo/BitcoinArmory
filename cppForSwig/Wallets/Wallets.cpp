@@ -1103,29 +1103,24 @@ const AddressAccountId& AssetWallet_Single::createBIP32Account(
    const Progress::Func& prog)
 {
    auto accountPtr = createAccount(accTypePtr, prog);
+   auto lookup = accTypePtr->getAddressLookup();
+   if (lookup > 0) {
+      if (prog) {
+         auto prg = std::make_unique<Progress::ExtendChain>(lookup);
+         prog(std::move(prg));
+      }
 
-   if (prog) {
-      auto prg = std::make_unique<Progress::ExtendChain>(
-         accTypePtr->getAddressLookup());
-      prog(std::move(prg));
-   }
-
-   if (!isWatchingOnly()) {
-      accountPtr->extendPrivateChain(
-         iface_,
-         decryptedData_,
-         accTypePtr->getAddressLookup()
-      );
-   } else {
-      accountPtr->extendPublicChain(
-         iface_,
-         accTypePtr->getAddressLookup()
-      );
+      if (!isWatchingOnly()) {
+         accountPtr->extendPrivateChain(iface_, decryptedData_, lookup);
+      } else {
+         accountPtr->extendPublicChain(iface_, lookup);
+      }
    }
    return accountPtr->getID();
 }
 
-/////////////////////////////-- wallet creation --//////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+// wallet creation
 std::shared_ptr<AssetWallet_Single> AssetWallet_Single::createFromSeed(
    std::unique_ptr<ClearTextSeed> seed, const IO::CreateWalletParams& params)
 {
@@ -1169,7 +1164,7 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::createFromSeed(
    return result;
 }
 
-////////////////////////////////////////////////////////////////////////////////
+//// from legacy seed
 std::shared_ptr<AssetWallet_Single> AssetWallet_Single::createFromSeed(
    ClearTextSeed_Armory* seed, const IO::CreateWalletParams& params)
 {
@@ -1218,7 +1213,7 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::createFromSeed(
    return walletPtr;
 }
 
-////////////////////////////////////////////////////////////////////////////////
+//// from bip32 seed
 std::shared_ptr<AssetWallet_Single> AssetWallet_Single::createFromSeed(
    Seeds::ClearTextSeed_BIP32* seed, const IO::CreateWalletParams& params)
 {

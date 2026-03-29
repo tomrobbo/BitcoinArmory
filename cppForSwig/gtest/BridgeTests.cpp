@@ -53,6 +53,8 @@ namespace {
    std::string legacyAccId = Armory::Wallets::AddressAccountId(
       ARMORY_LEGACY_ACCOUNTID).toHexStr();
 
+   /////////////////////////////////////////////////////////////////////////////
+   // capnp stuff
    BinaryData serializeCapnp(capnp::MallocMessageBuilder& msg)
    {
       auto flat = capnp::messageToFlatArray(msg);
@@ -71,8 +73,26 @@ namespace {
 
    struct AddressData
    {
+      struct Comparator
+      {
+         using is_transparent = void;
+         bool operator()(const AddressData& lhs, const AddressData& rhs) const
+         {
+            return lhs.hash < rhs.hash;
+         }
+         bool operator()(const BinaryData& lhs, const AddressData rhs) const {
+            return lhs < rhs.hash;
+         }
+         bool operator()(const AddressData& lhs, const BinaryData& rhs) const {
+            return lhs.hash < rhs;
+         }
+      };
+
       const int32_t index;
       const BinaryData hash;
+      const std::string addrStr;
+      const bool isUsed;
+      const uint32_t type;
 
       bool operator<(const AddressData& rhs) const
       {
@@ -92,7 +112,7 @@ namespace {
 
       const bool encrypted;
       const bool watchingOnly;
-      const std::set<AddressData> addresses;
+      const std::set<AddressData, AddressData::Comparator> addresses;
       const int64_t lookup;
       const int64_t useCount;
 
@@ -106,13 +126,14 @@ namespace {
    {
       auto capnHash = capnAddr.getPrefixedHash();
       BinaryData addrHash{capnHash.begin(), capnHash.end()};
-      return AddressData{capnAddr.getIndex(), std::move(addrHash)};
+      return AddressData{ capnAddr.getIndex(), std::move(addrHash),
+         std::string(capnAddr.getAddressString()), capnAddr.getIsUsed(), capnAddr.getAddrType() };
    }
 
    WalletData capnToWalletData(const Codec::Bridge::WalletData::Reader& capnWlt)
    {
       auto capnAddrs = capnWlt.getAddressData();
-      std::set<AddressData> addresses;
+      std::set<AddressData, AddressData::Comparator> addresses;
       for (const auto& capnAddr : capnAddrs) {
          addresses.emplace(capnToAddressData(capnAddr));
       }
@@ -169,6 +190,8 @@ namespace {
       return result;
    }
 
+   /////////////////////////////////////////////////////////////////////////////
+   // bridge client side reply & notif handling
    struct NotifQueue
    {
       std::queue<BinaryData> queue;
@@ -195,7 +218,6 @@ namespace {
       }
    };
 
-   /////////////////////////////////////////////////////////////////////////////
    std::mutex commsMutex;
    std::deque<MsgPtr> replyQueue;
    std::condition_variable commsCV;
@@ -211,7 +233,14 @@ namespace {
       return result;
    }
 
+   void pushRequest(std::shared_ptr<Bridge::CppBridge> bridge,
+      const BinaryData& rawRequest)
+   {
+      Bridge::ProtoCommandParser::processData(bridge, rawRequest);
+   }
+
    /////////////////////////////////////////////////////////////////////////////
+   // wallet creation from manager
    std::string createWOWallet(
       const std::filesystem::path& homedir,
       const std::vector<SecureBinaryData>& pubkeys,
@@ -294,12 +323,529 @@ namespace {
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   void pushRequest(std::shared_ptr<Bridge::CppBridge> bridge,
-      const BinaryData& rawRequest)
+   // wallet creation from bridge
+   WalletData progressWalletCreation(std::shared_ptr<Bridge::CppBridge> bridge,
+      const std::string& callbackId, const std::string& passphrase,
+      std::chrono::milliseconds targetMs, uint32_t targetMB, int lookup,
+      bool WO=false, bool isBIP32=false, bool isRestore=false)
    {
-      Bridge::ProtoCommandParser::processData(bridge, rawRequest);
+      std::string masterId;
+      std::filesystem::path path;
+      int notifCount = 0;
+      std::set<std::string> bip32Accs{ "BIP44", "BIP49", "BIP84" };
+
+      bool run = true;
+      while (run) {
+         auto result = waitOnReply();
+         kj::ArrayPtr<const capnp::word> words(
+            reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+            result->data.getSize() / sizeof(capnp::word));
+         capnp::FlatArrayMessageReader reader(words);
+         auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+         if (fromBridge.which() != Codec::Bridge::FromBridge::NOTIFICATION) {
+            throw std::runtime_error("invalid FromBridge which");
+         }
+
+         auto notif = fromBridge.getNotification();
+         if (notif.getCallbackId() != callbackId) {
+            throw std::runtime_error("invalid callbackId");
+         }
+         auto counter = notif.getCounter();
+
+         switch (notif.which())
+         {
+            case Codec::Bridge::Notification::SET_PASSPHRASE:
+            {
+               auto wltNotif = notif.getSetPassphrase();
+               switch (wltNotif.which())
+               {
+                  case Codec::Bridge::Notification::SetPassphraseRequest::CONTROL_PASS:
+                  {
+                     if (notifCount++ != 1) {
+                        throw std::runtime_error("count != 1");
+                     }
+                     capnp::MallocMessageBuilder message;
+                     auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+                     auto notifReply = toBridge.initNotification();
+                     notifReply.setSuccess(false);
+                     notifReply.setCounter(counter);
+                     auto rawReq = serializeCapnp(message);
+                     pushRequest(bridge, rawReq);
+                     break;
+                  }
+
+                  case Codec::Bridge::Notification::SetPassphraseRequest::PRIVATE_PASS:
+                  {
+                     if (notifCount++ != 3) {
+                        throw std::runtime_error("count != 3");
+                     }
+                     capnp::MallocMessageBuilder message;
+                     auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+                     auto notifReply = toBridge.initNotification();
+                     notifReply.setCounter(counter);
+
+                     if (passphrase.empty()) {
+                        notifReply.setSuccess(false);
+                     } else {
+                        notifReply.setSuccess(true);
+                        auto capnSetPass = notifReply.initSetPassphrase();
+                        capnSetPass.setPassphrase(passphrase);
+                        if (targetMB == 0) {
+                           capnSetPass.setKdfTargetMs(targetMs.count());
+                        } else {
+                           capnSetPass.setKdfTargetMB(targetMB);
+                        }
+                     }
+
+                     auto rawReq = serializeCapnp(message);
+                     pushRequest(bridge, rawReq);
+                     break;
+                  }
+
+                  default:
+                     throw std::runtime_error("unexpected wallet creation notif");
+               }
+               break;
+            }
+
+            case Codec::Bridge::Notification::WALLET_PROGRESS:
+            {
+               auto wltNotif = notif.getWalletProgress();
+               switch (wltNotif.which())
+               {
+                  case Codec::Bridge::Notification::WalletProgress::CREATE_FILE:
+                  {
+                     if (notifCount++ != 0) {
+                        throw std::runtime_error("count != 0");
+                     }
+                     path = std::filesystem::path(std::string{wltNotif.getCreateFile()});
+                     break;
+                  }
+
+                  case Codec::Bridge::Notification::WalletProgress::INIT_FILE:
+                  {
+                     if (notifCount++ != 2) {
+                        throw std::runtime_error("count != 2");
+                     }
+                     if (WO) {
+                        ++notifCount;
+                     }
+
+                     auto fullPath = std::filesystem::path{"./fakehomedir"} / path;
+                     if (!FileUtils::fileExists(fullPath, 0)) {
+                        fullPath = std::filesystem::path{"./fakehomedir/temp"} / path;
+                        if (!FileUtils::fileExists(fullPath, 0)) {
+                           throw std::runtime_error("wallet path is invalid!");
+                        }
+                     }
+                     masterId = wltNotif.getInitFile();
+                     break;
+                  }
+
+                  case Codec::Bridge::Notification::WalletProgress::READ_FILE:
+                  {
+                     if (notifCount++ != 4) {
+                        throw std::runtime_error("count != 4");
+                     }
+                     if (wltNotif.getReadFile() != masterId) {
+                        throw std::runtime_error("masterId mismatch");
+                     }
+                     break;
+                  }
+
+                  case Codec::Bridge::Notification::WalletProgress::CREATE_ACCOUNT:
+                  {
+                     if (!isBIP32) {
+                        if (notifCount++ != 5) {
+                           throw std::runtime_error("count != 5");
+                        }
+                        EXPECT_EQ(wltNotif.getCreateAccount(), "Armory Legacy");
+                     } else {
+                        ++notifCount;
+                        std::string accountName(wltNotif.getCreateAccount());
+                        auto iter = bip32Accs.find(accountName);
+                        if (iter == bip32Accs.end()) {
+                           throw std::runtime_error("unexpected bip32 acc name");
+                        }
+                        bip32Accs.erase(iter);
+                     }
+                     break;
+                  }
+
+                  case Codec::Bridge::Notification::WalletProgress::EXTEND_CHAIN:
+                  {
+                     if (!isBIP32) {
+                        if (notifCount++ != 6) {
+                           throw std::runtime_error("count != 6");
+                        }
+                        auto extendNotif = wltNotif.getExtendChain();
+                        EXPECT_EQ(extendNotif.getTotal(), lookup);
+                        EXPECT_EQ(extendNotif.getCurrent(), 0);
+                     } else {
+                        auto count = notifCount++;
+                        if (count < 6 || count > 10) {
+                           throw std::runtime_error("invalid extend chain notif count");
+                        }
+                        auto extendNotif = wltNotif.getExtendChain();
+                        EXPECT_EQ(extendNotif.getTotal(), lookup);
+                        EXPECT_EQ(extendNotif.getCurrent(), 0);
+                     }
+                     break;
+                  }
+
+                  default:
+                     throw std::runtime_error("unexpected wallet progress notif");
+               }
+               break;
+            }
+
+            case Codec::Bridge::Notification::CLEANUP:
+            {
+               run = false;
+               break;
+            }
+
+            case Codec::Bridge::Notification::RESTORE:
+            {
+               auto restoreNotif = notif.getRestore();
+               throw std::runtime_error("got a restore notif in wallet creation progress!");
+            }
+
+            default:
+               throw std::runtime_error(std::string{
+                  "unexpected wallet notif: " + std::to_string(notif.which())});
+         }
+      }
+
+      if (isBIP32) {
+         EXPECT_TRUE(bip32Accs.empty());
+      }
+      auto totalCount = 7;
+      if (isBIP32) {
+         totalCount += isRestore ? 2 : 4;
+      }
+      if (!passphrase.empty() && notifCount != totalCount) {
+         throw std::runtime_error("unexpected total notif count");
+      }
+
+      return WalletData{
+         {}, {}, masterId, {},
+         {}, {},
+         true, false, {}, 0, 0,
+         path
+      };
    }
 
+   std::string createAWallet(std::shared_ptr<Bridge::CppBridge> bridge,
+      std::chrono::milliseconds targetMs, uint32_t lookup, bool isBIP32)
+   {
+      auto refId = rand();
+      auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
+
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto request = toBridge.initUtils();
+      auto createWltReq = request.initCreateWallet();
+
+      createWltReq.setCallbackId(callbackId);
+      if (isBIP32) {
+         createWltReq.setWalletType(
+            Codec::Bridge::UtilsRequest::WalletType::STRUCTURED_BIP32);
+      } else {
+         createWltReq.setWalletType(
+            Codec::Bridge::UtilsRequest::WalletType::LEGACY);
+      }
+      createWltReq.setLookup(lookup);
+      createWltReq.setLabel("labl");
+      createWltReq.setDescription("desc");
+
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //handle progress notifs
+      auto walletData = progressWalletCreation(
+         bridge, callbackId,
+         "pass1", targetMs, 0, lookup, false, isBIP32);
+      auto masterId = walletData.masterId;
+      auto path = walletData.path;
+
+      //validate reply
+      auto result = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+         result->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      auto reply = fromBridge.getReply();
+      if (!reply.getSuccess()) {
+         return {};
+      }
+      if (reply.getReferenceId() != refId) {
+         return {};
+      }
+
+      if (reply.which() != Codec::Bridge::RpcReply::UTILS) {
+         return {};
+      }
+
+      auto utilsReply = reply.getUtils();
+      if (utilsReply.which() != Codec::Bridge::UtilsReply::CREATE_WALLET) {
+         return {};
+      }
+      return utilsReply.getCreateWallet();
+   }
+
+   std::vector<std::string> getWalletBackup(
+      std::shared_ptr<Bridge::CppBridge> bridge, const std::string& walletId,
+      const std::string& passphrase, Codec::Bridge::WalletBackup::Type backupType)
+   {
+      auto refId = rand();
+      auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
+
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto request = toBridge.initWallet();
+      request.setWalletId(walletId);
+      auto reqBackup = request.initCreateBackupString();
+      reqBackup.setPrivate(callbackId);
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      //handle unlock and cleanup
+      int count = 0;
+      bool run = true;
+      while (run) {
+         auto result = waitOnReply();
+         kj::ArrayPtr<const capnp::word> words(
+            reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+            result->data.getSize() / sizeof(capnp::word));
+         capnp::FlatArrayMessageReader reader(words);
+
+         auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+         if (fromBridge.which() != Codec::Bridge::FromBridge::NOTIFICATION) {
+            throw std::runtime_error("expected a notif");
+         }
+
+         auto notif = fromBridge.getNotification();
+         if (notif.getCallbackId() != callbackId) {
+            throw std::runtime_error("unexpected callback id");
+         }
+
+         switch (notif.which()) {
+            case Codec::Bridge::Notification::UNLOCK_REQUEST:
+            {
+               capnp::MallocMessageBuilder notifMsg;
+               auto notifBridge = notifMsg.initRoot<Codec::Bridge::ToBridge>();
+               auto notifReply = notifBridge.initNotification();
+               notifReply.setCounter(notif.getCounter());
+               if (count == 0) {
+                  notifReply.setSuccess(true);
+                  notifReply.setUnlockRequest(passphrase);
+               } else {
+                  notifReply.setSuccess(false);
+                  run = false;
+               }
+
+               auto rawNotif = serializeCapnp(notifMsg);
+               pushRequest(bridge, rawNotif);
+               ++count;
+               break;
+            }
+
+            case Codec::Bridge::Notification::CLEANUP:
+            {
+               run = false;
+               break;
+            }
+
+            default:
+               throw std::runtime_error("unexpected notif type");
+         }
+      }
+
+      //grab the reply
+      auto result = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+         result->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      auto reply = fromBridge.getReply();
+      if (reply.getSuccess() == false) {
+         throw std::runtime_error(reply.getError());
+      }
+      if (reply.getReferenceId() != refId) {
+         throw std::runtime_error("refId mismatch");
+      }
+
+      if (reply.which() != Codec::Bridge::RpcReply::WALLET) {
+         throw std::runtime_error("which mismatch");
+      }
+      auto walletReply = reply.getWallet();
+
+      if (walletReply.which() != Codec::Bridge::WalletReply::CREATE_BACKUP_STRING) {
+         throw std::runtime_error("which mismatch");
+      }
+      auto capnBackup = walletReply.getCreateBackupString();
+
+      //backup type
+      if (capnBackup.getBackupType() != backupType) {
+         throw std::runtime_error("backup type mismatch");
+      }
+
+      //root
+      std::vector<std::string> lines;
+      for (const auto& line : capnBackup.getRootClear()) {
+         lines.emplace_back(line);
+      }
+
+      //chaincode
+      if (capnBackup.hasChainClear()) {
+         for (const auto& line : capnBackup.getChainClear()) {
+            lines.emplace_back(line);
+         }
+      }
+      return lines;
+   }
+
+   WalletData restoreWallet(
+      std::shared_ptr<Bridge::CppBridge> bridge, const std::vector<std::string>& lines,
+      const std::string& expectedWltId, Codec::Bridge::WalletBackup::Type backupType,
+      const std::string& passphrase, std::chrono::milliseconds targetMs, uint32_t targetMB,
+      bool merge, unsigned expectedLookup)
+   {
+      if (lines.size() < 2) {
+         throw std::runtime_error("1");
+      }
+
+      bool isBIP32 =
+         backupType == Codec::Bridge::WalletBackup::Type::ARMORY200_B ? true : false;
+
+      //restore the wallet
+      auto refId = rand();
+      auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
+
+      {
+         capnp::MallocMessageBuilder message;
+         auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+         toBridge.setReferenceId(refId);
+         auto request = toBridge.initUtils();
+         auto restoreWltReq = request.initRestoreWallet();
+
+         restoreWltReq.setCallbackId(callbackId);
+
+         size_t lineIndex = 0;
+         if (lines.size() == 5) {
+            restoreWltReq.setBackupId(lines[lineIndex++]);
+         }
+
+         auto rootLines = restoreWltReq.initRoot(2);
+         rootLines.set(0, lines[lineIndex++]);
+         rootLines.set(1, lines[lineIndex++]);
+
+         if (lineIndex < lines.size()) {
+            auto ccLines = restoreWltReq.initChaincode(2);
+            ccLines.set(0, lines[lineIndex++]);
+            ccLines.set(1, lines[lineIndex++]);
+         }
+
+         auto rawReq = serializeCapnp(message);
+         pushRequest(bridge, rawReq);
+      }
+
+      //backup deser notifs
+      unsigned notifCount = 0;
+      bool restoringBackup = true;
+      while (restoringBackup) {
+         auto result = waitOnReply();
+         kj::ArrayPtr<const capnp::word> words(
+            reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+            result->data.getSize() / sizeof(capnp::word));
+         capnp::FlatArrayMessageReader reader(words);
+         auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+         if (fromBridge.which() != Codec::Bridge::FromBridge::NOTIFICATION) {
+            throw std::runtime_error("2");
+         }
+
+         auto notif = fromBridge.getNotification();
+         if (notif.getCallbackId() != callbackId) {
+            throw std::runtime_error("3");
+         }
+
+         switch (notif.which())
+         {
+            case Codec::Bridge::Notification::RESTORE:
+            {
+               auto restoreNotif = notif.getRestore();
+               switch (restoreNotif.which())
+               {
+                  case Codec::Bridge::Notification::RestorePrompt::CHECK_WALLET_ID:
+                  {
+                     //return merge decision
+                     auto meta = restoreNotif.getCheckWalletId();
+                     if (meta.getWalletId() != expectedWltId ||
+                        meta.getBackupType() != backupType) {
+                        throw std::runtime_error("4");
+                     }
+
+                     auto counter = notif.getCounter();
+                     capnp::MallocMessageBuilder notifMsg;
+                     auto toBridge = notifMsg.initRoot<Codec::Bridge::ToBridge>();
+                     toBridge.setReferenceId(rand());
+
+                     auto notifReply = toBridge.initNotification();
+                     notifReply.setSuccess(true);
+                     notifReply.setCounter(counter);
+                     notifReply.setRestore(merge ?
+                        Codec::Bridge::NotificationReply::RestoreMode::MERGE :
+                        Codec::Bridge::NotificationReply::RestoreMode::OVERWRITE
+                     );
+
+                     auto rawReq = serializeCapnp(notifMsg);
+                     pushRequest(bridge, rawReq);
+                     restoringBackup = false;
+                     break;
+                  }
+
+                  default:
+                     throw std::runtime_error("5");
+               }
+
+               break;
+            }
+
+            default:
+               throw std::runtime_error("6");
+         }
+      }
+
+      //create wallet notifs
+      auto wltData = progressWalletCreation(
+         bridge, callbackId,
+         passphrase, targetMs, targetMB,
+         expectedLookup, lines.size() == 5, isBIP32, true);
+
+      //validate reply
+      auto result = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+         result->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         throw std::runtime_error("7");
+      }
+
+      auto reply = fromBridge.getReply();
+      if (!reply.getSuccess() || reply.getReferenceId() != refId) {
+         throw std::runtime_error("8");
+      }
+      return wltData;
+   }
+
+   ////////
    std::map<std::string, WalletData> loadWallets(
       std::shared_ptr<Bridge::CppBridge> bridge)
    {
@@ -381,7 +927,7 @@ namespace {
       return wltMap;
    }
 
-   WalletData getWalletData(
+   std::set<std::string> getWalletAccountIds(
       std::shared_ptr<Bridge::CppBridge> bridge,
       const std::string& walletId)
    {
@@ -392,6 +938,42 @@ namespace {
       toBridge.setReferenceId(refId);
       auto request = toBridge.initWallet();
       request.setWalletId(walletId);
+      request.setGetAccountIds();
+
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      auto result = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+         result->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      auto reply = fromBridge.getReply();
+      if (!reply.getSuccess() || reply.getReferenceId() != refId) {
+         throw std::runtime_error({});
+      }
+
+      auto replyMgr = reply.getWallet();
+      std::set<std::string> accIdSet;
+      for (auto accId : replyMgr.getGetAccountIds()) {
+         accIdSet.emplace(std::string(accId));
+      }
+      return accIdSet;
+   }
+
+   WalletData getWalletData(
+      std::shared_ptr<Bridge::CppBridge> bridge,
+      const std::string& walletId, const std::string& accId)
+   {
+      auto refId = rand();
+
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto request = toBridge.initWallet();
+      request.setWalletId(walletId);
+      request.setAccountId(accId);
       request.setGetData();
 
       auto rawReq = serializeCapnp(message);
@@ -714,13 +1296,14 @@ namespace {
       }
 
       //lastly, grab updated wallet data
-      return getWalletData(bridge, walletId);
+      return getWalletData(bridge, walletId, accountId);
    }
 
    AddressData getAddress(
       std::shared_ptr<Bridge::CppBridge> bridge,
       const std::string& walletId,
-      const std::string& accountId)
+      const std::string& accountId,
+      uint32_t addressType=0)
    {
       auto refId = rand();
       capnp::MallocMessageBuilder message;
@@ -731,6 +1314,7 @@ namespace {
       request.setAccountId(accountId);
       auto reqAddr = request.initGetAddress();
       reqAddr.setNew();
+      reqAddr.setType(addressType);
       auto rawReq = serializeCapnp(message);
       pushRequest(bridge, rawReq);
 
@@ -3267,9 +3851,8 @@ TEST_F(WalletManagerWebsocketsTests, Connect)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// BridgeTests
-////////////////////////////////////////////////////////////////////////////////
-class BridgeTests : public ::testing::Test
+// BridgeWalletTests
+class BridgeWalletTests : public ::testing::Test
 {
 protected:
    //setup
@@ -3538,471 +4121,13 @@ protected:
       return std::chrono::milliseconds(reply.getWallet().getGetUnlockTime());
    }
 
-   WalletData progressWalletCreation(const std::string& callbackId,
-      const std::string& passphrase, std::chrono::milliseconds targetMs,
-      uint32_t targetMB, int lookup, bool WO=false, bool isBIP32=false)
-   {
-      std::string masterId;
-      std::filesystem::path path;
-      int notifCount=0;
-      bool run = true;
-      while (run) {
-         auto result = waitOnReply();
-         kj::ArrayPtr<const capnp::word> words(
-            reinterpret_cast<const capnp::word*>(result->data.getPtr()),
-            result->data.getSize() / sizeof(capnp::word));
-         capnp::FlatArrayMessageReader reader(words);
-         auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
-         if (fromBridge.which() != Codec::Bridge::FromBridge::NOTIFICATION) {
-            throw std::runtime_error("invalid FromBridge which");
-         }
-
-         auto notif = fromBridge.getNotification();
-         if (notif.getCallbackId() != callbackId) {
-            throw std::runtime_error("invalid callbackId");
-         }
-         auto counter = notif.getCounter();
-
-         switch (notif.which())
-         {
-            case Codec::Bridge::Notification::SET_PASSPHRASE:
-            {
-               auto wltNotif = notif.getSetPassphrase();
-               switch (wltNotif.which())
-               {
-                  case Codec::Bridge::Notification::SetPassphraseRequest::CONTROL_PASS:
-                  {
-                     if (notifCount++ != 1) {
-                        throw std::runtime_error("count != 1");
-                     }
-                     capnp::MallocMessageBuilder message;
-                     auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
-                     auto notifReply = toBridge.initNotification();
-                     notifReply.setSuccess(false);
-                     notifReply.setCounter(counter);
-                     auto rawReq = serializeCapnp(message);
-                     pushRequest(bridge_, rawReq);
-                     break;
-                  }
-
-                  case Codec::Bridge::Notification::SetPassphraseRequest::PRIVATE_PASS:
-                  {
-                     if (notifCount++ != 3) {
-                        throw std::runtime_error("count != 3");
-                     }
-                     capnp::MallocMessageBuilder message;
-                     auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
-                     auto notifReply = toBridge.initNotification();
-                     notifReply.setCounter(counter);
-
-                     if (passphrase.empty()) {
-                        notifReply.setSuccess(false);
-                     } else {
-                        notifReply.setSuccess(true);
-                        auto capnSetPass = notifReply.initSetPassphrase();
-                        capnSetPass.setPassphrase(passphrase);
-                        if (targetMB == 0) {
-                           capnSetPass.setKdfTargetMs(targetMs.count());
-                        } else {
-                           capnSetPass.setKdfTargetMB(targetMB);
-                        }
-                     }
-
-                     auto rawReq = serializeCapnp(message);
-                     pushRequest(bridge_, rawReq);
-                     break;
-                  }
-
-                  default:
-                     throw std::runtime_error("unexpected wallet creation notif");
-               }
-               break;
-            }
-
-            case Codec::Bridge::Notification::WALLET_PROGRESS:
-            {
-               auto wltNotif = notif.getWalletProgress();
-               switch (wltNotif.which())
-               {
-                  case Codec::Bridge::Notification::WalletProgress::CREATE_FILE:
-                  {
-                     if (notifCount++ != 0) {
-                        throw std::runtime_error("count != 0");
-                     }
-                     path = std::filesystem::path(std::string{wltNotif.getCreateFile()});
-                     break;
-                  }
-
-                  case Codec::Bridge::Notification::WalletProgress::INIT_FILE:
-                  {
-                     if (notifCount++ != 2) {
-                        throw std::runtime_error("count != 2");
-                     }
-                     if (WO) {
-                        ++notifCount;
-                     }
-
-                     auto fullPath = std::filesystem::path{"./fakehomedir"} / path;
-                     if (!FileUtils::fileExists(fullPath, 0)) {
-                        fullPath = std::filesystem::path{"./fakehomedir/temp"} / path;
-                        if (!FileUtils::fileExists(fullPath, 0)) {
-                           throw std::runtime_error("wallet path is invalid!");
-                        }
-                     }
-                     masterId = wltNotif.getInitFile();
-                     break;
-                  }
-
-                  case Codec::Bridge::Notification::WalletProgress::READ_FILE:
-                  {
-                     if (notifCount++ != 4) {
-                        throw std::runtime_error("count != 4");
-                     }
-                     if (wltNotif.getReadFile() != masterId) {
-                        throw std::runtime_error("masterId mismatch");
-                     }
-                     break;
-                  }
-
-                  case Codec::Bridge::Notification::WalletProgress::CREATE_ACCOUNT:
-                  {
-                     if (!isBIP32) {
-                        if (notifCount++ != 5) {
-                           throw std::runtime_error("count != 5");
-                        }
-                        EXPECT_EQ(wltNotif.getCreateAccount(), "Armory Legacy");
-                     } else {
-                        auto count = notifCount++;
-                        switch (count)
-                        {
-                           case 5:
-                              EXPECT_EQ(wltNotif.getCreateAccount(), "BIP44");
-                              break;
-
-                           case 7:
-                              EXPECT_EQ(wltNotif.getCreateAccount(), "BIP49");
-                              break;
-
-                           case 9:
-                              EXPECT_EQ(wltNotif.getCreateAccount(), "BIP84");
-                              break;
-
-                           default:
-                              throw std::runtime_error("unexpected notif count in create account");
-                        }
-                     }
-                     break;
-                  }
-
-                  case Codec::Bridge::Notification::WalletProgress::EXTEND_CHAIN:
-                  {
-                     if (!isBIP32) {
-                        if (notifCount++ != 6) {
-                           throw std::runtime_error("count != 6");
-                        }
-                        auto extendNotif = wltNotif.getExtendChain();
-                        EXPECT_EQ(extendNotif.getTotal(), lookup);
-                        EXPECT_EQ(extendNotif.getCurrent(), 0);
-                     } else {
-                        auto count = notifCount++;
-                        if (count < 6 || count > 10) {
-                           throw std::runtime_error("invalid extend chain notif count");
-                        }
-                        auto extendNotif = wltNotif.getExtendChain();
-                        EXPECT_EQ(extendNotif.getTotal(), lookup);
-                        EXPECT_EQ(extendNotif.getCurrent(), 0);
-                     }
-                     break;
-                  }
-
-                  default:
-                     throw std::runtime_error("unexpected wallet progress notif");
-               }
-               break;
-            }
-
-            case Codec::Bridge::Notification::CLEANUP:
-            {
-               run = false;
-               break;
-            }
-
-            case Codec::Bridge::Notification::RESTORE:
-            {
-               auto restoreNotif = notif.getRestore();
-               std::cout << "fail notif: " << std::string{restoreNotif.getFailure()} << std::endl;
-               throw std::runtime_error("got a restore notif in wallet creation progress!");
-            }
-
-            default:
-               throw std::runtime_error(std::string{
-                  "unexpected wallet notif: " + std::to_string(notif.which())});
-         }
-      }
-
-      auto totalCount = isBIP32 ? 11 : 7;
-      if (!passphrase.empty() && notifCount != totalCount) {
-         throw std::runtime_error("unexpected notif count");
-      }
-
-      return WalletData{
-         {}, {}, masterId, {},
-         {}, {},
-         true, false, {}, 0, 0,
-         path
-      };
-   }
-
-   std::vector<std::string> getBackup(const std::string& walletId,
-      const std::string& passphrase, Codec::Bridge::WalletBackup::Type backupType)
-   {
-      auto refId = rand();
-      auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
-
-      capnp::MallocMessageBuilder message;
-      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
-      toBridge.setReferenceId(refId);
-      auto request = toBridge.initWallet();
-      request.setWalletId(walletId);
-      auto reqBackup = request.initCreateBackupString();
-      reqBackup.setPrivate(callbackId);
-      auto rawReq = serializeCapnp(message);
-      pushRequest(bridge_, rawReq);
-
-      //handle unlock and cleanup
-      int count = 0;
-      bool run = true;
-      while (run) {
-         auto result = waitOnReply();
-         kj::ArrayPtr<const capnp::word> words(
-            reinterpret_cast<const capnp::word*>(result->data.getPtr()),
-            result->data.getSize() / sizeof(capnp::word));
-         capnp::FlatArrayMessageReader reader(words);
-
-         auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
-         if (fromBridge.which() != Codec::Bridge::FromBridge::NOTIFICATION) {
-            throw std::runtime_error("expected a notif");
-         }
-
-         auto notif = fromBridge.getNotification();
-         if (notif.getCallbackId() != callbackId) {
-            throw std::runtime_error("unexpected callback id");
-         }
-
-         switch (notif.which()) {
-            case Codec::Bridge::Notification::UNLOCK_REQUEST:
-            {
-               capnp::MallocMessageBuilder notifMsg;
-               auto notifBridge = notifMsg.initRoot<Codec::Bridge::ToBridge>();
-               auto notifReply = notifBridge.initNotification();
-               notifReply.setCounter(notif.getCounter());
-               if (count == 0) {
-                  notifReply.setSuccess(true);
-                  notifReply.setUnlockRequest(passphrase);
-               } else {
-                  notifReply.setSuccess(false);
-                  run = false;
-               }
-
-               auto rawNotif = serializeCapnp(notifMsg);
-               pushRequest(bridge_, rawNotif);
-               ++count;
-               break;
-            }
-
-            case Codec::Bridge::Notification::CLEANUP:
-            {
-               run = false;
-               break;
-            }
-
-            default:
-               throw std::runtime_error("unexpected notif type");
-         }
-      }
-
-      //grab the reply
-      auto result = waitOnReply();
-      kj::ArrayPtr<const capnp::word> words(
-         reinterpret_cast<const capnp::word*>(result->data.getPtr()),
-         result->data.getSize() / sizeof(capnp::word));
-      capnp::FlatArrayMessageReader reader(words);
-      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
-      auto reply = fromBridge.getReply();
-      if (reply.getSuccess() == false) {
-         throw std::runtime_error(reply.getError());
-      }
-      if (reply.getReferenceId() != refId) {
-         throw std::runtime_error("refId mismatch");
-      }
-
-      if (reply.which() != Codec::Bridge::RpcReply::WALLET) {
-         throw std::runtime_error("which mismatch");
-      }
-      auto walletReply = reply.getWallet();
-
-      if (walletReply.which() != Codec::Bridge::WalletReply::CREATE_BACKUP_STRING) {
-         throw std::runtime_error("which mismatch");
-      }
-      auto capnBackup = walletReply.getCreateBackupString();
-
-      //backup type
-      if (capnBackup.getBackupType() != backupType) {
-         throw std::runtime_error("backup type mismatch");
-      }
-
-      //root
-      std::vector<std::string> lines;
-      for (const auto& line : capnBackup.getRootClear()) {
-         lines.emplace_back(line);
-      }
-
-      //chaincode
-      if (capnBackup.hasChainClear()) {
-         for (const auto& line : capnBackup.getChainClear()) {
-            lines.emplace_back(line);
-         }
-      }
-      return lines;
-   }
-
-   WalletData restoreWallet(const std::vector<std::string>& lines,
-      const std::string& expectedWltId, Codec::Bridge::WalletBackup::Type backupType,
-      const std::string& passphrase, std::chrono::milliseconds targetMs, uint32_t targetMB,
-      bool merge, unsigned expectedLookup)
-   {
-      if (lines.size() < 2) {
-         throw std::runtime_error("1");
-      }
-
-      //restore the wallet
-      auto refId = rand();
-      auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
-
-      {
-         capnp::MallocMessageBuilder message;
-         auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
-         toBridge.setReferenceId(refId);
-         auto request = toBridge.initUtils();
-         auto restoreWltReq = request.initRestoreWallet();
-
-         restoreWltReq.setCallbackId(callbackId);
-
-         size_t lineIndex = 0;
-         if (lines.size() == 5) {
-            restoreWltReq.setBackupId(lines[lineIndex++]);
-         }
-
-         auto rootLines = restoreWltReq.initRoot(2);
-         rootLines.set(0, lines[lineIndex++]);
-         rootLines.set(1, lines[lineIndex++]);
-
-         if (lineIndex < lines.size()) {
-            auto ccLines = restoreWltReq.initChaincode(2);
-            ccLines.set(0, lines[lineIndex++]);
-            ccLines.set(1, lines[lineIndex++]);
-         }
-
-         auto rawReq = serializeCapnp(message);
-         pushRequest(bridge_, rawReq);
-      }
-
-      //backup deser notifs
-      unsigned notifCount = 0;
-      bool restoringBackup = true;
-      while (restoringBackup) {
-         auto result = waitOnReply();
-         kj::ArrayPtr<const capnp::word> words(
-            reinterpret_cast<const capnp::word*>(result->data.getPtr()),
-            result->data.getSize() / sizeof(capnp::word));
-         capnp::FlatArrayMessageReader reader(words);
-         auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
-         if (fromBridge.which() != Codec::Bridge::FromBridge::NOTIFICATION) {
-            throw std::runtime_error("2");
-         }
-
-         auto notif = fromBridge.getNotification();
-         if (notif.getCallbackId() != callbackId) {
-            throw std::runtime_error("3");
-         }
-
-         switch (notif.which())
-         {
-            case Codec::Bridge::Notification::RESTORE:
-            {
-               auto restoreNotif = notif.getRestore();
-               switch (restoreNotif.which())
-               {
-                  case Codec::Bridge::Notification::RestorePrompt::CHECK_WALLET_ID:
-                  {
-                     //return merge decision
-                     auto meta = restoreNotif.getCheckWalletId();
-                     if (meta.getWalletId() != expectedWltId ||
-                        meta.getBackupType() != backupType) {
-                        throw std::runtime_error("4");
-                     }
-
-                     auto counter = notif.getCounter();
-                     capnp::MallocMessageBuilder notifMsg;
-                     auto toBridge = notifMsg.initRoot<Codec::Bridge::ToBridge>();
-                     toBridge.setReferenceId(rand());
-
-                     auto notifReply = toBridge.initNotification();
-                     notifReply.setSuccess(true);
-                     notifReply.setCounter(counter);
-                     notifReply.setRestore(merge ?
-                        Codec::Bridge::NotificationReply::RestoreMode::MERGE :
-                        Codec::Bridge::NotificationReply::RestoreMode::OVERWRITE
-                     );
-
-                     auto rawReq = serializeCapnp(notifMsg);
-                     pushRequest(bridge_, rawReq);
-                     restoringBackup = false;
-                     break;
-                  }
-
-                  default:
-                     throw std::runtime_error("5");
-               }
-
-               break;
-            }
-
-            default:
-               throw std::runtime_error("6");
-         }
-      }
-
-      //create wallet notifs
-      auto wltData = progressWalletCreation(callbackId,
-         passphrase, targetMs, targetMB,
-         expectedLookup, lines.size() == 5);
-
-      //validate reply
-      auto result = waitOnReply();
-      kj::ArrayPtr<const capnp::word> words(
-         reinterpret_cast<const capnp::word*>(result->data.getPtr()),
-         result->data.getSize() / sizeof(capnp::word));
-      capnp::FlatArrayMessageReader reader(words);
-      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
-      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
-         throw std::runtime_error("7");
-      }
-
-      auto reply = fromBridge.getReply();
-      if (!reply.getSuccess() || reply.getReferenceId() != refId) {
-         throw std::runtime_error("8");
-      }
-      return wltData;
-   }
-
 public:
    std::filesystem::path homedir;
    std::shared_ptr<Bridge::CppBridge> bridge_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeTests, ListStageLoad)
+TEST_F(BridgeWalletTests, ListStageLoad)
 {
    /*
    This test covers the same scenario as WalletManagerTests.ListStageLoad,
@@ -4180,8 +4305,7 @@ TEST_F(BridgeTests, ListStageLoad)
    }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeTests, ListWO)
+TEST_F(BridgeWalletTests, ListWO)
 {
    std::vector<std::pair<std::filesystem::path, std::string>> wltPaths;
    std::string walletId;
@@ -4297,7 +4421,7 @@ TEST_F(BridgeTests, ListWO)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeTests, CreateWallet)
+TEST_F(BridgeWalletTests, CreateWallet)
 {
    //create the wallet
    auto refId = rand();
@@ -4322,7 +4446,8 @@ TEST_F(BridgeTests, CreateWallet)
    std::string masterId;
    std::filesystem::path path;
    try {
-      auto walletData = progressWalletCreation(callbackId,
+      auto walletData = progressWalletCreation(
+         bridge_, callbackId,
          "pass1", 500ms, 128, 100);
       masterId = walletData.masterId;
       path = walletData.path;
@@ -4348,7 +4473,7 @@ TEST_F(BridgeTests, CreateWallet)
    ASSERT_FALSE(wltId.empty());
 
    //get the wallet data & validate it
-   auto wltData = getWalletData(bridge_, wltId);
+   auto wltData = getWalletData(bridge_, wltId, {});
    EXPECT_EQ(wltData.walletId, wltId);
    EXPECT_FALSE(wltData.accountId.empty());
    EXPECT_EQ(wltData.path.filename().string(), path);
@@ -4367,23 +4492,14 @@ TEST_F(BridgeTests, CreateWallet)
    EXPECT_GE(unlockTime, 500ms) << unlockTime.count();
 
    //grab backup string
-   auto backup = getBackup(wltId, "pass1",
+   auto backup = getWalletBackup(bridge_, wltId, "pass1",
       Codec::Bridge::WalletBackup::Type::ARMORY200_A);
    ASSERT_EQ(backup.size(), 2);
    ASSERT_EQ(backup[0].size(), 46);
    ASSERT_EQ(backup[1].size(), 46);
-
-   auto wltList = listWallets(bridge_);
-   ASSERT_EQ(wltList.size(), 1);
-   auto wltIter = wltList.begin();
-   ASSERT_EQ(wltIter->second.accountIds.size(), 1);
-   for (const auto& accId : wltIter->second.accountIds) {
-      EXPECT_EQ(accId, legacyAccId);
-   }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeTests, CreateWallet_BIP32)
+TEST_F(BridgeWalletTests, CreateWallet_BIP32)
 {
    //create the wallet
    auto refId = rand();
@@ -4408,7 +4524,8 @@ TEST_F(BridgeTests, CreateWallet_BIP32)
    std::string masterId;
    std::filesystem::path path;
    try {
-      auto walletData = progressWalletCreation(callbackId,
+      auto walletData = progressWalletCreation(
+         bridge_, callbackId,
          "pass1", 500ms, 128, 100, false, true);
       masterId = walletData.masterId;
       path = walletData.path;
@@ -4434,7 +4551,7 @@ TEST_F(BridgeTests, CreateWallet_BIP32)
    ASSERT_FALSE(wltId.empty());
 
    //get the wallet data & validate it
-   auto wltData = getWalletData(bridge_, wltId);
+   auto wltData = getWalletData(bridge_, wltId, {});
    EXPECT_EQ(wltData.walletId, wltId);
    EXPECT_FALSE(wltData.accountId.empty());
    EXPECT_EQ(wltData.path.filename().string(), path);
@@ -4453,23 +4570,14 @@ TEST_F(BridgeTests, CreateWallet_BIP32)
    EXPECT_GE(unlockTime, 500ms) << unlockTime.count();
 
    //grab backup string
-   auto backup = getBackup(wltId, "pass1",
+   auto backup = getWalletBackup(bridge_, wltId, "pass1",
       Codec::Bridge::WalletBackup::Type::ARMORY200_B);
    ASSERT_EQ(backup.size(), 2);
    ASSERT_EQ(backup[0].size(), 46);
    ASSERT_EQ(backup[1].size(), 46);
-
-   auto wltList = listWallets(bridge_);
-   ASSERT_EQ(wltList.size(), 1);
-   auto wltIter = wltList.begin();
-   ASSERT_EQ(wltIter->second.accountIds.size(), 3);
-   for (const auto& accId : wltIter->second.accountIds) {
-      EXPECT_NE(accId, legacyAccId);
-   }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeTests, DeleteWallet)
+TEST_F(BridgeWalletTests, DeleteWallet)
 {
    std::string masterId;
    std::filesystem::path path;
@@ -4496,7 +4604,8 @@ TEST_F(BridgeTests, DeleteWallet)
 
       //handle progress notifs
       try {
-         auto walletData = progressWalletCreation(callbackId,
+         auto walletData = progressWalletCreation(
+            bridge_, callbackId,
             "pass1", 500ms, 0, 100);
          masterId = walletData.masterId;
          path = walletData.path;
@@ -4523,7 +4632,7 @@ TEST_F(BridgeTests, DeleteWallet)
 
    //get the wallet data & validate it
    ASSERT_FALSE(wltId.empty());
-   auto wltData = getWalletData(bridge_, wltId);
+   auto wltData = getWalletData(bridge_, wltId, {});
    EXPECT_EQ(wltData.walletId, wltId);
    EXPECT_FALSE(wltData.accountId.empty());
    ASSERT_FALSE(path.empty());
@@ -4567,8 +4676,7 @@ TEST_F(BridgeTests, DeleteWallet)
    }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeTests, CreateWallet_Reject)
+TEST_F(BridgeWalletTests, CreateWallet_Reject)
 {
    //create the wallet
    auto refId = rand();
@@ -4590,7 +4698,8 @@ TEST_F(BridgeTests, CreateWallet_Reject)
 
    //handle progress notifs
    try {
-      auto walletData = progressWalletCreation(callbackId,
+      auto walletData = progressWalletCreation(
+         bridge_, callbackId,
          std::string{}, 500ms, 128, 100);
       ASSERT_FALSE(walletData.masterId.empty());
       ASSERT_FALSE(walletData.path.empty());
@@ -4617,7 +4726,7 @@ TEST_F(BridgeTests, CreateWallet_Reject)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeTests, RestoreWallet_Legacy)
+TEST_F(BridgeWalletTests, RestoreWallet_Legacy)
 {
    const std::string walletId{"292AxMD9H"};
    const std::vector<std::string> lines {
@@ -4629,12 +4738,12 @@ TEST_F(BridgeTests, RestoreWallet_Legacy)
    const std::string passphrase{"privPassTest"};
 
    //restore the wallet
-   auto restoreData = restoreWallet(lines, walletId,
+   auto restoreData = restoreWallet(bridge_, lines, walletId,
       Codec::Bridge::WalletBackup::Type::LEGACY135_A,
       passphrase, 300ms, 32, false, 500);
 
    //get the wallet data & validate it
-   auto wltData = getWalletData(bridge_, walletId);
+   auto wltData = getWalletData(bridge_, walletId, {});
    EXPECT_EQ(wltData.walletId, walletId);
    EXPECT_FALSE(wltData.accountId.empty());
    EXPECT_EQ(wltData.path.filename(), restoreData.path);
@@ -4727,11 +4836,11 @@ TEST_F(BridgeTests, RestoreWallet_Legacy)
 
    //grab backup strings via passphrase
    try {
-      auto capnLines = getBackup(walletId, passphrase,
+      auto capnLines = getWalletBackup(bridge_, walletId, passphrase,
          Codec::Bridge::WalletBackup::Type::LEGACY135_A);
       ASSERT_EQ(capnLines.size(), 4);
 
-      for (unsigned i=0; i<4; i++) {
+      for (unsigned i = 0; i < 4; i++) {
          ASSERT_EQ(lines[i], capnLines[i]);
       }
    } catch (const std::exception& e) {
@@ -4739,8 +4848,48 @@ TEST_F(BridgeTests, RestoreWallet_Legacy)
    }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeTests, RestoreWallet_LegacyWO)
+TEST_F(BridgeWalletTests, RestoreWallet_BIP32)
+{
+   const std::string walletId{"2tkj1x7cb"};
+   const std::vector<std::string> lines {
+      "reah edre tttd rekh  skhj ride anag weht  eeaw",
+      "shdu ksuj fetd fguo  skwk twnw tsdr gkwg  gawh"
+   };
+   const std::string passphrase{"privPassTest"};
+
+   //restore the wallet
+   auto restoreData = restoreWallet(bridge_, lines, walletId,
+      Codec::Bridge::WalletBackup::Type::ARMORY200_B,
+      passphrase, 0ms, 32, false, 500);
+
+   //get the wallet data & validate it
+   auto wltData = getWalletData(bridge_, walletId, {});
+   EXPECT_EQ(wltData.walletId, walletId);
+   EXPECT_FALSE(wltData.accountId.empty());
+   EXPECT_EQ(wltData.path.filename(), restoreData.path);
+   EXPECT_EQ(wltData.masterId, restoreData.masterId);
+
+   EXPECT_TRUE(wltData.encrypted);
+   EXPECT_FALSE(wltData.watchingOnly);
+   EXPECT_EQ(wltData.addresses.size(), 1);
+   EXPECT_EQ(wltData.lookup, 499);
+   EXPECT_EQ(wltData.kdfMemReq, 32);
+
+   //grab backup strings via passphrase
+   try {
+      auto capnLines = getWalletBackup(bridge_, walletId, passphrase,
+         Codec::Bridge::WalletBackup::Type::ARMORY200_B);
+      ASSERT_EQ(capnLines.size(), 2);
+
+      for (unsigned i = 0; i < 2; i++) {
+         ASSERT_EQ(lines[i], capnLines[i]);
+      }
+   } catch (const std::exception& e) {
+      ASSERT_TRUE(false) << e.what();
+   }
+}
+
+TEST_F(BridgeWalletTests, RestoreWallet_LegacyWO)
 {
    const std::string walletId{"292AxMD9H"};
    const std::vector<std::string> lines {
@@ -4753,12 +4902,12 @@ TEST_F(BridgeTests, RestoreWallet_LegacyWO)
    const std::string passphrase{"privPassTest"};
 
    //restore the wallet
-   auto restoreData = restoreWallet(lines, walletId,
+   auto restoreData = restoreWallet(bridge_, lines, walletId,
       Codec::Bridge::WalletBackup::Type::LEGACY135_A,
       passphrase, 300ms, 32, false, 500);
 
    //get the wallet data & validate it
-   auto wltData = getWalletData(bridge_, walletId);
+   auto wltData = getWalletData(bridge_, walletId, {});
    EXPECT_EQ(wltData.walletId, walletId);
    EXPECT_FALSE(wltData.accountId.empty());
    EXPECT_EQ(wltData.path.filename(), restoreData.path);
@@ -4817,8 +4966,7 @@ TEST_F(BridgeTests, RestoreWallet_LegacyWO)
    }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeTests, RestoreMerge)
+TEST_F(BridgeWalletTests, RestoreMerge)
 {
    //create the wallet
    auto refId = rand();
@@ -4845,7 +4993,8 @@ TEST_F(BridgeTests, RestoreMerge)
    std::string masterId;
    std::filesystem::path path;
    try {
-      auto walletData = progressWalletCreation(callbackId,
+      auto walletData = progressWalletCreation(
+         bridge_, callbackId,
          passphrase, 500ms, 128, lookup);
       masterId = walletData.masterId;
       path = walletData.path;
@@ -4871,7 +5020,7 @@ TEST_F(BridgeTests, RestoreMerge)
    ASSERT_FALSE(wltId.empty());
 
    //get the wallet data & validate it
-   auto wltData = getWalletData(bridge_, wltId);
+   auto wltData = getWalletData(bridge_, wltId, {});
    EXPECT_EQ(wltData.walletId, wltId);
    EXPECT_FALSE(wltData.accountId.empty());
    EXPECT_EQ(wltData.path.filename().string(), path);
@@ -4902,7 +5051,7 @@ TEST_F(BridgeTests, RestoreMerge)
    //grab the backup strings
    std::vector<std::string> lines;
    try {
-      lines = getBackup(wltId, passphrase,
+      lines = getWalletBackup(bridge_, wltId, passphrase,
          Codec::Bridge::WalletBackup::Type::ARMORY200_A);
    } catch (const std::exception& e) {
       ASSERT_TRUE(false) << e.what();
@@ -4913,7 +5062,7 @@ TEST_F(BridgeTests, RestoreMerge)
    for (const auto& line : lines) {
       ASSERT_FALSE(line.empty());
    }
-   auto restoreData = restoreWallet(lines, wltId,
+   auto restoreData = restoreWallet(bridge_, lines, wltId,
       Codec::Bridge::WalletBackup::Type::ARMORY200_A,
       passphrase2, 1ms, 0, true,
       //the legacy armory account always starts with asset 0
@@ -4923,7 +5072,7 @@ TEST_F(BridgeTests, RestoreMerge)
    ASSERT_EQ(restoreData.path, path);
 
    //validate restored wallet state
-   auto wltData2 = getWalletData(bridge_, wltId);
+   auto wltData2 = getWalletData(bridge_, wltId, {});
    EXPECT_EQ(wltData2.walletId, wltId);
    EXPECT_EQ(wltData2.accountId, wltData.accountId);
    EXPECT_EQ(wltData2.path.filename().string(), path);
@@ -4946,7 +5095,7 @@ TEST_F(BridgeTests, RestoreMerge)
    //check it unlocks with passphrase2
    std::vector<std::string> lines2;
    try {
-      lines2 = getBackup(wltId, passphrase2,
+      lines2 = getWalletBackup(bridge_, wltId, passphrase2,
          Codec::Bridge::WalletBackup::Type::ARMORY200_A);
    } catch (const std::exception& e) {
       ASSERT_TRUE(false) << e.what();
@@ -4955,7 +5104,7 @@ TEST_F(BridgeTests, RestoreMerge)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeTests, Migrate_Legacy)
+TEST_F(BridgeWalletTests, Migrate_Legacy)
 {
    //copy test legacy wallet to datadir
    const std::string wltId{"28m472Xbm"sv};
@@ -5026,7 +5175,8 @@ TEST_F(BridgeTests, Migrate_Legacy)
    }
 
    //progress new wallet creation
-   auto wltData = progressWalletCreation(callbackId, "newpass", 250ms, 32, 104);
+   auto wltData = progressWalletCreation(
+      bridge_, callbackId, "newpass", 250ms, 32, 104);
 
    //validate success
    auto result = waitOnReply();
@@ -5080,8 +5230,7 @@ TEST_F(BridgeTests, Migrate_Legacy)
    }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeTests, ImportWallet_Legacy)
+TEST_F(BridgeWalletTests, ImportWallet_Legacy)
 {
    std::filesystem::path legacyWalletFile{"input_files/legacy.wallet"sv};
    const std::string walletId{"28m472Xbm"sv};
@@ -5196,7 +5345,8 @@ TEST_F(BridgeTests, ImportWallet_Legacy)
    }
 
    //progress new wallet creation
-   auto wltData = progressWalletCreation(callbackId, "newpass", 250ms, 32, 104);
+   auto wltData = progressWalletCreation(
+      bridge_, callbackId, "newpass", 250ms, 32, 104);
 
    //validate success
    result = waitOnReply();
@@ -5251,7 +5401,7 @@ TEST_F(BridgeTests, ImportWallet_Legacy)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeTests, ChangeWalletPassphrase)
+TEST_F(BridgeWalletTests, ChangeWalletPassphrase)
 {
    /* 1. create an encrypted wallet */
    std::filesystem::path walletPath;
@@ -5296,7 +5446,7 @@ TEST_F(BridgeTests, ChangeWalletPassphrase)
 
    /* 3. check current passphrase, grab backup */
    auto now = std::chrono::system_clock::now();
-   auto wltBackupLines = getBackup(walletId, currentPass,
+   auto wltBackupLines = getWalletBackup(bridge_, walletId, currentPass,
       Codec::Bridge::WalletBackup::Type::ARMORY200_A);
    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::system_clock::now() - now);
@@ -5312,7 +5462,7 @@ TEST_F(BridgeTests, ChangeWalletPassphrase)
 
    /* 5. check current passphrase fails to unlock wallet */
    try {
-      auto newLines = getBackup(walletId, currentPass,
+      auto newLines = getWalletBackup(bridge_, walletId, currentPass,
          Codec::Bridge::WalletBackup::Type::ARMORY200_A);
       ASSERT_TRUE(false);
    } catch (const std::exception& e) {
@@ -5322,7 +5472,7 @@ TEST_F(BridgeTests, ChangeWalletPassphrase)
    /* 6. check new passphrase unlocks wallet */
    try {
       auto now = std::chrono::system_clock::now();
-      auto newLines = getBackup(walletId, newPass,
+      auto newLines = getWalletBackup(bridge_, walletId, newPass,
          Codec::Bridge::WalletBackup::Type::ARMORY200_A);
       auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
          std::chrono::system_clock::now() - now);
@@ -5336,7 +5486,7 @@ TEST_F(BridgeTests, ChangeWalletPassphrase)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeTests, ExtendAddressChain)
+TEST_F(BridgeWalletTests, ExtendAddressChain)
 {
    /*
    NOTE: bridge is offline in this test. It covers the graceful handling of
@@ -5405,7 +5555,7 @@ TEST_F(BridgeTests, ExtendAddressChain)
    }
 
    /* grab wallet data explicitly, check chain again */
-   auto walletData = getWalletData(bridge_, walletId);
+   auto walletData = getWalletData(bridge_, walletId, accountId);
    ASSERT_EQ(walletData.walletId, walletId);
    ASSERT_EQ(walletData.accountId, accountId);
    EXPECT_EQ(walletData.useCount, -1);
@@ -5413,7 +5563,7 @@ TEST_F(BridgeTests, ExtendAddressChain)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeTests, ForkWO)
+TEST_F(BridgeWalletTests, ForkWO)
 {
    std::filesystem::path walletPath;
    std::string walletId;
@@ -5600,8 +5750,8 @@ TEST_F(BridgeTests, ForkWO)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// BridgeBlocksDBTests
-class BridgeBlocksDBTests : public ::testing::Test
+// BridgeWalletsWithDBTests
+class BridgeWalletsWithDBTests : public ::testing::Test
 {
 protected:
    void initBDM()
@@ -5722,8 +5872,7 @@ protected:
    std::string serverPubkey_;
 };
 
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeBlocksDBTests, Connect)
+TEST_F(BridgeWalletsWithDBTests, Connect)
 {
    auto wltList = listWallets(bridge_);
    ASSERT_EQ(wltList.size(), 1);
@@ -5764,8 +5913,7 @@ TEST_F(BridgeBlocksDBTests, Connect)
    }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeBlocksDBTests, CycleConnection)
+TEST_F(BridgeWalletsWithDBTests, CycleConnection)
 {
    auto wltList = listWallets(bridge_);
    ASSERT_EQ(wltList.size(), 1);
@@ -5808,7 +5956,7 @@ TEST_F(BridgeBlocksDBTests, CycleConnection)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeBlocksDBTests, DeleteWallet)
+TEST_F(BridgeWalletsWithDBTests, DeleteWallet)
 {
    //create a fresh wallet
    auto wltId = createWallet(homedir_);
@@ -5895,7 +6043,7 @@ TEST_F(BridgeBlocksDBTests, DeleteWallet)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeBlocksDBTests, ExtendAddressChain)
+TEST_F(BridgeWalletsWithDBTests, ExtendAddressChain)
 {
    //create a fresh wallet
    auto wltId = createWallet(homedir_);
@@ -5960,15 +6108,14 @@ TEST_F(BridgeBlocksDBTests, ExtendAddressChain)
    }
 
    /* grab wallet data explicitly, check chain again */
-   auto walletData = getWalletData(bridge_, wltId);
+   auto walletData = getWalletData(bridge_, wltId, accountId);
    ASSERT_EQ(walletData.walletId, wltId);
    ASSERT_EQ(walletData.accountId, accountId);
    EXPECT_EQ(walletData.useCount, -1);
    EXPECT_EQ(walletData.lookup, 10004);
 }
 
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(BridgeBlocksDBTests, AddNewAddress)
+TEST_F(BridgeWalletsWithDBTests, AddNewAddress)
 {
    /*
    This test covers the edge case where a wallet does not have enough
@@ -6028,7 +6175,7 @@ TEST_F(BridgeBlocksDBTests, AddNewAddress)
 
    /* get 4 addresses, wallet should have the data for that */
    {
-      auto walletData = getWalletData(bridge_, wltId);
+      auto walletData = getWalletData(bridge_, wltId, accountId);
       ASSERT_EQ(walletData.walletId, wltId);
       ASSERT_EQ(walletData.accountId, accountId);
       EXPECT_EQ(walletData.useCount, -1);
@@ -6040,7 +6187,7 @@ TEST_F(BridgeBlocksDBTests, AddNewAddress)
    }
 
    {
-      auto walletData = getWalletData(bridge_, wltId);
+      auto walletData = getWalletData(bridge_, wltId, accountId);
       ASSERT_EQ(walletData.walletId, wltId);
       ASSERT_EQ(walletData.accountId, accountId);
       EXPECT_EQ(walletData.useCount, 3);
@@ -6104,7 +6251,7 @@ TEST_F(BridgeBlocksDBTests, AddNewAddress)
 
    {
       //grab wallet data explicitly, check chain again
-      auto walletData = getWalletData(bridge_, wltId);
+      auto walletData = getWalletData(bridge_, wltId, accountId);
       ASSERT_EQ(walletData.walletId, wltId);
       ASSERT_EQ(walletData.accountId, accountId);
       EXPECT_EQ(walletData.useCount, 4);
@@ -6113,8 +6260,8 @@ TEST_F(BridgeBlocksDBTests, AddNewAddress)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// BridgeLocalTests
-class BridgeLocalTests : public ::testing::Test
+// BridgeChainDataTests
+class BridgeChainDataTests : public ::testing::Test
 {
 protected:
    void initBDM()
@@ -6180,14 +6327,22 @@ protected:
       }
 
       auto wallets = ::loadWallets(bridge_);
-      ASSERT_EQ(wallets.size(), walletIds.size());
+      auto wltIdsCopy = walletIds;
+      for (const auto& wltPair : wallets) {
+         auto iter = wltIdsCopy.find(wltPair.second.walletId);
+         if (iter != wltIdsCopy.end()) {
+            wltIdsCopy.erase(iter);
+         }
+      }
+      ASSERT_TRUE(wltIdsCopy.empty());
+
       ASSERT_FALSE(accountId_BCDE_.empty());
       ASSERT_FALSE(accountId_BC_.empty());
       ASSERT_FALSE(accountId_DE_.empty());
       ASSERT_FALSE(accountId_AFLB_.empty());
    }
 
-   std::string loadWallet(const std::string& walletId, const std::string& accountId)
+   std::map<std::string, std::string> loadWallet(const std::string& walletId)
    {
       auto wltList = listWallets(bridge_);
       for (auto& wltData : wltList) {
@@ -6195,13 +6350,15 @@ protected:
             stageWallet(bridge_, wltData.second.walletId, true);
          }
       }
+
+      std::map<std::string, std::string> result;
       auto wallets = ::loadWallets(bridge_);
       for (const auto& wltData : wallets) {
-         if (wltData.second.walletId == walletId && wltData.second.accountId == accountId) {
-            return wltData.second.dbId;
+         if (wltData.second.walletId == walletId) {
+            result.emplace(wltData.second.accountId, wltData.second.dbId);
          }
       }
-      return {};
+      return result;
    }
 
    ////////
@@ -6314,7 +6471,7 @@ protected:
 
 ////////////////////////////////////////////////////////////////////////////////
 // ledgers
-TEST_F(BridgeLocalTests, Check5Blocks_BCDE)
+TEST_F(BridgeChainDataTests, Check5Blocks_BCDE)
 {
    loadWallets({walletId_BCDE_});
 
@@ -6360,7 +6517,7 @@ TEST_F(BridgeLocalTests, Check5Blocks_BCDE)
 
 ////////////////////////////////////////////////////////////////////////////////
 // ledgers add block
-TEST_F(BridgeLocalTests, AddBlocks_BCDE)
+TEST_F(BridgeChainDataTests, AddBlocks_BCDE)
 {
    loadWallets({walletId_BCDE_});
 
@@ -6470,7 +6627,7 @@ TEST_F(BridgeLocalTests, AddBlocks_BCDE)
    }
 }
 
-TEST_F(BridgeLocalTests, AddBlocks_BC_DE)
+TEST_F(BridgeChainDataTests, AddBlocks_BC_DE)
 {
    // load the 2 wallets
    loadWallets({walletId_BC_, walletId_DE_});
@@ -6654,7 +6811,7 @@ TEST_F(BridgeLocalTests, AddBlocks_BC_DE)
    }
 }
 
-TEST_F(BridgeLocalTests, AddBlocks_BCDE_AFLB)
+TEST_F(BridgeChainDataTests, AddBlocks_BCDE_AFLB)
 {
    // load the 2 wallets
    loadWallets({walletId_BCDE_, walletId_AFLB_});
@@ -7214,7 +7371,7 @@ TEST_F(BridgeLocalTests, AddBlocks_BCDE_AFLB)
 
 ////////////////////////////////////////////////////////////////////////////////
 // ledgers reorg
-TEST_F(BridgeLocalTests, Reorg_BCDE)
+TEST_F(BridgeChainDataTests, Reorg_BCDE)
 {
    loadWallets({walletId_BCDE_});
 
@@ -7355,7 +7512,7 @@ TEST_F(BridgeLocalTests, Reorg_BCDE)
    }
 }
 
-TEST_F(BridgeLocalTests, Reorg_BC_DE)
+TEST_F(BridgeChainDataTests, Reorg_BC_DE)
 {
    loadWallets({walletId_BC_, walletId_DE_});
 
@@ -7589,7 +7746,7 @@ TEST_F(BridgeLocalTests, Reorg_BC_DE)
    }
 }
 
-TEST_F(BridgeLocalTests, Reorg_BCDE_AFLB)
+TEST_F(BridgeChainDataTests, Reorg_BCDE_AFLB)
 {
    loadWallets({walletId_BCDE_, walletId_AFLB_});
 
@@ -8306,7 +8463,7 @@ TEST_F(BridgeLocalTests, Reorg_BCDE_AFLB)
 
 ////////////////////////////////////////////////////////////////////////////////
 // helper data
-TEST_F(BridgeLocalTests, AddressBook)
+TEST_F(BridgeChainDataTests, AddressBook)
 {
    loadWallets({walletId_BCDE_});
 
@@ -8385,7 +8542,7 @@ TEST_F(BridgeLocalTests, AddressBook)
    }
 }
 
-TEST_F(BridgeLocalTests, getUTXOs)
+TEST_F(BridgeChainDataTests, getUTXOs)
 {
    loadWallets({walletId_BCDE_, walletId_AFLB_});
 
@@ -8516,7 +8673,7 @@ TEST_F(BridgeLocalTests, getUTXOs)
 
 ////////////////////////////////////////////////////////////////////////////////
 // tx signing & zc broadcast
-TEST_F(BridgeLocalTests, ZeroConf)
+TEST_F(BridgeChainDataTests, ZeroConf)
 {
    loadWallets({walletId_BCDE_});
 
@@ -8749,7 +8906,7 @@ TEST_F(BridgeLocalTests, ZeroConf)
    ASSERT_EQ(lastEntry.getBlockNum(), 6);
 }
 
-TEST_F(BridgeLocalTests, ZeroConf_Replace)
+TEST_F(BridgeChainDataTests, ZeroConf_Replace)
 {
    loadWallets({walletId_BCDE_});
 
@@ -8948,7 +9105,7 @@ TEST_F(BridgeLocalTests, ZeroConf_Replace)
    ASSERT_EQ(lastEntry.getBlockNum(), 6);
 }
 
-TEST_F(BridgeLocalTests, ZeroConf_Chain)
+TEST_F(BridgeChainDataTests, ZeroConf_Chain)
 {
    loadWallets({walletId_BCDE_});
 
@@ -9172,7 +9329,7 @@ TEST_F(BridgeLocalTests, ZeroConf_Chain)
    EXPECT_FALSE(ledgers[0].isChainedZC());
 }
 
-TEST_F(BridgeLocalTests, ZeroConf_StaggeredChain)
+TEST_F(BridgeChainDataTests, ZeroConf_StaggeredChain)
 {
    loadWallets({walletId_BCDE_});
 
@@ -9686,7 +9843,7 @@ TEST_F(BridgeLocalTests, ZeroConf_StaggeredChain)
    EXPECT_FALSE(lastEntry.isChainedZC());
 }
 
-TEST_F(BridgeLocalTests, ZeroConf_ChainRBF)
+TEST_F(BridgeChainDataTests, ZeroConf_ChainRBF)
 {
    loadWallets({walletId_BCDE_});
 
@@ -10188,7 +10345,7 @@ TEST_F(BridgeLocalTests, ZeroConf_ChainRBF)
    EXPECT_FALSE(lastEntry.isChainedZC());
 }
 
-TEST_F(BridgeLocalTests, ZeroConf_Reload)
+TEST_F(BridgeChainDataTests, ZeroConf_Reload)
 {
    loadWallets({walletId_BCDE_});
 
@@ -10459,7 +10616,7 @@ TEST_F(BridgeLocalTests, ZeroConf_Reload)
    EXPECT_FALSE(ledgers[0].isChainedZC());
 }
 
-TEST_F(BridgeLocalTests, ZeroConf_Reorg)
+TEST_F(BridgeChainDataTests, ZeroConf_Reorg)
 {
    loadWallets({walletId_BCDE_});
 
@@ -10762,7 +10919,7 @@ TEST_F(BridgeLocalTests, ZeroConf_Reorg)
    }
 }
 
-TEST_F(BridgeLocalTests, ZeroConf_RegisterWallet)
+TEST_F(BridgeChainDataTests, ZeroConf_RegisterWallet)
 {
    /* this test only works with a supernode db */
 
@@ -10895,7 +11052,8 @@ TEST_F(BridgeLocalTests, ZeroConf_RegisterWallet)
    ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
 
    /* load & register wallet AFLB */
-   auto dbId = loadWallet(walletId_AFLB_, accountId_AFLB_);
+   auto stagedIds = loadWallet(walletId_AFLB_);
+   auto dbId = stagedIds.at(accountId_AFLB_);
    ASSERT_FALSE(dbId.empty());
    ASSERT_TRUE(registerWallet(bridge_, walletId_AFLB_, accountId_AFLB_, dbId));
 
@@ -10958,6 +11116,330 @@ TEST_F(BridgeLocalTests, ZeroConf_RegisterWallet)
    ASSERT_EQ(lastEntry.getTxHash(), tx.getThisHash());
    ASSERT_EQ(lastEntry.getValue(), 11 * COIN);
    ASSERT_EQ(lastEntry.getBlockNum(), UINT32_MAX);
+}
+
+TEST_F(BridgeChainDataTests, RestoreSynchronize)
+{
+   /*
+   Checks that a restored wallet with history gets its use chain
+   synchronized with on chain data; both length and address types.
+   */
+
+   //create BIP32 wallet, grab backup
+   auto bip32WltId = createAWallet(bridge_, 50ms, 10, true);
+   ASSERT_FALSE(bip32WltId.empty());
+   auto bip32Backup = getWalletBackup(bridge_, bip32WltId, "pass1",
+      Codec::Bridge::WalletBackup::Type::ARMORY200_B);
+   ASSERT_FALSE(bip32Backup.empty());
+
+   //create legacy wallet, grab backup
+   auto legacyWltId = createAWallet(bridge_, 50ms, 10, false);
+   ASSERT_FALSE(bip32WltId.empty());
+   auto legacyBackup = getWalletBackup(bridge_, legacyWltId, "pass1",
+      Codec::Bridge::WalletBackup::Type::ARMORY200_A);
+   ASSERT_FALSE(legacyBackup.empty());
+
+   //load BCDE, the new wallets are loaded as they're created
+   loadWallets({walletId_BCDE_});
+
+   //grab account ids for new wallets
+   auto bip32AccIds = getWalletAccountIds(bridge_, bip32WltId);
+   ASSERT_EQ(bip32AccIds.size(), 3);
+
+   auto legacyAccIds = getWalletAccountIds(bridge_, legacyWltId);
+   ASSERT_EQ(legacyAccIds.size(), 1);
+
+   /* grab some addresses */
+   auto getNewAddress = [](std::shared_ptr<Bridge::CppBridge> bridge,
+      std::string wltId, std::string accId, unsigned count,
+      uint32_t addrType = 0)->AddressData
+   {
+      for (unsigned i = 0; i < count - 1; i++) {
+         getAddress(bridge, wltId, accId);
+      }
+      return getAddress(bridge, wltId, accId, addrType);
+   };
+
+   //advance the highest used index per each bip32 account
+   auto bip32AccIdIter = bip32AccIds.begin();
+   auto addrBip32Acc1 = getNewAddress(bridge_, bip32WltId, *bip32AccIdIter, 5);
+   ASSERT_EQ(addrBip32Acc1.index, 5);
+   ASSERT_TRUE(addrBip32Acc1.isUsed);
+   auto addrBip32Acc1Next = getNewAddress(bridge_, bip32WltId, *bip32AccIdIter++, 1);
+
+   auto addrBip32Acc2 = getNewAddress(bridge_, bip32WltId, *bip32AccIdIter, 3);
+   ASSERT_EQ(addrBip32Acc2.index, 3);
+   ASSERT_TRUE(addrBip32Acc2.isUsed);
+   auto addrBip32Acc2Next = getNewAddress(bridge_, bip32WltId, *bip32AccIdIter++, 1);
+
+   auto addrBip32Acc3 = getNewAddress(bridge_, bip32WltId, *bip32AccIdIter, 7);
+   ASSERT_EQ(addrBip32Acc3.index, 7);
+   ASSERT_TRUE(addrBip32Acc3.isUsed);
+   auto addrBip32Acc3Next = getNewAddress(bridge_, bip32WltId, *bip32AccIdIter++, 1);
+
+   //get a non default address from the legacy wallet
+   auto addrLegacy = getNewAddress(bridge_, legacyWltId, *legacyAccIds.begin(), 4,
+      uint32_t(AddressEntryType::P2PK | AddressEntryType::P2SH));
+   ASSERT_EQ(addrLegacy.index, 4);
+   ASSERT_EQ(addrLegacy.type, uint32_t(AddressEntryType::P2PK | AddressEntryType::P2SH));
+   auto addrLegacyNext = getNewAddress(bridge_, legacyWltId, *legacyAccIds.begin(), 1);
+
+   //register wallets, go online
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4A", "4", "5" }, blk0dat_);
+   WebSocketServer::initAuthPeers({
+      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+   WebSocketServer::start(theBDMt_->bdm(), true);
+
+   ASSERT_TRUE(connectToIp(bridge_, "127.0.0.1", "9001", serverPubkey_));
+   ASSERT_TRUE(registerWallets(bridge_));
+
+   //start db, go online and wait on ready notif
+   theBDMt_->start(Config::DBSettings::initMode());
+   ASSERT_EQ(goOnline(bridge_), 5);
+
+   //get signed tx
+   BinaryData signedTx;
+   try {
+      signedTx = createAndSignTx(bridge_,
+         walletId_BCDE_, accountId_BCDE_,
+         {}, {
+            { addrBip32Acc1.addrStr , 1 * COIN },
+            { addrBip32Acc2.addrStr , 2 * COIN },
+            { addrBip32Acc3.addrStr , 3 * COIN },
+            { addrLegacy.addrStr    , 4 * COIN }
+         }, TestChain::scrAddrC, 2, true,
+         "privPass1"
+      );
+   } catch (const std::exception& e) {
+      ASSERT_TRUE(false) << e.what();
+   }
+   ASSERT_FALSE(signedTx.empty());
+
+   //broadcast
+   broadcastTx(bridge_, signedTx);
+
+   //grab amount for change output
+   Tx tx(signedTx);
+   auto changeOutput = tx.getTxOutCopy(4);
+   int64_t changeAmount = changeOutput.getValue();
+   EXPECT_TRUE(changeAmount > 9 * COIN);
+   EXPECT_TRUE(changeAmount < 10 * COIN);
+
+   //wait on zc notif
+   try {
+      auto zcLedgers = waitOnZc();
+      ASSERT_EQ(zcLedgers.size(), 5);
+      ASSERT_EQ(zcLedgers[4].getTxHash(), tx.getThisHash());
+      EXPECT_EQ(zcLedgers[4].getValue(), -20 * (int64_t)COIN + changeAmount);
+      ASSERT_EQ(zcLedgers[4].getBlockNum(), UINT32_MAX);
+   } catch (const std::exception&) {
+      ASSERT_TRUE(false);
+   }
+
+   //check balances and highest used index
+   std::filesystem::path wltBip32Path, wltLegacyPath;
+   {
+      bip32AccIdIter = bip32AccIds.begin();
+      auto wltBal = getWalletBalance(bridge_, bip32WltId, *bip32AccIdIter);
+      auto wltData1 = getWalletData(bridge_, bip32WltId, *bip32AccIdIter++);
+      ASSERT_EQ(wltBal.size(), 4);
+      EXPECT_EQ(wltBal[0], 1 * COIN);
+      EXPECT_EQ(wltBal[1], 0);
+      EXPECT_EQ(wltBal[2], 1 * COIN);
+      EXPECT_EQ(wltBal[3], 1);
+      EXPECT_EQ(wltData1.useCount, 6);
+      EXPECT_EQ(wltData1.lookup, 10);
+      wltBip32Path = wltData1.path;
+
+      wltBal = getWalletBalance(bridge_, bip32WltId, *bip32AccIdIter);
+      auto wltData2 = getWalletData(bridge_, bip32WltId, *bip32AccIdIter++);
+      ASSERT_EQ(wltBal.size(), 4);
+      EXPECT_EQ(wltBal[0], 2 * COIN);
+      EXPECT_EQ(wltBal[1], 0);
+      EXPECT_EQ(wltBal[2], 2 * COIN);
+      EXPECT_EQ(wltBal[3], 1);
+      EXPECT_EQ(wltData2.useCount, 4);
+      EXPECT_EQ(wltData2.lookup, 10);
+
+      wltBal = getWalletBalance(bridge_, bip32WltId, *bip32AccIdIter);
+      auto wltData3 = getWalletData(bridge_, bip32WltId, *bip32AccIdIter);
+      ASSERT_EQ(wltBal.size(), 4);
+      EXPECT_EQ(wltBal[0], 3 * COIN);
+      EXPECT_EQ(wltBal[1], 0);
+      EXPECT_EQ(wltBal[2], 3 * COIN);
+      EXPECT_EQ(wltBal[3], 1);
+      EXPECT_EQ(wltData3.useCount, 8);
+      EXPECT_EQ(wltData3.lookup, 10);
+
+      wltBal = getWalletBalance(bridge_, legacyWltId, *legacyAccIds.begin());
+      auto wltData4 = getWalletData(bridge_, legacyWltId, *legacyAccIds.begin());
+      ASSERT_EQ(wltBal.size(), 4);
+      EXPECT_EQ(wltBal[0], 4 * COIN);
+      EXPECT_EQ(wltBal[1], 0);
+      EXPECT_EQ(wltBal[2], 4 * COIN);
+      EXPECT_EQ(wltBal[3], 1);
+      EXPECT_EQ(wltData4.useCount, 5);
+      EXPECT_EQ(wltData4.lookup, 10);
+      wltLegacyPath = wltData4.path;
+   }
+
+   /* delete the 2 news wallets */
+
+   //check wallet path
+   ASSERT_TRUE(FileUtils::fileExists(wltBip32Path, 0));
+   ASSERT_TRUE(FileUtils::fileExists(wltLegacyPath, 0));
+
+   //delete bip32 wlt
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto request = toBridge.initWalletManager();
+      request.setDeleteWallet(bip32WltId);
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge_, rawReq);
+
+      //validate reply
+      auto result = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+         result->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      auto reply = fromBridge.getReply();
+      ASSERT_TRUE(reply.getSuccess());
+      ASSERT_EQ(reply.getReferenceId(), refId);
+      ASSERT_FALSE(FileUtils::fileExists(wltBip32Path, 0));
+   }
+
+   //delete legacy wlt
+   {
+      auto refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto request = toBridge.initWalletManager();
+      request.setDeleteWallet(legacyWltId);
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge_, rawReq);
+
+      //validate reply
+      auto result = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+         result->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      auto reply = fromBridge.getReply();
+      ASSERT_TRUE(reply.getSuccess());
+      ASSERT_EQ(reply.getReferenceId(), refId);
+      ASSERT_FALSE(FileUtils::fileExists(wltLegacyPath, 0));
+   }
+
+   /* cycle bridge */
+   bridge_.reset();
+   replyQueue.clear();
+   bridge_ = std::make_shared<Bridge::CppBridge>();
+   bridge_->setWriteLambda([](MsgPtr payload) {
+      std::unique_lock<std::mutex> lock(commsMutex);
+         replyQueue.emplace_back(std::move(payload));
+      commsCV.notify_all();
+   });
+
+   //restore bip32 wlt
+   restoreWallet(bridge_, bip32Backup, bip32WltId,
+      Codec::Bridge::WalletBackup::Type::ARMORY200_B,
+      "pass2", 50ms, 0, false, 500);
+
+   {
+      bip32AccIdIter = bip32AccIds.begin();
+      auto wltData1 = getWalletData(bridge_, bip32WltId, *bip32AccIdIter++);
+      EXPECT_EQ(wltData1.useCount, 0);
+      EXPECT_EQ(wltData1.lookup, 499);
+
+      auto wltData2 = getWalletData(bridge_, bip32WltId, *bip32AccIdIter++);
+      EXPECT_EQ(wltData2.useCount, -1);
+      EXPECT_EQ(wltData2.lookup, 499);
+
+      auto wltData3 = getWalletData(bridge_, bip32WltId, *bip32AccIdIter);
+      EXPECT_EQ(wltData3.useCount, -1);
+      EXPECT_EQ(wltData3.lookup, 499);
+   }
+
+   //restore legacy wlt
+   restoreWallet(bridge_, legacyBackup, legacyWltId,
+      Codec::Bridge::WalletBackup::Type::ARMORY200_A,
+      "pass3", 50ms, 0, false, 500);
+
+   {
+      auto wltData4 = getWalletData(bridge_, legacyWltId, *legacyAccIds.begin());
+      EXPECT_EQ(wltData4.useCount, 0);
+      EXPECT_EQ(wltData4.lookup, 500);
+   }
+
+   //go online
+   ASSERT_TRUE(connectToIp(bridge_, "127.0.0.1", "9001", serverPubkey_));
+   ASSERT_TRUE(registerWallets(bridge_));
+   ASSERT_EQ(goOnline(bridge_), 5);
+
+   /* check chain lengths */
+   {
+      bip32AccIdIter = bip32AccIds.begin();
+      auto wltBal = getWalletBalance(bridge_, bip32WltId, *bip32AccIdIter);
+      auto wltData1 = getWalletData(bridge_, bip32WltId, *bip32AccIdIter);
+      auto nextAddr1 = getNewAddress(bridge_, bip32WltId, *bip32AccIdIter++, 1);
+      ASSERT_EQ(wltBal.size(), 4);
+      EXPECT_EQ(wltBal[0], 1 * COIN);
+      EXPECT_EQ(wltBal[1], 0);
+      EXPECT_EQ(wltBal[2], 1 * COIN);
+      EXPECT_EQ(wltBal[3], 1);
+      EXPECT_EQ(wltData1.useCount, 5);
+      EXPECT_EQ(wltData1.lookup, 499);
+      EXPECT_EQ(nextAddr1.addrStr, addrBip32Acc1Next.addrStr);
+
+      wltBal = getWalletBalance(bridge_, bip32WltId, *bip32AccIdIter);
+      auto wltData2 = getWalletData(bridge_, bip32WltId, *bip32AccIdIter);
+      auto nextAddr2 = getNewAddress(bridge_, bip32WltId, *bip32AccIdIter++, 1);
+      ASSERT_EQ(wltBal.size(), 4);
+      EXPECT_EQ(wltBal[0], 2 * COIN);
+      EXPECT_EQ(wltBal[1], 0);
+      EXPECT_EQ(wltBal[2], 2 * COIN);
+      EXPECT_EQ(wltBal[3], 1);
+      EXPECT_EQ(wltData2.useCount, 3);
+      EXPECT_EQ(wltData2.lookup, 499);
+      EXPECT_EQ(nextAddr2.addrStr, addrBip32Acc2Next.addrStr);
+
+      wltBal = getWalletBalance(bridge_, bip32WltId, *bip32AccIdIter);
+      auto wltData3 = getWalletData(bridge_, bip32WltId, *bip32AccIdIter);
+      auto nextAddr3 = getNewAddress(bridge_, bip32WltId, *bip32AccIdIter, 1);
+      ASSERT_EQ(wltBal.size(), 4);
+      EXPECT_EQ(wltBal[0], 3 * COIN);
+      EXPECT_EQ(wltBal[1], 0);
+      EXPECT_EQ(wltBal[2], 3 * COIN);
+      EXPECT_EQ(wltBal[3], 1);
+      EXPECT_EQ(wltData3.useCount, 7);
+      EXPECT_EQ(wltData3.lookup, 499);
+      EXPECT_EQ(nextAddr3.addrStr, addrBip32Acc3Next.addrStr);
+
+      wltBal = getWalletBalance(bridge_, legacyWltId, *legacyAccIds.begin());
+      auto wltData4 = getWalletData(bridge_, legacyWltId, *legacyAccIds.begin());
+      auto nextAddr4 = getNewAddress(bridge_, legacyWltId, *legacyAccIds.begin(), 1);
+      ASSERT_EQ(wltBal.size(), 4);
+      EXPECT_EQ(wltBal[0], 4 * COIN);
+      EXPECT_EQ(wltBal[1], 0);
+      EXPECT_EQ(wltBal[2], 4 * COIN);
+      EXPECT_EQ(wltBal[3], 1);
+      EXPECT_EQ(wltData4.useCount, 4);
+      EXPECT_EQ(wltData4.lookup, 500);
+      EXPECT_EQ(nextAddr4.addrStr, addrLegacyNext.addrStr);
+
+      //check legacy wallet address type
+      auto iter = wltData4.addresses.find(addrLegacy.hash);
+      ASSERT_NE(iter, wltData4.addresses.end());
+      EXPECT_EQ(iter->addrStr, addrLegacy.addrStr);
+      EXPECT_EQ(iter->type, addrLegacy.type);
+   }
 }
 
 //TODO:

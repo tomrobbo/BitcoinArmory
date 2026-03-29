@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2025, goatpig                                               //
+//  Copyright (C) 2025-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -38,6 +38,7 @@ namespace Armory
          const NotifType type;
          NotifStruct(NotifType);
          virtual ~NotifStruct(void) = 0;
+         virtual bool syncWalletState(void) const;
       };
       typedef std::function<void(std::shared_ptr<NotifStruct>)> NotifFunc;
 
@@ -49,9 +50,13 @@ namespace Armory
 
       struct NotifStruct_NewBlock : public NotifStruct
       {
-         NewBlockNotif blockNotif;
+         const NewBlockNotif blockNotif;
+         const bool isReadyNotif;
          const std::function<void(void)> callback;
-         NotifStruct_NewBlock(const NewBlockNotif&, const std::function<void(void)>&);
+
+         NotifStruct_NewBlock(
+            const NewBlockNotif&, const std::function<void(void)>&, bool);
+         bool syncWalletState(void) const override;
       };
 
       struct NotifStruct_ZC : public NotifStruct
@@ -72,6 +77,7 @@ namespace Armory
       {
          const std::function<void(void)> callback;
          NotifStruct_Refresh(const std::function<void(void)>&);
+         bool syncWalletState(void) const override;
       };
 
       ////////
