@@ -85,8 +85,8 @@ namespace
          case DbSetupRequest::AUTOMATE_DB:
          {
             auto autoDbReq = request.getAutomateDb();
-            std::filesystem::path satoshiPath{autoDbReq.getSatoshiPath()};
-            std::filesystem::path dbDir{autoDbReq.getDbDir()};
+            std::filesystem::path satoshiPath{std::string(autoDbReq.getSatoshiPath())};
+            std::filesystem::path dbDir{std::string(autoDbReq.getDbDir())};
 
             std::thread thr([bridge, satoshiPath, dbDir, referenceId]{
                bridge->automateDb(satoshiPath, dbDir, referenceId);});
@@ -1231,24 +1231,27 @@ namespace
          case UtilsRequest::RESTORE_WALLET:
          {
             auto walletRequest = request.getRestoreWallet();
-
-            auto roots = walletRequest.getRoot();
-            auto chaincodes = walletRequest.getChaincode();
             std::vector<std::string_view> lines;
-            lines.reserve(roots.size() + chaincodes.size() + 1);
+            lines.reserve(5);
 
             if (walletRequest.hasBackupId()) {
                auto backupId = walletRequest.getBackupId();
                lines.emplace_back(std::string_view{
                   backupId.begin(), backupId.size()});
             }
-            for (const auto& root : roots) {
-               lines.emplace_back(std::string_view{
-                  root.begin(), root.size()});
+
+            if (walletRequest.hasRoot()) {
+               for (const auto& root : walletRequest.getRoot()) {
+                  lines.emplace_back(std::string_view{
+                     root.begin(), root.size()});
+               }
             }
-            for (const auto& chaincode : chaincodes) {
-               lines.emplace_back(std::string_view{
-                  chaincode.begin(), chaincode.size()});
+
+            if (walletRequest.hasChaincode()) {
+               for (const auto& chaincode : walletRequest.getChaincode()) {
+                  lines.emplace_back(std::string_view{
+                     chaincode.begin(), chaincode.size()});
+               }
             }
 
             auto spPassCapnp = walletRequest.getSpPass();

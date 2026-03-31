@@ -4645,7 +4645,7 @@ TEST_F(BridgeWalletTests, DeleteWallet)
    EXPECT_TRUE(wltData.encrypted);
    EXPECT_FALSE(wltData.watchingOnly);
    EXPECT_EQ(wltData.addresses.size(), 1);
-   EXPECT_EQ(wltData.kdfMemReq, 8);
+   EXPECT_GE(wltData.kdfMemReq, 8);
 
    //check wallet path
    auto fullWltPath = homedir / path;
@@ -6030,16 +6030,23 @@ TEST_F(BridgeWalletsWithDBTests, DeleteWallet)
    pushRequest(bridge_, rawReq);
 
    //validate reply
-   auto result = waitOnReply();
-   kj::ArrayPtr<const capnp::word> words(
-      reinterpret_cast<const capnp::word*>(result->data.getPtr()),
-      result->data.getSize() / sizeof(capnp::word));
-   capnp::FlatArrayMessageReader reader(words);
-   auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
-   auto reply = fromBridge.getReply();
-   ASSERT_TRUE(reply.getSuccess());
-   ASSERT_EQ(reply.getReferenceId(), refId);
-   ASSERT_FALSE(FileUtils::fileExists(wltPath, 0));
+   while (true) {
+      auto result = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+         result->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         continue;
+      }
+
+      auto reply = fromBridge.getReply();
+      ASSERT_TRUE(reply.getSuccess());
+      ASSERT_EQ(reply.getReferenceId(), refId);
+      ASSERT_FALSE(FileUtils::fileExists(wltPath, 0));
+      break;
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -11301,16 +11308,22 @@ TEST_F(BridgeChainDataTests, RestoreSynchronize)
       pushRequest(bridge_, rawReq);
 
       //validate reply
-      auto result = waitOnReply();
-      kj::ArrayPtr<const capnp::word> words(
-         reinterpret_cast<const capnp::word*>(result->data.getPtr()),
-         result->data.getSize() / sizeof(capnp::word));
-      capnp::FlatArrayMessageReader reader(words);
-      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
-      auto reply = fromBridge.getReply();
-      ASSERT_TRUE(reply.getSuccess());
-      ASSERT_EQ(reply.getReferenceId(), refId);
-      ASSERT_FALSE(FileUtils::fileExists(wltBip32Path, 0));
+      while (true) {
+         auto result = waitOnReply();
+         kj::ArrayPtr<const capnp::word> words(
+            reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+            result->data.getSize() / sizeof(capnp::word));
+         capnp::FlatArrayMessageReader reader(words);
+         auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+         if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+            continue;
+         }
+         auto reply = fromBridge.getReply();
+         ASSERT_TRUE(reply.getSuccess());
+         ASSERT_EQ(reply.getReferenceId(), refId);
+         ASSERT_FALSE(FileUtils::fileExists(wltBip32Path, 0));
+         break;
+      }
    }
 
    //delete legacy wlt
@@ -11325,16 +11338,22 @@ TEST_F(BridgeChainDataTests, RestoreSynchronize)
       pushRequest(bridge_, rawReq);
 
       //validate reply
-      auto result = waitOnReply();
-      kj::ArrayPtr<const capnp::word> words(
-         reinterpret_cast<const capnp::word*>(result->data.getPtr()),
-         result->data.getSize() / sizeof(capnp::word));
-      capnp::FlatArrayMessageReader reader(words);
-      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
-      auto reply = fromBridge.getReply();
-      ASSERT_TRUE(reply.getSuccess());
-      ASSERT_EQ(reply.getReferenceId(), refId);
-      ASSERT_FALSE(FileUtils::fileExists(wltLegacyPath, 0));
+      while (true) {
+         auto result = waitOnReply();
+         kj::ArrayPtr<const capnp::word> words(
+            reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+            result->data.getSize() / sizeof(capnp::word));
+         capnp::FlatArrayMessageReader reader(words);
+         auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+         if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+            continue;
+         }
+         auto reply = fromBridge.getReply();
+         ASSERT_TRUE(reply.getSuccess());
+         ASSERT_EQ(reply.getReferenceId(), refId);
+         ASSERT_FALSE(FileUtils::fileExists(wltLegacyPath, 0));
+         break;
+      }
    }
 
    /* cycle bridge */

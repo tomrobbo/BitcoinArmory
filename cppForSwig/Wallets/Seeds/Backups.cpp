@@ -1644,7 +1644,7 @@ Backup_Easy16Public::Backup_Easy16Public(BackupType bType,
    bw.put_BinaryData(walletId);
 
    //compute the easy16 line
-   uint typeInt = (bType == BackupType::Armory135c) ? 0 : (uint8_t)bType;
+   uint8_t typeInt = (bType == BackupType::Armory135c) ? 0 : (uint8_t)bType;
    backupId_ = encodeEasy16Line(bw.getDataRef(), typeInt, false);
 
    //compressed pubkey is turned to easy16 without the leading sign byte
