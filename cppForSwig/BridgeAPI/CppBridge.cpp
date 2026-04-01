@@ -2781,9 +2781,15 @@ std::shared_ptr<CppBridgeSignerStruct> CppBridge::signerInstance(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void CppBridge::broadcastTx(const std::vector<BinaryData>& rawTxVec)
+void CppBridge::broadcastTxs(const std::vector<BinaryData>& rawTxVec, bool isRPC)
 {
-   bdvPtr_->broadcastZC(rawTxVec);
+   if (!isRPC) {
+      bdvPtr_->broadcastZC(rawTxVec);
+   } else {
+      for (const auto& rawTx : rawTxVec) {
+         bdvPtr_->broadcastThroughRPC(rawTx);
+      }
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

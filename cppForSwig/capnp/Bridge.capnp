@@ -273,6 +273,15 @@ struct BlockchainServiceRequest {
       isNew       @2 : Bool;
    }
 
+   struct BroadcastRequest {
+      rawTxs      @0 : List(Data);
+
+      union {
+         viaP2p   @1 : Void;
+         viaRpc   @2 : Void;
+      }
+   }
+
    union {
       unset                         @0 : Void;
 
@@ -280,7 +289,7 @@ struct BlockchainServiceRequest {
       registerWallets               @2 : Void;
 
       registerWallet                @3 : RegisterWallet;
-      broadcastTx                   @4 : List(Data);
+      broadcastTx                   @4 : BroadcastRequest;
       getTxsByHash                  @5 : List(Types.Hash);
       getHeadersByHeight            @6 : List(Types.Height);
       getBlockTimeByHeight          @7 : UInt32;

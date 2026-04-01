@@ -3072,8 +3072,10 @@ namespace {
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
       auto req = toBridge.initService();
-      auto broadcastReq = req.initBroadcastTx(1);
-      broadcastReq.set(0, capnp::Data::Builder(
+      auto broadcastReq = req.initBroadcastTx();
+      broadcastReq.setViaP2p();
+      auto rawTxs = broadcastReq.initRawTxs(1);
+      rawTxs.set(0, capnp::Data::Builder(
          (uint8_t*)rawTx.getPtr(), rawTx.getSize()));
       auto rawReq = serializeCapnp(message);
       pushRequest(bridge, rawReq);

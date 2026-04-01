@@ -294,15 +294,20 @@ namespace
 
          case BlockchainServiceRequest::BROADCAST_TX:
          {
-            auto capnTxs = request.getBroadcastTx();
-            std::vector<BinaryData> bdVec;
-            bdVec.reserve(capnTxs.size());
-            for (auto capnTx : capnTxs) {
-               bdVec.emplace_back(
-                  BinaryData(capnTx.begin(), capnTx.end()));
-            }
+            auto broadcastObj = request.getBroadcastTx();
 
-            bridge->broadcastTx(bdVec);
+            auto capnTxs = broadcastObj.getRawTxs();
+            std::vector<BinaryData> rawTxs;
+            rawTxs.reserve(capnTxs.size());
+            for (auto capnTx : capnTxs) {
+               rawTxs.emplace_back(
+                  BinaryData{capnTx.begin(), capnTx.end()});
+            }
+            bool isRPC = broadcastObj.which() ==
+               BlockchainServiceRequest::BroadcastRequest::VIA_RPC ?
+               true : false;
+
+            bridge->broadcastTxs(rawTxs, isRPC);
             break;
          }
 

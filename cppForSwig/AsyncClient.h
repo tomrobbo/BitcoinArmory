@@ -86,10 +86,10 @@ public:
    }
 
    U get(void)
-   { 
-      if (error_ != nullptr)
+   {
+      if (error_ != nullptr) {
          throw *error_;
-
+      }
       return std::move(value_);
    }
 };
@@ -404,8 +404,8 @@ namespace AsyncClient
 
       /*
       Broadcast methods:
-        All broadcast methods generate and return a random BROADCAST_ID_LENGTH 
-        bytes long ID. This ID will be attached to the broadcast notification 
+        All broadcast methods generate and return a random BROADCAST_ID_LENGTH
+        bytes long ID. This ID will be attached to the broadcast notification
         for the relevant transactions. Notifications for these transaction may
         come with no ID attached, in which case these notifications are not the
         result of your broadcast.

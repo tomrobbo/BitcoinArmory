@@ -710,12 +710,15 @@ class BlockchainService(ProtoWrapper):
       return reply.service.getFeeSchedule
 
    ####
-   def broadcastTx(self, rawTxs: list[bytes]):
+   def broadcastTx(self, rawTxs: list[bytes], viaRPC: bool=False):
       packet = Bridge.ToBridge.new_message()
-      packetTxs = packet.init("service").init("broadcastTx", len(rawTxs))
+      broadcastRequest = packet.init("service").init("broadcastTx")
+      if viaRPC:
+         #defaults to p2p broadcast
+         broadcastRequest.viaRpc = None
+      packetTxs = broadcastRequest.init("rawTxs", len(rawTxs))
       for i, tx in enumerate(rawTxs):
          packetTxs[i] = tx
-
       self.send(packet, needsReply=False)
 
 ################################################################################

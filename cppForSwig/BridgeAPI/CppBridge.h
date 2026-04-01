@@ -249,7 +249,7 @@ namespace Armory
 
          //utils
          BinaryData getHash160(const BinaryDataRef&, MessageId) const;
-         void broadcastTx(const std::vector<BinaryData>&);
+         void broadcastTxs(const std::vector<BinaryData>&, bool);
          BinaryData getTxOutScriptForScrAddr(const BinaryData&, MessageId) const;
          BinaryData getAddrStrForScrAddr(const BinaryData&, MessageId) const;
          std::string getNameForAddrType(int) const;
