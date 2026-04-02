@@ -976,7 +976,7 @@ void NodeRPC_UnitTest::shutdown()
 
 CoreRPC::RpcState NodeRPC_UnitTest::testConnection()
 {
-   return CoreRPC::RpcState_Online;
+   return CoreRPC::RpcState::Online;
 }
 
 bool NodeRPC_UnitTest::canPoll() const
@@ -1119,7 +1119,7 @@ int NodeRPC_UnitTest::broadcastTx(const BinaryDataRef& rawTx, std::string&)
 }
 
 CoreRPC::FeeEstimateResult NodeRPC_UnitTest::getFeeByte(
-   unsigned, const std::string&)
+   unsigned, const std::string&) const
 {
    return CoreRPC::FeeEstimateResult();
 }

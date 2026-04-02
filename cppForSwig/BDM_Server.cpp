@@ -921,18 +921,18 @@ namespace {
 
             auto nodeReply = staticReply.initGetNodeStatus();
             nodeReply.setNode(
-               (Codec::Types::NodeStatus::NodeState)nodeStatus->state_);
-            nodeReply.setIsSW(nodeStatus->SegWitEnabled_);
+               (Codec::Types::NodeStatus::NodeState)nodeStatus->state);
+            nodeReply.setIsSW(nodeStatus->segWitEnabled);
             nodeReply.setRpc(
-               (Codec::Types::NodeStatus::RpcState)nodeStatus->rpcState_);
+               (Codec::Types::NodeStatus::RpcState)nodeStatus->rpcState);
 
             auto chainNotif = nodeReply.initChain();
             chainNotif.setChainState((Codec::Types::ChainStatus::ChainState)
-               nodeStatus->chainStatus_.state());
-            chainNotif.setBlockSpeed(nodeStatus->chainStatus_.getBlockSpeed());
-            chainNotif.setEta(nodeStatus->chainStatus_.getETA());
-            chainNotif.setProgress(nodeStatus->chainStatus_.getProgressPct());
-            chainNotif.setBlocksLeft(nodeStatus->chainStatus_.getBlocksLeft());
+               nodeStatus->chainStatus.state());
+            chainNotif.setBlockSpeed(nodeStatus->chainStatus.getBlockSpeed());
+            chainNotif.setEta(nodeStatus->chainStatus.getETA());
+            chainNotif.setProgress(nodeStatus->chainStatus.getProgressPct());
+            chainNotif.setBlocksLeft(nodeStatus->chainStatus.getBlocksLeft());
             break;
          }
 
@@ -948,8 +948,8 @@ namespace {
                for (const auto& fee : feeSchedule) {
                   auto capnFee = capnFeeSchedule[i++];
                   capnFee.setTarget(fee.first);
-                  capnFee.setFeeByte(fee.second.feeByte_);
-                  capnFee.setSmartFee(fee.second.smartFee_);
+                  capnFee.setFeeByte(fee.second.feeByte);
+                  capnFee.setSmartFee(fee.second.smartFee);
                }
             } catch (const std::exception& e) {
                reply.setError(e.what());
@@ -1405,17 +1405,17 @@ void BDV_Server_Object::processNotification(
             std::dynamic_pointer_cast<BDV_Notification_NodeStatus>(notifPtr);
          auto& nodeStatus = payload->status;
 
-         nodeNotif.setNode((Codec::Types::NodeStatus::NodeState)nodeStatus->state_);
-         nodeNotif.setIsSW(nodeStatus->SegWitEnabled_);
-         nodeNotif.setRpc((Codec::Types::NodeStatus::RpcState)nodeStatus->rpcState_);
+         nodeNotif.setNode((Codec::Types::NodeStatus::NodeState)nodeStatus->state);
+         nodeNotif.setIsSW(nodeStatus->segWitEnabled);
+         nodeNotif.setRpc((Codec::Types::NodeStatus::RpcState)nodeStatus->rpcState);
 
          auto chainNotif = nodeNotif.getChain();
          chainNotif.setChainState((Codec::Types::ChainStatus::ChainState)
-            nodeStatus->chainStatus_.state());
-         chainNotif.setBlockSpeed(nodeStatus->chainStatus_.getBlockSpeed());
-         chainNotif.setEta(nodeStatus->chainStatus_.getETA());
-         chainNotif.setProgress(nodeStatus->chainStatus_.getProgressPct());
-         chainNotif.setBlocksLeft(nodeStatus->chainStatus_.getBlocksLeft());
+            nodeStatus->chainStatus.state());
+         chainNotif.setBlockSpeed(nodeStatus->chainStatus.getBlockSpeed());
+         chainNotif.setEta(nodeStatus->chainStatus.getETA());
+         chainNotif.setProgress(nodeStatus->chainStatus.getProgressPct());
+         chainNotif.setBlocksLeft(nodeStatus->chainStatus.getBlocksLeft());
          break;
       }
 

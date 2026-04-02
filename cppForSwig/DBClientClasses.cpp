@@ -434,7 +434,7 @@ const NodeChainStatus& NodeStatus::chainStatus() const
 //
 ///////////////////////////////////////////////////////////////////////////////
 NodeChainStatus::NodeChainStatus() :
-   chainState_(CoreRPC::ChainState_Unknown), blockSpeed_(0), progressPct_(0),
+   chainState_(CoreRPC::ChainState::Unknown), blockSpeed_(0), progressPct_(0),
    etaSeconds_(UINT64_MAX), blocksLeft_(UINT32_MAX)
 {}
 

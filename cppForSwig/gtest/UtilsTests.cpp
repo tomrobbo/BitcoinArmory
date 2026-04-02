@@ -5,7 +5,7 @@
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
 //                                                                            //
-//  Copyright (C) 2016-2025, goatpig                                          //
+//  Copyright (C) 2016-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -19,6 +19,7 @@
 #include <Utils/varint.h>
 #include <Utils/DBUtils.h>
 #include <Utils/UniversalTimer.h>
+#include <Utils/JSON_codec.cpp>
 #include <Ledgers/LedgerEntry.h>
 #include <BlockchainDatabase/TxHashFilters.h>
 #include <Wallets/KDF.h>
@@ -6599,6 +6600,57 @@ TEST_F(TestPeerKey, HumanReadable)
    ASSERT_EQ(readPeer3.getKey(), pubkey3);
    ASSERT_EQ(readPeer3.isOneWay(), false);
    ASSERT_EQ(readPeer3.isServer(), false);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+class TestJSONCodec : public ::testing::Test
+{
+protected:
+   virtual void SetUp()
+   {}
+
+   virtual void TearDown()
+   {}
+};
+
+TEST_F(TestJSONCodec, decode)
+{
+   auto obj = JSON::decode("{\"jsonrpc\":\"2.0\",\"result\":{"
+      "\"chain\":\"main\",\"blocks\":943234,\"headers\":943234,"
+      "\"bestblockhash\":\"00000000000000000000fff7a765c9f1e6cf8f52dfec5cdc030f9fdd41a2247c\","
+      "\"difficulty\":133793147307542.8,\"time\":1775056020,\"mediantime\":1775052890,"
+      "\"verificationprogress\":0.9999998991042083,\"initialblockdownload\":false,"
+      "\"chainwork\":\"00000000000000000000000000000000000000011c16a6ff9cfe6d501f727d84\","
+      "\"size_on_disk\":832201426348,\"pruned\":false,\"warnings\":[]},\"id\":50}");
+
+   //id
+   auto idNum = std::dynamic_pointer_cast<JSON::Number>(
+      obj.getValForKey("id"sv));
+   ASSERT_NE(idNum, nullptr);
+   EXPECT_EQ(idNum->val, 50);
+
+   auto result = std::dynamic_pointer_cast<JSON::Object>(
+      obj.getValForKey("result"sv));
+
+   //pruned
+   auto pruned = std::dynamic_pointer_cast<JSON::State>(
+      result->getValForKey("pruned"sv));
+   ASSERT_NE(pruned, nullptr);
+   EXPECT_EQ(pruned->state, JSON::StateEnum::False);
+
+   //ibd
+   auto ibd = std::dynamic_pointer_cast<JSON::State>(
+      result->getValForKey("initialblockdownload"sv));
+   ASSERT_NE(ibd, nullptr);
+   EXPECT_EQ(ibd->state, JSON::StateEnum::False);
+
+   //chain
+   auto chain = std::dynamic_pointer_cast<JSON::String>(
+      result->getValForKey("chain"sv));
+   ASSERT_NE(chain, nullptr);
+   EXPECT_EQ(chain->val, "main");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
