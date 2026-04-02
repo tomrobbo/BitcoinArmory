@@ -30,6 +30,7 @@ namespace Armory
    namespace Seeds
    {
       struct PromptReply;
+      enum class SeedType : int;
    };
 
    namespace Signing
@@ -71,7 +72,6 @@ namespace Armory
       class CppBridgeSignerStruct
       {
       private:
-         std::unique_ptr<Signing::TxEvalState> signState_{};
          const std::function<WalletPtr(const Wallets::WalletId&)> getWalletFunc_;
          const std::function<void(ServerPushWrapper)> writeFunc_;
 
@@ -134,11 +134,12 @@ namespace Armory
             const CallbackId&, MessageId);
          BinaryData loadWallets(MessageId);
 
-         //wallet setup
+         //wallets
          const std::filesystem::path& getDataDir(void) const;
          BinaryData createWalletsPacket(MessageId);
          bool unloadWallet(const Wallets::WalletId&);
          bool deleteWallet(const Wallets::WalletId&);
+         BinaryData getAccountIds(const Wallets::WalletId&, MessageId) const;
          BinaryData getWalletPacket(const Wallets::WalletId&,
             Wallets::AddressAccountId, MessageId) const;
 
@@ -172,8 +173,6 @@ namespace Armory
             const Wallets::AddressAccountId&, MessageId);
          BinaryData getAddrCombinedList(const Wallets::WalletId&,
             const Wallets::AddressAccountId&, MessageId);
-         BinaryData getHighestUsedIndex(const Wallets::WalletId&,
-            const Wallets::AddressAccountId&, MessageId);
 
          //create/generate wallet & addresses
          void extendAddressPool(const Wallets::WalletId&,
@@ -183,6 +182,7 @@ namespace Armory
             const Wallets::AddressAccountId&, uint32_t,
             uint32_t, MessageId);
          void createWallet(
+            Seeds::SeedType,
             SecureBinaryData, //extra entropy
             Wallets::IO::CreateWalletParams,
             const CallbackId&,
@@ -218,7 +218,7 @@ namespace Armory
 
          //txs & headers
          void getTxsByHash(const std::set<BinaryData>&, MessageId);
-         void getHeadersByHeight(const std::vector<unsigned>&, MessageId);
+         void getHeadersByHeight(const std::set<unsigned>&, MessageId);
 
          //utxos
          void getUTXOs(const Wallets::WalletId&,
@@ -249,7 +249,7 @@ namespace Armory
 
          //utils
          BinaryData getHash160(const BinaryDataRef&, MessageId) const;
-         void broadcastTx(const std::vector<BinaryData>&);
+         void broadcastTxs(const std::vector<BinaryData>&, bool);
          BinaryData getTxOutScriptForScrAddr(const BinaryData&, MessageId) const;
          BinaryData getAddrStrForScrAddr(const BinaryData&, MessageId) const;
          std::string getNameForAddrType(int) const;

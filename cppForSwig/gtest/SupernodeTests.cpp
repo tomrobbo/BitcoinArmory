@@ -13,6 +13,7 @@
 
 #include "TestUtils.h"
 #include <reorgTest/blkdata.h>
+#include <Ledgers/LedgerEntry.h>
 
 #include <Utils/ArmoryConfig.h>
 #include <Utils/DBUtils.h>
@@ -20,6 +21,7 @@
 #include <Wallets/AuthorizedPeers.h>
 #include <Wallets/Seeds/Seeds.h>
 #include <Wallets/IOHeader.h>
+#include <Wallets/Assets.h>
 #include <Signer/ScriptSpender.h>
 #include <ZeroConf/Parser.h>
 
@@ -126,52 +128,52 @@ TEST_F(BlockUtilsSuper, Load5Blocks)
    ASSERT_TRUE(iface_->getStoredScriptHistory(ssh, TestChain::scrAddrA));
    EXPECT_EQ(ssh.getScriptBalance(), 50 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 50 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 1U);
+   EXPECT_EQ(ssh.totalTxioCount, 1U);
 
    ASSERT_TRUE(iface_->getStoredScriptHistory(ssh, TestChain::scrAddrB));
    EXPECT_EQ(ssh.getScriptBalance(), 70 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 230 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 12U);
+   EXPECT_EQ(ssh.totalTxioCount, 12U);
 
    ASSERT_TRUE(iface_->getStoredScriptHistory(ssh, TestChain::scrAddrC));
    EXPECT_EQ(ssh.getScriptBalance(), 20 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 75 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 6U);
+   EXPECT_EQ(ssh.totalTxioCount, 6U);
 
    ASSERT_TRUE(iface_->getStoredScriptHistory(ssh, TestChain::scrAddrD));
    EXPECT_EQ(ssh.getScriptBalance(), 65 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 65 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 4U);
+   EXPECT_EQ(ssh.totalTxioCount, 4U);
 
    ASSERT_TRUE(iface_->getStoredScriptHistory(ssh, TestChain::scrAddrE));
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 30 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    ASSERT_TRUE(iface_->getStoredScriptHistory(ssh, TestChain::scrAddrF));
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 45 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 7U);
+   EXPECT_EQ(ssh.totalTxioCount, 7U);
 
    ASSERT_TRUE(iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddr));
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 15 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    ASSERT_TRUE(iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddrP2SH));
    EXPECT_EQ(ssh.getScriptBalance(), 25 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 40 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    ASSERT_TRUE(iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddr));
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 40 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 4U);
+   EXPECT_EQ(ssh.totalTxioCount, 4U);
 
    ASSERT_TRUE(iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddrP2SH));
    EXPECT_EQ(ssh.getScriptBalance(), 0 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 5 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -188,52 +190,52 @@ TEST_F(BlockUtilsSuper, Load5Blocks_ReloadBDM)
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrA);
    EXPECT_EQ(ssh.getScriptBalance(), 50 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 50 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 1U);
+   EXPECT_EQ(ssh.totalTxioCount, 1U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrB);
    EXPECT_EQ(ssh.getScriptBalance(), 70 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 230 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 12U);
+   EXPECT_EQ(ssh.totalTxioCount, 12U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrC);
    EXPECT_EQ(ssh.getScriptBalance(), 20 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 75 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 6U);
+   EXPECT_EQ(ssh.totalTxioCount, 6U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrD);
    EXPECT_EQ(ssh.getScriptBalance(), 65 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 65 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 4U);
+   EXPECT_EQ(ssh.totalTxioCount, 4U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrE);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 30 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrF);
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 45 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 7U);
+   EXPECT_EQ(ssh.totalTxioCount, 7U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddr);
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 15 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddrP2SH);
    EXPECT_EQ(ssh.getScriptBalance(), 25 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 40 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddr);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 40 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 4U);
+   EXPECT_EQ(ssh.totalTxioCount, 4U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddrP2SH);
    EXPECT_EQ(ssh.getScriptBalance(), 0 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 5 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    //restart bdm
    clients_->shutdown();
@@ -245,10 +247,10 @@ TEST_F(BlockUtilsSuper, Load5Blocks_ReloadBDM)
    initBDM();
 
    auto subssh_sdbi = iface_->getStoredDBInfo(DB_SELECT::SUBSSH, 0);
-   EXPECT_EQ(subssh_sdbi.topBlkHgt_, 5ULL);
+   EXPECT_EQ(subssh_sdbi.topBlkHgt, 5ULL);
 
    auto ssh_sdbi = iface_->getStoredDBInfo(DB_SELECT::SSH, 0);
-   EXPECT_EQ(ssh_sdbi.topBlkHgt_, 5ULL);
+   EXPECT_EQ(ssh_sdbi.topBlkHgt, 5ULL);
 
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
@@ -259,52 +261,52 @@ TEST_F(BlockUtilsSuper, Load5Blocks_ReloadBDM)
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrA);
    EXPECT_EQ(ssh.getScriptBalance(), 50 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 50 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 1U);
+   EXPECT_EQ(ssh.totalTxioCount, 1U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrB);
    EXPECT_EQ(ssh.getScriptBalance(), 70 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 230 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 12U);
+   EXPECT_EQ(ssh.totalTxioCount, 12U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrC);
    EXPECT_EQ(ssh.getScriptBalance(), 20 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 75 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 6U);
+   EXPECT_EQ(ssh.totalTxioCount, 6U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrD);
    EXPECT_EQ(ssh.getScriptBalance(), 65 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 65 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 4U);
+   EXPECT_EQ(ssh.totalTxioCount, 4U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrE);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 30 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrF);
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 45 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 7U);
+   EXPECT_EQ(ssh.totalTxioCount, 7U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddr);
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 15 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddrP2SH);
    EXPECT_EQ(ssh.getScriptBalance(), 25 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 40 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddr);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 40 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 4U);
+   EXPECT_EQ(ssh.totalTxioCount, 4U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddrP2SH);
    EXPECT_EQ(ssh.getScriptBalance(), 0 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 5 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -321,52 +323,52 @@ TEST_F(BlockUtilsSuper, Load5Blocks_Reload_Rescan)
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrA);
    EXPECT_EQ(ssh.getScriptBalance(), 50 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 50 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 1U);
+   EXPECT_EQ(ssh.totalTxioCount, 1U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrB);
    EXPECT_EQ(ssh.getScriptBalance(), 70 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 230 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 12U);
+   EXPECT_EQ(ssh.totalTxioCount, 12U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrC);
    EXPECT_EQ(ssh.getScriptBalance(), 20 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 75 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 6U);
+   EXPECT_EQ(ssh.totalTxioCount, 6U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrD);
    EXPECT_EQ(ssh.getScriptBalance(), 65 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 65 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 4U);
+   EXPECT_EQ(ssh.totalTxioCount, 4U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrE);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 30 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrF);
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 45 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 7U);
+   EXPECT_EQ(ssh.totalTxioCount, 7U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddr);
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 15 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddrP2SH);
    EXPECT_EQ(ssh.getScriptBalance(), 25 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 40 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddr);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 40 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 4U);
+   EXPECT_EQ(ssh.totalTxioCount, 4U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddrP2SH);
    EXPECT_EQ(ssh.getScriptBalance(), 0 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 5 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    //restart bdm
    clients_->shutdown();
@@ -378,10 +380,10 @@ TEST_F(BlockUtilsSuper, Load5Blocks_Reload_Rescan)
    initBDM();
 
    auto subssh_sdbi = iface_->getStoredDBInfo(DB_SELECT::SUBSSH, 0);
-   EXPECT_EQ(subssh_sdbi.topBlkHgt_, 5U);
+   EXPECT_EQ(subssh_sdbi.topBlkHgt, 5U);
 
    auto ssh_sdbi = iface_->getStoredDBInfo(DB_SELECT::SSH, 0);
-   EXPECT_EQ(ssh_sdbi.topBlkHgt_, 5U);
+   EXPECT_EQ(ssh_sdbi.topBlkHgt, 5U);
 
    clients_->init();
    theBDMt_->start(BdmInitMode::RESCAN);
@@ -392,52 +394,52 @@ TEST_F(BlockUtilsSuper, Load5Blocks_Reload_Rescan)
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrA);
    EXPECT_EQ(ssh.getScriptBalance(), 50 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 50 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 1U);
+   EXPECT_EQ(ssh.totalTxioCount, 1U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrB);
    EXPECT_EQ(ssh.getScriptBalance(), 70 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 230 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 12U);
+   EXPECT_EQ(ssh.totalTxioCount, 12U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrC);
    EXPECT_EQ(ssh.getScriptBalance(), 20 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 75 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 6U);
+   EXPECT_EQ(ssh.totalTxioCount, 6U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrD);
    EXPECT_EQ(ssh.getScriptBalance(), 65 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 65 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 4U);
+   EXPECT_EQ(ssh.totalTxioCount, 4U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrE);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 30 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrF);
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 45 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 7U);
+   EXPECT_EQ(ssh.totalTxioCount, 7U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddr);
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 15 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddrP2SH);
    EXPECT_EQ(ssh.getScriptBalance(), 25 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 40 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddr);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 40 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 4U);
+   EXPECT_EQ(ssh.totalTxioCount, 4U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddrP2SH);
    EXPECT_EQ(ssh.getScriptBalance(), 0 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 5 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -455,52 +457,52 @@ TEST_F(BlockUtilsSuper, Load5Blocks_RescanSSH)
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrA);
    EXPECT_EQ(ssh.getScriptBalance(), 50 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 50 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 1U);
+   EXPECT_EQ(ssh.totalTxioCount, 1U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrB);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 160 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 9U);
+   EXPECT_EQ(ssh.totalTxioCount, 9U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrC);
    EXPECT_EQ(ssh.getScriptBalance(), 55 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 55 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrD);
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 5 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 1U);
+   EXPECT_EQ(ssh.totalTxioCount, 1U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrE);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 30 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrF);
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 40 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 5U);
+   EXPECT_EQ(ssh.totalTxioCount, 5U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddr);
    EXPECT_EQ(ssh.getScriptBalance(), 10 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 10 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 1U);
+   EXPECT_EQ(ssh.totalTxioCount, 1U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddrP2SH);
    EXPECT_EQ(ssh.getScriptBalance(), 0 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 15 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddr);
    EXPECT_EQ(ssh.getScriptBalance(), 10 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 20 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddrP2SH);
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 5 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 1U);
+   EXPECT_EQ(ssh.totalTxioCount, 1U);
 
    //restart bdm
    clients_->shutdown();
@@ -512,10 +514,10 @@ TEST_F(BlockUtilsSuper, Load5Blocks_RescanSSH)
    initBDM();
 
    auto subssh_sdbi = iface_->getStoredDBInfo(DB_SELECT::SUBSSH, 0);
-   EXPECT_EQ(subssh_sdbi.topBlkHgt_, 3U);
+   EXPECT_EQ(subssh_sdbi.topBlkHgt, 3U);
 
    auto ssh_sdbi = iface_->getStoredDBInfo(DB_SELECT::SSH, 0);
-   EXPECT_EQ(ssh_sdbi.topBlkHgt_, 3U);
+   EXPECT_EQ(ssh_sdbi.topBlkHgt, 3U);
 
    clients_->init();
    theBDMt_->start(BdmInitMode::SSH);
@@ -526,52 +528,52 @@ TEST_F(BlockUtilsSuper, Load5Blocks_RescanSSH)
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrA);
    EXPECT_EQ(ssh.getScriptBalance(), 50 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 50 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 1U);
+   EXPECT_EQ(ssh.totalTxioCount, 1U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrB);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 160 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 9U);
+   EXPECT_EQ(ssh.totalTxioCount, 9U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrC);
    EXPECT_EQ(ssh.getScriptBalance(), 55 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 55 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrD);
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 5 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 1U);
+   EXPECT_EQ(ssh.totalTxioCount, 1U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrE);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 30 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrF);
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 40 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 5U);
+   EXPECT_EQ(ssh.totalTxioCount, 5U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddr);
    EXPECT_EQ(ssh.getScriptBalance(), 10 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 10 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 1U);
+   EXPECT_EQ(ssh.totalTxioCount, 1U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddrP2SH);
    EXPECT_EQ(ssh.getScriptBalance(), 0 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 15 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddr);
    EXPECT_EQ(ssh.getScriptBalance(), 10 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 20 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddrP2SH);
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 5 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 1U);
+   EXPECT_EQ(ssh.totalTxioCount, 1U);
 
    //restart bdm
    clients_->shutdown();
@@ -583,10 +585,10 @@ TEST_F(BlockUtilsSuper, Load5Blocks_RescanSSH)
    initBDM();
 
    subssh_sdbi = iface_->getStoredDBInfo(DB_SELECT::SUBSSH, 0);
-   EXPECT_EQ(subssh_sdbi.topBlkHgt_, 3U);
+   EXPECT_EQ(subssh_sdbi.topBlkHgt, 3U);
 
    ssh_sdbi = iface_->getStoredDBInfo(DB_SELECT::SSH, 0);
-   EXPECT_EQ(ssh_sdbi.topBlkHgt_, 3U);
+   EXPECT_EQ(ssh_sdbi.topBlkHgt, 3U);
 
    //add next block
    TestUtils::appendBlocks({ "4" }, blk0dat_);
@@ -598,60 +600,60 @@ TEST_F(BlockUtilsSuper, Load5Blocks_RescanSSH)
    DBTestUtils::waitOnBDMReady(clients_, bdvID);
 
    subssh_sdbi = iface_->getStoredDBInfo(DB_SELECT::SUBSSH, 0);
-   EXPECT_EQ(subssh_sdbi.topBlkHgt_, 4U);
+   EXPECT_EQ(subssh_sdbi.topBlkHgt, 4U);
 
    ssh_sdbi = iface_->getStoredDBInfo(DB_SELECT::SSH, 0);
-   EXPECT_EQ(ssh_sdbi.topBlkHgt_, 4U);
+   EXPECT_EQ(ssh_sdbi.topBlkHgt, 4U);
    
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrA);
    EXPECT_EQ(ssh.getScriptBalance(), 50 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 50 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 1U);
+   EXPECT_EQ(ssh.totalTxioCount, 1U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrB);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 160 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 9U);
+   EXPECT_EQ(ssh.totalTxioCount, 9U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrC);
    EXPECT_EQ(ssh.getScriptBalance(), 10 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 65 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 5U);
+   EXPECT_EQ(ssh.totalTxioCount, 5U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrD);
    EXPECT_EQ(ssh.getScriptBalance(), 60 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 60 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrE);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 30 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrF);
    EXPECT_EQ(ssh.getScriptBalance(), 10 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 45 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 6U);
+   EXPECT_EQ(ssh.totalTxioCount, 6U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddr);
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 15 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddrP2SH);
    EXPECT_EQ(ssh.getScriptBalance(), 25 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 40 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddr);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 40 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 4U);
+   EXPECT_EQ(ssh.totalTxioCount, 4U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddrP2SH);
    EXPECT_EQ(ssh.getScriptBalance(), 0 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 5 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    //add last block
    TestUtils::appendBlocks({ "5" }, blk0dat_);
@@ -661,52 +663,52 @@ TEST_F(BlockUtilsSuper, Load5Blocks_RescanSSH)
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrA);
    EXPECT_EQ(ssh.getScriptBalance(), 50 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 50 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 1U);
+   EXPECT_EQ(ssh.totalTxioCount, 1U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrB);
    EXPECT_EQ(ssh.getScriptBalance(), 70 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 230 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 12U);
+   EXPECT_EQ(ssh.totalTxioCount, 12U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrC);
    EXPECT_EQ(ssh.getScriptBalance(), 20 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 75 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 6U);
+   EXPECT_EQ(ssh.totalTxioCount, 6U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrD);
    EXPECT_EQ(ssh.getScriptBalance(), 65 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 65 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 4U);
+   EXPECT_EQ(ssh.totalTxioCount, 4U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrE);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 30 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrF);
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 45 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 7U);
+   EXPECT_EQ(ssh.totalTxioCount, 7U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddr);
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 15 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddrP2SH);
    EXPECT_EQ(ssh.getScriptBalance(), 25 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 40 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddr);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 40 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 4U);
+   EXPECT_EQ(ssh.totalTxioCount, 4U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddrP2SH);
    EXPECT_EQ(ssh.getScriptBalance(), 0 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 5 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -763,58 +765,57 @@ TEST_F(BlockUtilsSuper, Load3BlocksPlus3)
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrA);
    EXPECT_EQ(ssh.getScriptBalance(), 50 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 50 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 1U);
+   EXPECT_EQ(ssh.totalTxioCount, 1U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrB);
    EXPECT_EQ(ssh.getScriptBalance(), 70 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 230 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 12U);
+   EXPECT_EQ(ssh.totalTxioCount, 12U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrC);
    EXPECT_EQ(ssh.getScriptBalance(), 20 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 75 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 6U);
+   EXPECT_EQ(ssh.totalTxioCount, 6U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrD);
    EXPECT_EQ(ssh.getScriptBalance(), 65 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 65 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 4U);
+   EXPECT_EQ(ssh.totalTxioCount, 4U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrE);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 30 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrF);
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 45 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 7U);
+   EXPECT_EQ(ssh.totalTxioCount, 7U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddr);
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 15 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddrP2SH);
    EXPECT_EQ(ssh.getScriptBalance(), 25 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 40 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddr);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 40 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 4U);
+   EXPECT_EQ(ssh.totalTxioCount, 4U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddrP2SH);
    EXPECT_EQ(ssh.getScriptBalance(), 0 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 5 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    //grab a tx by hash for coverage
-   auto& txioHeightMap = ssh.subHistMap_.rbegin()->second;
-   auto& txio = txioHeightMap.txioMap_.rbegin()->second;
-   auto txhash = txio.getTxHashOfOutput(iface_);
-
+   const auto& txioHeightMap = ssh.subHistMap.rbegin()->second;
+   const auto& txio = txioHeightMap.txioMap.rbegin()->second;
+   auto txhash = iface_->getTxHashForLdbKey(txio.getTxRefOfOutput().getDBKey());
    auto txObj = DBTestUtils::getTxByHash(clients_, bdvID, txhash);
    EXPECT_EQ(txObj.getThisHash(), txhash);
 }
@@ -837,52 +838,52 @@ TEST_F(BlockUtilsSuper, Load5Blocks_FullReorg)
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrA);
    EXPECT_EQ(ssh.getScriptBalance(), 50 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 50 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 1U);
+   EXPECT_EQ(ssh.totalTxioCount, 1U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrB);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 160 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 9U);
+   EXPECT_EQ(ssh.totalTxioCount, 9U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrC);
    EXPECT_EQ(ssh.getScriptBalance(), 55 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 55 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrD);
    EXPECT_EQ(ssh.getScriptBalance(), 60 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 60 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrE);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 30 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrF);
    EXPECT_EQ(ssh.getScriptBalance(), 60 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 95 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 7U);
+   EXPECT_EQ(ssh.totalTxioCount, 7U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddr);
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 15 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddrP2SH);
    EXPECT_EQ(ssh.getScriptBalance(), 0 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 15 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddr);
    EXPECT_EQ(ssh.getScriptBalance(), 10 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 20 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddrP2SH);
    EXPECT_EQ(ssh.getScriptBalance(), 0 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 5 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -918,52 +919,52 @@ TEST_F(BlockUtilsSuper, Load5Blocks_ReloadBDM_Reorg)
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrA);
    EXPECT_EQ(ssh.getScriptBalance(), 50 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 50 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 1U);
+   EXPECT_EQ(ssh.totalTxioCount, 1U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrB);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 160 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 9U);
+   EXPECT_EQ(ssh.totalTxioCount, 9U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrC);
    EXPECT_EQ(ssh.getScriptBalance(), 55 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 55 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrD);
    EXPECT_EQ(ssh.getScriptBalance(), 60 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 60 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrE);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 30 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrF);
    EXPECT_EQ(ssh.getScriptBalance(), 60 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 95 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 7U);
+   EXPECT_EQ(ssh.totalTxioCount, 7U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddr);
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 15 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddrP2SH);
    EXPECT_EQ(ssh.getScriptBalance(), 0 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 15 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddr);
    EXPECT_EQ(ssh.getScriptBalance(), 10 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 20 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddrP2SH);
    EXPECT_EQ(ssh.getScriptBalance(), 0 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 5 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -987,52 +988,52 @@ TEST_F(BlockUtilsSuper, Load5Blocks_DoubleReorg)
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrA);
    EXPECT_EQ(ssh.getScriptBalance(), 50 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 50 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 1U);
+   EXPECT_EQ(ssh.totalTxioCount, 1U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrB);
    EXPECT_EQ(ssh.getScriptBalance(), 70 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 230 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 12U);
+   EXPECT_EQ(ssh.totalTxioCount, 12U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrC);
    EXPECT_EQ(ssh.getScriptBalance(), 20 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 75 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 6U);
+   EXPECT_EQ(ssh.totalTxioCount, 6U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrD);
    EXPECT_EQ(ssh.getScriptBalance(), 65 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 65 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 4U);
+   EXPECT_EQ(ssh.totalTxioCount, 4U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrE);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 30 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrF);
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 45 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 7U);
+   EXPECT_EQ(ssh.totalTxioCount, 7U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddr);
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 15 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddrP2SH);
    EXPECT_EQ(ssh.getScriptBalance(), 25 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 40 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddr);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 40 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 4U);
+   EXPECT_EQ(ssh.totalTxioCount, 4U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddrP2SH);
    EXPECT_EQ(ssh.getScriptBalance(), 0 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 5 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    //second reorg: up to 5A
    TestUtils::setBlocks({ "0", "1", "2", "3", "4A", "4", "5", "5A" }, blk0dat_);
@@ -1042,52 +1043,52 @@ TEST_F(BlockUtilsSuper, Load5Blocks_DoubleReorg)
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrA);
    EXPECT_EQ(ssh.getScriptBalance(), 50 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 50 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 1U);
+   EXPECT_EQ(ssh.totalTxioCount, 1U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrB);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 160 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 9U);
+   EXPECT_EQ(ssh.totalTxioCount, 9U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrC);
    EXPECT_EQ(ssh.getScriptBalance(), 55 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 55 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrD);
    EXPECT_EQ(ssh.getScriptBalance(), 60 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 60 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrE);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 30 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrF);
    EXPECT_EQ(ssh.getScriptBalance(), 60 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 95 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 7U);
+   EXPECT_EQ(ssh.totalTxioCount, 7U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddr);
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 15 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb1ScrAddrP2SH);
    EXPECT_EQ(ssh.getScriptBalance(), 0 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 15 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddr);
    EXPECT_EQ(ssh.getScriptBalance(), 10 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 20 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 3U);
+   EXPECT_EQ(ssh.totalTxioCount, 3U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::lb2ScrAddrP2SH);
    EXPECT_EQ(ssh.getScriptBalance(), 0 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 5 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1117,32 +1118,32 @@ TEST_F(BlockUtilsSuper, Load5Blocks_DynamicReorg_GrabSTXO)
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrA);
    EXPECT_EQ(ssh.getScriptBalance(), 50 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 50 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 1U);
+   EXPECT_EQ(ssh.totalTxioCount, 1U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrB);
    EXPECT_EQ(ssh.getScriptBalance(), 70 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 230 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 12U);
+   EXPECT_EQ(ssh.totalTxioCount, 12U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrC);
    EXPECT_EQ(ssh.getScriptBalance(), 20 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 75 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 6U);
+   EXPECT_EQ(ssh.totalTxioCount, 6U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrD);
    EXPECT_EQ(ssh.getScriptBalance(), 65 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 65 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 4U);
+   EXPECT_EQ(ssh.totalTxioCount, 4U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrE);
    EXPECT_EQ(ssh.getScriptBalance(), 30 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 30 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 2U);
+   EXPECT_EQ(ssh.totalTxioCount, 2U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrF);
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 45 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 7U);
+   EXPECT_EQ(ssh.totalTxioCount, 7U);
 
    //reorg from block 3
    {
@@ -1285,32 +1286,32 @@ TEST_F(BlockUtilsSuper, Load5Blocks_DynamicReorg_GrabSTXO)
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrA);
    EXPECT_EQ(ssh.getScriptBalance(), 211 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 211 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 6U);
+   EXPECT_EQ(ssh.totalTxioCount, 6U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrB);
    EXPECT_EQ(ssh.getScriptBalance(), 0 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 160 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 10U);
+   EXPECT_EQ(ssh.totalTxioCount, 10U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrC);
    EXPECT_EQ(ssh.getScriptBalance(), 49 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 99 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 4U);
+   EXPECT_EQ(ssh.totalTxioCount, 4U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrD);
    EXPECT_EQ(ssh.getScriptBalance(), 13 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 38 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 4U);
+   EXPECT_EQ(ssh.totalTxioCount, 4U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrE);
    EXPECT_EQ(ssh.getScriptBalance(), 47 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 47 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 4U);
+   EXPECT_EQ(ssh.totalTxioCount, 4U);
 
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrF);
    EXPECT_EQ(ssh.getScriptBalance(), 5 * COIN);
    EXPECT_EQ(ssh.getScriptReceived(), 80 * COIN);
-   EXPECT_EQ(ssh.totalTxioCount_, 7U);
+   EXPECT_EQ(ssh.totalTxioCount, 7U);
 
    /*grab STXOs*/
 
@@ -1321,7 +1322,7 @@ TEST_F(BlockUtilsSuper, Load5Blocks_DynamicReorg_GrabSTXO)
 
    auto key4_1_0_0 = DBUtils::getBlkDataKeyNoPrefix(4, 1, 0, 0);
    EXPECT_TRUE(iface_->getStoredTxOut(stxo2, key4_1_0_0));
-   EXPECT_NE(stxo1.dataCopy_, stxo2.dataCopy_);
+   EXPECT_NE(stxo1.dataCopy, stxo2.dataCopy);
 
    //block 5
    StoredTxOut stxo3, stxo4, stxo5;
@@ -1330,7 +1331,7 @@ TEST_F(BlockUtilsSuper, Load5Blocks_DynamicReorg_GrabSTXO)
 
    auto key5_1_0_0 = DBUtils::getBlkDataKeyNoPrefix(5, 1, 0, 0);
    EXPECT_TRUE(iface_->getStoredTxOut(stxo4, key5_1_0_0));
-   EXPECT_NE(stxo3.dataCopy_, stxo4.dataCopy_);
+   EXPECT_NE(stxo3.dataCopy, stxo4.dataCopy);
 
    auto key5_0_1_0 = DBUtils::getBlkDataKeyNoPrefix(5, 0, 1, 0);
    EXPECT_TRUE(iface_->getStoredTxOut(stxo5, key5_0_1_0));
@@ -1949,6 +1950,7 @@ protected:
       startupBIP151CTX();
       startupBIP150CTX(4);
 
+      WebSocketServer::init();
       Config::DBSettings::setServiceType(SERVICE_UNITTEST_WITHWS);
       Config::parseArgs({
          "--datadir=./fakehomedir",
@@ -4371,14 +4373,7 @@ TEST_F(WebSocketTests, WebSocketStack_GetTxByHash)
       tx1.getThisHash(),
       tx2.getThisHash()
    };
-
-   std::set<BinaryData> zcAddresses{
-      TestChain::scrAddrA,
-      TestChain::scrAddrB,
-      TestChain::scrAddrC,
-      TestChain::scrAddrE,
-   };
-   pCallback->waitOnZc(zcHashes, zcAddresses);
+   pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), zcHashes);
 
    //grab them
    auto txBatch4 = getTxLbd(tx1.getThisHash()).get();
@@ -4451,18 +4446,8 @@ TEST_F(WebSocketTests, WebSocketStack_GetTxByHash)
    Tx tx4(rawTx4);
    zcHashes.clear();
 
-   set<BinaryData> zcAddresses1;
-   zcAddresses1.insert(TestChain::scrAddrA);
-   zcAddresses1.insert(TestChain::scrAddrC);
-   zcAddresses1.insert(TestChain::scrAddrE);
-
-   set<BinaryData> zcAddresses2;
-   zcAddresses2.insert(TestChain::scrAddrD);
-   zcAddresses2.insert(TestChain::scrAddrC);
-   zcAddresses2.insert(TestChain::scrAddrE);
-
-   pCallback->waitOnZc({tx3.getThisHash()}, zcAddresses1);
-   pCallback->waitOnZc({tx4.getThisHash()}, zcAddresses2);
+   pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), {tx3.getThisHash()});
+   pCallback->waitOnZc(theBDMt_->bdm()->zeroConfCont(), {tx4.getThisHash()});
 
    //grab them
    auto txBatch6 = getTxLbd(tx3.getThisHash()).get();

@@ -15,12 +15,9 @@
 #include <future>
 
 #include <Utils/ArmoryErrors.h>
-#include <Ledgers/LedgerEntry.h>
 #include "BitcoinP2P.h"
 #include "BlockDataViewer.h"
 #include "BDV_Notification.h"
-//#include "Server.h"
-//#include "BtcWallet.h"
 
 #define MAX_CONTENT_LENGTH 1024*1024*1024
 #define CALLBACK_EXPIRE_COUNT 5
@@ -139,7 +136,7 @@ private:
    std::vector<uint8_t> scratchPad_;
 
 public:
-   std::map<std::string, LedgerDelegate> delegateMap_;
+   std::map<std::string, Armory::Ledgers::Delegate> delegateMap_;
    std::unique_ptr<Callback> notifications_;
 
 private:
@@ -152,13 +149,10 @@ private:
 
 public:
    BDV_Server_Object(BdvIdKey, std::shared_ptr<BlockDataManager>);
-   ~BDV_Server_Object(void)
-   { 
-      haltThreads();
-   }
+   ~BDV_Server_Object(void);
 
    void startThreads(void);
-   BdvIdKey getID(void) const { return bdvID_; }
+   BdvIdKey getID(void) const;
    void registerWallet(WalletRegistrationRequest&);
    void processNotification(std::shared_ptr<BDV_Notification>);
    void init(void);
@@ -174,9 +168,8 @@ public:
    const std::string& getLedgerDelegate(
       const std::string&, const BinaryData&); //walletId, address
 
-   void flagRefresh(
-      BDV_refresh refresh, const std::string& refreshId,
-      std::unique_ptr<BDV_Notification_ZC> zcPtr);
+   void flagRefresh(BDV_refresh, const std::string&,
+      std::unique_ptr<BDV_Notification_ZC>);
 };
 
 ///////////////////////////////////////////////////////////////////////////////

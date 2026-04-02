@@ -8,17 +8,18 @@
 
 #include "ProtoCommandParser.h"
 
-#include "Utils/log.h"
-#include "Utils/BtcUtils.h"
+#include <Utils/log.h>
+#include <Utils/BtcUtils.h>
 
-#include "Wallets/IOHeader.h"
-#include "Wallets/WalletIdTypes.h"
-#include "Wallets/Seeds/Backups.h"
-#include "Signer/Signer.h"
+#include <Wallets/IOHeader.h>
+#include <Wallets/WalletIdTypes.h>
+#include <Wallets/Seeds/Backups.h>
+#include <Wallets/Seeds/Seeds.h>
+#include <Signer/Signer.h>
+#include <Signer/CoinSelection.h>
+#include <AsyncClient.h>
 
 #include "CppBridge.h"
-#include "AsyncClient.h"
-#include "CoinSelection.h"
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
@@ -84,8 +85,8 @@ namespace
          case DbSetupRequest::AUTOMATE_DB:
          {
             auto autoDbReq = request.getAutomateDb();
-            std::filesystem::path satoshiPath{autoDbReq.getSatoshiPath()};
-            std::filesystem::path dbDir{autoDbReq.getDbDir()};
+            std::filesystem::path satoshiPath{std::string(autoDbReq.getSatoshiPath())};
+            std::filesystem::path dbDir{std::string(autoDbReq.getDbDir())};
 
             std::thread thr([bridge, satoshiPath, dbDir, referenceId]{
                bridge->automateDb(satoshiPath, dbDir, referenceId);});
@@ -272,10 +273,9 @@ namespace
          case BlockchainServiceRequest::GET_HEADERS_BY_HEIGHT:
          {
             auto capnHeights = request.getGetHeadersByHeight();
-            std::vector<unsigned> heights;
-            heights.reserve(capnHeights.size());
+            std::set<unsigned> heights;
             for (const auto& height : capnHeights) {
-               heights.emplace_back(height);
+               heights.emplace(height);
             }
             bridge->getHeadersByHeight(heights, referenceId);
             break;
@@ -294,15 +294,20 @@ namespace
 
          case BlockchainServiceRequest::BROADCAST_TX:
          {
-            auto capnTxs = request.getBroadcastTx();
-            std::vector<BinaryData> bdVec;
-            bdVec.reserve(capnTxs.size());
-            for (auto capnTx : capnTxs) {
-               bdVec.emplace_back(
-                  BinaryData(capnTx.begin(), capnTx.end()));
-            }
+            auto broadcastObj = request.getBroadcastTx();
 
-            bridge->broadcastTx(bdVec);
+            auto capnTxs = broadcastObj.getRawTxs();
+            std::vector<BinaryData> rawTxs;
+            rawTxs.reserve(capnTxs.size());
+            for (auto capnTx : capnTxs) {
+               rawTxs.emplace_back(
+                  BinaryData{capnTx.begin(), capnTx.end()});
+            }
+            bool isRPC = broadcastObj.which() ==
+               BlockchainServiceRequest::BroadcastRequest::VIA_RPC ?
+               true : false;
+
+            bridge->broadcastTxs(rawTxs, isRPC);
             break;
          }
 
@@ -557,23 +562,19 @@ namespace
             break;
          }
 
-         case WalletRequest::GET_HIGHEST_USED_INDEX:
-         {
-            if (!checkOnline()) {
-               break;
-            }
-
-            response = bridge->getHighestUsedIndex(
-               walletId, accountId, referenceId);
-            break;
-         }
-
          case WalletRequest::EXTEND_ADDRESS_POOL:
          {
             auto args = request.getExtendAddressPool();
             bridge->extendAddressPool(walletId, accountId,
                args.getCount(), args.getIsNew(), args.getCallbackId(),
                referenceId);
+            break;
+         }
+
+         case WalletRequest::GET_ACCOUNT_IDS:
+         {
+            response = bridge->getAccountIds(
+               walletId, referenceId);
             break;
          }
 
@@ -699,12 +700,26 @@ namespace
          case CoinSelectionRequest::CLEANUP:
          {
             bridge->destroyCoinSelectionInstance(csId);
+
+            capnp::MallocMessageBuilder message;
+            auto fromBridge = message.initRoot<FromBridge>();
+            auto reply = fromBridge.initReply();
+            reply.setSuccess(true);
+            reply.setReferenceId(referenceId);
+            response = serializeCapnp(message);
             break;
          }
 
          case CoinSelectionRequest::RESET:
          {
             cs->resetRecipients();
+
+            capnp::MallocMessageBuilder message;
+            auto fromBridge = message.initRoot<FromBridge>();
+            auto reply = fromBridge.initReply();
+            reply.setSuccess(true);
+            reply.setReferenceId(referenceId);
+            response = serializeCapnp(message);
             break;
          }
 
@@ -960,6 +975,7 @@ namespace
          case SignerRequest::CLEANUP:
          {
             bridge->destroySigner(signerId);
+            replySuccess(true);
             break;
          }
 
@@ -1188,8 +1204,24 @@ namespace
                (uint8_t*)capnEntropy.end()
             };
 
+            auto seedType = Seeds::SeedType::Raw;
+            switch (args.getWalletType())
+            {
+               case UtilsRequest::WalletType::LEGACY:
+                  seedType = Seeds::SeedType::ArmoryLegacy;
+                  break;
+
+               case UtilsRequest::WalletType::STRUCTURED_BIP32:
+                  seedType = Seeds::SeedType::BIP32_Structured;
+                  break;
+
+               case UtilsRequest::WalletType::RAW_BIP32:
+                  seedType = Seeds::SeedType::BIP32_Virgin;
+                  break;
+            }
+
             bridge->createWallet(
-               std::move(sbdEntropy),
+               seedType, std::move(sbdEntropy),
                Wallets::IO::CreateWalletParams{
                   bridge->getDataDir(),
                   Passphrase::SetNew{}, Passphrase::SetNew{},
@@ -1204,31 +1236,34 @@ namespace
          case UtilsRequest::RESTORE_WALLET:
          {
             auto walletRequest = request.getRestoreWallet();
-
-            auto roots = walletRequest.getRoot();
-            auto chaincodes = walletRequest.getChaincode();
-            auto backupId = walletRequest.getBackupId();
             std::vector<std::string_view> lines;
-            lines.reserve(roots.size() + chaincodes.size() + 1);
+            lines.reserve(5);
 
-            if (backupId.size() != 0) {
+            if (walletRequest.hasBackupId()) {
+               auto backupId = walletRequest.getBackupId();
                lines.emplace_back(std::string_view{
                   backupId.begin(), backupId.size()});
             }
-            for (const auto& root : roots) {
-               lines.emplace_back(std::string_view{
-                  root.begin(), root.size()});
+
+            if (walletRequest.hasRoot()) {
+               for (const auto& root : walletRequest.getRoot()) {
+                  lines.emplace_back(std::string_view{
+                     root.begin(), root.size()});
+               }
             }
-            for (const auto& chaincode : chaincodes) {
-               lines.emplace_back(std::string_view{
-                  chaincode.begin(), chaincode.size()});
+
+            if (walletRequest.hasChaincode()) {
+               for (const auto& chaincode : walletRequest.getChaincode()) {
+                  lines.emplace_back(std::string_view{
+                     chaincode.begin(), chaincode.size()});
+               }
             }
 
             auto spPassCapnp = walletRequest.getSpPass();
             std::string_view spPass{spPassCapnp.begin(), spPassCapnp.size()};
 
-            auto callbackIdCapnp = walletRequest.getCallbackId();
-            std::string callbackId{callbackIdCapnp.begin(), callbackIdCapnp.size()};
+            auto cbIdCapnp = walletRequest.getCallbackId();
+            std::string callbackId{cbIdCapnp.begin(), cbIdCapnp.size()};
 
             bridge->restoreWallet(lines, spPass,
                callbackId, referenceId);

@@ -287,7 +287,7 @@ class SelectWalletFrame(ArmoryFrame):
       self.updateOnCoinControl()
 
    def doRBF(self):
-      wlt = self.main.walletMap[self.getSelectedWltID()]
+      wlt = self.main.wallets[self.getSelectedWltID()]
       if self.dlgrbf == None:
          self.dlgrbf = \
             RBFDlg(self, self.main, wlt)

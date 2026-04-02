@@ -13,6 +13,7 @@
 #include <Utils/BtcUtils.h>
 #include <Utils/BitcoinSettings.h>
 #include <Wallets/Wallets.h>
+#include "ScriptRecipient.h"
 
 using namespace Armory;
 using namespace Armory::CoinSelection;
@@ -75,9 +76,31 @@ std::vector<UTXO> RestrictedUtxoSet::getUtxoSelection() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// CoinSelection
-std::vector<UTXO> CoinSelection::CoinSelection::checkForRecipientReuse(
-   PaymentStruct& payStruct, const std::vector<UTXO>& utxoVec)
+// Selector
+Selector::Selector(std::function<std::vector<UTXO>(uint64_t val)> func,
+   const std::vector<AddressBookEntry>& addrBook,
+   uint64_t spendableValue, uint32_t topHeight) :
+   getUTXOsForVal_(func),
+   spendableValue_(spendableValue),
+   topHeight_(topHeight)
+{
+   //for random shuffling
+   srand(time(0));
+   for (const auto& entry : addrBook) {
+      addrBook_.emplace(entry);
+   }
+}
+
+void Selector::rethrow() const
+{
+   if (except_ptr_ != nullptr) {
+      std::rethrow_exception(except_ptr_);
+   }
+}
+
+////////
+std::vector<UTXO> Selector::checkForRecipientReuse(
+   PaymentStruct& payStruct, const std::vector<UTXO>& utxoVec) const
 {
    //look for recipient reuse
    auto getUtxoLambda = getUTXOsForVal_;
@@ -143,8 +166,8 @@ std::vector<UTXO> CoinSelection::CoinSelection::checkForRecipientReuse(
    return r_utxos.getUtxoSelection();
 }
 
-////////////////////////////////////////////////////////////////////////////////
-UtxoSelection CoinSelection::CoinSelection::getUtxoSelectionForRecipients(
+////////
+UtxoSelection Selector::getUtxoSelectionForRecipients(
    PaymentStruct& payStruct, const std::vector<UTXO>& utxoVec)
 {
    try {
@@ -166,9 +189,8 @@ UtxoSelection CoinSelection::CoinSelection::getUtxoSelectionForRecipients(
    }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-UtxoSelection CoinSelection::CoinSelection::getUtxoSelection(
-   PaymentStruct& payStruct, const std::vector<UTXO>& utxoVec)
+UtxoSelection Selector::getUtxoSelection(
+   PaymentStruct& payStruct, const std::vector<UTXO>& utxoVec) const
 {
    if (utxoVec.empty()) {
       throw CoinSelectionException("cannot select from empty utxos");
@@ -297,8 +319,7 @@ UtxoSelection CoinSelection::CoinSelection::getUtxoSelection(
    return *selectPtr;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-void CoinSelection::CoinSelection::updateUtxoVector(uint64_t value)
+void Selector::updateUtxoVector(uint64_t value)
 {
    if (utxoVecValue_ >= value) {
       return;
@@ -311,8 +332,7 @@ void CoinSelection::CoinSelection::updateUtxoVector(uint64_t value)
    }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-uint64_t CoinSelection::CoinSelection::tallyValue(
+uint64_t Selector::tallyValue(
    const std::vector<UTXO>& utxoVec)
 {
    uint64_t val = 0;
@@ -322,8 +342,7 @@ uint64_t CoinSelection::CoinSelection::tallyValue(
    return val;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-uint64_t CoinSelection::CoinSelection::getFeeForMaxVal(
+uint64_t Selector::getFeeForMaxVal(
    size_t txOutSize, float fee_byte,
    const std::vector<UTXO>& coinControlVec)
 {
@@ -358,10 +377,9 @@ uint64_t CoinSelection::CoinSelection::getFeeForMaxVal(
    return fee;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-void CoinSelection::CoinSelection::fleshOutSelection(
+void Selector::fleshOutSelection(
    const std::vector<UTXO>& utxoVec,
-   UtxoSelection& utxoSelect, PaymentStruct& payStruct)
+   UtxoSelection& utxoSelect, PaymentStruct& payStruct) const
 {
    //TODO: this is specialized for fee_byte, add a flat fee spec as well
    auto newOutputCount = payStruct.getRecipientCount();

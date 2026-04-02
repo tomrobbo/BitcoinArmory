@@ -1,14 +1,14 @@
-##############################################################################
-#                                                                            #
-# Copyright (C) 2011-2015, Armory Technologies, Inc.                         #
-# Distributed under the GNU Affero General Public License (AGPL v3)          #
-# See LICENSE or http://www.gnu.org/licenses/agpl.html                       #
-#                                                                            #
-# Copyright (C) 2016-2024, goatpig                                           #
-#  Distributed under the MIT license                                         #
-#  See LICENSE-MIT or https://opensource.org/licenses/MIT                    #
-#                                                                            #
-##############################################################################
+################################################################################
+#                                                                              #
+# Copyright (C) 2011-2015, Armory Technologies, Inc.                           #
+# Distributed under the GNU Affero General Public License (AGPL v3)            #
+# See LICENSE or http://www.gnu.org/licenses/agpl.html                         #
+#                                                                              #
+# Copyright (C) 2016-2026, goatpig                                             #
+#  Distributed under the MIT license                                           #
+#  See LICENSE-MIT or https://opensource.org/licenses/MIT                      #
+#                                                                              #
+################################################################################
 
 from qtpy import QtCore, QtGui, QtWidgets
 
@@ -251,7 +251,7 @@ def ShowRecvCoinsWarningIfNecessary(wlt, parent, main):
             'wallet on a separate computer), then please change the '
             '"Belongs To" field in the wallet-properties for this wallet.'), \
             parent.tr('Do not show this warning again'), wCancel=True)
-      TheSettings.writeSetting(dnaaPropName, result[1])
+      TheSettings.set(dnaaPropName, result[1])
       return result[0]
 
    if offlineWallet and not dnaaThisWallet:
@@ -266,6 +266,6 @@ def ShowRecvCoinsWarningIfNecessary(wlt, parent, main):
             'address.  Instead, change the wallet properties "Belongs To" field '
             'to specify that this wallet is not actually yours.'), \
             parent.tr('Do not show this warning again'), wCancel=True)
-      TheSettings.writeSetting(dnaaPropName, result[1])
+      TheSettings.set(dnaaPropName, result[1])
       return result[0]
    return True

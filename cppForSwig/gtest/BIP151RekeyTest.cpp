@@ -6,6 +6,7 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 #include "TestUtils.h"
+#include <Ledgers/LedgerEntry.h>
 
 #include <stdexcept>
 using namespace std::string_view_literals;

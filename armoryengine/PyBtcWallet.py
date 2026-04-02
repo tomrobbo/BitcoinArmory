@@ -123,8 +123,8 @@ class PyBtcWallet(object):
       self._dbId        = None
       self._settingsId  = None
 
-      self.lastComputedChainIndex   = 0
-      self._highestUsedChainIndex    = -1
+      self.lastComputedChainIndex = 0
+      self._highestUsedChainIndex = -1
 
       #To enable/disable wallet row in wallet table model
       self.isEnabled = True

@@ -199,7 +199,7 @@ void CppBridgeSocket::pushPayload(
       } else {
          auto time_sec = std::chrono::duration_cast<std::chrono::seconds>(
             rightnow - outKeyTimePoint_);
-         if (time_sec.count() >= AEAD_REKEY_INVERVAL_SECONDS) {
+         if (time_sec.count() >= AEAD_REKEY_INTVERVAL_SECONDS) {
             needs_rekey = true;
          }
       }

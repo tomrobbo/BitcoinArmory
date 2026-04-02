@@ -13,6 +13,7 @@
 #include <Utils/BIP150_151.h>
 #include <Utils/BIP15x_Handshake.h>
 #include <Wallets/AuthorizedPeers.h>
+#include <Ledgers/LedgerEntry.h>
 #include "WebSocketMessage.h"
 #include "BDM_Server.h"
 
@@ -283,6 +284,17 @@ void WebSocketServer::initAuthPeers(std::shared_ptr<AuthorizedPeers> peers)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+void WebSocketServer::init()
+{
+   std::unique_lock<std::mutex> lock(mu_);
+   auto ptr = instance_.load(std::memory_order_relaxed);
+   if (ptr != nullptr) {
+      return;
+   }
+   ptr = new WebSocketServer();
+   instance_.store(ptr, std::memory_order_relaxed);
+}
+
 void WebSocketServer::start(std::shared_ptr<BlockDataManager> bdm, bool async)
 {
    shutdownPromise_ = std::promise<bool>();
@@ -455,19 +467,7 @@ void WebSocketServer::webSocketService(int port)
 ///////////////////////////////////////////////////////////////////////////////
 WebSocketServer* WebSocketServer::getInstance()
 {
-   while (true) {
-      auto ptr = instance_.load(std::memory_order_relaxed);
-      if (ptr == nullptr) {
-         std::unique_lock<std::mutex> lock(mu_);
-         ptr = instance_.load(std::memory_order_relaxed);
-         if (ptr != nullptr) {
-            continue;
-         }
-         ptr = new WebSocketServer();
-         instance_.store(ptr, std::memory_order_relaxed);
-      }
-      return ptr;
-   }
+   return instance_.load(std::memory_order_relaxed);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -588,7 +588,7 @@ void WebSocketServer::prepareWriteThread()
          } else {
             auto time_sec = std::chrono::duration_cast<std::chrono::seconds>(
                rightnow - statePtr->outKeyTimePoint_);
-            if (time_sec.count() >= AEAD_REKEY_INVERVAL_SECONDS) {
+            if (time_sec.count() >= AEAD_REKEY_INTVERVAL_SECONDS) {
                needs_rekey = true;
             }
          }
