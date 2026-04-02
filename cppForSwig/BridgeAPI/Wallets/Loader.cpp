@@ -79,10 +79,14 @@ void WalletFileInfo::setStaged(bool staged)
 //
 ////////////////////////////////////////////////////////////////////////////////
 LMDBWalletInfo::LMDBWalletInfo(const std::filesystem::path& path,
-   std::shared_ptr<Wallets::AssetWallet> wltPtr) :
+   std::shared_ptr<Wallets::AssetWallet> wltPtr, bool loaded) :
    WalletFileInfo(path, wltPtr ? WalletLoadState::Ready : WalletLoadState::Encrypted),
    wltPtr_(wltPtr)
-{}
+{
+   if (loaded) {
+      setState(WalletLoadState::Loaded);
+   }
+}
 
 ////////
 const Wallets::WalletId& LMDBWalletInfo::walletId() const

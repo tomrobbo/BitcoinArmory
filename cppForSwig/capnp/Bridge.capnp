@@ -47,6 +47,7 @@ struct WalletData {
       precursorScript   @8 : Data;
 
       addressString     @9 : Text;
+      rawScript         @10: Data;
    }
 
    struct Comment {
@@ -99,6 +100,12 @@ struct WalletImportPreview {
 struct UTXO {
    output   @0 : Types.Output;
    scrAddr  @1 : Types.ScrAddr;
+}
+
+struct Peer {
+   key         @0 : Text; #base64 blob
+   names       @1 : List(Text); #ip:port or domain:port
+   label       @2 : Text; #human readable label for the key
 }
 
 ################################################################################
@@ -155,7 +162,7 @@ struct Notification {
 
    #callbackId is set if this notification is the result
    #of a RPC request that provided said id
-   callbackId        @0 : Text;
+   callbackId        @0 : Types.CallbackId;
    counter           @1 : UInt32;
 
    union {
@@ -175,6 +182,8 @@ struct Notification {
       walletProgress @15: WalletProgress;
       setPassphrase  @16: SetPassphraseRequest;
       restore        @17: RestorePrompt;
+      presentPubkey  @18: Text; #hexit public key
+      invalidatedZcs @19: List(Types.Hash);
    }
 }
 
@@ -186,9 +195,11 @@ struct NotificationReply {
 
    struct SetPassphraseReply {
       passphrase     @0 : Text;
-      kdfTargetMs    @1 : UInt32;
-      kdfTargetMB    @2 : UInt32;
-      reuseKdf       @3 : Bool = false;
+      union {
+         kdfTargetMs    @1 : UInt32;
+         kdfTargetMB    @2 : UInt32;
+         reuseKdf       @3 : Bool;
+      }
    }
 
    success           @0 : Bool;
@@ -198,6 +209,58 @@ struct NotificationReply {
       unlockRequest  @2 : Text;
       restore        @3 : RestoreMode;
       setPassphrase  @4 : SetPassphraseReply;
+      presentPubkey  @5 : Void;
+   }
+}
+
+################################################################################
+## DB Setup
+struct DbSetupRequest {
+   struct IpRequest {
+      ip             @0 : Text;
+      port           @1 : Text;
+      callbackId     @2 : Text;
+   }
+
+   struct LabelRequest {
+      key            @0 : Text; #base64 blob
+      label          @1 : Text;
+   }
+
+   struct AutoDbRequest {
+      satoshiPath    @0 : Text;
+      dbDir          @1 : Text;
+   }
+
+   union {
+      unset          @0 : Void;
+
+      connectToIp    @1 : IpRequest;
+      connectToPeer  @2 : Text; #peer key
+      automateDb     @3 : AutoDbRequest;
+      goOnline       @4 : Void;
+      disconnect     @5 : Void;
+      cleanupDb      @6 : Void;
+      shutdown       @7 : Void;
+
+      loadPeersDb    @8 : Text; #callbackId
+      listPeers      @9 : Void;
+      addPeer        @10: Peer;
+      removePeer     @11: Text; #remove by key
+      setLabel       @12: LabelRequest;
+   }
+}
+
+struct DbSetupReply {
+   struct PeerData {
+      peer           @0 : Peer;
+      oneWay         @1 : Bool;
+   }
+
+   union {
+      unset          @0 : Void;
+
+      listPeers      @1 : List(PeerData);
    }
 }
 
@@ -210,25 +273,30 @@ struct BlockchainServiceRequest {
       isNew       @2 : Bool;
    }
 
+   struct BroadcastRequest {
+      rawTxs      @0 : List(Data);
+
+      union {
+         viaP2p   @1 : Void;
+         viaRpc   @2 : Void;
+      }
+   }
+
    union {
       unset                         @0 : Void;
 
-      shutdown                      @1 : Void;
-      setupDb                       @2 : Void;
-      cleanupDb                     @3 : Void;
-      goOnline                      @4 : Void;
-      getNodeStatus                 @5 : Void;
-      registerWallets               @6 : Void;
+      getNodeStatus                 @1 : Void;
+      registerWallets               @2 : Void;
 
-      registerWallet                @7 : RegisterWallet;
-      broadcastTx                   @8 : List(Data);
-      getTxsByHash                  @9 : List(Types.Hash);
-      getHeadersByHeight            @10: List(Types.Height);
-      getBlockTimeByHeight          @11: UInt32;
-      getFeeSchedule                @12: Text;
+      registerWallet                @3 : RegisterWallet;
+      broadcastTx                   @4 : BroadcastRequest;
+      getTxsByHash                  @5 : List(Types.Hash);
+      getHeadersByHeight            @6 : List(Types.Height);
+      getBlockTimeByHeight          @7 : UInt32;
+      getFeeSchedule                @8 : Text;
 
-      getLedgerDelegateId           @13: Void;
-      updateWalletsLedgerFilter     @14: List(Types.WalletId);
+      getLedgerDelegateId           @9 : Void;
+      updateWalletsLedgerFilter     @10: List(Types.WalletId);
    }
 }
 
@@ -396,14 +464,14 @@ struct WalletRequest {
       unset                         @2 : Void;
 
       getAddress                    @3 : AddressRequest;
-      getHighestUsedIndex           @4 : Void;
-      extendAddressPool             @5 : ExtendAddressPool;
+      extendAddressPool             @4 : ExtendAddressPool;
 
-      createBackupString            @6 : BackupStringStruct;
-      changePassphrase              @7 : ChangePassphraseRequest;
+      createBackupString            @5 : BackupStringStruct;
+      changePassphrase              @6 : ChangePassphraseRequest;
+      getAccountIds                 @7 : Void;
       getData                       @8 : Void;
 
-      getAddrCombinedList           @9 : Void;
+      getAddrCombinedList           @9: Void;
       setAddressTypeFor             @10: SetAddressTypeFor;
 
       getLedgerDelegateId           @11: Void;
@@ -442,21 +510,22 @@ struct WalletReply {
       getHighestUsedIndex           @2 : Int32;
 
       createBackupString            @3 : WalletBackup;
-      getData                       @4 : WalletData;
+      getAccountIds                 @4 : List(Types.AccountId);
+      getData                       @5 : WalletData;
 
-      getAddrCombinedList           @5 : AddressAndBalanceData;
-      setAddressTypeFor             @6 : WalletData.AddressData;
+      getAddrCombinedList           @6 : AddressAndBalanceData;
+      setAddressTypeFor             @7 : WalletData.AddressData;
 
-      getLedgerDelegateId           @7 : Types.DelegateId;
-      getLedgerDelegateIdForScrAddr @8 : Types.DelegateId;
-      getBalanceAndCount            @9 : Types.BalanceAndCount;
+      getLedgerDelegateId           @8 : Types.DelegateId;
+      getLedgerDelegateIdForScrAddr @9 : Types.DelegateId;
+      getBalanceAndCount            @10: Types.BalanceAndCount;
 
-      setupNewCoinSelectionInstance @10: Text;
-      getUtxos                      @11: List(UTXO);
+      setupNewCoinSelectionInstance @11: Types.CoinSelectionId;
+      getUtxos                      @12: List(UTXO);
 
-      createAddressBook             @12: Types.AddressBook;
-      getUnlockTime                 @13: UInt32; #unlock time in ms
-      forkWatchingOnly              @14: Text; #path to new WO wallet
+      createAddressBook             @13: Types.AddressBook;
+      getUnlockTime                 @14: UInt32; #unlock time in ms
+      forkWatchingOnly              @15: Text; #path to new WO wallet
    }
 }
 
@@ -491,7 +560,7 @@ struct CoinSelectionRequest {
       feeByte  @1 : Float32;
    }
 
-   id                         @0 : Text;
+   id                         @0 : Types.CoinSelectionId;
    union {
       unset                   @1 : Void;
 
@@ -549,7 +618,7 @@ struct SignerRequest {
       callbackId  @1 : Text;
    }
 
-   id                         @0 : Text;
+   id                         @0 : Types.SignerId;
    union {
       unset                   @1 : Void;
 
@@ -597,7 +666,7 @@ struct SignerReply {
    union {
       unset                   @0 : Void;
 
-      getNew                  @1 : Text;
+      getNew                  @1 : Types.SignerId;
       toTxSigCollect          @2 : Text;
       getSignedTx             @3 : Data;
       getUnsignedTx           @4 : Data;
@@ -722,15 +791,16 @@ struct ToBridge {
    union {
       unset          @1 : Void;
 
-      service        @2 : BlockchainServiceRequest;
-      walletManager  @3 : WalletManagerRequest;
-      wallet         @4 : WalletRequest;
-      coinSelection  @5 : CoinSelectionRequest;
-      signer         @6 : SignerRequest;
-      utils          @7 : UtilsRequest;
-      scriptUtils    @8 : ScriptUtilsRequest;
-      delegate       @9 : LedgerDelegateRequest;
-      notification   @10: NotificationReply;
+      setup          @2 : DbSetupRequest;
+      service        @3 : BlockchainServiceRequest;
+      walletManager  @4 : WalletManagerRequest;
+      wallet         @5 : WalletRequest;
+      coinSelection  @6 : CoinSelectionRequest;
+      signer         @7 : SignerRequest;
+      utils          @8 : UtilsRequest;
+      scriptUtils    @9 : ScriptUtilsRequest;
+      delegate       @10: LedgerDelegateRequest;
+      notification   @11: NotificationReply;
    }
 }
 
@@ -743,14 +813,15 @@ struct RpcReply {
    union {
       unset          @3 : Void;
 
-      service        @4 : BlockchainServiceReply;
-      walletManager  @5 : WalletManagerReply;
-      wallet         @6 : WalletReply;
-      coinSelection  @7 : CoinSelectionReply;
-      signer         @8 : SignerReply;
-      utils          @9 : UtilsReply;
-      scriptUtils    @10: ScriptUtilsReply;
-      delegate       @11: LedgerDelegateReply;
+      setup          @4 : DbSetupReply;
+      service        @5 : BlockchainServiceReply;
+      walletManager  @6 : WalletManagerReply;
+      wallet         @7 : WalletReply;
+      coinSelection  @8 : CoinSelectionReply;
+      signer         @9 : SignerReply;
+      utils          @10: UtilsReply;
+      scriptUtils    @11: ScriptUtilsReply;
+      delegate       @12: LedgerDelegateReply;
    }
 }
 

@@ -1,10 +1,12 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2017-2025, goatpig                                          //
+//  Copyright (C) 2017-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
+
+#include <cstring>
 
 #include <Utils/ArmoryConfig.h>
 #include <Utils/BtcUtils.h>
@@ -12,6 +14,7 @@
 #include "AccountTypes.h"
 #include "../Assets.h"
 #include "../DecryptedDataContainer.h"
+#include "../BIP32_Node.h"
 
 using namespace Armory::Assets;
 using namespace Armory::Accounts;
@@ -85,15 +88,15 @@ AccountType_ArmoryLegacy::AccountType_ArmoryLegacy() :
    AccountType()
 {
    //uncompressed p2pkh
-   addressTypes_.emplace(AddressEntryType(
+   addAddressType(AddressEntryType(
       AddressEntryType::P2PKH | AddressEntryType::Uncompressed));
 
    //nested compressed p2pk
-   addressTypes_.emplace(AddressEntryType(
+   addAddressType(AddressEntryType(
       AddressEntryType::P2PK | AddressEntryType::P2SH));
 
    //nested p2wpkh
-   addressTypes_.emplace(AddressEntryType(
+   addAddressType(AddressEntryType(
       AddressEntryType::P2WPKH | AddressEntryType::P2SH));
 
    //default type

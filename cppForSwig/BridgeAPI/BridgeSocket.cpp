@@ -45,10 +45,9 @@ CppBridgeSocket::CppBridgeSocket(
    }
 
    //inject UI key (UI is the server, bridge connects to it)
-   std::vector<std::string> peerNames = { serverName_ };
-   authPeers_->addPeer(uiPubKey.getRef(), peerNames);
+   authPeers_->addPeer(uiPubKey.getRef(), {serverName_}, {}, false);
    auto lbds = Wallets::AuthorizedPeers::getAuthPeersLambdas(
-      authPeers_);
+      authPeers_, false);
 
    //write own public key to cookie file
    {
@@ -200,7 +199,7 @@ void CppBridgeSocket::pushPayload(
       } else {
          auto time_sec = std::chrono::duration_cast<std::chrono::seconds>(
             rightnow - outKeyTimePoint_);
-         if (time_sec.count() >= AEAD_REKEY_INVERVAL_SECONDS) {
+         if (time_sec.count() >= AEAD_REKEY_INTVERVAL_SECONDS) {
             needs_rekey = true;
          }
       }
