@@ -141,7 +141,7 @@ namespace
 
          case DbSetupRequest::DISCONNECT:
          {
-            bridge->disconnect();
+            bridge->reset();
             break;
          }
 

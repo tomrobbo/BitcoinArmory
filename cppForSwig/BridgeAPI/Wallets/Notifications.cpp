@@ -349,7 +349,8 @@ void Callback::disconnected()
    capnNotif.setDisconnected();
    capnNotif.setCallbackId(BRIDGE_CALLBACK_BDM);
 
-   notifFunc_(std::make_shared<NotifStruct_Push>(serializeCapnp(message)));
+   notifFunc_(std::make_shared<NotifStruct_Disconnected>(
+      serializeCapnp(message)));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -371,6 +372,12 @@ NotifStruct_Push::NotifStruct_Push(BinaryData pushData) :
    NotifStruct(NotifType::PUSH), packet(std::move(pushData))
 {}
 
+////////
+NotifStruct_Disconnected::NotifStruct_Disconnected(BinaryData data) :
+   NotifStruct(NotifType::DISCONNECTED), packet(std::move(data))
+{}
+
+////////
 NotifStruct_ZC::NotifStruct_ZC(
    std::vector<TxIOPair> txioVec, std::set<BinaryData> invalidatedZc,
    const std::function<void(

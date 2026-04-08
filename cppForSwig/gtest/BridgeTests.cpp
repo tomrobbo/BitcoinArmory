@@ -3747,7 +3747,7 @@ TEST_F(WalletManagerWebsocketsTests, Connect)
       queue.push_back(notifData);
    };
    auto mgr = std::make_shared<Bridge::WalletManager>(homedir_);
-   mgr->setupBdvCallback(notifFunc);
+   mgr->setBdvCallback(notifFunc);
 
    //list wallets
    auto theList = mgr->listWallets();
@@ -5943,6 +5943,53 @@ TEST_F(BridgeWalletsWithDBTests, CycleConnection)
 
    //check balances
    auto balances = getAddrBalances(bridge_, wltId, accountId);
+   ASSERT_EQ(balances.size(), 4);
+
+   try {
+      for (const auto& balPair : balances) {
+         const auto& addrBal = TestChain::testAddrBalances[5].at(balPair.first);
+         EXPECT_EQ(addrBal[0], balPair.second[0]);
+         EXPECT_EQ(addrBal[1], balPair.second[1]);
+         EXPECT_EQ(addrBal[2], balPair.second[2]);
+      }
+   } catch (const std::exception&) {
+      ASSERT_TRUE(false);
+   }
+
+   //kill BDM
+   WebSocketServer::shutdown();
+   theBDMt_->shutdown();
+
+   //wait on disconnected notif
+   auto reply = waitOnReply();
+   kj::ArrayPtr<const capnp::word> words(
+      reinterpret_cast<const capnp::word*>(reply->data.getPtr()),
+      reply->data.getSize() / sizeof(capnp::word));
+   capnp::FlatArrayMessageReader reader(words);
+
+   auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+   ASSERT_EQ(fromBridge.which(), Codec::Bridge::FromBridge::NOTIFICATION);
+   auto notif = fromBridge.getNotification();
+   ASSERT_EQ(notif.which(), Codec::Bridge::Notification::DISCONNECTED);
+
+   //restart BDM
+   WebSocketServer::waitOnShutdown();
+   delete theBDMt_;
+
+   {
+      WebSocketServer::init();
+      initBDM();
+      auto nodePtr = std::dynamic_pointer_cast<NodeUnitTest>(
+         Config::NetworkSettings::bitcoinNodes().first);
+      nodePtr->setIface(theBDMt_->bdm()->getIFace());
+      WebSocketServer::start(theBDMt_->bdm(), true);
+   }
+
+   ASSERT_TRUE(connectToIp(bridge_, "127.0.0.1", "9001", serverPubkey_));
+   ASSERT_TRUE(registerWallets(bridge_));
+
+   //check balances
+   balances = getAddrBalances(bridge_, wltId, accountId);
    ASSERT_EQ(balances.size(), 4);
 
    try {
@@ -11719,22 +11766,22 @@ TEST_F(BridgeChainDataTests, ZeroConf_SpendNew)
    EXPECT_FALSE(lastEntry.isChainedZC());
 
    /* mine the tx */
-   DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrA, 1);
-   ASSERT_EQ(waitOnNewBlock(), 6);
+   DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrA, 10);
+   ASSERT_EQ(waitOnNewBlock(), 15);
 
    //check wallet balance
    wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
    ASSERT_EQ(wltBal.size(), 4);
    EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0] - (20 * COIN) + changeAmount);
    EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1] - (20 * COIN) + changeAmount);
-   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2] - (20 * COIN) + changeAmount);
+   EXPECT_EQ(wltBal[2], 100 * COIN);
    EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3] + 1);
 
    wltBal = getWalletBalance(bridge_, legacyWltId, legacyAccId);
    ASSERT_EQ(wltBal.size(), 4);
    EXPECT_EQ(wltBal[0], 11 * COIN);
    EXPECT_EQ(wltBal[1], 11 * COIN);
-   EXPECT_EQ(wltBal[2], 11 * COIN);
+   EXPECT_EQ(wltBal[2], 0ULL);
    EXPECT_EQ(wltBal[3], 1);
 
    /* spend from new wallet */

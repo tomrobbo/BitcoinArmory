@@ -153,7 +153,6 @@ namespace Armory
             MessageId);
          void cleanupDb(MessageId);
          void goOnline(void);
-         void disconnect(void);
 
          void loadPeersDb(const CallbackId&, MessageId);
          void listPeers(MessageId);

@@ -354,6 +354,28 @@ namespace {
 // BlockDataViewer
 //
 ///////////////////////////////////////////////////////////////////////////////
+BlockDataViewer::BlockDataViewer()
+{
+   cache_ = std::make_shared<ClientCache>();
+}
+
+BlockDataViewer::BlockDataViewer(std::shared_ptr<SocketPrototype> sock) :
+   sock_(sock)
+{
+   cache_ = std::make_shared<ClientCache>();
+}
+
+BlockDataViewer::~BlockDataViewer()
+{}
+
+BlockDataViewer& BlockDataViewer::operator=(const BlockDataViewer& rhs)
+{
+   sock_ = rhs.sock_;
+   cache_ = rhs.cache_;
+   return *this;
+}
+
+////////
 bool BlockDataViewer::isValid() const
 {
    if (sock_ == nullptr) {
@@ -362,7 +384,6 @@ bool BlockDataViewer::isValid() const
    return sock_->running();
 }
 
-///////////////////////////////////////////////////////////////////////////////
 bool BlockDataViewer::hasRemoteDB()
 {
    return sock_->testConnection();
@@ -497,23 +518,6 @@ void BlockDataViewer::goOnline()
    //push to server
    sock_->pushPayload(std::move(write_payload), nullptr);
 }
-
-///////////////////////////////////////////////////////////////////////////////
-BlockDataViewer::BlockDataViewer(void)
-{
-   cache_ = std::make_shared<ClientCache>();
-}
-
-///////////////////////////////////////////////////////////////////////////////
-BlockDataViewer::BlockDataViewer(std::shared_ptr<SocketPrototype> sock) :
-   sock_(sock)
-{
-   cache_ = std::make_shared<ClientCache>();
-}
-
-///////////////////////////////////////////////////////////////////////////////
-BlockDataViewer::~BlockDataViewer()
-{}
 
 ///////////////////////////////////////////////////////////////////////////////
 void BlockDataViewer::shutdown()

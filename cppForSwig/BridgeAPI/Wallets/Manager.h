@@ -73,6 +73,7 @@ namespace Armory
          std::map<std::string, std::shared_ptr<WalletContainer>> walletsByDbId_;
 
          std::shared_ptr<Callback> callbackPtr_;
+         std::function<void(void)> cleanupCallback_;
          std::shared_ptr<AsyncClient::BlockDataViewer> bdvPtr_;
 
          //history
@@ -87,6 +88,7 @@ namespace Armory
             const Wallets::AddressAccountId&);
          void addAllAccounts(std::shared_ptr<Wallets::AssetWallet>);
          void loadAFile(const std::filesystem::path&);
+         void cleanupBDV(void);
 
       public:
          WalletManager(const std::filesystem::path&);
@@ -106,8 +108,10 @@ namespace Armory
          void registerWallets(void);
          void registerWallet(const Wallets::WalletId&,
             const Wallets::AddressAccountId&, bool);
-         void setupBdvCallback(
+         void setBdvCallback(
             const std::function<void(BinaryData&)>&);
+         void setCleanupCallback(
+            const std::function<void(void)>&);
          std::shared_ptr<Callback> getBdvCallback(void) const;
          void setBdvPtr(std::shared_ptr<AsyncClient::BlockDataViewer>);
 
