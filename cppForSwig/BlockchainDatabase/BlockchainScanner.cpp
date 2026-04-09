@@ -17,6 +17,7 @@
 #include <Utils/BCTX.h>
 #include <Utils/ArmoryConfig.h>
 #include <Utils/UniversalTimer.h>
+#include <TxClasses.h>
 
 #include "BlockDataMap.h"
 #include "TxHashFilters.h"
@@ -77,7 +78,7 @@ int32_t BlockchainScanner::check_merkle(int32_t scanFrom)
       if (scanFrom > (int)topBlock->getBlockHeight() ||
          scrAddrFilter_->getScanFilterAddrMap()->empty()) {
          LOGINFO << "no history to scan";
-         topScannedBlockHash_ = topBlock->getThisHash();
+         topScannedBlockHash_ = topBlock->getThisHash().toBinaryData();
          return INT32_MIN;
       }
    }
@@ -215,7 +216,7 @@ bool BlockchainScanner::scan_nocheck(int32_t scanFrom)
    if (commit_tID.joinable()) {
       commit_tID.join();
    }
-   topScannedBlockHash_ = topBlock->getThisHash();
+   topScannedBlockHash_ = topBlock->getThisHash().toBinaryData();
 
    TIMER_STOP("scan_nocheck");
    if (topBlock->getBlockHeight() - scanFrom > 100) {
@@ -417,13 +418,6 @@ shared_ptr<BlockData> BlockchainScanner::getBlockData(
 {
    //grab block file map
    auto blockheader = blockchain_->getHeaderByHeight(height, 0xFF);
-   if (!blockheader->isInitialized()) {
-      std::stringstream err;
-      err << "blockheader for file " << height << " is not initialized!";
-      LOGERR << err.str();
-      throw std::runtime_error(err.str());
-   }
-
    auto filenum = blockheader->getBlockFileNum();
    auto mapIter = batch->fileMaps_.find(filenum);
    if (mapIter == batch->fileMaps_.end()) {
@@ -439,7 +433,7 @@ shared_ptr<BlockData> BlockchainScanner::getBlockData(
    //find block and deserialize it
    auto getID = [blockheader](const BinaryData&)->unsigned int
    {
-      return blockheader->getThisID();
+      return blockheader->getUniqueID();
    };
 
    auto filemap = mapIter->second.get();
@@ -704,7 +698,7 @@ void BlockchainScanner::writeBlockData()
       calc.fractionCompleted(), UINT32_MAX,
       initVal);
 
-   auto writeHintsLambda = 
+   auto writeHintsLambda =
       [&](ParserBatch* batch_ref)->void
    { processAndCommitTxHints(batch_ref); };
 
@@ -721,8 +715,7 @@ void BlockchainScanner::writeBlockData()
       TIMER_START("write");
 
       //start txhint writer thread
-      thread writeHintsThreadId =
-         thread(writeHintsLambda, batch.get());
+      std::thread writeHintsThreadId(writeHintsLambda, batch.get());
 
       //sanity check
       if (batch->blockMap_.empty()) {
@@ -735,15 +728,12 @@ void BlockchainScanner::writeBlockData()
          LOGERR << "empty top block header ptr, aborting scan";
          throw runtime_error("nullptr header");
       }
-      
-      map<BinaryData, BinaryWriter> serializedSubSSH;
-      map<BinaryData, BinaryWriter> serializedStxo;
 
+      std::map<BinaryData, BinaryWriter> serializedSubSSH;
+      std::map<BinaryData, BinaryWriter> serializedStxo;
       {
-         for (auto& ssh : batch->sshMap_)
-         {
-            for (auto& subssh : ssh.second)
-            {
+         for (auto& ssh : batch->sshMap_) {
+            for (auto& subssh : ssh.second) {
                //TODO: modify subssh serialization to fit our needs
 
                BinaryWriter subsshkey;
@@ -751,17 +741,19 @@ void BlockchainScanner::writeBlockData()
                subsshkey.put_BinaryData(ssh.first);
                subsshkey.put_BinaryData(subssh.first);
 
-               auto& bw = serializedSubSSH[subsshkey.getDataRef()];
+               BinaryWriter bw;
                subssh.second.serializeDBValue(bw);
+               serializedSubSSH.emplace(
+                  subsshkey.getDataRef(), std::move(bw));
             }
          }
 
-         for (auto& utxomap : batch->outputMap_)
-         {
-            for (auto& utxo : utxomap.second)
-            {
-               auto& bw = serializedStxo[utxo.second.getDBKey()];
+         for (const auto& utxomap : batch->outputMap_) {
+            for (const auto& utxo : utxomap.second) {
+               BinaryWriter bw;
                utxo.second.serializeDBValue(bw);
+               auto emplaceIter = serializedStxo.emplace(
+                  utxo.second.getDBKey(), std::move(bw));
             }
          }
       }
@@ -769,11 +761,11 @@ void BlockchainScanner::writeBlockData()
       //we've serialized utxos, now let's do another pass for spent txouts
       //to make sure they overwrite utxos that were found and spent within
       //the same batch
-      for (auto& stxo : batch->spentOutputs_)
-      {
+      for (auto& stxo : batch->spentOutputs_) {
          auto& bw = serializedStxo[stxo.getDBKey()];
-         if (bw.getSize() > 0)
+         if (!bw.empty()) {
             bw.reset();
+         }
          stxo.serializeDBValue(bw);
       }
 
@@ -781,8 +773,7 @@ void BlockchainScanner::writeBlockData()
       {
          //txouts
          auto tx = db_->beginTransaction(DB_SELECT::STXO, LMDB::Mode::ReadWrite);
-         for (auto& stxo : serializedStxo)
-         { 
+         for (const auto& stxo : serializedStxo) {
             //TODO: dont rewrite utxos, check if they are already in DB first
             db_->putValue(DB_SELECT::STXO,
                stxo.first.getRef(),
@@ -792,10 +783,8 @@ void BlockchainScanner::writeBlockData()
 
       {
          //subssh
-         auto&& tx = db_->beginTransaction(DB_SELECT::SUBSSH, LMDB::Mode::ReadWrite);
-
-         for (auto& subssh : serializedSubSSH)
-         {
+         auto tx = db_->beginTransaction(DB_SELECT::SUBSSH, LMDB::Mode::ReadWrite);
+         for (auto& subssh : serializedSubSSH) {
             db_->putValue(
                DB_SELECT::SUBSSH,
                subssh.first.getRef(),
@@ -805,7 +794,7 @@ void BlockchainScanner::writeBlockData()
          //update SUBSSH sdbi
          auto sdbi = scrAddrFilter_->getSubSshSDBI();
          sdbi.topBlkHgt = topheader->getBlockHeight();
-         sdbi.topScannedBlkHash = topheader->getThisHash();
+         sdbi.topScannedBlkHash = topheader->getThisHash().toBinaryData();
          scrAddrFilter_->putSubSshSDBI(sdbi);
       }
 
@@ -830,7 +819,7 @@ void BlockchainScanner::writeBlockData()
          calc.fractionCompleted(), calc.remainingSeconds(),
          progVal);
 
-      topScannedBlockHash_ = topheader->getThisHash();
+      topScannedBlockHash_ = topheader->getThisHash().toBinaryData();
 
       completedBatches_.fetch_add(1, memory_order_relaxed);
       batch->completedPromise_.set_value(true);
@@ -888,7 +877,7 @@ void BlockchainScanner::processAndCommitTxHints(ParserBatch* batch)
    {
       auto hintdbtx = db_->beginTransaction(
          DB_SELECT::TXHINTS, LMDB::Mode::ReadOnly);
-      for (auto& utxomap : batch->outputMap_) {
+      for (const auto& utxomap : batch->outputMap_) {
          addTxHintMap(utxomap);
       }
 
@@ -1171,8 +1160,8 @@ void BlockchainScanner::undo(ReorganizationState& reorgState)
       }
 
       auto filemap = fileIter->second;
-      auto getID = [blockPtr]
-         (const BinaryData&)->uint32_t { return blockPtr->getThisID(); };
+      auto getID = [blockPtr](const BinaryData&)->uint32_t
+      { return blockPtr->getUniqueID(); };
 
       auto bdata = BlockData::deserialize(
          filemap->ptr() + blockPtr->getOffset(),
@@ -1270,7 +1259,7 @@ void BlockchainScanner::undo(ReorganizationState& reorgState)
 
       //set blockPtr to prev block
       try {
-         blockPtr = blockchain_->getHeaderByHash(blockPtr->getPrevHashRef());
+         blockPtr = blockchain_->getHeaderByHash(blockPtr->getPrevHash());
       } catch (const std::exception &e) {
          LOGERR << e.what();
          throw e;
@@ -1357,7 +1346,7 @@ void BlockchainScanner::undo(ReorganizationState& reorgState)
 
       //update SSH sdbi
       StoredDBInfo sdbi = scrAddrFilter_->getSshSDBI();
-      sdbi.topScannedBlkHash = reorgState.reorgBranchPoint->getThisHash();
+      sdbi.topScannedBlkHash = reorgState.reorgBranchPoint->getThisHash().toBinaryData();
       sdbi.topBlkHgt = branchPointHeight;
       scrAddrFilter_->putSshSDBI(sdbi);
    }
@@ -1368,7 +1357,7 @@ void BlockchainScanner::processFilterHitsThread(
    std::map<uint32_t, std::map<uint32_t, std::set<const TxHashHints*>>>& filtersResultMap,
    const std::set<BinaryData>& missingHashes, std::atomic<int>& counter,
    std::map<BinaryData, BinaryData>& results,
-   function<void(size_t)> prog)
+   function<void(size_t)>)
 {
    std::map<BinaryData, BinaryData> result;
    uint32_t missedBlocks = 0;
@@ -1392,7 +1381,7 @@ void BlockchainScanner::processFilterHitsThread(
          }
 
          auto getID = [headerPtr](const BinaryData&)->unsigned int
-         { return headerPtr->getThisID(); };
+         { return headerPtr->getUniqueID(); };
 
          //search the block
          std::shared_ptr<BlockData> bdata;

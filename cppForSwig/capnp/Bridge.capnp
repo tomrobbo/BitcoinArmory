@@ -291,12 +291,11 @@ struct BlockchainServiceRequest {
       registerWallet                @3 : RegisterWallet;
       broadcastTx                   @4 : BroadcastRequest;
       getTxsByHash                  @5 : List(Types.Hash);
-      getHeadersByHeight            @6 : List(Types.Height);
-      getBlockTimeByHeight          @7 : UInt32;
-      getFeeSchedule                @8 : Text;
+      getBlockTimeByHeight          @6 : UInt32;
+      getFeeSchedule                @7 : Text;
 
-      getLedgerDelegateId           @9 : Void;
-      updateWalletsLedgerFilter     @10: List(Types.WalletId);
+      getLedgerDelegateId           @8 : Void;
+      updateWalletsLedgerFilter     @9 : List(Types.WalletId);
    }
 }
 
@@ -316,10 +315,9 @@ struct BlockchainServiceReply {
 
       getNodeStatus                 @1 : Types.NodeStatus;
       getTxsByHash                  @2 : List(TxData);
-      getHeadersByHeight            @3 : List(Types.Header);
-      getBlockTimeByHeight          @4 : UInt32;
-      getFeeSchedule                @5 : List(Types.FeeSchedule);
-      getLedgerDelegateId           @6 : Types.DelegateId;
+      getBlockTimeByHeight          @3 : UInt32;
+      getFeeSchedule                @4 : List(Types.FeeSchedule);
+      getLedgerDelegateId           @5 : Types.DelegateId;
    }
 }
 

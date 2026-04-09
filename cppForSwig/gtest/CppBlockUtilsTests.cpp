@@ -53,7 +53,6 @@ protected:
    /////////////////////////////////////////////////////////////////////////////
    virtual void SetUp()
    {
-      LOGDISABLESTDOUT();
       cleanUp();
 
       FileUtils::createDirectory(blkdir_ / "blocks");
@@ -561,7 +560,6 @@ protected:
    /////////////////////////////////////////////////////////////////////////////
    virtual void SetUp()
    {
-      LOGDISABLESTDOUT();
       zeros_ = READHEX("00000000");
 
       FileUtils::removeDirectory(blkdir_);
@@ -1941,7 +1939,6 @@ protected:
    /////////////////////////////////////////////////////////////////////////////
    virtual void SetUp()
    {
-      LOGDISABLESTDOUT();
       zeros_ = READHEX("00000000");
 
       FileUtils::removeDirectory(blkdir_);
@@ -2031,7 +2028,6 @@ protected:
       FileUtils::removeDirectory(ldbdir_);
       Config::reset();
 
-      LOGENABLESTDOUT();
       CLEANUP_ALL_TIMERS();
    }
 
@@ -2543,7 +2539,6 @@ protected:
    /////////////////////////////////////////////////////////////////////////////
    virtual void SetUp()
    {
-      LOGDISABLESTDOUT();
       zeros_ = READHEX("00000000");
 
       FileUtils::removeDirectory(blkdir_);
@@ -2636,7 +2631,6 @@ protected:
       FileUtils::removeDirectory("./ldbtestdir");
       Config::reset();
 
-      LOGENABLESTDOUT();
       CLEANUP_ALL_TIMERS();
    }
 
@@ -2865,7 +2859,7 @@ TEST_F(WebSocketTests_2Way, WebSocketStack_ManyZC)
 ////////////////////////////////////////////////////////////////////////////////
 // Now actually execute all the tests
 ////////////////////////////////////////////////////////////////////////////////
-GTEST_API_ int main(int argc, char **argv) 
+GTEST_API_ int main(int argc, char **argv)
 {
    #ifdef _MSC_VER
       _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
@@ -2880,6 +2874,7 @@ GTEST_API_ int main(int argc, char **argv)
    // Required by libbtc.
    Cryptography::ECDSA::setupContext();
    //LOGENABLESTDOUT();
+   LOGDISABLESTDOUT();
 
    testing::InitGoogleTest(&argc, argv);
    int exitCode = RUN_ALL_TESTS();

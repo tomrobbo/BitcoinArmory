@@ -93,6 +93,7 @@ namespace Armory
       class HistoryPager;
    }
 
+   class BlockHeader;
    class Blockchain;
 }
 
@@ -239,8 +240,8 @@ public:
    Armory::ZeroConf::ZeroConfContainer* zcContainer(void) const;
    const Armory::Blockchain& blockchain(void) const;
    uint32_t getTopBlockHeight(void) const;
-   const std::shared_ptr<BlockHeader> getTopBlockHeader(void) const;
-   std::shared_ptr<BlockHeader> getHeaderByHash(const BinaryData&) const;
+   const std::shared_ptr<Armory::BlockHeader> getTopBlockHeader(void) const;
+   std::shared_ptr<Armory::BlockHeader> getHeaderByHash(const BinaryData&) const;
 
    size_t getWalletsPageCount(void) const;
    std::vector<Armory::Ledgers::Entry> getWalletsHistoryPage(
@@ -250,9 +251,9 @@ public:
    std::vector<Armory::Ledgers::Entry> getLockboxesHistoryPage(
       uint32_t, bool, bool);
 
-   StoredHeader getMainBlockFromDB(uint32_t height) const;
-   StoredHeader getBlockFromDB(uint32_t height, uint8_t dupID) const;
-   bool scrAddressIsRegistered(const BinaryData& scrAddr) const;
+   StoredHeader getMainBlockFromDB(uint32_t) const;
+   StoredHeader getBlockFromDB(uint32_t, uint8_t) const;
+   bool scrAddressIsRegistered(const BinaryData&) const;
 
    bool isBDMRunning(void) const;
    void blockUntilBDMisReady(void) const;

@@ -26,6 +26,7 @@
 #include <Utils/ArmoryErrors.h>
 #include <Utils/BCTX.h>
 #include <Utils/UniversalTimer.h>
+#include <TxClasses.h>
 
 #include "BlockObj.h"
 #include "StoredBlockObj.h"
@@ -1115,7 +1116,8 @@ void LMDBBlockDatabase::readAllHeaders(
 
       //header data
       auto brrVal = ldbIter->getValueReader();
-      auto regHead = std::make_shared<BlockHeader>(brrVal);
+      auto regHead = std::make_shared<BlockHeader>(
+         brrVal.get_BinaryDataRef(HEADER_SIZE));
 
       //height & dup
       BinaryData hgtx = brrVal.get_BinaryData(4);
@@ -1132,8 +1134,8 @@ void LMDBBlockDatabase::readAllHeaders(
       //sanity check
       if (headerHash != regHead->getThisHash()) {
          LOGWARN << "Corruption detected: block header hash " <<
-            headerHash.copySwapEndian().toHexStr() << " does not match "
-            << regHead->getThisHash().copySwapEndian().toHexStr();
+            headerHash.toHexStr(true) << " does not match " <<
+            regHead->getThisHash().toHexStr(true);
       }
       callback(regHead);
    } while (ldbIter->advanceAndRead(DbPrefix::HEADHASH));
@@ -1224,8 +1226,6 @@ void LMDBBlockDatabase::setBlockIDBranch(std::map<unsigned, bool>& idMap)
 uint8_t LMDBBlockDatabase::putBareHeader(StoredHeader& sbh,
    bool updateDupID, bool updateSDBI)
 {
-   SCOPED_TIMER("putBareHeader");
-
    if (!sbh.isInitialized()) {
       LOGERR << "Attempting to put uninitialized bare header into DB";
       return UINT8_MAX;
@@ -1419,7 +1419,7 @@ Tx LMDBBlockDatabase::getFullTxCopy(
    auto fileMap = FileUtils::FileMap(path, false);
    auto getID = [bhPtr] (const BinaryData&)->uint32_t
    {
-      return bhPtr->getThisID();
+      return bhPtr->getUniqueID();
    };
 
    try {
@@ -1461,7 +1461,7 @@ TxOut LMDBBlockDatabase::getTxOutCopy(
       DBUtils::readBlkDataKeyNoPrefix(brr_key, block, dup, txid);
 
       auto key_super = DBUtils::getBlkDataKeyNoPrefix(
-         bhPtr->getThisID(), 0xFF, txid, txOutIdx);
+         bhPtr->getUniqueID(), 0xFF, txid, txOutIdx);
       brr = getValueReader(DB_SELECT::STXO, key_super);
       if (brr.empty()) {
          throw std::runtime_error("TxOut key does not exist in STXO DB");
@@ -1515,7 +1515,7 @@ BinaryData LMDBBlockDatabase::getTxHashForLdbKey(
                LOGWARN << "null header with block height key";
                return {};
             }
-            blockId = bhPtr->getThisID();
+            blockId = bhPtr->getUniqueID();
          }
          auto id_key = DBUtils::getBlkDataKeyNoPrefix(blockId, 0xFF, txid);
 
@@ -1730,7 +1730,7 @@ bool LMDBBlockDatabase::getStoredTxOut(StoredTxOut& stxo,
    }
 
    auto txKey = DBUtils::getBlkDataKeyNoPrefix(
-      header->getThisID(), 0xFF, txId, txOutId);
+      header->getUniqueID(), 0xFF, txId, txOutId);
 
    auto stxo_tx = beginTransaction(DB_SELECT::STXO, LMDB::Mode::ReadOnly);
    auto data = getValueNoCopy(DB_SELECT::STXO, txKey);

@@ -370,3 +370,52 @@ struct SpentnessResult
    unsigned height_ = UINT32_MAX;
    OutputSpentnessState state_ = OutputSpentnessState::Invalid;
 };
+
+////////////////////////////////////////////////////////////////////////////////
+// This class is mainly for sorting by priority
+class UnspentTxOut
+{
+public:
+   UnspentTxOut(void);
+   UnspentTxOut(const BinaryData&, uint32_t, uint32_t,
+      uint64_t, const BinaryData&);
+
+   BinaryData getTxHash(void) const;
+   uint32_t getTxtIndex(void) const;
+   uint32_t getTxOutIndex(void) const;
+   uint64_t getValue(void) const;
+   uint64_t getTxHeight(void) const;
+   uint32_t isMultisigRef(void) const;
+
+   Outpoint getOutPoint(void) const;
+   const BinaryData& getScript(void) const;
+   BinaryData getRecipientScrAddr(void) const;
+
+   uint32_t getNumConfirm(uint32_t) const;
+   void pprintOneLine(uint32_t=UINT32_MAX);
+
+   // These four methods are listed from steepest-to-shallowest in terms of
+   // how much they favor large inputs over small inputs.
+   // NOTE:  This isn't useful at all anymore:  it was hardly useful even before
+   //        I had UTXO sorting in python.  This was really more experimental
+   //        than anything, so I wouldn't bother doing anything with it unless
+   //        you want to use it as a template for custom sorting in C++
+   static bool CompareNaive(const UnspentTxOut&, const UnspentTxOut&);
+   static bool CompareTech1(const UnspentTxOut&, const UnspentTxOut&);
+   static bool CompareTech2(const UnspentTxOut&, const UnspentTxOut&);
+   static bool CompareTech3(const UnspentTxOut&, const UnspentTxOut&);
+   static void sortTxOutVect(std::vector<UnspentTxOut>&, int=1);
+
+public:
+   BinaryData txHash_;
+   uint32_t   txOutIndex_;
+   uint32_t   txHeight_;
+   uint32_t   txIndex_;
+   uint64_t   value_;
+   BinaryData script_;
+   bool       isMultisigRef_;
+
+   // This can be set and used as part of a compare function:  if you want
+   // each TxOut prioritization to be dependent on the target Tx amount.
+   uint64_t   targetTxAmount_;
+};

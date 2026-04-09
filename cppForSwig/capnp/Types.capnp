@@ -21,9 +21,13 @@ using CoinAmount  = UInt64;
 
 ## block data ##
 struct Header {
-   rawData     @0 : Data;
-   height      @1 : UInt32;
-   dupId       @2 : UInt8;
+   thisHash    @0 : Hash;
+   prevHash    @1 : Hash;
+   timestamp   @2 : UInt32;
+   blockSize   @3 : UInt32;
+   numTxs      @4 : UInt32;
+   height      @5 : UInt32;
+   dupId       @6 : UInt8;
 }
 
 struct NewBlockNotif {

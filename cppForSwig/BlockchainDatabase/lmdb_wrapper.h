@@ -62,7 +62,6 @@ struct LmdbWrapperException : public std::runtime_error
 
 #define KVLIST std::vector<std::pair<BinaryData,BinaryData> > 
 
-class BlockHeader;
 class Tx;
 class TxIn;
 class TxOut;
@@ -82,6 +81,11 @@ enum ShardFilterType
    ShardFilterType_ScrAddr = 0,
    ShardFilterType_Spentness
 };
+
+namespace Armory
+{
+   class BlockHeader;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -381,7 +385,7 @@ public:
 
    /////////////////////////////////////////////////////////////////////////////
    void readAllHeaders(
-      const std::function<void(std::shared_ptr<BlockHeader>)>&
+      const std::function<void(std::shared_ptr<Armory::BlockHeader>)>&
    );
 
    std::map<uint32_t, uint32_t> getSSHSummary(BinaryDataRef);
@@ -412,9 +416,9 @@ public:
 
    /////////////////////////////////////////////////////////////////////////////
    // still using the old name even though no block data is stored anymore
-   BinaryData getRawBlock(std::shared_ptr<BlockHeader>) const;
+   BinaryData getRawBlock(std::shared_ptr<Armory::BlockHeader>) const;
    bool getStoredHeader(StoredHeader&,
-      std::shared_ptr<BlockHeader>, bool = true) const;
+      std::shared_ptr<Armory::BlockHeader>, bool = true) const;
 
    /////////////////////////////////////////////////////////////////////////////
    // StoredTx Accessors
@@ -442,7 +446,7 @@ public:
    bool getStoredTxOut(
       StoredTxOut&, const BinaryData&, uint16_t) const;
    bool getStoredTxOut(
-      StoredTxOut&, const std::shared_ptr<BlockHeader>, uint16_t, uint16_t) const;
+      StoredTxOut&, const std::shared_ptr<Armory::BlockHeader>, uint16_t, uint16_t) const;
    void getSpentness(StoredTxOut&);
 
    void getUTXOflags(std::map<BinaryData, StoredSubHistory>&) const;
@@ -503,13 +507,13 @@ public:
    TxRef getTxRef(uint32_t, uint8_t, uint16_t);
 
    // Sometimes we already know where the Tx is, but we don't know its hash
-   Tx getFullTxCopy(uint16_t, std::shared_ptr<BlockHeader>) const;
+   Tx getFullTxCopy(uint16_t, std::shared_ptr<Armory::BlockHeader>) const;
    TxOut getTxOutCopy(const BinaryData&, uint16_t,
-      std::shared_ptr<BlockHeader>) const;
+      std::shared_ptr<Armory::BlockHeader>) const;
 
    // Sometimes we already know where the Tx is, but we don't know its hash
    BinaryData getTxHashForLdbKey(BinaryDataRef,
-      std::shared_ptr<BlockHeader>) const;
+      std::shared_ptr<Armory::BlockHeader>) const;
 
    ////////////////////////////////////////////////////////////////////////////
    bool markBlockHeaderValid(BinaryDataRef);

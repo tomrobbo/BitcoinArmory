@@ -10,7 +10,7 @@
 
 #include "Transactions.h"
 #include <Utils/BtcUtils.h>
-#include <BlockchainDatabase/BlockObj.h>
+#include <TxClasses.h>
 #include "Script.h"
 
 using namespace Armory::Signing;

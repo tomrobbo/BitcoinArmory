@@ -3406,12 +3406,14 @@ protected:
          "d8c8c84d"
          "b3936a1a"
          "334b035b");
+      bh_ = std::make_unique<Armory::BlockHeader>(rawHead_);
+
       headHashLE_ = READHEX(
          "1195e67a7a6d0674bbd28ae096d602e1f038c8254b49dfe79d47000000000000");
       headHashBE_ = READHEX(
          "000000000000479de7df494b25c838f0e102d696e08ad2bb74066d7a7ae69511");
 
-      rawTx0_ = READHEX( 
+      rawTx0_ = READHEX(
          "01000000016290dce984203b6a5032e543e9e272d8bce934c7de4d15fa0fe44d"
          "d49ae4ece9010000008b48304502204f2fa458d439f957308bca264689aa175e"
          "3b7c5f78a901cb450ebd20936b2c500221008ea3883a5b80128e55c9c6070aa6"
@@ -3422,7 +3424,7 @@ protected:
          "000000001976a9140e0aec36fe2545fb31a41164fb6954adcd96b34288ac0000"
          "0000");
 
-      rawTx1_ = READHEX( 
+      rawTx1_ = READHEX(
          "0100000001f658dbc28e703d86ee17c9a2d3b167a8508b082fa0745f55be5144"
          "a4369873aa010000008c49304602210041e1186ca9a41fdfe1569d5d807ca7ff"
          "6c5ffd19d2ad1be42f7f2a20cdc8f1cc0221003366b5d64fe81e53910e156914"
@@ -3504,7 +3506,6 @@ protected:
          "19"
          // Script
          "76""a9""14""8dce8946f1c7763bb60ea5cf16ef514cbed0633b""88""ac");
-         bh_.unserialize(rawHead_);
    }
 
    BinaryData rawHead_;
@@ -3518,28 +3519,8 @@ protected:
    BinaryData rawTxIn_;
    BinaryData rawTxOut_;
 
-   ::BlockHeader bh_;
+   std::unique_ptr<Armory::BlockHeader> bh_;
 };
-
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(BlockObjTest, HeaderNoInit)
-{
-   BlockHeader bh;
-   EXPECT_FALSE(bh.isInitialized());
-   EXPECT_EQ(bh.getNumTx(), UINT32_MAX);
-   EXPECT_EQ(bh.getBlockSize(), UINT32_MAX);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(BlockObjTest, HeaderUnserialize)
-{
-   bool boolFalse = false;
-   EXPECT_NE(bh_.isInitialized(), boolFalse);
-   EXPECT_EQ(bh_.getNumTx(), UINT32_MAX);
-   EXPECT_EQ(bh_.getBlockSize(), UINT32_MAX);
-   EXPECT_EQ(bh_.getVersion(), 1ULL);
-   EXPECT_EQ(bh_.getThisHash(), headHashLE_);
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BlockObjTest, HeaderProperties)
@@ -3555,18 +3536,14 @@ TEST_F(BlockObjTest, HeaderProperties)
    uint32_t   nonce     =        0x5b034b33;
    BinaryData diffBits  = READHEX("b3936a1a");
 
-   EXPECT_EQ(bh_.getPrevHash(), prevHash);
-   EXPECT_EQ(bh_.getTimestamp(), timestamp);
-   EXPECT_EQ(bh_.getDiffBits(), diffBits);
-   EXPECT_EQ(bh_.getNonce(), nonce);
-   EXPECT_DOUBLE_EQ(bh_.getDifficulty(), 157416.40184364893);
+   EXPECT_EQ(bh_->getPrevHash().getRef(), prevHash);
+   EXPECT_EQ(bh_->getTimestamp(), timestamp);
+   EXPECT_DOUBLE_EQ(bh_->getDifficulty(), 157416.40184364893);
 
    BinaryDataRef bdrThis(headHashLE_);
    BinaryDataRef bdrPrev(rawHead_.getPtr()+4, 32);
-   EXPECT_EQ(bh_.getThisHashRef(), bdrThis);
-   EXPECT_EQ(bh_.getPrevHashRef(), bdrPrev);
-
-   EXPECT_EQ(BlockHeader(rawHead_).serialize(), rawHead_);
+   EXPECT_EQ(bh_->getThisHash().getRef(), bdrThis);
+   EXPECT_EQ(bh_->getPrevHash().getRef(), bdrPrev);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -3676,31 +3653,11 @@ TEST_F(BlockObjTest, TxUnserialize)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(BlockObjTest, DISABLED_FullBlock)
-{
-   EXPECT_TRUE(false);
-
-   BinaryRefReader brr(rawBlock_);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(BlockObjTest, DISABLED_TxIOPairStuff)
-{
-   EXPECT_TRUE(false);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(BlockObjTest, DISABLED_RegisteredTxStuff)
-{
-   EXPECT_TRUE(false);
-}
-
-////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 class StoredBlockObjTest : public ::testing::Test
 {
 protected:
-   virtual void SetUp(void) 
+   virtual void SetUp(void)
    {
       rawHead_ = READHEX(
          "01000000"
@@ -3854,7 +3811,6 @@ protected:
          // Script
          "76""a9""14""6a59ac0e8f553f292dfe5e9f3aaa1da93499c15e""88""ac");
 
-      bh_.unserialize(rawHead_);
       sbh_.setHeaderData(rawHead_);
    }
 
@@ -3874,7 +3830,6 @@ protected:
    BinaryData rawTx0_;
    BinaryData rawTx1_;
 
-   ::BlockHeader bh_;
    BinaryData rawTxUnfrag_;
    BinaryData rawTxFragged_;
    BinaryData rawTxOut0_;
@@ -5130,15 +5085,6 @@ TEST_F(StoredBlockObjTest, SScriptHistoryUnser)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-class testBlockHeader : public ::BlockHeader
-{
-public:
-   void setBlockHeight(uint32_t height)
-   {
-      blockHeight_ = height;
-   }
-};
-
 class LMDBTest : public ::testing::Test
 {
 protected:
@@ -5339,7 +5285,6 @@ protected:
          // Script
          "76""a9""14""6a59ac0e8f553f292dfe5e9f3aaa1da93499c15e""88""ac");
 
-      bh_.unserialize(rawHead_);
       sbh_.setHeaderData(rawHead_);
    }
 
@@ -5478,7 +5423,6 @@ protected:
    BinaryData rawBlock_;
    BinaryData rawTx0_;
    BinaryData rawTx1_;
-   ::BlockHeader bh_;
    StoredHeader sbh_;
    BinaryData rawTxUnfrag_;
    BinaryData rawTxFragged_;

@@ -187,7 +187,7 @@ std::map<unsigned, BinaryData> NodeUnitTest::mineNewBlock(
    auto diffBits = BtcUtils::convertDoubleToDiffBits(diff);
    if (header_.prevHash_.empty()) {
       auto top = blockchain_->top();
-      header_.prevHash_ = top->getThisHash();
+      header_.prevHash_ = top->getThisHash().toBinaryData();
       header_.timestamp_ = top->getTimestamp();
       header_.diffBits_  = diffBits;
       header_.blockHeight_ = top->getBlockHeight() + 1;
@@ -413,10 +413,9 @@ void NodeUnitTest::setReorgBranchPoint(std::shared_ptr<BlockHeader> header)
       throw std::runtime_error("null header");
    }
 
-   header_.prevHash_ = header->getThisHash();
+   header_.prevHash_ = header->getThisHash().toBinaryData();
    header_.blockHeight_ = header->getBlockHeight();
    header_.timestamp_ = header->getTimestamp();
-   header_.diffBits_ = header->getDiffBits();
 
    //purge mempool
    mempool_.clear();

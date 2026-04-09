@@ -13,6 +13,7 @@
 
 #include <assert.h>
 #include <cstring>
+#include <cmath>
 
 #include "TxClasses.h"
 #include <Utils/varint.h>
@@ -1162,4 +1163,132 @@ bool AddressBookEntry::Comparator::operator()
 (const BinaryData& lhs, const AddressBookEntry& rhs) const
 {
    return lhs < rhs.getScrAddr();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// UnspentTxOut
+UnspentTxOut::UnspentTxOut() :
+   txHash_(BtcUtils::EmptyHash),
+   txOutIndex_(0),
+   txHeight_(0),
+   value_(0),
+   script_(BinaryData(0)),
+   isMultisigRef_(false)
+{}
+
+UnspentTxOut::UnspentTxOut(const BinaryData& hash, uint32_t outIndex,
+   uint32_t height, uint64_t val, const BinaryData& script) :
+   txHash_(hash), txOutIndex_(outIndex), txHeight_(height),
+   value_(val), script_(script)
+{}
+
+////////
+BinaryData UnspentTxOut::getTxHash() const
+{
+   return txHash_;
+}
+
+uint32_t UnspentTxOut::getTxtIndex() const
+{
+   return txIndex_;
+}
+
+uint32_t UnspentTxOut::getTxOutIndex() const
+{
+   return txOutIndex_;
+}
+
+uint64_t UnspentTxOut::getValue() const
+{
+   return value_;
+}
+
+uint64_t UnspentTxOut::getTxHeight() const
+{
+   return txHeight_;
+}
+
+uint32_t UnspentTxOut::isMultisigRef() const
+{
+   return isMultisigRef_;
+}
+
+BinaryData UnspentTxOut::getRecipientScrAddr() const
+{
+   return BtcUtils::getTxOutScrAddr(getScript());
+}
+
+uint32_t UnspentTxOut::getNumConfirm(uint32_t currBlkNum) const
+{
+   if (txHeight_ == UINT32_MAX) {
+      throw std::runtime_error("uninitiliazed UnspentTxOut");
+   }
+   return currBlkNum - txHeight_ + 1;
+}
+
+Outpoint UnspentTxOut::getOutPoint() const
+{
+   return Outpoint(txHash_, txOutIndex_);
+}
+
+const BinaryData& UnspentTxOut::getScript() const
+{
+   return script_;
+}
+
+////////
+bool UnspentTxOut::CompareNaive(const UnspentTxOut& uto1,
+   const UnspentTxOut& uto2)
+{
+   float val1 = (float)uto1.getValue();
+   float val2 = (float)uto2.getValue();
+   return (val1 * uto1.txHeight_ < val2 * uto2.txHeight_);
+}
+
+bool UnspentTxOut::CompareTech1(const UnspentTxOut& uto1,
+   const UnspentTxOut& uto2)
+{
+   float val1 = pow((float)uto1.getValue(), 1.0f/3.0f);
+   float val2 = pow((float)uto2.getValue(), 1.0f/3.0f);
+   return (val1 * uto1.txHeight_ < val2 * uto2.txHeight_);
+}
+
+bool UnspentTxOut::CompareTech2(const UnspentTxOut& uto1,
+   const UnspentTxOut& uto2)
+{
+   float val1 = pow(log10((float)uto1.getValue()) + 5, 5);
+   float val2 = pow(log10((float)uto2.getValue()) + 5, 5);
+   return (val1 * uto1.txHeight_ < val2 * uto2.txHeight_);
+
+}
+
+bool UnspentTxOut::CompareTech3(const UnspentTxOut& uto1,
+   const UnspentTxOut& uto2)
+{
+   float val1 = pow(log10((float)uto1.getValue()) + 5, 4);
+   float val2 = pow(log10((float)uto2.getValue()) + 5, 4);
+   return (val1 * uto1.txHeight_ < val2 * uto2.txHeight_);
+}
+
+void UnspentTxOut::sortTxOutVect(
+   std::vector<UnspentTxOut>& utovect, int sortType)
+{
+   switch (sortType)
+   {
+      case 0: sort(utovect.begin(), utovect.end(), CompareNaive); break;
+      case 1: sort(utovect.begin(), utovect.end(), CompareTech1); break;
+      case 2: sort(utovect.begin(), utovect.end(), CompareTech2); break;
+      case 3: sort(utovect.begin(), utovect.end(), CompareTech3); break;
+      default: break; // do nothing
+   }
+}
+
+void UnspentTxOut::pprintOneLine(uint32_t currBlk)
+{
+   printf(" Tx:%s:%02d   BTC:%0.3f   nConf:%04d\n",
+      txHash_.copySwapEndian().getSliceCopy(0,8).toHexStr().c_str(),
+      txOutIndex_,
+      value_/1e8,
+      getNumConfirm(currBlk)
+   );
 }

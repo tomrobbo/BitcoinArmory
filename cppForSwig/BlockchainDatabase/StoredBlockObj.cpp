@@ -17,6 +17,7 @@
 #include <Utils/DBUtils.h>
 #include <Utils/ArmoryErrors.h>
 #include <Utils/ArmoryConfig.h>
+#include <TxClasses.h>
 #include "txio.h"
 
 using namespace Armory;
@@ -247,7 +248,7 @@ void StoredHeader::unserializeSimple(BinaryRefReader brr)
    uint8_t  dupid = duplicateID;
 
    std::vector<BinaryData> allTxHashes;
-   BlockHeader bh(brr);
+   BlockHeader bh(brr.get_BinaryDataRef(HEADER_SIZE));
    uint32_t nTx = (uint32_t)brr.get_var_int();
 
    createFromBlockHeader(bh);
@@ -293,7 +294,9 @@ void StoredHeader::unserializeFullBlock(BinaryRefReader brr, bool doFrag,
    uint8_t  dupid  = duplicateID;
 
    std::vector<BinaryData> allTxHashes;
-   BlockHeader bh(brr); 
+   auto rawHeader = brr.get_BinaryData(HEADER_SIZE);
+   BlockHeader bh(rawHeader.getRef());
+   bh.setRawData(std::move(rawHeader));
    uint32_t nTx = (uint32_t)brr.get_var_int();
 
    createFromBlockHeader(bh);
@@ -429,12 +432,11 @@ BinaryData DBBlock::getDBKey(bool withPrefix) const
 
 void DBBlock::createFromBlockHeader(const BlockHeader& bh)
 {
-   if (!bh.isInitialized()) {
-      LOGERR << "trying to create from uninitialized block header";
-      return;
+   const auto& rawHeader = bh.getRawData();
+   if (rawHeader.empty()) {
+      throw std::runtime_error("header does not carry data");
    }
-
-   setHeaderData(bh.serialize());
+   setHeaderData(bh.getRawData());
    numTx = bh.getNumTx();
    numBytes = bh.getBlockSize();
    blockHeight = bh.getBlockHeight();
@@ -444,7 +446,7 @@ void DBBlock::createFromBlockHeader(const BlockHeader& bh)
 
    fileID = bh.getBlockFileNum();
    offset = bh.getOffset();
-   uniqueID = bh.getThisID();
+   uniqueID = bh.getUniqueID();
 }
 
 ////////
@@ -461,7 +463,7 @@ void DBBlock::setHeaderData(const BinaryData& header80B)
 BlockHeader DBBlock::getBlockHeaderCopy() const
 {
    if (!isInitialized()) {
-      return {};
+      throw std::runtime_error("SBH is no initialized");
    }
 
    BlockHeader bh(dataCopy);

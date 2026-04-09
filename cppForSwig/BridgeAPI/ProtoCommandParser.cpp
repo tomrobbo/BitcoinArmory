@@ -270,17 +270,6 @@ namespace
             break;
          }
 
-         case BlockchainServiceRequest::GET_HEADERS_BY_HEIGHT:
-         {
-            auto capnHeights = request.getGetHeadersByHeight();
-            std::set<unsigned> heights;
-            for (const auto& height : capnHeights) {
-               heights.emplace(height);
-            }
-            bridge->getHeadersByHeight(heights, referenceId);
-            break;
-         }
-
          case BlockchainServiceRequest::GET_TXS_BY_HASH:
          {
             std::set<BinaryData> hashes;

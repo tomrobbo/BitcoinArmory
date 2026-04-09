@@ -75,11 +75,56 @@ BlockData::BlockData(uint32_t blockid)
    : uniqueID_(blockid)
 {}
 
+bool BlockData::isInitialized() const
+{
+   return data_ != nullptr;
+}
+
+const std::vector<std::shared_ptr<BCTX>>& BlockData::getTxns() const
+{
+   return txns_;
+}
+
+const std::shared_ptr<BlockHeader> BlockData::header() const
+{
+   return headerPtr_;
+}
+
+size_t BlockData::size() const
+{
+   return size_;
+}
+
+void BlockData::setFileID(unsigned fileid)
+{
+   fileID_ = fileid;
+}
+
+void BlockData::setOffset(size_t offset)
+{
+   offset_ = offset;
+}
+
+const BinaryData& BlockData::getHash() const
+{
+   return blockHash_;
+}
+
+uint32_t BlockData::uniqueID() const
+{
+   return uniqueID_;
+}
+
+std::shared_ptr<BlockHeader> BlockData::getHeaderPtr() const
+{
+   return headerPtr_;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<BlockData> BlockData::deserialize(
    const uint8_t* data, size_t size,
    const std::shared_ptr<BlockHeader> blockHeader,
-   std::function<unsigned int(const BinaryData&)> getID,
+   const std::function<unsigned int(BinaryDataRef)>& getID,
    BlockData::CheckHashes mode)
 {
    //deser header from raw block and run a quick sanity check
@@ -88,26 +133,24 @@ std::shared_ptr<BlockData> BlockData::deserialize(
          "raw data is smaller than HEADER_SIZE");
    }
 
-   BinaryDataRef bdr(data, HEADER_SIZE);
-   BlockHeader bh(bdr);
-
+   BlockHeader bh(data, HEADER_SIZE);
    auto uniqueID = UINT32_MAX;
    if (getID) {
-      uniqueID = getID(bh.getThisHash());
+      uniqueID = getID(bh.getThisHash().getRef());
    }
 
    auto result = std::make_shared<BlockData>(uniqueID);
    result->headerPtr_ = blockHeader;
-   result->blockHash_ = bh.thisHash_;
+   result->blockHash_ = bh.getThisHash().toBinaryData();
 
    BinaryRefReader brr(data + HEADER_SIZE, size - HEADER_SIZE);
    auto numTx = (unsigned)brr.get_var_int();
 
    if (blockHeader != nullptr) {
-      if (bh.getThisHashRef() != blockHeader->getThisHashRef()) {
+      if (bh.getThisHash() != blockHeader->getThisHash()) {
          LOGERR << "expected header hash mismatch!";
-         LOGERR << " current: " << bh.getThisHashRef().toHexStr(true);
-         LOGERR << " expected: " << blockHeader->getThisHashRef().toHexStr(true);
+         LOGERR << " current: " << bh.getThisHash().toHexStr(true);
+         LOGERR << " expected: " << blockHeader->getThisHash().toHexStr(true);
          LOGERR << " file: " << blockHeader->getBlockFileNum() <<
             ", offset: " << blockHeader->getOffset();
 
@@ -166,7 +209,7 @@ std::shared_ptr<BlockData> BlockData::deserialize(
    //any form of later txhash filtering implies we check the merkle
    //root, otherwise we would have no guarantees the hashes are valid
    auto merkleroot = BtcUtils::calculateMerkleRoot(allHashes);
-   if (merkleroot != bh.getMerkleRoot()) {
+   if (bh.getMerkleRoot() != merkleroot) {
       LOGERR << "merkle root mismatch!";
       LOGERR << "   header has: " << bh.getMerkleRoot().toHexStr();
       LOGERR << "   block yields: " << merkleroot.toHexStr();
@@ -198,7 +241,6 @@ void BlockData::computeTxFilter(const std::vector<BinaryData>& allHashes)
    txFilter_->update(allHashes);
 }
 
-////
 std::shared_ptr<BlockHashVector> BlockData::getTxFilter() const
 {
    return txFilter_;
@@ -211,28 +253,14 @@ std::shared_ptr<BlockHeader> BlockData::createBlockHeader() const
       return headerPtr_;
    }
 
-   auto bhPtr = std::make_shared<BlockHeader>();
-   auto& bh = *bhPtr;
-
-   bh.dataCopy_ = std::move(BinaryData{data_, HEADER_SIZE});
-   bh.difficultyDbl_ = BtcUtils::convertDiffBitsToDouble(
-      BinaryDataRef(data_ + 72, 4));
-
-   bh.isInitialized_ = true;
-   bh.nextHash_ = {};
-   bh.blockHeight_ = UINT32_MAX;
-   bh.difficultySum_ = -1;
-   bh.isMainBranch_ = false;
-   bh.isOrphan_ = true;
-
-   bh.numBlockBytes_ = size_;
-   bh.numTx_ = txns_.size();
-
-   bh.blkFileNum_ = fileID_;
-   bh.blkFileOffset_ = offset_;
-   bh.thisHash_ = blockHash_;
-   bh.uniqueID_ = uniqueID_;
-
+   auto bhPtr = std::make_shared<BlockHeader>(
+      data_, HEADER_SIZE, blockHash_);
+   bhPtr->setBlockSize(size_);
+   bhPtr->setNumTx(txns_.size());
+   bhPtr->setBlockFileNum(fileID_);
+   bhPtr->setBlockFileOffset(offset_);
+   bhPtr->setUniqueID(uniqueID_);
+   bhPtr->setRawData(BinaryData{data_, HEADER_SIZE});
    return bhPtr;
 }
 

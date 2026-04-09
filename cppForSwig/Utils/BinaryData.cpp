@@ -1579,6 +1579,11 @@ void BinaryWriter::reserve(size_t sz)
    theString_.reserve(sz);
 }
 
+bool BinaryWriter::empty() const
+{
+   return theString_.empty();
+}
+
 /////////////////////////////////////////////////////////////////////////////
 void BinaryWriter::put_uint8_t(const uint8_t& val)
 {

@@ -23,6 +23,7 @@ namespace Armory
 {
    class Blockchain;
    class ReorganizationState;
+   class BlockHeader;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -42,13 +43,11 @@ private:
 
 private:
    void loadBlockHeadersFromDB(const ProgressCallback&);
-   std::deque<std::shared_ptr<BlockHeader>> addBlocksToDB(
+   std::deque<std::shared_ptr<Armory::BlockHeader>> addBlocksToDB(
       const BlockDataLoader::BlockDataCopy&);
    void parseBlockFile(
       const BlockDataLoader::BlockDataCopy&,
-      const std::function<bool(
-         const uint8_t* data, size_t size, size_t offset
-      )>&
+      const std::function<bool(const uint8_t* data, size_t size, size_t offset)>&
    );
 
    Armory::ReorganizationState updateBlocksInDB(

@@ -7327,7 +7327,7 @@ TEST_F(ZeroConfTests_Supernode_WebSocket, ZcUpdate_RBFLowFee)
    BinaryData branchPointBlockHash, mainBranchBlockHash;
    {
       auto top = theBDMt_->bdm()->blockchain()->top();
-      branchPointBlockHash = top->getThisHash();
+      branchPointBlockHash = top->getThisHash().toBinaryData();
    }
 
    BinaryData bd_BtoC;

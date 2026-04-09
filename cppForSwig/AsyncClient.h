@@ -305,11 +305,11 @@ namespace AsyncClient
    };
 
    /////////////////////////////////////////////////////////////////////////////
+   using HeaderVec = std::vector<DBClientClasses::BlockHeader>;
    class Blockchain
    {
    private:
       const std::shared_ptr<SocketPrototype> sock_;
-      using HeaderVec = std::vector<DBClientClasses::BlockHeader>;
 
    public:
       Blockchain(const BlockDataViewer&);

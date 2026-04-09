@@ -22,7 +22,7 @@ class Tx;
 
 namespace DBClientClasses
 {
-   class BlockHeader;
+   struct BlockHeader;
 };
 
 namespace Armory

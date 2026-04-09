@@ -19,7 +19,6 @@
 class BlockFiles;
 class LMDBBlockDatabase;
 class BlockDataManager;
-class BlockHeader;
 class Tx;
 
 namespace Armory
@@ -28,6 +27,7 @@ namespace Armory
    {
       class ScriptRecipient;
    }
+   class BlockHeader;
    class Blockchain;
 }
 
@@ -115,7 +115,7 @@ public:
       unsigned, Armory::Signing::ScriptRecipient*, double = 1.0);
 
    std::vector<UnitTestBlock> getMinedBlocks(void) const;
-   void setReorgBranchPoint(std::shared_ptr<BlockHeader>);
+   void setReorgBranchPoint(std::shared_ptr<Armory::BlockHeader>);
    void skipZc(unsigned);
    void delayNextZc(unsigned);
    void stallNextZc(unsigned);

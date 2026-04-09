@@ -59,64 +59,19 @@ namespace DBClientClasses
    };
 
    /////////////////////////////////////////////////////////////////////////////
-   class BlockHeader
+   struct BlockHeader
    {
-      friend class Blockchain;
-      friend class testBlockHeader;
-      friend class BlockData;
+      const BinaryData  thisHash;
+      const BinaryData  prevHash;
 
-   private:
+      const uint32_t    timestamp;
+      const uint32_t    blockSize;
+      const uint32_t    numTxs;
+      const uint32_t    blockHeight;
+      const uint8_t     duplicateId;
 
-      void unserialize(uint8_t const * ptr, uint32_t size);
-      void unserialize(BinaryDataRef const & str)
-      {
-         unserialize(str.getPtr(), str.getSize());
-      }
-
-   public:
-      BlockHeader(BinaryDataRef, uint32_t, uint8_t);
-
-      uint32_t           getVersion(void) const { return READ_UINT32_LE(getPtr()); }
-      BinaryData const & getThisHash(void) const { return thisHash_; }
-      BinaryData         getPrevHash(void) const { return BinaryData(getPtr() + 4, 32); }
-      BinaryData         getMerkleRoot(void) const { return BinaryData(getPtr() + 36, 32); }
-      BinaryData         getDiffBits(void) const { return BinaryData(getPtr() + 72, 4); }
-      uint32_t           getTimestamp(void) const { return READ_UINT32_LE(getPtr() + 68); }
-      uint32_t           getNonce(void) const { return READ_UINT32_LE(getPtr() + 76); }
-      uint32_t           getBlockHeight(void) const { return blockHeight_; }
-      uint8_t            getDupId(void) const { return duplicateId_; }
-
-      //////////////////////////////////////////////////////////////////////////
-      BinaryDataRef  getThisHashRef(void) const { return thisHash_.getRef(); }
-      BinaryDataRef  getPrevHashRef(void) const { return BinaryDataRef(getPtr() + 4, 32); }
-      BinaryDataRef  getMerkleRootRef(void) const { return BinaryDataRef(getPtr() + 36, 32); }
-      BinaryDataRef  getDiffBitsRef(void) const { return BinaryDataRef(getPtr() + 72, 4); }
-
-      //////////////////////////////////////////////////////////////////////////
-      uint8_t const * getPtr(void) const {
-         if (!isInitialized_)
-            throw std::runtime_error("uninitialized BlockHeader");
-         return dataCopy_.getPtr();
-      }
-      size_t        getSize(void) const {
-         if (!isInitialized_)
-            throw std::runtime_error("uninitialized BlockHeader");
-         return dataCopy_.getSize();
-      }
-      bool            isInitialized(void) const { return isInitialized_; }
-
-      void clearDataCopy() { dataCopy_.resize(0); }
-
-   private:
-      BinaryData     dataCopy_;
-      bool           isInitialized_ = false;
-      // Specific to the DB storage
-      uint32_t       blockHeight_ = UINT32_MAX;
-      uint8_t        duplicateId_ = 0xFF;
-
-      // Derived properties - we expect these to be set after construct/copy
-      BinaryData     thisHash_;
-      double         difficultyDbl_ = 0.0;
+      BlockHeader(BinaryDataRef, BinaryDataRef,
+         uint32_t, uint32_t, uint32_t, uint32_t, uint8_t);
    };
 
    ////////////////////////////////////////////////////////////////////////////
@@ -139,7 +94,7 @@ namespace DBClientClasses
       const std::vector<BinaryData> scrAddrList_;
 
    public:
-      LedgerEntry(const std::string& id, int64_t value, uint32_t blockHeight,
+      LedgerEntry(const std::string&, int64_t value, uint32_t blockHeight,
          BinaryData& txHash, uint32_t txOutIndex, uint32_t timestamp,
          bool isCoinbase, bool isSentToSelf, bool isChangeBack,
          bool isOptInRBF, bool isChainedZC, bool isWitness,

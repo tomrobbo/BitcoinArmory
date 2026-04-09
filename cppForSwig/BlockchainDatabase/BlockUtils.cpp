@@ -256,7 +256,6 @@ void BlockDataManager::resetDatabases(BdmInitMode mode)
 
       case BdmInitMode::REBUILD:
          iface_->destroyAndResetDatabases();
-         blockchain_->clear();
          break;
       
       default:

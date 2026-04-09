@@ -18,10 +18,11 @@
 #include <map>
 #include <set>
 #include <unordered_map>
+#include <unordered_set>
 
 #include <Utils/BinaryData.h>
+#include "BlockObj.h"
 
-class BlockHeader;
 class BlockData;
 class LMDBBlockDatabase;
 
@@ -45,38 +46,11 @@ namespace Armory
       std::shared_ptr<BlockHeader> reorgBranchPoint;
    };
 
-   struct Hash32
-   {
-      uint64_t data[4];
-      explicit Hash32(const BinaryData&);
-      explicit Hash32(const BinaryDataRef&);
-
-      struct Hasher
-      {
-         using is_transparent = void;
-         std::size_t operator()(const Hash32&) const;
-         std::size_t operator()(const BinaryData&) const;
-         std::size_t operator()(const BinaryDataRef&) const;
-      };
-
-      struct Comparator
-      {
-         using is_transparent = void;
-         constexpr bool operator()(const Hash32&, const Hash32&) const;
-         bool operator()(const Hash32&, const BinaryData&) const;
-         bool operator()(const BinaryData&, const Hash32&) const;
-         bool operator()(const Hash32&, const BinaryDataRef&) const;
-         bool operator()(const BinaryDataRef&, const Hash32&) const;
-      };
-   };
-
    /////////////////////////////////////////////////////////////////////////////
    // Manages the blockchain, keeping track of all the block headers
    // and our longest cord
    class Blockchain
    {
-      using HeaderPtr = std::shared_ptr<BlockHeader>;
-
    private:
       std::shared_ptr<BlockHeader> getGenesisBlock(void) const;
       std::shared_ptr<BlockHeader> organizeChain(bool = false, bool = false);
@@ -86,61 +60,51 @@ namespace Armory
       // difficulties and difficultySum values.  Return the difficultySum of 
       // this block.
       double traceChainDown(std::shared_ptr<BlockHeader>);
+      uint32_t getHighestBlockIDFromDb(LMDBBlockDatabase*) const;
+      void initHighestBlockID(LMDBBlockDatabase*);
+      void updateHighestBlockIDInDb(LMDBBlockDatabase*);
+      uint32_t getNewUniqueID(void);
 
    public:
       Blockchain(const BinaryData&);
-      void clear(void);
 
       /**
       * check/add blocks to the chain
       **/
       std::set<uint32_t> checkForNewBlocks(const std::vector<std::shared_ptr<BlockData>>&);
       void addBlocksInBulk(const std::deque<std::deque<HeaderPtr>>&, bool);
-      void forceAddBlocksInBulk(std::map<BinaryData, HeaderPtr>&);
 
       /**
       * organize/reorganize chain
       **/
-      ReorganizationState organize(bool);
-      ReorganizationState forceOrganize();
-      ReorganizationState findReorgPointFromBlock(const BinaryData&);
-
+      ReorganizationState organize(bool, bool);
       void updateBranchingMaps(LMDBBlockDatabase*, ReorganizationState&);
 
       std::shared_ptr<BlockHeader> top(void) const;
       const std::shared_ptr<BlockHeader> getHeaderByHeight(
          unsigned, uint8_t) const;
-
       HeaderPtr getHeaderByHash(const BinaryData&) const;
+      HeaderPtr getHeaderByHash(BinaryDataRef) const;
+      HeaderPtr getHeaderByHash(const Hash32&) const;
       HeaderPtr getHeaderById(uint32_t) const;
       HeaderPtr getHeaderForTxKey(const BinaryData&) const;
 
-      void putBareHeaders(LMDBBlockDatabase*, bool = true);
       void putNewBareHeaders(LMDBBlockDatabase*);
-
-      uint32_t getNewUniqueID(void);
-      uint32_t getTopId(void) const;
-      uint32_t getTopIdFromDb(LMDBBlockDatabase*) const;
-      void initTopBlockId(LMDBBlockDatabase*);
-      void updateTopIdInDb(LMDBBlockDatabase*);
-
       std::map<unsigned, std::set<unsigned>> mapIDsPerBlockFile(void) const;
-      std::map<unsigned, HeightAndDup> getHeightAndDupMap(void) const;
+      std::map<uint32_t, HeightAndDup> getHeightAndDupMap(void) const;
       void flagBlockHeader(std::shared_ptr<BlockHeader>, LMDBBlockDatabase*);
 
    private:
       const BinaryData genesisHash_;
-      std::unordered_map<Hash32, HeaderPtr, Hash32::Hasher, Hash32::Comparator> headerMap_;
-      std::unordered_map<unsigned, HeaderPtr> headersById_;
+      std::unordered_set<HeaderPtr, BlockHeader::Hasher, BlockHeader::Comparator> headerSet_;
+      std::vector<HeaderPtr> headersById_;
       std::vector<HeaderPtr> headersByHeight_;
 
       std::vector<HeaderPtr> newlyParsedBlocks_;
       std::atomic<HeaderPtr> topBlockPtr_;
-      unsigned topBlockId_ = 0;
-      Blockchain(const Blockchain&); // not defined
+      uint32_t idOfTopBlock_ = 0;
 
-      std::atomic<uint32_t> topID_;
-      static const BinaryData topIdKey_;
+      std::atomic<uint32_t> highestBlockID_;
 
       mutable std::mutex mu_;
       bool forceRebuildFlag_ = false;

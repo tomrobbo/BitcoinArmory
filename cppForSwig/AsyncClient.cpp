@@ -347,6 +347,25 @@ namespace {
       }
       return result;
    }
+
+   HeaderVec capnToHeaderVec(
+      capnp::List<Codec::Types::Header, capnp::Kind::STRUCT>::Reader capnHeaders)
+   {
+      HeaderVec result;
+      result.reserve(capnHeaders.size());
+
+      for (auto capnHeader : capnHeaders) {
+         auto thisHash = capnHeader.getThisHash();
+         auto prevHash = capnHeader.getPrevHash();
+         result.emplace_back(DBClientClasses::BlockHeader{
+            BinaryDataRef{thisHash.begin(), thisHash.end()},
+            BinaryDataRef{prevHash.begin(), prevHash.end()},
+            capnHeader.getTimestamp(), capnHeader.getBlockSize(),
+            capnHeader.getNumTxs(),
+            capnHeader.getHeight(), capnHeader.getDupId()});
+      }
+      return result;
+   }
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1627,16 +1646,7 @@ void AsyncClient::Blockchain::getHeadersByHash(
             }
 
             //convert to header
-            auto capnHeaders = staticReply.getGetHeadersByHash();
-            HeaderVec result;
-            result.reserve(capnHeaders.size());
-
-            for (auto capnHeader : capnHeaders) {
-               auto headerData = capnHeader.getRawData();
-               BinaryDataRef headerBdr(headerData.begin(), headerData.size());
-               result.emplace_back(DBClientClasses::BlockHeader{
-                  headerBdr, capnHeader.getHeight(), capnHeader.getDupId()});
-            }
+            auto result = capnToHeaderVec(staticReply.getGetHeadersByHash());
             callback(ReturnMessage<HeaderVec>{std::move(result)});
          } catch (ClientMessageError& e) {
             //something went wrong, set error message and fire callback
@@ -1694,16 +1704,7 @@ void AsyncClient::Blockchain::getHeadersByHeight(
             }
 
             //convert to header
-            auto capnHeaders = staticReply.getGetHeadersByHeight();
-            HeaderVec result;
-            result.reserve(capnHeaders.size());
-
-            for (auto capnHeader : capnHeaders) {
-               auto headerData = capnHeader.getRawData();
-               BinaryDataRef headerBdr(headerData.begin(), headerData.size());
-               result.emplace_back(DBClientClasses::BlockHeader{
-                  headerBdr, capnHeader.getHeight(), capnHeader.getDupId()});
-            }
+            auto result = capnToHeaderVec(staticReply.getGetHeadersByHeight());
             callback(ReturnMessage<HeaderVec>(std::move(result)));
          } catch (ClientMessageError& e) {
             //something went wrong, set error message and fire callback

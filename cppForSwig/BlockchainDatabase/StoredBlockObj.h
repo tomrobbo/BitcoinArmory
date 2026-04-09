@@ -75,7 +75,6 @@ enum SCRIPT_UTXO_TYPE
    SCRIPT_UTXO_TREE
 };
 
-class BlockHeader;
 class Tx;
 class TxIn;
 class TxOut;
@@ -84,6 +83,7 @@ class TxIOPair;
 namespace Armory
 {
    enum class ScriptPrefix : uint8_t;
+   class BlockHeader;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -253,9 +253,9 @@ struct DBBlock
    virtual ~DBBlock(void);
 
    bool isInitialized(void) const;
-   BlockHeader getBlockHeaderCopy(void) const;
+   Armory::BlockHeader getBlockHeaderCopy(void) const;
    BinaryData getSerializedBlockHeader(void) const;
-   void createFromBlockHeader(const BlockHeader&);
+   void createFromBlockHeader(const Armory::BlockHeader&);
    uint32_t getNumTx(void);
 
    void setHeightAndDup(uint32_t, uint8_t);

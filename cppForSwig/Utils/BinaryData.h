@@ -643,6 +643,7 @@ public:
 
    const BinaryData& getData(void) const;
    size_t getSize(void) const;
+   bool empty(void) const;
    BinaryDataRef getDataRef(void) const;
    std::string toString(void) const;
    std::string toHex(void) const;

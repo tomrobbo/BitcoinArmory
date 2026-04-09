@@ -2585,42 +2585,6 @@ BinaryData CppBridge::setAddressTypeFor(const Wallets::WalletId& wltId,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void CppBridge::getHeadersByHeight(
-  const std::set<unsigned>& heights, MessageId msgId)
-{
-   auto lbd = [this, msgId](
-      ReturnMessage<std::vector<DBClientClasses::BlockHeader>> result)->void
-   {
-      auto headers = result.get();
-
-      capnp::MallocMessageBuilder message;
-      auto fromBridge = message.initRoot<FromBridge>();
-      auto reply = fromBridge.initReply();
-      reply.setReferenceId(msgId);
-      reply.setSuccess(true);
-
-      auto service = reply.initService();
-      auto capnHeaders = service.initGetHeadersByHeight(headers.size());
-      for (unsigned i = 0; i < headers.size(); i++) {
-         auto capnHeader = capnHeaders[i];
-         const auto& header = headers[i];
-
-         capnHeader.setRawData(capnp::Data::Builder(
-            (uint8_t*)header.getPtr(), header.getSize()
-         ));
-         capnHeader.setHeight(header.getBlockHeight());
-         capnHeader.setDupId(header.getDupId());
-      }
-
-      auto serialized = serializeCapnp(message);
-      this->writeToClient(serialized);
-   };
-
-   auto bc = bdvPtr_->blockchain();
-   bc.getHeadersByHeight(heights, lbd);
-}
-
-////////////////////////////////////////////////////////////////////////////////
 void CppBridge::setupNewCoinSelectionInstance(const Wallets::WalletId& wltId,
    const Wallets::AddressAccountId& accId,
    unsigned height, MessageId msgId)
@@ -2816,7 +2780,7 @@ void CppBridge::getBlockTimeByHeight(uint32_t height, MessageId msgId) const
             throw ClientMessageError("unexpected header count in reply", -1);
          }
          auto service = reply.initService();
-         service.setGetBlockTimeByHeight(headers[0].getTimestamp());
+         service.setGetBlockTimeByHeight(headers[0].timestamp);
          reply.setSuccess(true);
 
       } catch (const ClientMessageError& e) {

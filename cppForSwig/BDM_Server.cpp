@@ -952,8 +952,16 @@ namespace {
             unsigned i = 0;
             for (const auto& header : headers) {
                auto capnHeader = capnHeaders[i++];
-               capnHeader.setRawData(capnp::Data::Builder(
-                  (uint8_t*)header->getPtr(), header->getSize()));
+               const auto& thisHash = header->getThisHash();
+               capnHeader.setThisHash(capnp::Data::Builder(
+                  (uint8_t*)thisHash.data, 32));
+               const auto& prevHash = header->getPrevHash();
+               capnHeader.setPrevHash(capnp::Data::Builder(
+                  (uint8_t*)prevHash.data, 32));
+
+               capnHeader.setTimestamp(header->getTimestamp());
+               capnHeader.setBlockSize(header->getBlockSize());
+               capnHeader.setNumTxs(header->getNumTx());
                capnHeader.setHeight(header->getBlockHeight());
                capnHeader.setDupId(header->getDuplicateID());
             }

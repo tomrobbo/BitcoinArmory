@@ -87,29 +87,14 @@ void initLibrary()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-//
 // BlockHeader
-//
-///////////////////////////////////////////////////////////////////////////////
-BlockHeader::BlockHeader(
-   BinaryDataRef rawheader, uint32_t height, uint8_t dupId) :
-   blockHeight_{height}, duplicateId_{dupId}
-{
-   unserialize(rawheader);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void BlockHeader::unserialize(uint8_t const * ptr, uint32_t size)
-{
-   if (size < HEADER_SIZE) {
-      throw BtcUtils::BlockDeserializingException();
-   }
-   dataCopy_.copyFrom(ptr, HEADER_SIZE);
-   BtcUtils::getHash256(dataCopy_.getPtr(), HEADER_SIZE, thisHash_);
-   difficultyDbl_ = BtcUtils::convertDiffBitsToDouble(
-      BinaryDataRef(dataCopy_.getPtr() + 72, 4));
-   isInitialized_ = true;
-}
+BlockHeader::BlockHeader(BinaryDataRef thishash, BinaryDataRef prevhash,
+   uint32_t time, uint32_t size, uint32_t ntx,
+   uint32_t height, uint8_t dupid) :
+   thisHash{thishash}, prevHash{prevhash},
+   timestamp{time}, blockSize{size}, numTxs{ntx},
+   blockHeight{height}, duplicateId{dupid}
+{}
 
 ///////////////////////////////////////////////////////////////////////////////
 //

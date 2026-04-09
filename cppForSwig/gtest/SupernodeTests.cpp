@@ -1149,7 +1149,8 @@ TEST_F(BlockUtilsSuper, Load5Blocks_DynamicReorg_GrabSTXO)
    //reorg from block 3
    {
       auto headerPtr = theBDMt_->bdm()->blockchain()->getHeaderByHeight(3, 0xFF);
-      DBTestUtils::setReorgBranchingPoint(theBDMt_, headerPtr->getThisHash());
+      DBTestUtils::setReorgBranchingPoint(theBDMt_,
+         headerPtr->getThisHash().toBinaryData());
    }
 
    //instantiate resolver feed overloaded object
@@ -4013,7 +4014,7 @@ TEST_F(WebSocketTests, WebSocketStack_DynamicReorg)
    BinaryData branchPointBlockHash, mainBranchBlockHash;
    {
       auto top = theBDMt_->bdm()->blockchain()->top();
-      branchPointBlockHash = top->getThisHash();
+      branchPointBlockHash = top->getThisHash().toBinaryData();
    }
 
    //main branch
@@ -4092,7 +4093,7 @@ TEST_F(WebSocketTests, WebSocketStack_DynamicReorg)
 
       {
          auto top = theBDMt_->bdm()->blockchain()->top();
-         mainBranchBlockHash = top->getThisHash();
+         mainBranchBlockHash = top->getThisHash().toBinaryData();
       }
    }
 

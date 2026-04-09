@@ -61,7 +61,7 @@ void BlockchainScanner_Super::scan()
    auto topBlock = blockchain_->top();
 
    if (scanFrom > topBlock->getBlockHeight()) {
-      topScannedBlockHash_ = topBlock->getThisHash();
+      topScannedBlockHash_ = topBlock->getThisHash().toBinaryData();
       return;
    }
 
@@ -470,7 +470,7 @@ void BlockchainScanner_Super::processOutputsThread(
          auto& txHash = txn.getHash();
 
          auto&& txkey = 
-            DBUtils::getBlkDataKeyNoPrefix(header->getThisID(), 0xFF, i);
+            DBUtils::getBlkDataKeyNoPrefix(header->getUniqueID(), 0xFF, i);
          hashToKey.insert(make_pair(txHash, move(txkey)));
 
          getHashCtr += chrono::system_clock::now() - gethash;
@@ -698,7 +698,7 @@ void BlockchainScanner_Super::writeSubSsh(ParserBatch_Ssh* batch)
    auto topheader = batch->bdb_->blockMap_.rbegin()->second->getHeaderPtr();
    auto subssh_sdbi = db_->getStoredDBInfo(DB_SELECT::SUBSSH, 0);
    subssh_sdbi.topBlkHgt = topheader->getBlockHeight();
-   subssh_sdbi.topScannedBlkHash = topheader->getThisHash();
+   subssh_sdbi.topScannedBlkHash = topheader->getThisHash().toBinaryData();
    subssh_sdbi.metaInt = ctr;
 
    db_->putStoredDBInfo(DB_SELECT::SUBSSH, subssh_sdbi, 0);
@@ -789,7 +789,7 @@ void BlockchainScanner_Super::commitSshBatch()
          calc.fractionCompleted(), calc.remainingSeconds(),
          progVal);
 
-      topScannedBlockHash_ = topheader->getThisHash();
+      topScannedBlockHash_ = topheader->getThisHash().toBinaryData();
       completedBatches_.fetch_add(1, memory_order_relaxed);
       batch->completedPromise_.set_value(true);
    }
@@ -1143,7 +1143,7 @@ void BlockchainScanner_Super::updateSSH(bool force)
       auto topheight = topheader->getBlockHeight();
 
       //update sdbi
-      sshSdbi.topScannedBlkHash = topBlock->getThisHash();
+      sshSdbi.topScannedBlkHash = topBlock->getThisHash().toBinaryData();
       sshSdbi.topBlkHgt = topheight;
 
       auto ssh_tx = db_->beginTransaction(DB_SELECT::SSH, LMDB::Mode::ReadWrite);
@@ -1202,7 +1202,7 @@ void BlockchainScanner_Super::undo(ReorganizationState& reorgState)
 
       auto filemap = fileIter->second;
       auto getID = [blockPtr](const BinaryData&)->uint32_t
-      { return blockPtr->getThisID(); };
+      { return blockPtr->getUniqueID(); };
 
       auto bdata = BlockData::deserialize(
          filemap->ptr() + blockPtr->getOffset(),
@@ -1238,7 +1238,7 @@ void BlockchainScanner_Super::undo(ReorganizationState& reorgState)
 
       //set blockPtr to prev block
       undoneHeights.insert(currentHeight);
-      blockPtr = blockchain_->getHeaderByHash(blockPtr->getPrevHashRef());
+      blockPtr = blockchain_->getHeaderByHash(blockPtr->getPrevHash());
    }
 
    int branchPointHeight = reorgState.reorgBranchPoint->getBlockHeight();
@@ -1258,7 +1258,7 @@ void BlockchainScanner_Super::undo(ReorganizationState& reorgState)
       //update SSH sdbi
       auto tx = db_->beginTransaction(DB_SELECT::SSH, LMDB::Mode::ReadWrite);
       auto sdbi = db_->getStoredDBInfo(DB_SELECT::SSH, 0);
-      sdbi.topScannedBlkHash = reorgState.reorgBranchPoint->getThisHash();
+      sdbi.topScannedBlkHash = reorgState.reorgBranchPoint->getThisHash().toBinaryData();
       sdbi.topBlkHgt = branchPointHeight;
       db_->putStoredDBInfo(DB_SELECT::SSH, sdbi, 0);
    }
@@ -1372,7 +1372,7 @@ shared_ptr<BlockData> BlockDataBatch::getBlockData(unsigned height)
    //find block and deserialize it
    auto getID = [blockheader](const BinaryData&)->unsigned int
    {
-      return blockheader->getThisID();
+      return blockheader->getUniqueID();
    };
 
    auto bdata = BlockData::deserialize(

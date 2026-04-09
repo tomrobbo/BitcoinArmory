@@ -83,7 +83,6 @@ struct BdvRequest {
       updateWalletsLedgerFilter  @9 : List(Types.WalletId);
       getCombinedBalances        @10: Void;
       getTxios                   @11: UInt32;
-      getBlockTimestamps         @12: List(UInt32);
    }
 }
 
@@ -97,11 +96,6 @@ struct BdvReply {
       heightCutoff   @0 : UInt32;
       zcCutoff       @1 : UInt32;
       addresses      @2 : List(AddressOutputs);
-   }
-
-   struct BlockTimestamp {
-      height         @0 : UInt32;
-      timestamp      @1 : UInt32;
    }
 
    union {

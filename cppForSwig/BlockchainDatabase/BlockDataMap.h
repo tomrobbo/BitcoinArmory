@@ -22,7 +22,17 @@
 
 struct BlockHashVector;
 class BCTX;
-class BlockHeader;
+
+namespace Armory
+{
+   namespace FileUtils
+   {
+      class FileCopy;
+      class FileMap;
+      class BlockDataFileMap;
+   }
+   class BlockHeader;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 class BlockData
@@ -31,7 +41,7 @@ private:
    uint32_t uniqueID_ = UINT32_MAX;
    std::shared_ptr<BlockHashVector> txFilter_;
 
-   std::shared_ptr<BlockHeader> headerPtr_;
+   std::shared_ptr<Armory::BlockHeader> headerPtr_;
    const uint8_t* data_ = nullptr;
    size_t size_ = SIZE_MAX;
 
@@ -56,41 +66,25 @@ public:
 
    static std::shared_ptr<BlockData> deserialize(
       const uint8_t*, size_t,
-      const std::shared_ptr<BlockHeader>,
-      std::function<unsigned int(const BinaryData&)> getID,
+      const std::shared_ptr<Armory::BlockHeader>,
+      const std::function<unsigned int(BinaryDataRef)>&,
       CheckHashes);
 
-   bool isInitialized(void) const
-   {
-      return (data_ != nullptr);
-   }
+   bool isInitialized(void) const;
+   const std::vector<std::shared_ptr<BCTX>>& getTxns(void) const;
+   const std::shared_ptr<Armory::BlockHeader> header(void) const;
+   size_t size(void) const;
+   void setFileID(unsigned);
+   void setOffset(size_t);
 
-   const std::vector<std::shared_ptr<BCTX>>& getTxns(void) const
-   {
-      return txns_;
-   }
-
-   const std::shared_ptr<BlockHeader> header(void) const
-   {
-      return headerPtr_;
-   }
-
-   size_t size(void) const
-   {
-      return size_;
-   }
-
-   void setFileID(unsigned fileid) { fileID_ = fileid; }
-   void setOffset(size_t offset) { offset_ = offset; }
-
-   std::shared_ptr<BlockHeader> createBlockHeader(void) const;
-   const BinaryData& getHash(void) const { return blockHash_; }
+   std::shared_ptr<Armory::BlockHeader> createBlockHeader(void) const;
+   const BinaryData& getHash(void) const;
 
    void computeTxFilter(const std::vector<BinaryData>&);
    std::shared_ptr<BlockHashVector> getTxFilter(void) const;
-   uint32_t uniqueID(void) const { return uniqueID_; }
+   uint32_t uniqueID(void) const;
    void setUniqueID(uint32_t);
-   std::shared_ptr<BlockHeader> getHeaderPtr(void) const { return headerPtr_; }
+   std::shared_ptr<Armory::BlockHeader> getHeaderPtr(void) const;
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -131,16 +125,6 @@ public:
 };
 
 /////////////////////////////////////////////////////////////////////////////
-namespace Armory
-{
-   namespace FileUtils
-   {
-      class FileCopy;
-      class FileMap;
-      class BlockDataFileMap;
-   }
-}
-
 class BlockDataLoader
 {
 public:

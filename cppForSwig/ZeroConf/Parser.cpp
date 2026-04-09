@@ -240,9 +240,7 @@ ZeroConfContainer::purgeToBranchpoint(
             keysToDelete.emplace(opid.second.getSliceCopy(0, 6));
          }
       }
-
-      const auto& bhash = currentHeader->getPrevHash();
-      currentHeader = bc_->getHeaderByHash(bhash);
+      currentHeader = bc_->getHeaderByHash(currentHeader->getPrevHash());
    }
 
    //drop the ZC from the mempool
@@ -317,12 +315,11 @@ std::map<BinaryData, std::shared_ptr<ParsedTx>> ZeroConfContainer::purge(
       currentHeader = reorgState.reorgBranchPoint;
    }
 
-   //get the next header
-   currentHeader = bc_->getHeaderByHash(currentHeader->getNextHash());
-
-   //loop over headers
-   while (currentHeader != nullptr) {
+   //loop over headers, starting next one from prev top
+   auto nextHashPtr = currentHeader->getNextHash();
+   while (nextHashPtr != nullptr) {
       //grab block
+      currentHeader = bc_->getHeaderByHash(*nextHashPtr);
       auto rawBlock = db_->getRawBlock(currentHeader);
       auto block = BlockData::deserialize(
          rawBlock.getPtr(), rawBlock.getSize(),
@@ -352,9 +349,7 @@ std::map<BinaryData, std::shared_ptr<ParsedTx>> ZeroConfContainer::purge(
       if (currentHeader->getThisHash() == reorgState.newTop->getThisHash()) {
          break;
       }
-
-      const auto& bhash = currentHeader->getNextHash();
-      currentHeader = bc_->getHeaderByHash(bhash);
+      nextHashPtr = currentHeader->getNextHash();
    }
 
    //drop the invalidated ZCs

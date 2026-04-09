@@ -672,17 +672,6 @@ class BlockchainService(ProtoWrapper):
       return txDict
 
    ####
-   def getHeadersByHeight(self, heights: list[int]):
-      packet = Bridge.ToBridge.new_message()
-      packetHeights = packet.init("service").init("getHeadersByHeight", len(heights))
-      for i, height in enumerate(heights):
-         packetHeights[i] = height
-
-      fut = self.send(packet)
-      reply = fut.getVal()
-      return reply.service.getHeadersByHeight
-
-   ####
    def getBlockTimeByHeight(self, height):
       if height in self.blockTimeByHeightCache:
          return self.blockTimeByHeightCache[height]

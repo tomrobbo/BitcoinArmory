@@ -215,11 +215,8 @@ namespace Armory
          void setWalletLabels(const Wallets::WalletId&,
             const std::string&, const std::string&);
 
-         //txs & headers
+         //tx stuff
          void getTxsByHash(const std::set<BinaryData>&, MessageId);
-         void getHeadersByHeight(const std::set<unsigned>&, MessageId);
-
-         //utxos
          void getUTXOs(const Wallets::WalletId&,
             const Wallets::AddressAccountId&,
             uint64_t, bool, bool, MessageId);

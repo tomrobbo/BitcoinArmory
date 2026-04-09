@@ -14,6 +14,7 @@
 #include <BlockchainDatabase/txio.h>
 #include <BlockchainDatabase/lmdb_wrapper.h>
 #include <ZeroConf/Utils.h>
+#include <TxClasses.h>
 #include <DBClientClasses.h>
 
 using namespace Armory;
@@ -78,14 +79,13 @@ bool Context::filterTxio(const TxIOPair& txio) const
 void DBCache::addBlocks(std::vector<DBClientClasses::BlockHeader>& blkVec)
 {
    for (auto& blk : blkVec) {
-      auto iter = blocks.find(blk.getBlockHeight());
+      auto iter = blocks.find(blk.blockHeight);
       if (iter == blocks.end()) {
-         iter = blocks.emplace(blk.getBlockHeight(), Blocks{}).first;
+         iter = blocks.emplace(blk.blockHeight, Blocks{}).first;
       }
 
-      auto dupId = blk.getDupId();
-      iter->second.mainChain = dupId;
-      iter->second.blocks.emplace(dupId, std::move(blk));
+      iter->second.mainChain = blk.duplicateId;
+      iter->second.blocks.emplace(blk.duplicateId, std::move(blk));
    }
 }
 
@@ -234,7 +234,7 @@ Context Ledgers::prepareContext(
    for (const auto& blockPair : dbCache->blocks) {
       try {
          const auto& block = blockPair.second.blocks.at(blockPair.second.mainChain);
-         timestamps.emplace(blockPair.first, block.getTimestamp());
+         timestamps.emplace(blockPair.first, block.timestamp);
       } catch (const std::out_of_range&) {
          LOGWARN << "missing block: " <<
             blockPair.first << "|" << blockPair.second.mainChain;
