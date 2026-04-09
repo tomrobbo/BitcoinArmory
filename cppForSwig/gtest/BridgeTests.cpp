@@ -5958,7 +5958,6 @@ TEST_F(BridgeWalletsWithDBTests, CycleConnection)
 
    //kill BDM
    WebSocketServer::shutdown();
-   theBDMt_->shutdown();
 
    //wait on disconnected notif
    auto reply = waitOnReply();
@@ -5974,19 +5973,35 @@ TEST_F(BridgeWalletsWithDBTests, CycleConnection)
 
    //restart BDM
    WebSocketServer::waitOnShutdown();
+   theBDMt_->shutdown();
    delete theBDMt_;
 
    {
       WebSocketServer::init();
+      Config::reset();
+      Config::DBSettings::setServiceType(SERVICE_UNITTEST_WITHWS);
+      Config::parseArgs({
+         "--datadir=./fakehomedir",
+         "--dbdir=./ldbtestdir",
+         "--satoshi-datadir=./blkfiletest",
+         "--db-type=DB_FULL",
+         "--thread-count=3",
+         "--public"},
+         Config::ProcessType::DB);
       initBDM();
       auto nodePtr = std::dynamic_pointer_cast<NodeUnitTest>(
          Config::NetworkSettings::bitcoinNodes().first);
       nodePtr->setIface(theBDMt_->bdm()->getIFace());
-      WebSocketServer::start(theBDMt_->bdm(), true);
    }
+
+   WebSocketServer::initAuthPeers({
+      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+   WebSocketServer::start(theBDMt_->bdm(), true);
 
    ASSERT_TRUE(connectToIp(bridge_, "127.0.0.1", "9001", serverPubkey_));
    ASSERT_TRUE(registerWallets(bridge_));
+   theBDMt_->start(Config::DBSettings::initMode());
+   ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
    balances = getAddrBalances(bridge_, wltId, accountId);
@@ -6079,23 +6094,35 @@ TEST_F(BridgeWalletsWithDBTests, DeleteWallet)
    pushRequest(bridge_, rawReq);
 
    //validate reply
-   while (true) {
+   int count = 0;
+   while (count < 2) {
       auto result = waitOnReply();
       kj::ArrayPtr<const capnp::word> words(
          reinterpret_cast<const capnp::word*>(result->data.getPtr()),
          result->data.getSize() / sizeof(capnp::word));
       capnp::FlatArrayMessageReader reader(words);
       auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
-      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
-         continue;
-      }
+      switch (fromBridge.which())
+      {
+         case Codec::Bridge::FromBridge::REPLY:
+         {
+            auto reply = fromBridge.getReply();
+            ASSERT_TRUE(reply.getSuccess());
+            ASSERT_EQ(reply.getReferenceId(), refId);
+            ++count;
+            break;
+         }
 
-      auto reply = fromBridge.getReply();
-      ASSERT_TRUE(reply.getSuccess());
-      ASSERT_EQ(reply.getReferenceId(), refId);
-      ASSERT_FALSE(FileUtils::fileExists(wltPath, 0));
-      break;
+         case Codec::Bridge::FromBridge::NOTIFICATION:
+         {
+            auto notif = fromBridge.getNotification();
+            ASSERT_EQ(notif.which(), Codec::Bridge::Notification::REFRESH);
+            ++count;
+            break;
+         }
+      }
    }
+   ASSERT_FALSE(FileUtils::fileExists(wltPath, 0));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

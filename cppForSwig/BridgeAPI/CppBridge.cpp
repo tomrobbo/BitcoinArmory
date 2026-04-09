@@ -543,6 +543,19 @@ CppBridge::CppBridge() :
    );
 }
 
+CppBridge::~CppBridge()
+{
+   wltManager_->cleanupBDV();
+}
+
+void CppBridge::disconnectFromDb()
+{
+   if (bdvPtr_ && bdvPtr_->isValid()) {
+      bdvPtr_->unregisterFromDB();
+   }
+   wltManager_->cleanupBDV();
+}
+
 void CppBridge::setWriteLambda(
    const std::function<void(std::unique_ptr<WritePayload_Bridge>)>& lbd)
 {
@@ -556,9 +569,6 @@ std::shared_ptr<AsyncClient::BlockDataViewer> CppBridge::bdvPtr() const
 
 void CppBridge::reset()
 {
-   if (bdvPtr_ && bdvPtr_->isValid()) {
-      bdvPtr_->unregisterFromDB();
-   }
    bdvPtr_.reset();
 }
 
@@ -844,7 +854,7 @@ BinaryData CppBridge::createWalletsPacket(MessageId msgId)
 bool CppBridge::unloadWallet(const Wallets::WalletId& wltId)
 {
    try {
-      wltManager_->deleteWallet(wltId);
+      wltManager_->unloadWallet(wltId);
    } catch (const std::exception& e) {
       LOGWARN << "failed to unload wallet with error: " << e.what();
       return false;

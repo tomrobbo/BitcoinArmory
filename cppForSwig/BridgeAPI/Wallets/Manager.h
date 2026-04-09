@@ -88,7 +88,6 @@ namespace Armory
             const Wallets::AddressAccountId&);
          void addAllAccounts(std::shared_ptr<Wallets::AssetWallet>);
          void loadAFile(const std::filesystem::path&);
-         void cleanupBDV(void);
 
       public:
          WalletManager(const std::filesystem::path&);
@@ -104,16 +103,14 @@ namespace Armory
          void loadWallets(void);
          std::shared_ptr<WalletFileInfo> importFile(const std::filesystem::path&);
 
-         /* db setup */
-         void registerWallets(void);
-         void registerWallet(const Wallets::WalletId&,
-            const Wallets::AddressAccountId&, bool);
+         /* connection setup */
          void setBdvCallback(
             const std::function<void(BinaryData&)>&);
          void setCleanupCallback(
             const std::function<void(void)>&);
          std::shared_ptr<Callback> getBdvCallback(void) const;
          void setBdvPtr(std::shared_ptr<AsyncClient::BlockDataViewer>);
+         void cleanupBDV(void);
 
          /* utils */
          const std::filesystem::path& getWalletDir(void) const;
@@ -137,9 +134,11 @@ namespace Armory
             Seeds::SeedType,
             const SecureBinaryData&, //extra entropy
             const Wallets::IO::CreateWalletParams&);
-
          std::filesystem::path unloadWallet(const Wallets::WalletId&);
          void deleteWallet(const Wallets::WalletId&);
+         void registerWallets(void);
+         void registerWallet(const Wallets::WalletId&,
+            const Wallets::AddressAccountId&, bool);
 
          /* address creation */
          void extendAddressChain(const Wallets::WalletId&,

@@ -148,7 +148,6 @@ WalletManager::getWalletContainerMap() const
    return walletsByDbId_;
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 std::set<Wallets::AddressAccountId> WalletManager::getAddressAccountIds(
    const Wallets::WalletId& wltId) const
@@ -238,7 +237,10 @@ void WalletManager::setBdvCallback(
                throw std::runtime_error("empty packet in push notif!");
             }
             writeFunc(pushPtr->packet);
-            cleanupBDV();
+            auto cleanupThr = std::thread([this]() { cleanupBDV(); });
+            if (cleanupThr.joinable()) {
+               cleanupThr.join();
+            }
             return;
          }
 

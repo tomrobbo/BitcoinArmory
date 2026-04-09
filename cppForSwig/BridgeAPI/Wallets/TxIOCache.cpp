@@ -35,6 +35,17 @@ std::shared_ptr<const Ledgers::DBCache> TxIOCache::getDBCache() const
    return std::const_pointer_cast<const Ledgers::DBCache>(dbCache_);
 }
 
+void TxIOCache::purge()
+{
+   lastKnownBlock_ = UINT32_MAX;
+   unspentTxios_.clear();
+   spentTxios_.clear();
+   zcTxios_.clear();
+   dbCache_->txMap.clear();
+   dbCache_->blocks.clear();
+}
+
+////////
 CacheResolveResult TxIOCache::resolve(
    const AddressFilter& filter, uint32_t fromHeight) const
 {

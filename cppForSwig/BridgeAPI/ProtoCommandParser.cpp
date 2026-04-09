@@ -141,13 +141,13 @@ namespace
 
          case DbSetupRequest::DISCONNECT:
          {
-            bridge->reset();
+            bridge->disconnectFromDb();
             break;
          }
 
          case DbSetupRequest::SHUTDOWN:
          {
-            bridge->reset();
+            bridge->bdvPtr()->shutdown();
             return false;
          }
 

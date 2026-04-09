@@ -102,6 +102,7 @@ namespace Armory
          std::vector<UTXO> getUTXOs(uint64_t, bool, bool,
             const AddressFilter&) const;
          std::map<TxIOKey, TxIOPair> getZcTxios(const AddressFilter&) const;
+         void purge(void);
       };
    } //namespace Bridge
 } //namespace Armory

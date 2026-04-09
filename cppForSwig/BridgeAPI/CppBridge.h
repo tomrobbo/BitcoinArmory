@@ -120,9 +120,9 @@ namespace Armory
 
       private:
          std::shared_ptr<Wallets::AuthorizedPeers> getPeersDb(void);
+         void reset(void);
 
       public:
-         void reset(void);
          std::shared_ptr<AsyncClient::BlockDataViewer> bdvPtr(void) const;
 
          //wallet manager init methods
@@ -271,7 +271,9 @@ namespace Armory
 
       public:
          CppBridge(void);
+         ~CppBridge(void);
 
+         void disconnectFromDb(void);
          void writeToClient(BinaryData&) const;
          void setWriteLambda(
             const std::function<void(std::unique_ptr<WritePayload_Bridge>)>&);
