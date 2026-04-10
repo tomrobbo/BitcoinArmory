@@ -1123,7 +1123,7 @@ void CppBridge::connectToIp(const std::string& ip, const std::string& port,
 
    if (dbOffline_) {
       LOGWARN << "attempt to connect to DB in offline mode, ignoring";
-      reply.setError("cannot setup db offline mode");
+      reply.setError("cannot setup db in offline mode");
       reply.setSuccess(false);
       auto response = serializeCapnp(message);
       this->writeToClient(response);
@@ -1216,7 +1216,7 @@ void CppBridge::connectToPeer(const std::string& peerKey, MessageId refId)
 
    if (dbOffline_) {
       LOGWARN << "attempt to connect to DB in offline mode, ignoring";
-      reply.setError("cannot setup db offline mode");
+      reply.setError("cannot setup db in offline mode");
       reply.setSuccess(false);
       auto response = serializeCapnp(message);
       this->writeToClient(response);
@@ -1277,7 +1277,7 @@ void CppBridge::automateDb(
 
    if (dbOffline_) {
       LOGWARN << "attempt to connect to DB in offline mode, ignoring";
-      reply.setError("cannot setup db offline mode");
+      reply.setError("cannot setup db in offline mode");
       reply.setSuccess(false);
       auto response = serializeCapnp(message);
       this->writeToClient(response);
