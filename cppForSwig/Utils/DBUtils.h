@@ -115,6 +115,7 @@ namespace Armory
          size_t size(void) const;
          const uint8_t* ptr(void) const;
          bool isValid(void) const;
+         void xorMe(uint64_t);
       };
 
       class BlockDataFileMap

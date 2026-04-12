@@ -459,7 +459,9 @@ FileUtils::FileCopy::FileCopy(const fs::path& path, size_t offset)
          throw std::runtime_error("offset is too large");
       }
 
-      data_.resize(size-offset);
+      //8 align the buffer
+      size_t sizeCount = (size - offset + 7) / 8;
+      data_.resize(sizeCount * 8);
 
 #ifdef _WIN32
       _read(fd, &data_[0], size-offset_);
@@ -499,6 +501,18 @@ size_t FileUtils::FileCopy::size() const
 const uint8_t* FileUtils::FileCopy::ptr() const
 {
    return data_.data();
+}
+
+void FileUtils::FileCopy::xorMe(uint64_t xorKey)
+{
+   if (data_.size() % 8 != 0) {
+      throw std::length_error("xored block data is misaligned");
+   }
+
+   auto data64 = (uint64_t*)&data_[0];
+   for (unsigned i = 0; i < data_.size() / 8; i++) {
+      data64[i] ^= xorKey;
+   }
 }
 
 /////////////////////////////////////////////////////////////////////////////

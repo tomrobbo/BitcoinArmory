@@ -1,12 +1,13 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2016-2025, goatpig.                                         //
+//  Copyright (C) 2016-2026, goatpig.                                         //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <string_view>
+#include <cstring>
 
 #include "BlockDataMap.h"
 #include <Utils/BtcUtils.h>
@@ -20,6 +21,9 @@ namespace fs = std::filesystem;
 using namespace std::string_view_literals;
 using namespace Armory;
 
+uint64_t BlockFiles::xorKey = 0;
+bool BlockFiles::isXored = false;
+
 namespace {
    fs::path blkFileExt{".dat"sv};
    auto blkFilePrefix = "blk"sv;
@@ -32,6 +36,8 @@ namespace {
       }
       return std::make_shared<FileUtils::FileCopy>(path.path, path.offset);
    }
+
+   constexpr std::string_view xorFileName{"xor.dat"sv};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -289,7 +295,19 @@ void BlockFiles::detectAllBlockFiles()
          paths_.emplace(fileId, filePath);
          totalBlockchainBytes_ += filesize;
       } catch (const std::exception&) {
-         continue;
+         if (filePath.filename().string() != xorFileName) {
+            continue;
+         }
+
+         //this is the xor key, grab ita
+         auto fileCopy = FileUtils::FileCopy(filePath);
+         if (fileCopy.size() != 8) {
+            LOGWARN << "Found a xor key but it's not 8 bytes";
+            continue;
+         }
+         LOGINFO << "found a xor key";
+         std::memcpy(&xorKey, fileCopy.ptr(), 8);
+         isXored = true;
       }
    }
 }
@@ -408,12 +426,20 @@ bool BlockDataLoader::isValid() const
 
 /////////////////////////////////////////////////////////////////////////////
 // BlockDataCopy
-/////////////////////////////////////////////////////////////////////////////
+BlockDataLoader::BlockDataCopy::BlockDataCopy() :
+   fileID{UINT16_MAX}, offset{SIZE_MAX}, data{nullptr}
+{}
+
 BlockDataLoader::BlockDataCopy::BlockDataCopy(const PathAndOffset& path) :
    fileID(path.fileID), offset(path.offset),
    data(getFileCopy(path))
-{}
+{
+   if (BlockFiles::isXored) {
+      data->xorMe(BlockFiles::xorKey);
+   }
+}
 
-////
-BlockDataLoader::BlockDataCopy::BlockDataCopy()
-{}
+bool BlockDataLoader::BlockDataCopy::isValid() const
+{
+   return fileID != UINT16_MAX;
+}

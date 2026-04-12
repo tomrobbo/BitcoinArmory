@@ -106,6 +106,10 @@ class BlockFiles
 {
    friend class BlockDataLoader;
 
+public:
+   static uint64_t xorKey;
+   static bool isXored;
+
 private:
    std::map<uint16_t, std::filesystem::path> paths_;
    const std::filesystem::path folderPath_;
@@ -137,13 +141,13 @@ public:
 
    struct BlockDataCopy
    {
-      const uint16_t fileID = UINT16_MAX;
-      const size_t offset = SIZE_MAX;
-      const std::shared_ptr<Armory::FileUtils::FileCopy> data=nullptr;
+      const uint16_t fileID;
+      const size_t offset;
+      const std::shared_ptr<Armory::FileUtils::FileCopy> data;
 
-      BlockDataCopy(const PathAndOffset&);
       BlockDataCopy(void);
-      bool isValid(void) const { return fileID != UINT16_MAX; }
+      BlockDataCopy(const PathAndOffset&);
+      bool isValid(void) const;
    };
 
 private:
