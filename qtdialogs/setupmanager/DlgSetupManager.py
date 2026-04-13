@@ -449,7 +449,8 @@ class DlgSetupManager(ArmoryDialog):
       """Get database connection parameters from UI."""
       dbSettings = self.databaseTab.collectSettings()
       coreSettings = self.coreTab.collectSettings()
-      scenario = dbSettings['scenario']
+      scenario = SCENARIO_DB_NONE if CLI_OPTIONS.offline == True \
+         else dbSettings['scenario']
       params = {'scenario': scenario}
 
       if scenario == SCENARIO_DB_LOCAL:

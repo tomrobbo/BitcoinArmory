@@ -45,11 +45,12 @@ namespace Armory
       struct CacheResolveResult
       {
          const uint32_t topBlock;
+         const bool isZC;
          std::map<TxIOKey, TxIOPair> txioMap;
          std::map<ScrAddr, std::vector<TxIOPair*>> addrTxioMap;
 
+         CacheResolveResult(uint32_t, bool);
          void addTxio(const TxIOKey&, const TxIOPair&, const ScrAddr&);
-         bool isZC(void) const;
       };
 
       struct ChainData
@@ -101,6 +102,7 @@ namespace Armory
          std::vector<UTXO> getUTXOs(uint64_t, bool, bool,
             const AddressFilter&) const;
          std::map<TxIOKey, TxIOPair> getZcTxios(const AddressFilter&) const;
+         void purge(void);
       };
    } //namespace Bridge
 } //namespace Armory

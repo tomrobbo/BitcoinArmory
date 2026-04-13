@@ -37,6 +37,7 @@ static struct lws_protocols protocols[] =
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+// WebSocketClient
 WebSocketClient::WebSocketClient(const std::string& addr,
    const std::string& port,
    std::shared_ptr<Wallets::AuthorizedPeers> peers, bool oneWayAuth,
@@ -52,7 +53,6 @@ WebSocketClient::WebSocketClient(const std::string& addr,
    bip151Connection_ = std::make_shared<BIP151Connection>(lbds, oneWayAuth);
 }
 
-////
 WebSocketClient::~WebSocketClient()
 {
    shutdown();
@@ -61,24 +61,23 @@ WebSocketClient::~WebSocketClient()
    }
 }
 
+////////
 SocketType WebSocketClient::type() const
 {
    return SocketType::WS;
 }
 
-////
 std::pair<unsigned, unsigned> WebSocketClient::getRekeyCount() const
 {
    return std::make_pair(outerRekeyCount_, innerRekeyCount_);
 }
 
-////
 bool WebSocketClient::running() const
 {
    return run_.load(std::memory_order_relaxed) != 0;
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 void WebSocketClient::pushPayload(
    std::unique_ptr<Socket_WritePayload> write_payload,
    std::shared_ptr<Socket_ReadPayload> read_payload)
@@ -100,7 +99,6 @@ void WebSocketClient::pushPayload(
    writeSerializationQueue_.push_back(move(write_payload));
 }
 
-////////////////////////////////////////////////////////////////////////////////
 void WebSocketClient::writeService()
 {
    while (true) {
@@ -156,7 +154,7 @@ void WebSocketClient::writeService()
    }
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 struct lws_context* WebSocketClient::init()
 {
    run_.store(1, std::memory_order_relaxed);
@@ -215,7 +213,6 @@ struct lws_context* WebSocketClient::init()
    return contextptr;
 }
 
-////////////////////////////////////////////////////////////////////////////////
 bool WebSocketClient::connectToRemote()
 {
    auto connectedFut = connectionReadyProm_.get_future();
@@ -234,7 +231,7 @@ bool WebSocketClient::connectToRemote()
    return connectedFut.get();
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 void WebSocketClient::service(lws_context* contextPtr)
 {
    int n = 0;
@@ -252,10 +249,10 @@ void WebSocketClient::service(lws_context* contextPtr)
    cleanup();
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 void WebSocketClient::shutdown()
 {
-   if (run_.load(std::memory_order_relaxed) == 0) {
+   if (run_.exchange(0, std::memory_order_relaxed) == 0) {
       return;
    }
 
@@ -263,11 +260,9 @@ void WebSocketClient::shutdown()
    if (context == nullptr) {
       return;
    }
-   run_.store(0, std::memory_order_relaxed);
    lws_cancel_service(context);
 }
 
-////////////////////////////////////////////////////////////////////////////////
 void WebSocketClient::cleanup()
 {
    writeSerializationQueue_.terminate();
@@ -338,7 +333,7 @@ void WebSocketClient::cleanup()
    LOGINFO << "lws client cleaned up";
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 int WebSocketClient::callback(struct lws *wsi,
    enum lws_callback_reasons reason, void *user, void *in, size_t len)
 {
@@ -430,7 +425,7 @@ int WebSocketClient::callback(struct lws *wsi,
    return 0;
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 void WebSocketClient::readService()
 {
    while (true) {
@@ -534,7 +529,6 @@ void WebSocketClient::readService()
    }
 }
 
-////////////////////////////////////////////////////////////////////////////////
 bool WebSocketClient::processAEADHandshake(const WebSocketMessagePartial& msgObj)
 {
    auto writeData = [this](const BinaryData& payload,
@@ -624,21 +618,19 @@ bool WebSocketClient::processAEADHandshake(const WebSocketMessagePartial& msgObj
    }
 }
 
-///////////////////////////////////////////////////////////////////////////////
+////////
 void WebSocketClient::addPublicKey(const SecureBinaryData& pubkey, bool oneWay)
 {
    const std::string addrPort{ addr_ + ":" + port_ };
    authPeers_->addPeer(pubkey, {addrPort}, {}, oneWay);
 }
 
-///////////////////////////////////////////////////////////////////////////////
 void WebSocketClient::setPubkeyPromptLambda(
    const std::function<bool(const BinaryData&)>& lbd)
 {
    userPromptLambda_ = lbd;
 }
 
-///////////////////////////////////////////////////////////////////////////////
 void WebSocketClient::promptUser(
    const BinaryDataRef& keyRef, const std::string& name)
 {
@@ -670,23 +662,18 @@ void WebSocketClient::promptUser(
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-//
 // WSClientWriteQueue
-//
-///////////////////////////////////////////////////////////////////////////////
 void WSClientWriteQueue::push_back(SerializedMessage& msg)
 {
    writeQueue_.push_back(std::move(msg));
    lws_cancel_service(contextPtr_);
 }
 
-///////////////////////////////////////////////////////////////////////////////
 SerializedMessage WSClientWriteQueue::pop_front()
 {
    return std::move(writeQueue_.pop_front());
 }
 
-///////////////////////////////////////////////////////////////////////////////
 bool WSClientWriteQueue::empty() const
 {
    return writeQueue_.count() == 0;

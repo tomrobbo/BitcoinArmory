@@ -339,13 +339,7 @@ namespace AsyncClient
    private:
       BlockDataViewer(void);
       BlockDataViewer(std::shared_ptr<SocketPrototype> sock);
-
-      const BlockDataViewer& operator=(const BlockDataViewer& rhs)
-      {
-         sock_ = rhs.sock_;
-         cache_ = rhs.cache_;
-         return *this;
-      }
+      BlockDataViewer& operator=(const BlockDataViewer&);
 
    public:
       ~BlockDataViewer(void);

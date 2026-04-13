@@ -148,7 +148,6 @@ WalletManager::getWalletContainerMap() const
    return walletsByDbId_;
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 std::set<Wallets::AddressAccountId> WalletManager::getAddressAccountIds(
    const Wallets::WalletId& wltId) const
@@ -200,7 +199,7 @@ std::shared_ptr<WalletContainer> WalletManager::getWalletContainer(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void WalletManager::setupBdvCallback(
+void WalletManager::setBdvCallback(
    const std::function<void(BinaryData&)>& writeFunc)
 {
    if (callbackPtr_ != nullptr) {
@@ -231,11 +230,31 @@ void WalletManager::setupBdvCallback(
             return;
          }
 
+         case NotifType::DISCONNECTED:
+         {
+            auto pushPtr = std::dynamic_pointer_cast<NotifStruct_Disconnected>(notif);
+            if (pushPtr == nullptr || pushPtr->packet.empty()) {
+               throw std::runtime_error("empty packet in push notif!");
+            }
+            writeFunc(pushPtr->packet);
+            auto cleanupThr = std::thread([this]() { cleanupBDV(); });
+            if (cleanupThr.joinable()) {
+               cleanupThr.join();
+            }
+            return;
+         }
+
          default:
             updateStateFromDB(notif);
       }
    };
    callbackPtr_ = std::make_shared<Callback>(pushNotif);
+}
+
+void WalletManager::setCleanupCallback(
+   const std::function<void(void)>& callback)
+{
+   cleanupCallback_ = callback;
 }
 
 ////
@@ -255,6 +274,19 @@ void WalletManager::setBdvPtr(
       }
    }
    callbackPtr_->notifySetupDone();
+}
+
+void WalletManager::cleanupBDV()
+{
+   for (auto& wltIt : wallets_) {
+      for (auto& accIt : wltIt.second) {
+         accIt.second->cleanupBDV();
+      }
+   }
+   bdvPtr_.reset();
+   if (cleanupCallback_) {
+      cleanupCallback_();
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

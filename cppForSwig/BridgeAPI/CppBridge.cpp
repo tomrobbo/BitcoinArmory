@@ -535,9 +535,25 @@ CppBridge::CppBridge() :
    dbOffline_(Config::NetworkSettings::isOffline())
 {
    wltManager_ = std::make_shared<WalletManager>(path_);
-   wltManager_->setupBdvCallback([this](BinaryData& data)
+   wltManager_->setBdvCallback([this](BinaryData& data)
       { writeToClient(data); }
    );
+   wltManager_->setCleanupCallback([this]()
+      { reset(); }
+   );
+}
+
+CppBridge::~CppBridge()
+{
+   wltManager_->cleanupBDV();
+}
+
+void CppBridge::disconnectFromDb()
+{
+   if (bdvPtr_ && bdvPtr_->isValid()) {
+      bdvPtr_->unregisterFromDB();
+   }
+   wltManager_->cleanupBDV();
 }
 
 void CppBridge::setWriteLambda(
@@ -553,9 +569,6 @@ std::shared_ptr<AsyncClient::BlockDataViewer> CppBridge::bdvPtr() const
 
 void CppBridge::reset()
 {
-   if (bdvPtr_) {
-      bdvPtr_->unregisterFromDB();
-   }
    bdvPtr_.reset();
 }
 
@@ -841,7 +854,7 @@ BinaryData CppBridge::createWalletsPacket(MessageId msgId)
 bool CppBridge::unloadWallet(const Wallets::WalletId& wltId)
 {
    try {
-      wltManager_->deleteWallet(wltId);
+      wltManager_->unloadWallet(wltId);
    } catch (const std::exception& e) {
       LOGWARN << "failed to unload wallet with error: " << e.what();
       return false;
@@ -1110,7 +1123,7 @@ void CppBridge::connectToIp(const std::string& ip, const std::string& port,
 
    if (dbOffline_) {
       LOGWARN << "attempt to connect to DB in offline mode, ignoring";
-      reply.setError("cannot setup db offline mode");
+      reply.setError("cannot setup db in offline mode");
       reply.setSuccess(false);
       auto response = serializeCapnp(message);
       this->writeToClient(response);
@@ -1203,7 +1216,7 @@ void CppBridge::connectToPeer(const std::string& peerKey, MessageId refId)
 
    if (dbOffline_) {
       LOGWARN << "attempt to connect to DB in offline mode, ignoring";
-      reply.setError("cannot setup db offline mode");
+      reply.setError("cannot setup db in offline mode");
       reply.setSuccess(false);
       auto response = serializeCapnp(message);
       this->writeToClient(response);
@@ -1264,7 +1277,7 @@ void CppBridge::automateDb(
 
    if (dbOffline_) {
       LOGWARN << "attempt to connect to DB in offline mode, ignoring";
-      reply.setError("cannot setup db offline mode");
+      reply.setError("cannot setup db in offline mode");
       reply.setSuccess(false);
       auto response = serializeCapnp(message);
       this->writeToClient(response);
@@ -1327,11 +1340,6 @@ void CppBridge::cleanupDb(MessageId refId)
 
    auto response = serializeCapnp(message);
    this->writeToClient(response);
-}
-
-void CppBridge::disconnect()
-{
-   bdvPtr_->unregisterFromDB();
 }
 
 ////
