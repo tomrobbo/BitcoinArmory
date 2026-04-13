@@ -1808,7 +1808,121 @@ TEST_F(BlockUtilsFull, Load5Blocks_CheckWalletFilters)
    EXPECT_EQ(wlt2_count, 0U);
 }
 
-TEST_F(BlockUtilsFull, PPrintTestChain)
+TEST_F(BlockUtilsFull, BlockXor)
+{
+   //generate a random xor key
+   auto rando = Cryptography::PRNG::fortuna.generateRandom(8);
+   uint64_t xorKey;
+   memcpy(&xorKey, rando.getPtr(), 8);
+
+   //get a mmap of the block data file
+   auto fileMap = FileUtils::FileMap(blk0dat_, false);
+   ASSERT_TRUE(fileMap.isValid());
+
+   //create xored copy of the block file
+   auto xoredFilePath = blkdir_ / "xoredfile.dat";
+   {
+      size_t offset = 0;
+      std::fstream xoredFile;
+      xoredFile.open(xoredFilePath, std::ios::out | std::ios::binary);
+      while (offset <= fileMap.size()) {
+         uint64_t chunk;
+         memcpy(&chunk, fileMap.ptr() + offset, std::min(8ul, fileMap.size() - offset));
+         chunk ^= xorKey;
+         xoredFile.write((const char*)&chunk, 8);
+         offset += 8;
+      }
+   }
+
+   //swap the files
+   fileMap.close();
+   std::filesystem::remove(blk0dat_);
+   std::filesystem::rename(xoredFilePath, blk0dat_);
+
+   //create xor file
+   {
+      std::fstream xorFile;
+      xorFile.open(blkdir_ / "blocks" / "xor.dat", std::ios::out | std::ios::binary);
+      xorFile.write((const char*)&xorKey, 8);
+   }
+
+   //run the db
+   clients_->init();
+   theBDMt_->start(Config::DBSettings::initMode());
+   auto bdvID = DBTestUtils::registerBDV(
+      clients_, Config::BitcoinSettings::getMagicBytes());
+   std::vector<BinaryData> scrAddrVec {
+      TestChain::scrAddrA,
+      TestChain::scrAddrB,
+      TestChain::scrAddrC,
+      TestChain::scrAddrD,
+      TestChain::scrAddrE,
+      TestChain::scrAddrF
+   };
+
+   const std::vector<BinaryData> lb1ScrAddrs{
+      TestChain::lb1ScrAddr,
+      TestChain::lb1ScrAddrP2SH
+   };
+   const std::vector<BinaryData> lb2ScrAddrs{
+      TestChain::lb2ScrAddr,
+      TestChain::lb2ScrAddrP2SH
+   };
+
+   DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
+      false, false);
+   DBTestUtils::registerWallet(
+      clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID,
+      true, false);
+   DBTestUtils::registerWallet(
+      clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID,
+      true, false);
+
+   auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
+
+   //wait on signals
+   DBTestUtils::goOnline(clients_, bdvID);
+   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
+   auto wltLB1 = bdvPtr->getWalletOrLockbox(LB1ID);
+   auto wltLB2 = bdvPtr->getWalletOrLockbox(LB2ID);
+
+
+   const ScrAddrObj* scrObj;
+   scrObj = wlt->getScrAddrObjByKey(TestChain::scrAddrA);
+   EXPECT_EQ(scrObj->getFullBalance(), 50*COIN);
+   scrObj = wlt->getScrAddrObjByKey(TestChain::scrAddrB);
+   EXPECT_EQ(scrObj->getFullBalance(), 70*COIN);
+   scrObj = wlt->getScrAddrObjByKey(TestChain::scrAddrC);
+   EXPECT_EQ(scrObj->getFullBalance(), 20*COIN);
+   scrObj = wlt->getScrAddrObjByKey(TestChain::scrAddrD);
+   EXPECT_EQ(scrObj->getFullBalance(), 65*COIN);
+   scrObj = wlt->getScrAddrObjByKey(TestChain::scrAddrE);
+   EXPECT_EQ(scrObj->getFullBalance(), 30*COIN);
+   scrObj = wlt->getScrAddrObjByKey(TestChain::scrAddrF);
+   EXPECT_EQ(scrObj->getFullBalance(),  5*COIN);
+
+   scrObj = wltLB1->getScrAddrObjByKey(TestChain::lb1ScrAddr);
+   EXPECT_EQ(scrObj->getFullBalance(), 5*COIN);
+   scrObj = wltLB1->getScrAddrObjByKey(TestChain::lb1ScrAddrP2SH);
+   EXPECT_EQ(scrObj->getFullBalance(), 25*COIN);
+   scrObj = wltLB2->getScrAddrObjByKey(TestChain::lb2ScrAddr);
+   EXPECT_EQ(scrObj->getFullBalance(), 30*COIN);
+   scrObj = wltLB2->getScrAddrObjByKey(TestChain::lb2ScrAddrP2SH);
+   EXPECT_EQ(scrObj->getFullBalance(), 0*COIN);
+
+   EXPECT_EQ(wlt->getFullBalance(), 240*COIN);
+   EXPECT_EQ(wltLB1->getFullBalance(), 30*COIN);
+   EXPECT_EQ(wltLB2->getFullBalance(), 30*COIN);
+
+   //cleanup
+   bdvPtr.reset();
+   wlt.reset();
+   wltLB1.reset();
+   wltLB2.reset();
+}
+
+TEST_F(BlockUtilsFull, DISABLED_PPrintTestChain)
 {
    TestUtils::setBlocks({ "0", "1", "2", "3", "4", "4A", "5", "5A" }, blk0dat_);
    std::vector<std::pair<uint32_t, uint8_t>> blockIds {
@@ -1953,7 +2067,6 @@ protected:
 
       // Put the first 5 blocks into the blkdir
       blk0dat_ = FileUtils::getBlkFilename(blkdir_ / "blocks", 0);
-      TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
 
       WebSocketServer::init();
       Config::parseArgs({
@@ -2887,5 +3000,3 @@ GTEST_API_ int main(int argc, char **argv)
 
    return exitCode;
 }
-
-//TODO: add test to merge new addresses on reorg

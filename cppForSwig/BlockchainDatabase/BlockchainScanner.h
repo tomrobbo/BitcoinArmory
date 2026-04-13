@@ -42,6 +42,7 @@ namespace Armory
    namespace FileUtils
    {
       class FileMap;
+      class FileCopy;
    }
 
    class Blockchain;
@@ -52,7 +53,7 @@ namespace Armory
 struct ParserBatch
 {
 public:
-   std::map<unsigned, std::shared_ptr<Armory::FileUtils::FileMap>> fileMaps_;
+   std::map<unsigned, std::shared_ptr<Armory::FileUtils::FileCopy>> fileCopies_;
 
    std::atomic<unsigned> blockCounter_;
    std::mutex mergeMutex_;

@@ -220,21 +220,16 @@ HeaderPtr Blockchain::organizeChain(
       topBlockPtr_.store(nullptr);
    }
 
-   // Set genesis block
-   auto genBlock = getGenesisBlock();
-   genBlock->blockHeight_ = 0;
-   genBlock->difficultySum_ = 1.0;
-   genBlock->isMainBranch_ = true;
-   genBlock->isOrphan_ = false;
-   genBlock->isFinishedCalc_ = true;
-
    // If this is the first run, the topBlock is the genesis block
-   if (headersById_.size() <= idOfTopBlock_) {
+   if (topBlockPtr_.load() == nullptr) {
+      auto genBlock = getGenesisBlock();
+      genBlock->blockHeight_ = 0;
+      genBlock->difficultySum_ = 1.0;
+      genBlock->isMainBranch_ = true;
+      genBlock->isOrphan_ = false;
+      genBlock->isFinishedCalc_ = true;
       topBlockPtr_.store(genBlock);
-   } else {
-      topBlockPtr_.store(headersById_[idOfTopBlock_]);
    }
-
    const auto prevTopBlock = top();
    auto newTopBlock = topBlockPtr_.load();
    double maxDiffSum = prevTopBlock->getDifficultySum();
@@ -249,6 +244,10 @@ HeaderPtr Blockchain::organizeChain(
       //     fill in the difficulty-sum values (do not set next-
       //     hash ptrs, as we don't know if this is the main branch)
       //     Method returns instantly if block is already "solved"
+      if (header->difficultySum_ > 0.0) {
+         continue;
+      }
+
       double thisDiffSum = traceChainDown(header);
       if (header->isOrphan_) {
          // disregard this block
@@ -334,8 +333,13 @@ HeaderPtr Blockchain::organizeChain(
    if (!prevChainStillValid) {
       // force-rebuild blockchain (takes less than 1s)
       LOGWARN << "Reorg detected! Forcing a rebuild of the header chain";
-      lock.unlock();
-      organizeChain(true);
+
+      //reset calculation flag on lesser chain
+      auto prevHeadPtr = prevTopBlock;
+      while (prevHeadPtr->thisHash_ != thisHeaderPtr->thisHash_) {
+         prevHeadPtr->isFinishedCalc_ = false;
+         prevHeadPtr = *headerSet_.find(prevHeadPtr->prevHash_);
+      }
       return thisHeaderPtr;
    }
 
@@ -377,9 +381,6 @@ double Blockchain::traceChainDown(std::shared_ptr<BlockHeader> bhpStart)
    // Now we have a stack of difficulties and pointers. Walk back up
    // (by pointer) and accumulate the difficulty values
    if (!thisPtr->isOrphan_) {
-      auto seedDiffSum = thisPtr->difficultySum_;
-      auto blkHeight = thisPtr->blockHeight_;
-
       while (thisPtr->nextPtr_ != nullptr) {
          auto hPtr = thisPtr->nextPtr_;
          hPtr->blockHeight_ = thisPtr->blockHeight_ + 1;
@@ -412,7 +413,7 @@ double Blockchain::traceChainDown(std::shared_ptr<BlockHeader> bhpStart)
          orphanIter->second.emplace(hPtr->getThisHash());
          thisPtr = hPtr;
       }
-      return std::numeric_limits<double>::max();
+      return 0.0;
    }
 
    // Finally, we have all the difficulty sums calculated, return this one

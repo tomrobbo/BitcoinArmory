@@ -14,15 +14,13 @@
 #include <Utils/varint.h>
 #include <Utils/BCTX.h>
 #include <Utils/DBUtils.h>
+#include <Utils/ArmoryConfig.h>
 #include "TxHashFilters.h"
 #include "BlockObj.h"
 
 namespace fs = std::filesystem;
 using namespace std::string_view_literals;
 using namespace Armory;
-
-uint64_t BlockFiles::xorKey = 0;
-bool BlockFiles::isXored = false;
 
 namespace {
    fs::path blkFileExt{".dat"sv};
@@ -306,8 +304,9 @@ void BlockFiles::detectAllBlockFiles()
             continue;
          }
          LOGINFO << "found a xor key";
-         std::memcpy(&xorKey, fileCopy.ptr(), 8);
-         isXored = true;
+         uint64_t xorkey;
+         std::memcpy(&xorkey, fileCopy.ptr(), 8);
+         Config::DBSettings::setXorKey(xorkey);
       }
    }
 }
@@ -434,8 +433,8 @@ BlockDataLoader::BlockDataCopy::BlockDataCopy(const PathAndOffset& path) :
    fileID(path.fileID), offset(path.offset),
    data(getFileCopy(path))
 {
-   if (BlockFiles::isXored) {
-      data->xorMe(BlockFiles::xorKey);
+   if (Config::DBSettings::isXored()) {
+      data->xorMe(Config::DBSettings::getXorKey());
    }
 }
 

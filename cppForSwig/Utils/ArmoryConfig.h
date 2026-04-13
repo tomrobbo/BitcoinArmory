@@ -127,39 +127,34 @@ namespace Armory
          static bool clearMempool_;
          static bool checkTxHints_;
 
+         static uint64_t xorKey_;
+
       private:
          static void processArgs(const std::map<std::string, std::string>&);
          static void reset(void);
 
       public:
-         static std::string getCookie(const std::string& datadir);
+         static std::string getCookie(const std::filesystem::path&);
 
-         static ARMORY_DB_TYPE getDbType(void)
-         {
-            return armoryDbType_;
-         }
-
-         static void setServiceType(SOCKET_SERVICE _type)
-         {
-            service_ = _type;
-         }
-
-         static SOCKET_SERVICE getServiceType(void)
-         {
-            return service_;
-         }
+         static ARMORY_DB_TYPE getDbType(void);
+         static void setServiceType(SOCKET_SERVICE);
+         static SOCKET_SERVICE getServiceType(void);
 
          static std::string getDbModeStr(void);
-         static unsigned threadCount(void) { return threadCount_; }
-         static unsigned ramUsage(void) { return ramUsage_; }
-         static unsigned zcThreadCount(void) { return zcThreadCount_; }
-         static unsigned rewindCount(void) { return rewindCount_; }
+         static unsigned threadCount(void);
+         static unsigned ramUsage(void);
+         static unsigned zcThreadCount(void);
+         static unsigned rewindCount(void);
 
-         static bool checkChain(void) { return checkChain_; }
-         static BdmInitMode initMode(void) { return initMode_; }
-         static bool clearMempool(void) { return clearMempool_; }
-         static bool reportProgress(void) { return reportProgress_; }
-         static bool checkTxHints(void) { return checkTxHints_; }
+         static bool checkChain(void);
+         static BdmInitMode initMode(void);
+         static bool clearMempool(void);
+         static bool reportProgress(void);
+         static bool checkTxHints(void);
+
+         static bool isXored(void);
+         static void setXorKey(uint64_t);
+         static uint64_t getXorKey(void);
       };
 
       //////////////////////////////////////////////////////////////////////////

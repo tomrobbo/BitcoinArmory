@@ -106,10 +106,6 @@ class BlockFiles
 {
    friend class BlockDataLoader;
 
-public:
-   static uint64_t xorKey;
-   static bool isXored;
-
 private:
    std::map<uint16_t, std::filesystem::path> paths_;
    const std::filesystem::path folderPath_;

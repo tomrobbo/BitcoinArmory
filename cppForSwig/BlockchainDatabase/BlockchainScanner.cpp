@@ -243,7 +243,7 @@ void BlockchainScanner::processOutputs()
       this->processOutputsThread(batch);
    };
 
-   std::map<unsigned, std::shared_ptr<FileUtils::FileMap>> localFileMap;
+   std::map<unsigned, std::shared_ptr<FileUtils::FileCopy>> localFileCopies;
    auto preloadBlockDataFiles = [&](ParserBatch* batch)->void
    {
       if (batch == nullptr) {
@@ -254,17 +254,20 @@ void BlockchainScanner::processOutputs()
 
       auto fileId = batch->startBlockFileID_;
       while (fileId <= batch->targetBlockFileID_) {
-         auto local_iter = localFileMap.find(fileId);
-         if (local_iter != localFileMap.end()) {
-            batch->fileMaps_.emplace(fileId, local_iter->second);
+         auto local_iter = localFileCopies.find(fileId);
+         if (local_iter != localFileCopies.end()) {
+            batch->fileCopies_.emplace(fileId, local_iter->second);
          } else {
             auto filePath = blockFiles_->getFilePathForID(fileId);
-            batch->fileMaps_.emplace(fileId,
-               std::make_shared<FileUtils::FileMap>(filePath));
+            auto fileCopy = std::make_shared<FileUtils::FileCopy>(filePath);
+            if (Config::DBSettings::isXored()) {
+               fileCopy->xorMe(Config::DBSettings::getXorKey());
+            }
+            batch->fileCopies_.emplace(fileId, fileCopy);
          }
          ++fileId;
       }
-      localFileMap = batch->fileMaps_;
+      localFileCopies = batch->fileCopies_;
 
       TIMER_STOP("preload");
    };
@@ -419,11 +422,11 @@ shared_ptr<BlockData> BlockchainScanner::getBlockData(
    //grab block file map
    auto blockheader = blockchain_->getHeaderByHeight(height, 0xFF);
    auto filenum = blockheader->getBlockFileNum();
-   auto mapIter = batch->fileMaps_.find(filenum);
-   if (mapIter == batch->fileMaps_.end()) {
+   auto mapIter = batch->fileCopies_.find(filenum);
+   if (mapIter == batch->fileCopies_.end()) {
       LOGERR << "Missing file map for output scan, this is unexpected";
       LOGERR << "Has the following block files:";
-      for (const auto& file_pair : batch->fileMaps_) {
+      for (const auto& file_pair : batch->fileCopies_) {
          LOGERR << " --- #" << file_pair.first;
       }
       LOGERR << "Was looking for id #" << filenum;
@@ -1138,7 +1141,7 @@ void BlockchainScanner::undo(ReorganizationState& reorgState)
    }
 
    auto scrAddrMap = scrAddrFilter_->getScanFilterAddrMap();
-   while (blockPtr != reorgState.reorgBranchPoint) {
+   while (blockPtr->getThisHash() != reorgState.reorgBranchPoint->getThisHash()) {
       int currentHeight = blockPtr->getBlockHeight();
       auto currentDupId  = blockPtr->getDuplicateID();
 

@@ -5,7 +5,7 @@
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
 //                                                                            //
-//  Copyright (C) 2016-2025, goatpig                                          //
+//  Copyright (C) 2016-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -18,19 +18,17 @@
 #endif
 #include <fcntl.h>
 #include <unistd.h>
-#include <filesystem>
 #include <string_view>
 #include <cstring>
 
 #include "DBUtils.h"
-
 
 namespace fs = std::filesystem;
 using namespace std::string_view_literals;
 using namespace Armory;
 
 namespace {
-   auto blkFilePrefix = "blk"sv;
+   constexpr auto blkFilePrefix = "blk"sv;
 }
 
 const BinaryData DBUtils::ZCPrefix = BinaryData::CreateFromHex("FFFF");
@@ -372,14 +370,14 @@ FileUtils::FileMap::FileMap(const fs::path& path, bool write, size_t offset)
          throw std::runtime_error(errStr.str());
       }
 
-      close(fd);
+      ::close(fd);
 #endif
    } catch (const std::runtime_error &e) {
       if (fd != 0) {
 #ifdef _WIN32
          _close(fd);
 #else
-         close(fd);
+         ::close(fd);
 #endif
       }
 
@@ -390,6 +388,11 @@ FileUtils::FileMap::FileMap(const fs::path& path, bool write, size_t offset)
 
 ////
 FileUtils::FileMap::~FileMap()
+{
+   close();
+}
+
+void FileUtils::FileMap::close()
 {
    if (ptr_ != nullptr) {
 #ifdef _WIN32

@@ -1423,10 +1423,38 @@ Tx LMDBBlockDatabase::getFullTxCopy(
    };
 
    try {
-      auto block = BlockData::deserialize(
-         fileMap.ptr() + bhPtr->getOffset(),
-         bhPtr->getBlockSize(), bhPtr, getID,
-         BlockData::CheckHashes::NoChecks);
+      std::vector<uint64_t> xoredData;
+      std::shared_ptr<BlockData> block;
+      if (!Config::DBSettings::isXored()) {
+         block = BlockData::deserialize(
+            fileMap.ptr() + bhPtr->getOffset(),
+            bhPtr->getBlockSize(), bhPtr, getID,
+            BlockData::CheckHashes::NoChecks);
+      } else {
+         /*
+         XOR chunks are 8 bytes aligned. Block data is packed tight,
+         therefor the start of a block is not 8 aligned.
+
+         Copy 8 bytes aligned data around the block, xor it, then read
+         from the block start offset (ignore the bytes preceding the block
+         that were carried over for alignement purposes)
+         */
+         size_t prepad = bhPtr->getOffset() % 8;
+         xoredData.resize((prepad + bhPtr->getBlockSize() + 7) / 8);
+         std::memcpy((uint8_t*)&xoredData[0],
+            fileMap.ptr() + bhPtr->getOffset() - prepad,
+            bhPtr->getBlockSize() + prepad);
+
+         auto xorkey = Config::DBSettings::getXorKey();
+         for (auto& chunk : xoredData) {
+            chunk ^= xorkey;
+         }
+
+         block = BlockData::deserialize(
+            (const uint8_t*)&xoredData[0] + prepad,
+            bhPtr->getBlockSize(), bhPtr, getID,
+            BlockData::CheckHashes::NoChecks);
+      }
 
       const auto& bctx = block->getTxns()[txIndex];
       BinaryRefReader brr(bctx->data_, bctx->size_);
@@ -1436,7 +1464,7 @@ Tx LMDBBlockDatabase::getFullTxCopy(
       tx.setTxIndex(txIndex);
       return tx;
    } catch (const BtcUtils::BlockDeserializingException&) {
-      throw LmdbWrapperException("failed to tx");
+      throw LmdbWrapperException("failed to grab tx");
    }
 }
 

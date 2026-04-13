@@ -475,6 +475,88 @@ bool DBSettings::checkChain_ = false;
 bool DBSettings::clearMempool_ = false;
 bool DBSettings::checkTxHints_ = false;
 
+uint64_t DBSettings::xorKey_ = 0;
+
+////////////////////////////////////////////////////////////////////////////////
+ARMORY_DB_TYPE DBSettings::getDbType()
+{
+   return armoryDbType_;
+}
+
+void DBSettings::setServiceType(SOCKET_SERVICE _type)
+{
+   service_ = _type;
+}
+
+SOCKET_SERVICE DBSettings::getServiceType()
+{
+   return service_;
+}
+
+unsigned DBSettings::threadCount()
+{
+   return threadCount_;
+}
+
+unsigned DBSettings::ramUsage()
+{
+   return ramUsage_;
+}
+
+unsigned DBSettings::zcThreadCount()
+{
+   return zcThreadCount_;
+}
+
+unsigned DBSettings::rewindCount()
+{
+   return rewindCount_;
+}
+
+bool DBSettings::checkChain()
+{
+   return checkChain_;
+}
+
+BdmInitMode DBSettings::initMode()
+{
+   return initMode_;
+}
+
+bool DBSettings::clearMempool()
+{
+   return clearMempool_;
+}
+
+bool DBSettings::reportProgress()
+{
+   return reportProgress_;
+}
+
+bool DBSettings::checkTxHints()
+{
+   return checkTxHints_;
+}
+
+////////
+bool DBSettings::isXored()
+{
+   return xorKey_ != 0;
+}
+
+void DBSettings::setXorKey(uint64_t key)
+{
+   if (xorKey_ != 0) {
+      throw std::runtime_error("already have a xor key set");
+   }
+   xorKey_ = key;
+}
+
+uint64_t DBSettings::getXorKey()
+{
+   return xorKey_;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 void DBSettings::processArgs(const std::map<std::string, std::string>& args)
 {
@@ -577,9 +659,9 @@ void DBSettings::processArgs(const std::map<std::string, std::string>& args)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::string DBSettings::getCookie(const std::string& datadir)
+std::string DBSettings::getCookie(const std::filesystem::path& datadir)
 {
-   auto cookie_path = fs::path(datadir) / ".cookie_";
+   auto cookie_path = datadir / ".cookie_";
    auto lines = SettingsUtils::getLines(cookie_path);
    if (lines.size() != 2) {
       return {};
@@ -620,6 +702,8 @@ void DBSettings::reset()
    reportProgress_ = true;
    checkChain_ = false;
    clearMempool_ = false;
+
+   xorKey_ = 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -5,7 +5,7 @@
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
 //                                                                            //
-//  Copyright (C) 2016-2025, goatpig                                          //
+//  Copyright (C) 2016-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -98,6 +98,7 @@ namespace Armory
          FileMap(const std::filesystem::path&, bool=false, size_t=0);
          ~FileMap(void);
 
+         void close(void);
          size_t size(void) const;
          uint8_t* ptr(void) const;
          bool isValid(void) const;
