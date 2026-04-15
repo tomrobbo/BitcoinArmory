@@ -751,7 +751,6 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
 
                      auto headerPtr = blockchain_->getHeaderById(blockid);
                      stxo.blockHeight = headerPtr->getBlockHeight();
-                     stxo.duplicateID = headerPtr->getDuplicateID();
                      stxo.txOutIndex = outpoint.getTxOutIndex();
 
                      try {
@@ -1042,7 +1041,6 @@ int NodeRPC_UnitTest::broadcastTx(const BinaryDataRef& rawTx, std::string&)
       DBUtils::readBlkDataKeyNoPrefix(keyReader, blockid, dup, stxo.txIndex);
       auto headerPtr = nodeUT->blockchain_->getHeaderById(blockid);
       stxo.blockHeight = headerPtr->getBlockHeight();
-      stxo.duplicateID = headerPtr->getDuplicateID();
 
       //are any of its outpouts spent?
       unsigned spentCount = 0;
@@ -1118,7 +1116,6 @@ int NodeRPC_UnitTest::broadcastTx(const BinaryDataRef& rawTx, std::string&)
 
       auto headerPtr = nodeUT->blockchain_->getHeaderById(blockid);
       stxo.blockHeight = headerPtr->getBlockHeight();
-      stxo.duplicateID = headerPtr->getDuplicateID();
       stxo.txOutIndex = outpoint.getTxOutIndex();
 
       iface->getSpentness(stxo);

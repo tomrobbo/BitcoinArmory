@@ -251,8 +251,7 @@ public:
    std::vector<Armory::Ledgers::Entry> getLockboxesHistoryPage(
       uint32_t, bool, bool);
 
-   StoredHeader getMainBlockFromDB(uint32_t) const;
-   StoredHeader getBlockFromDB(uint32_t, uint8_t) const;
+   StoredHeader getBlockFromDB(uint32_t) const;
    bool scrAddressIsRegistered(const BinaryData&) const;
 
    bool isBDMRunning(void) const;
@@ -269,8 +268,6 @@ public:
 
    void updateWalletsLedgerFilter(const std::vector<std::string>&);
    void updateLockboxesLedgerFilter(const std::vector<std::string>&);
-
-   uint32_t getBlockTimeByHeight(uint32_t) const;
    uint32_t getClosestBlockHeightForTime(uint32_t);
 
    std::shared_ptr<BtcWallet> getWalletOrLockbox(const std::string&) const;

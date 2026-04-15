@@ -128,7 +128,7 @@ Context Ledgers::prepareContext(
       auto blockNum = DBUtils::hgtxToHeight(txKeyOut.getSliceRef(0, 4));
       if (timestamps.find(blockNum) == timestamps.end()) {
          try {
-            auto headerPtr = bc.getHeaderByHeight(blockNum, 0xFF);
+            auto headerPtr = bc.getHeaderByHeight(blockNum);
             timestamps.emplace(blockNum, headerPtr->getTimestamp());
          } catch (const std::range_error&) {
             LOGWARN << "no block for height " << blockNum;
@@ -148,7 +148,7 @@ Context Ledgers::prepareContext(
       blockNum = DBUtils::hgtxToHeight(txInKeyRef.getSliceRef(0, 4));
       if (timestamps.find(blockNum) == timestamps.end()) {
          try {
-            auto headerPtr = bc.getHeaderByHeight(blockNum, 0xFF);
+            auto headerPtr = bc.getHeaderByHeight(blockNum);
             timestamps.emplace(blockNum, headerPtr->getTimestamp());
          } catch (const std::range_error&) {
             LOGWARN << "no block for height " << blockNum;

@@ -246,8 +246,8 @@ public:
    virtual void putValue(BinaryDataRef, BinaryDataRef) = 0;
    virtual void deleteValue(BinaryDataRef) = 0;
 
-   virtual StoredDBInfo getStoredDBInfo(uint32_t) = 0;
-   virtual void putStoredDBInfo(const StoredDBInfo&, uint32_t) = 0;
+   virtual StoredDBInfo getStoredDBInfo(uint16_t) = 0;
+   virtual void putStoredDBInfo(const StoredDBInfo&, uint16_t) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -272,8 +272,8 @@ public:
    void putValue(BinaryDataRef, BinaryDataRef) override;
    void deleteValue(BinaryDataRef) override;
 
-   StoredDBInfo getStoredDBInfo(uint32_t) override;
-   void putStoredDBInfo(const StoredDBInfo&, uint32_t) override;
+   StoredDBInfo getStoredDBInfo(uint16_t) override;
+   void putStoredDBInfo(const StoredDBInfo&, uint16_t) override;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -392,33 +392,21 @@ public:
    void resetHistoryForAddressVector(const std::vector<BinaryData>&);
 
 public:
-   uint8_t getValidDupIDForHeight(uint32_t) const;
-   uint8_t getValidDupIDForHeight_fromDB(uint32_t);
-   void setValidDupIDForHeight(
-      uint32_t, uint8_t, bool = true);
-   void setValidDupIDForHeight(std::map<unsigned, uint8_t>&);
-   
-   bool isBlockIDOnMainBranch(unsigned) const;
-   void setBlockIDBranch(std::map<unsigned, bool>&);
-
    /////////////////////////////////////////////////////////////////////////////
    // Interface to translate Stored* objects to/from persistent DB storage
    /////////////////////////////////////////////////////////////////////////////
-   StoredDBInfo getStoredDBInfo(DB_SELECT, uint32_t);
-   void putStoredDBInfo(DB_SELECT, StoredDBInfo const&, uint32_t);
+   StoredDBInfo getStoredDBInfo(DB_SELECT, uint16_t);
+   void putStoredDBInfo(DB_SELECT, StoredDBInfo const&, uint16_t);
 
    /////////////////////////////////////////////////////////////////////////////
    // BareHeaders are those int the HEADERS DB with no blockdta associated
-   uint8_t putBareHeader(StoredHeader&, bool = true, bool = true);
-   bool    getBareHeader(StoredHeader&, uint32_t, uint8_t) const;
-   bool    getBareHeader(StoredHeader&, uint32_t) const;
-   bool    getBareHeader(StoredHeader&, BinaryDataRef) const;
+   void putBareHeader(const StoredHeader&);
 
    /////////////////////////////////////////////////////////////////////////////
    // still using the old name even though no block data is stored anymore
    BinaryData getRawBlock(std::shared_ptr<Armory::BlockHeader>) const;
    bool getStoredHeader(StoredHeader&,
-      std::shared_ptr<Armory::BlockHeader>, bool = true) const;
+      std::shared_ptr<Armory::BlockHeader>, bool=true) const;
 
    /////////////////////////////////////////////////////////////////////////////
    // StoredTx Accessors
@@ -498,9 +486,6 @@ public:
    bool getStoredTxHints(StoredTxHints&, BinaryDataRef) const;
    void updatePreferredTxHint(BinaryDataRef, BinaryData);
 
-   bool putStoredHeadHgtList(const StoredHeadHgtList&);
-   bool getStoredHeadHgtList(StoredHeadHgtList&, uint32_t) const;
-
    // TxRefs are much simpler with LDB than the previous FileDataPtr construct
    TxRef getTxRef(BinaryDataRef);
    TxRef getTxRef(BinaryData, uint16_t);
@@ -516,9 +501,6 @@ public:
       std::shared_ptr<Armory::BlockHeader>) const;
 
    ////////////////////////////////////////////////////////////////////////////
-   bool markBlockHeaderValid(BinaryDataRef);
-   bool markBlockHeaderValid(uint32_t, uint8_t);
-
    KVLIST getAllDatabaseEntries(DB_SELECT);
    void   printAllDatabaseEntries(DB_SELECT);
 
@@ -556,9 +538,6 @@ private:
    bool     dbIsOpen_;
    uint32_t ldbBlockSize_;
    uint32_t lowestScannedUpTo_;
-
-   Armory::Threading::TransactionalMap<unsigned, uint8_t> validDupByHeight_;
-   Armory::Threading::TransactionalMap<unsigned, bool> blockIDMainChainMap_;
 
    // In this case, a address is any TxOut script, which is usually
    // just a 25-byte script.  But this generically captures all types

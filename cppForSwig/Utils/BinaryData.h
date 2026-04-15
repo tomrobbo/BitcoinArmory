@@ -616,15 +616,15 @@ public:
    // Using the argument to pre-allocate a certain amount of capacity.  Not 
    // required, but will improve performance if you can take a reasonable guess
    // about the final size of the output data
-   BinaryWriter(size_t reserveSize=0);
+   BinaryWriter(size_t=0);
 
    /////////////////////////////////////////////////////////////////////////////
    // These write data properly regardless of the architecture
    void put_uint8_t (const uint8_t&);
-   void put_uint16_t(const uint16_t&, ENDIAN e=LE);
-   void put_uint32_t(const uint32_t&, ENDIAN e=LE);
-   void put_int32_t(const int32_t&, ENDIAN e = LE);
-   void put_uint64_t(const uint64_t&, ENDIAN e=LE);
+   void put_uint16_t(const uint16_t&, ENDIAN=LE);
+   void put_uint32_t(const uint32_t&, ENDIAN=LE);
+   void put_int32_t(const int32_t&  , ENDIAN=LE);
+   void put_uint64_t(const uint64_t&, ENDIAN=LE);
    void put_double(const double&);
 
    uint8_t put_var_int(const uint64_t&);
@@ -636,7 +636,7 @@ public:
 
    /////////////////////////////////////////////////////////////////////////////
    template<typename T>
-   void put_BitPacker(BitPacker<T> & bp)
+   void put_BitPacker(BitPacker<T>& bp)
    {
       put_BinaryData(bp.getBinaryData());
    }

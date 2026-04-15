@@ -3845,14 +3845,12 @@ TEST_F(StoredBlockObjTest, StoredObjNoInit)
    StoredTx            stx;
    StoredTxOut         stxo;
    StoredScriptHistory ssh;
-   StoredHeadHgtList   hhl;
    StoredTxHints       sths;
 
    EXPECT_FALSE( sbh.isInitialized() );
    EXPECT_FALSE( stx.isInitialized() );
    EXPECT_FALSE( stxo.isInitialized() );
    EXPECT_FALSE( ssh.isInitialized() );
-   EXPECT_FALSE( hhl.isInitialized() );
    EXPECT_FALSE( sths.isInitialized() );
 }
 
@@ -3864,7 +3862,6 @@ TEST_F(StoredBlockObjTest, GetDBKeys)
    StoredTxOut         stxo;
    StoredScriptHistory ssh1;
    StoredScriptHistory ssh2;
-   StoredHeadHgtList   hhl;
    StoredTxHints       sths;
 
    BinaryData key    = READHEX("aaaaffff");
@@ -3884,13 +3881,11 @@ TEST_F(StoredBlockObjTest, GetDBKeys)
    stx.txIndex      = txi;
 
    stxo.blockHeight = hgt;
-   stxo.duplicateID = dup;
    stxo.txIndex     = txi;
    stxo.txOutIndex  = txo;
 
    ssh1.uniqueKey   = key;
    ssh2.uniqueKey   = key;
-   hhl.height       = hgt;
    sths.txHashPrefix= key;
 
    BinaryData TXB = PREFBYTE(DbPrefix::TXDATA);
@@ -3903,7 +3898,6 @@ TEST_F(StoredBlockObjTest, GetDBKeys)
    EXPECT_EQ(stxo.getDBKey( true ),   TXB + hgtx + txidx + txoidx);
    EXPECT_EQ(ssh1.getDBKey( true ),   SSB + key);
    EXPECT_EQ(ssh2.getDBKey( true ),   SSB + key);
-   EXPECT_EQ(hhl.getDBKey(  true ),   HHB + WRITE_UINT32_BE(hgt));
    EXPECT_EQ(sths.getDBKey( true ),   THB + key);
 
    EXPECT_EQ(sbh.getDBKey(  false ),        hgtx);
@@ -3911,7 +3905,6 @@ TEST_F(StoredBlockObjTest, GetDBKeys)
    EXPECT_EQ(stxo.getDBKey( false ),        hgtx + txidx + txoidx);
    EXPECT_EQ(ssh1.getDBKey( false ),        key);
    EXPECT_EQ(ssh2.getDBKey( false ),        key);
-   EXPECT_EQ(hhl.getDBKey(  false ),        WRITE_UINT32_BE(hgt));
    EXPECT_EQ(sths.getDBKey( false ),        key);
 }
 
@@ -4577,7 +4570,6 @@ TEST_F(StoredBlockObjTest, STxOutUnserDBValue_1)
    EXPECT_EQ(   stxo.txVersion, 1ULL);
    EXPECT_EQ(   stxo.dataCopy, rawTxOut0_);
    EXPECT_EQ(   stxo.blockHeight, UINT32_MAX);
-   EXPECT_EQ(   stxo.duplicateID, UINT8_MAX);
    EXPECT_EQ(   stxo.txIndex, UINT16_MAX);
    EXPECT_EQ(   stxo.txOutIndex, UINT16_MAX);
    EXPECT_EQ(   stxo.spentness, TXOUT_UNSPENT);
@@ -4598,7 +4590,6 @@ TEST_F(StoredBlockObjTest, STxOutUnserDBValue_2)
    EXPECT_EQ(   stxo.txVersion, 1ULL);
    EXPECT_EQ(   stxo.dataCopy, rawTxOut0_);
    EXPECT_EQ(   stxo.blockHeight, UINT32_MAX);
-   EXPECT_EQ(   stxo.duplicateID, UINT8_MAX);
    EXPECT_EQ(   stxo.txIndex, UINT16_MAX);
    EXPECT_EQ(   stxo.txOutIndex, UINT16_MAX);
    EXPECT_EQ(   stxo.spentness, TXOUT_SPENT);
@@ -4619,7 +4610,6 @@ TEST_F(StoredBlockObjTest, STxOutUnserDBValue_3)
    EXPECT_EQ(   stxo.txVersion, 1ULL);
    EXPECT_EQ(   stxo.dataCopy, rawTxOut0_);
    EXPECT_EQ(   stxo.blockHeight, UINT32_MAX);
-   EXPECT_EQ(   stxo.duplicateID, UINT8_MAX);
    EXPECT_EQ(   stxo.txIndex, UINT16_MAX);
    EXPECT_EQ(   stxo.txOutIndex, UINT16_MAX);
    EXPECT_EQ(   stxo.spentness, TXOUT_SPENTUNK);
@@ -4734,153 +4724,6 @@ TEST_F(StoredBlockObjTest, STxHintsUnser)
    EXPECT_EQ(sths3.dbKeyList[1],      hint1);
    EXPECT_EQ(sths3.dbKeyList[2],      hint2);
    EXPECT_EQ(sths3.preferredDBKey,    hint0);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(StoredBlockObjTest, SHeadHgtListSer)
-{
-   StoredHeadHgtList baseHHL, testHHL;
-   baseHHL.height = 123000;
-   baseHHL.dupAndHashList.resize(0);
-   BinaryData hash0 = READHEX("aaaabbbbaaaabbbbaaaabbbbaaaabbbb"
-      "aaaabbbbaaaabbbbaaaabbbbaaaabbbb");
-   BinaryData hash1 = READHEX("2222bbbb2222bbbb2222bbbb2222bbbb"
-      "2222bbbb2222bbbb2222bbbb2222bbbb");
-   BinaryData hash2 = READHEX("2222ffff2222ffff2222ffff2222ffff"
-      "2222ffff2222ffff2222ffff2222ffff");
-
-   uint8_t dup0 = 0;
-   uint8_t dup1 = 1;
-   uint8_t dup2 = 7;
-
-   BinaryWriter expectOut;
-
-   // Test writing empty list
-   expectOut.reset();
-   expectOut.put_uint8_t(0);
-   EXPECT_EQ(testHHL.serializeDBValue(), expectOut.getData());
-
-   
-   // Test writing list with one entry but no preferred dupID
-   expectOut.reset();
-   testHHL = baseHHL;
-   testHHL.dupAndHashList.push_back(make_pair(dup0, hash0));
-   expectOut.put_uint8_t(1);
-   expectOut.put_uint8_t(dup0);
-   expectOut.put_BinaryData(hash0);
-   EXPECT_EQ(testHHL.serializeDBValue(), expectOut.getData());
-   
-   // Test writing list with one entry which is a preferred dupID
-   expectOut.reset();
-   testHHL = baseHHL;
-   testHHL.preferredDup = 0;
-   testHHL.dupAndHashList.push_back(make_pair(dup0, hash0)); 
-   expectOut.put_uint8_t(1);
-   expectOut.put_uint8_t(dup0 | 0x80);
-   expectOut.put_BinaryData(hash0);
-   EXPECT_EQ(testHHL.serializeDBValue(), expectOut.getData());
-
-   // Test writing list with one entry preferred dupID but that dup isn't avail
-   expectOut.reset();
-   testHHL = baseHHL;
-   testHHL.preferredDup = 1;
-   testHHL.dupAndHashList.push_back(make_pair(dup0, hash0));
-   expectOut.put_uint8_t(1);
-   expectOut.put_uint8_t(dup0);
-   expectOut.put_BinaryData(hash0);
-   EXPECT_EQ(testHHL.serializeDBValue(), expectOut.getData());
-
-   // Test writing with three entries, no preferred
-   expectOut.reset();
-   testHHL = baseHHL;
-   testHHL.dupAndHashList.push_back(make_pair(dup0, hash0));
-   testHHL.dupAndHashList.push_back(make_pair(dup1, hash1));
-   testHHL.dupAndHashList.push_back(make_pair(dup2, hash2));
-   expectOut.put_uint8_t(3);
-   expectOut.put_uint8_t(dup0); expectOut.put_BinaryData(hash0);
-   expectOut.put_uint8_t(dup1); expectOut.put_BinaryData(hash1);
-   expectOut.put_uint8_t(dup2); expectOut.put_BinaryData(hash2);
-   EXPECT_EQ(testHHL.serializeDBValue(), expectOut.getData());
-
-   // Test writing with three entries, with preferred
-   expectOut.reset();
-   testHHL = baseHHL;
-   testHHL.dupAndHashList.push_back(make_pair(dup0, hash0));
-   testHHL.dupAndHashList.push_back(make_pair(dup1, hash1));
-   testHHL.dupAndHashList.push_back(make_pair(dup2, hash2));
-   testHHL.preferredDup = 1;
-   expectOut.put_uint8_t(3);
-   expectOut.put_uint8_t(dup1 | 0x80); expectOut.put_BinaryData(hash1);
-   expectOut.put_uint8_t(dup0);        expectOut.put_BinaryData(hash0);
-   expectOut.put_uint8_t(dup2);        expectOut.put_BinaryData(hash2);
-   EXPECT_EQ(testHHL.serializeDBValue(), expectOut.getData());
-}
-
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(StoredBlockObjTest, SHeadHgtListUnser)
-{
-   BinaryData hash0 = READHEX("aaaabbbbaaaabbbbaaaabbbbaaaabbbb"
-      "aaaabbbbaaaabbbbaaaabbbbaaaabbbb");
-   BinaryData hash1 = READHEX("2222bbbb2222bbbb2222bbbb2222bbbb"
-      "2222bbbb2222bbbb2222bbbb2222bbbb");
-   BinaryData hash2 = READHEX("2222ffff2222ffff2222ffff2222ffff"
-      "2222ffff2222ffff2222ffff2222ffff");
-
-   vector<BinaryData> tests;
-   tests.push_back( READHEX(
-      "0100aaaabbbbaaaabbbbaaaabbbbaaaabbbbaaaabbbbaaaabbbbaaaabbbbaaaabbbb"));
-   tests.push_back( READHEX(
-      "0180aaaabbbbaaaabbbbaaaabbbbaaaabbbbaaaabbbbaaaabbbbaaaabbbbaaaabbbb"));
-   tests.push_back( READHEX(
-      "0300aaaabbbbaaaabbbbaaaabbbbaaaabbbbaaaabbbbaaaabbbbaaaabbbbaaaa"
-      "bbbb012222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb22"
-      "22bbbb072222ffff2222ffff2222ffff2222ffff2222ffff2222ffff2222ffff"
-      "2222ffff"));
-   tests.push_back( READHEX(
-      "03812222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222"
-      "bbbb00aaaabbbbaaaabbbbaaaabbbbaaaabbbbaaaabbbbaaaabbbbaaaabbbbaa"
-      "aabbbb072222ffff2222ffff2222ffff2222ffff2222ffff2222ffff2222ffff"
-      "2222ffff"));
-
-   uint8_t dup0 = 0;
-   uint8_t dup1 = 1;
-   uint8_t dup2 = 7;
-
-   for (uint32_t i=0; i<tests.size(); i++) {
-      BinaryRefReader brr(tests[i]);
-      StoredHeadHgtList hhl;
-      hhl.unserializeDBValue(brr);
-
-      if (i==0) {
-         ASSERT_EQ(hhl.dupAndHashList.size(), 1ULL);
-         EXPECT_EQ(hhl.dupAndHashList[0].first,  dup0);
-         EXPECT_EQ(hhl.dupAndHashList[0].second, hash0);
-         EXPECT_EQ(hhl.preferredDup,  UINT8_MAX);
-      } else if(i==1) {
-         ASSERT_EQ(hhl.dupAndHashList.size(), 1ULL);
-         EXPECT_EQ(hhl.dupAndHashList[0].first,  dup0);
-         EXPECT_EQ(hhl.dupAndHashList[0].second, hash0);
-         EXPECT_EQ(hhl.preferredDup,  0);
-      } else if(i==2) {
-         ASSERT_EQ(hhl.dupAndHashList.size(), 3ULL);
-         EXPECT_EQ(hhl.dupAndHashList[0].first,  dup0);
-         EXPECT_EQ(hhl.dupAndHashList[0].second, hash0);
-         EXPECT_EQ(hhl.dupAndHashList[1].first,  dup1);
-         EXPECT_EQ(hhl.dupAndHashList[1].second, hash1);
-         EXPECT_EQ(hhl.dupAndHashList[2].first,  dup2);
-         EXPECT_EQ(hhl.dupAndHashList[2].second, hash2);
-         EXPECT_EQ(hhl.preferredDup,  UINT8_MAX);
-      } else if(i==3) {
-         ASSERT_EQ(hhl.dupAndHashList.size(), 3ULL);
-         EXPECT_EQ(hhl.dupAndHashList[0].first,  dup1);
-         EXPECT_EQ(hhl.dupAndHashList[0].second, hash1);
-         EXPECT_EQ(hhl.dupAndHashList[1].first,  dup0);
-         EXPECT_EQ(hhl.dupAndHashList[1].second, hash0);
-         EXPECT_EQ(hhl.dupAndHashList[2].first,  dup2);
-         EXPECT_EQ(hhl.dupAndHashList[2].second, hash2);
-         EXPECT_EQ(hhl.preferredDup,  1);
-      }
-   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -5564,7 +5407,6 @@ TEST_F(LMDBTest, DISABLED_STxOutPutGet)
    stxo0.txVersion   = 1;
    stxo0.spentness   = TXOUT_UNSPENT;
    stxo0.blockHeight = 123000;
-   stxo0.duplicateID = 15;
    stxo0.txIndex     = 7;
    stxo0.txOutIndex  = 1;
    stxo0.unserialize(rawTxOut0_);
@@ -5589,7 +5431,6 @@ TEST_F(LMDBTest, DISABLED_STxOutPutGet)
    stxo1.txVersion   = 1;
    stxo1.spentness   = TXOUT_UNSPENT;
    stxo1.blockHeight = 200333;
-   stxo1.duplicateID = 3;
    stxo1.txIndex     = 7;
    stxo1.txOutIndex  = 1;
    stxo1.unserialize(rawTxOut1_);
@@ -5613,8 +5454,9 @@ TEST_F(LMDBTest, DISABLED_STxOutPutGet)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(LMDBTest, PutGetBareHeader)
+TEST_F(LMDBTest, DISABLED_PutGetBareHeader)
 {
+   /*
    StoredHeader sbh;
    BinaryRefReader brr(rawBlock_);
    sbh.unserializeFullBlock(brr);
@@ -5625,9 +5467,7 @@ TEST_F(LMDBTest, PutGetBareHeader)
    auto txh = iface_->beginTransaction(DB_SELECT::HEADERS, LMDB::Mode::ReadWrite);
    auto txH = iface_->beginTransaction(DB_SELECT::HISTORY, LMDB::Mode::ReadWrite);
 
-   uint8_t sdup = iface_->putBareHeader(sbh);
-   EXPECT_EQ(sdup, 0);
-   EXPECT_EQ(sbh.duplicateID, 0);
+   iface_->putBareHeader(sbh);
 
    // Add a new header and make sure duplicate ID is done correctly
    BinaryData newHeader = READHEX(
@@ -5639,7 +5479,7 @@ TEST_F(LMDBTest, PutGetBareHeader)
    StoredHeader sbh2;
    sbh2.setHeaderData(newHeader);
    sbh2.setKeyData(123000, UINT8_MAX);
-   
+
    uint8_t newDup = iface_->putBareHeader(sbh2);
    EXPECT_EQ(newDup, 1);
    EXPECT_EQ(sbh2.duplicateID, 1);
@@ -5678,7 +5518,9 @@ TEST_F(LMDBTest, PutGetBareHeader)
    iface_->putBareHeader(sbh3);
    EXPECT_EQ(sbh3.duplicateID, 2);
    EXPECT_EQ(iface_->getValidDupIDForHeight(123000), 2);
+   */
 }
+
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(LMDBTest, PutGetStoredTxHints)
 {

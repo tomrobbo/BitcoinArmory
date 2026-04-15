@@ -21,7 +21,7 @@
 #include "BlockObj.h"
 #include "bdmenums.h"
 
-#define ARMORY_DB_VERSION   0x9701
+#define ARMORY_DB_VERSION   0x9702
 #define ARMORY_DB_DEFAULT   ARMORY_DB_FULL
 #define UTXO_STORAGE        SCRIPT_UTXO_VECTOR
 
@@ -155,7 +155,6 @@ public:
    uint32_t          txVersion;
    BinaryData        dataCopy;
    uint32_t          blockHeight;
-   uint8_t           duplicateID;
    uint16_t          txIndex;
    uint16_t          txOutIndex;
    BinaryData        parentHash;
@@ -289,6 +288,7 @@ public:
    bool           blockAppliedToDB = false;
    bool           isPartial = false;
    bool           hasBlockHeader = false;
+   bool           merkleValid = true;
 
    // We don't actually enforce these members.  They're solely for recording
    // the values that were unserialized with everything else, so that we can
@@ -297,7 +297,7 @@ public:
    uint32_t        unserBlkVer;
    ARMORY_DB_TYPE  unserDbType;
    MERKLE_SER_TYPE unserMkType;
-   
+
    size_t         offset;
    uint16_t       fileID;
    unsigned int   uniqueID = UINT32_MAX;
@@ -361,7 +361,7 @@ public:
    BinaryData hgtX;
    std::map<BinaryData, TxIOPair> txioMap;
    uint32_t height;
-   uint8_t  dupID;
+   //uint8_t  dupID;
    uint32_t txioCount;
 };
 
@@ -380,8 +380,7 @@ struct StoredScriptHistory
    void unserializeDBValue(BinaryDataRef);
    void unserializeDBKey(BinaryDataRef, bool = true);
    void decompressManySubssh(BinaryDataRef,
-      unsigned, unsigned, unsigned, unsigned,
-      std::function<bool(unsigned, uint8_t)>&);
+      unsigned, unsigned, unsigned, unsigned);
 
    void addSummary(const StoredScriptHistory&);
    void substractSummary(const StoredScriptHistory&);
@@ -443,27 +442,4 @@ public:
    BinaryData txHashPrefix;
    std::vector<BinaryData> dbKeyList;
    BinaryData preferredDBKey;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-struct StoredHeadHgtList
-{
-   StoredHeadHgtList(void);
-
-   bool isInitialized(void) const;
-   void unserializeDBValue(BinaryRefReader&);
-   void serializeDBValue(BinaryWriter&) const;
-   void unserializeDBValue(const BinaryData&);
-   void unserializeDBValue(BinaryDataRef);
-   BinaryData serializeDBValue(void) const;
-   void unserializeDBKey(BinaryDataRef);
-   BinaryData getDBKey(bool = true) const;
-
-   void addDupAndHash(uint8_t, BinaryDataRef);
-   void setPreferredDupID(uint8_t);
-
-public:
-   uint32_t height;
-   std::vector<std::pair<uint8_t, BinaryData>> dupAndHashList;
-   uint8_t preferredDup;
 };

@@ -226,8 +226,8 @@ bool BlockDataManager::applyBlockRangeToDB(
       return false;
    }
 
-   bcs.updateSSH(false, blk0);
-   bcs.resolveTxHashes();
+   //bcs.updateSSH(false, blk0);
+   //bcs.resolveTxHashes();
    return true;
 }
 
@@ -282,7 +282,7 @@ bool BlockDataManager::loadDiskState(const ProgressCallback &progress,
    bool forceRescanSSH)
 {
    BDMstate_ = BDMState::Initializing;
-   dbBuilder_ = std::make_shared<DatabaseBuilder>(
+   dbBuilder_ = std::make_shared<Database::Builder>(
       blockFiles_, *this, progress, forceRescanSSH);
    if (!dbBuilder_->init()) {
       //fatal error in db startup, terminate bdm
@@ -302,40 +302,6 @@ bool BlockDataManager::loadDiskState(const ProgressCallback &progress,
 ReorganizationState BlockDataManager::readBlkFileUpdate()
 {
    return dbBuilder_->update();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-StoredHeader BlockDataManager::getBlockFromDB(uint32_t hgt, uint8_t dup) const
-{
-   // Get the full block from the DB
-   try {
-      StoredHeader returnSBH;
-      auto header = blockchain_->getHeaderByHeight(hgt, dup);
-      if (!iface_->getStoredHeader(returnSBH, header)) {
-         return {};
-      }
-      return returnSBH;
-   } catch (const std::exception&) {
-      LOGWARN << "no block data for " << hgt << "|" << dup;
-      return {};
-   }
-}
-
-uint32_t BlockDataManager::getTopBlockHeight() const
-{
-   return blockchain_->top()->getBlockHeight();
-}
-
-uint8_t BlockDataManager::getValidDupIDForHeight(uint32_t blockHgt) const
-{
-   return iface_->getValidDupIDForHeight(blockHgt);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-StoredHeader BlockDataManager::getMainBlockFromDB(uint32_t hgt) const
-{
-   uint8_t dupMain = iface_->getValidDupIDForHeight(hgt);
-   return getBlockFromDB(hgt, dupMain);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

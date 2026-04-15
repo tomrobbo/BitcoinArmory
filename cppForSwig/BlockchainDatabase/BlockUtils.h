@@ -25,7 +25,6 @@
 #include "ScrAddrFilter.h"
 
 class BlockFiles;
-class DatabaseBuilder;
 struct BDV_Notification;
 struct BDVNotificationHook;
 struct StoredHeader;
@@ -42,6 +41,11 @@ namespace Armory
       class BitcoinNodeInterface;
    }
    struct ReorganizationState;
+
+   namespace Database
+   {
+      class Builder;
+   }
 }
 
 namespace CoreRPC
@@ -86,7 +90,7 @@ private:
    std::shared_ptr<BDM_ScrAddrFilter> scrAddrData_;
    std::shared_ptr<Armory::Blockchain> blockchain_;
    std::shared_ptr<BlockFiles> blockFiles_;
-   std::shared_ptr<DatabaseBuilder> dbBuilder_;
+   std::shared_ptr<Armory::Database::Builder> dbBuilder_;
 
    std::function<bool(void)> shutdownLbd_;
    BDMState BDMstate_ = BDMState::Offline;
@@ -127,12 +131,7 @@ public:
    bool applyBlockRangeToDB(ProgressCallback,
       uint32_t, ScrAddrFilter&);
 
-   uint32_t getTopBlockHeight(void) const;
-   uint8_t getValidDupIDForHeight(uint32_t) const;
-
    std::shared_ptr<ScrAddrFilter> getScrAddrFilter(void) const;
-   StoredHeader getMainBlockFromDB(uint32_t) const;
-   StoredHeader getBlockFromDB(uint32_t, uint8_t) const;
 
    void enableZeroConf(bool=false);
    void registerZcCallbacks(

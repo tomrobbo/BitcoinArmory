@@ -14,11 +14,10 @@
 #pragma once
 
 #include <memory>
-#include <deque>
 #include <map>
 #include <set>
-#include <unordered_map>
 #include <unordered_set>
+#include <functional>
 
 #include <Utils/BinaryData.h>
 #include "BlockObj.h"
@@ -28,15 +27,6 @@ class LMDBBlockDatabase;
 
 namespace Armory
 {
-   struct HeightAndDup
-   {
-      const unsigned height;
-      const uint8_t dup;
-      bool isMain;
-
-      HeightAndDup(unsigned, uint8_t, bool);
-   };
-
    struct ReorganizationState
    {
       bool prevTopStillValid = false;
@@ -52,7 +42,7 @@ namespace Armory
    class Blockchain
    {
    private:
-      std::shared_ptr<BlockHeader> getGenesisBlock(void) const;
+      void clear(void);
       std::shared_ptr<BlockHeader> organizeChain(bool = false, bool = false);
       /////////////////////////////////////////////////////////////////////////////
       // Update/organize the headers map (figure out longest chain, mark orphans)
@@ -60,9 +50,6 @@ namespace Armory
       // difficulties and difficultySum values.  Return the difficultySum of 
       // this block.
       double traceChainDown(std::shared_ptr<BlockHeader>);
-      uint32_t getHighestBlockIDFromDb(LMDBBlockDatabase*) const;
-      void initHighestBlockID(LMDBBlockDatabase*);
-      void updateHighestBlockIDInDb(LMDBBlockDatabase*);
       uint32_t getNewUniqueID(void);
 
    public:
@@ -71,27 +58,28 @@ namespace Armory
       /**
       * check/add blocks to the chain
       **/
-      std::set<uint32_t> checkForNewBlocks(const std::vector<std::shared_ptr<BlockData>>&);
-      void addBlocksInBulk(const std::deque<std::deque<HeaderPtr>>&, bool);
+      void loadHeadersFromDB(LMDBBlockDatabase*, const std::function<void(size_t)>&);
+      uint32_t stageNewHeaders(const std::vector<std::shared_ptr<BlockHeader>>&);
+      void putNewHeaders(LMDBBlockDatabase*);
+      void flagInvalidBlocks(LMDBBlockDatabase*, const std::set<uint32_t>&);
 
       /**
       * organize/reorganize chain
       **/
       ReorganizationState organize(bool, bool);
-      void updateBranchingMaps(LMDBBlockDatabase*, ReorganizationState&);
 
       std::shared_ptr<BlockHeader> top(void) const;
-      const std::shared_ptr<BlockHeader> getHeaderByHeight(
-         unsigned, uint8_t) const;
+      std::shared_ptr<BlockHeader> getGenesisBlock(void) const;
+
+      const std::shared_ptr<BlockHeader> getHeaderByHeight(unsigned) const;
       HeaderPtr getHeaderByHash(const BinaryData&) const;
       HeaderPtr getHeaderByHash(BinaryDataRef) const;
       HeaderPtr getHeaderByHash(const Hash32&) const;
       HeaderPtr getHeaderById(uint32_t) const;
       HeaderPtr getHeaderForTxKey(const BinaryData&) const;
+      BlockOffset getTopBlockOffset(void) const;
 
-      void putNewBareHeaders(LMDBBlockDatabase*);
       std::map<unsigned, std::set<unsigned>> mapIDsPerBlockFile(void) const;
-      std::map<uint32_t, HeightAndDup> getHeightAndDupMap(void) const;
       void flagBlockHeader(std::shared_ptr<BlockHeader>, LMDBBlockDatabase*);
 
    private:
@@ -100,11 +88,12 @@ namespace Armory
       std::vector<HeaderPtr> headersById_;
       std::vector<HeaderPtr> headersByHeight_;
 
-      std::vector<HeaderPtr> newlyParsedBlocks_;
+      std::vector<HeaderPtr> newlyParsedHeaders_;
       std::atomic<HeaderPtr> topBlockPtr_;
       uint32_t idOfTopBlock_ = 0;
 
       std::atomic<uint32_t> highestBlockID_;
+      BlockOffset topBlockOffset_;
 
       mutable std::mutex mu_;
       bool forceRebuildFlag_ = false;

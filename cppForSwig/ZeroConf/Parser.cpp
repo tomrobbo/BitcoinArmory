@@ -222,7 +222,7 @@ ZeroConfContainer::purgeToBranchpoint(
       auto rawBlock = db_->getRawBlock(currentHeader);
       auto block = BlockData::deserialize(
          rawBlock.getPtr(), rawBlock.getSize(),
-         currentHeader, nullptr,
+         currentHeader,
          BlockData::CheckHashes::NoChecks);
       const auto& txns = block->getTxns();
 
@@ -323,7 +323,7 @@ std::map<BinaryData, std::shared_ptr<ParsedTx>> ZeroConfContainer::purge(
       auto rawBlock = db_->getRawBlock(currentHeader);
       auto block = BlockData::deserialize(
          rawBlock.getPtr(), rawBlock.getSize(),
-         currentHeader, nullptr,
+         currentHeader,
          BlockData::CheckHashes::NoChecks);
       const auto& txns = block->getTxns();
 

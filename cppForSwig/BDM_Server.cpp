@@ -941,7 +941,7 @@ namespace {
             headers.reserve(headersRequest.size());
             for (const auto height : headersRequest) {
                try {
-                  auto header = bcPtr->getHeaderByHeight(height, 0xFF);
+                  auto header = bcPtr->getHeaderByHeight(height);
                   headers.emplace_back(std::move(header));
                } catch (const std::exception&) {
                   continue;
@@ -963,7 +963,6 @@ namespace {
                capnHeader.setBlockSize(header->getBlockSize());
                capnHeader.setNumTxs(header->getNumTx());
                capnHeader.setHeight(header->getBlockHeight());
-               capnHeader.setDupId(header->getDuplicateID());
             }
             break;
          }

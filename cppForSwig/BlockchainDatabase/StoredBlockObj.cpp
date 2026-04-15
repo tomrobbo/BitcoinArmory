@@ -35,7 +35,8 @@ bool StoredDBInfo::isInitialized() const
 
 BinaryData StoredDBInfo::getDBKey(uint16_t id)
 {
-   BinaryWriter bw(3);
+   BinaryWriter bw(4);
+   bw.put_uint8_t((uint8_t)DbPrefix::DBINFO);
    bw.put_uint8_t((uint8_t)DbPrefix::DBINFO);
    bw.put_uint16_t(id, BE);
    return bw.getData();
@@ -348,7 +349,6 @@ void StoredHeader::unserializeFullBlock(BinaryRefReader brr, bool doFrag,
          stxo.unserialize(brr);
          stxo.txVersion    = thisTx.getVersion();
          stxo.blockHeight  = UINT32_MAX;
-         stxo.duplicateID  = UINT8_MAX;
          stxo.txIndex      = tx;
          stxo.txOutIndex   = txo;
          stxo.isCoinbase   = isCoinbase;
@@ -447,6 +447,7 @@ void DBBlock::createFromBlockHeader(const BlockHeader& bh)
    fileID = bh.getBlockFileNum();
    offset = bh.getOffset();
    uniqueID = bh.getUniqueID();
+   merkleValid = bh.isMerkleValid();
 }
 
 ////////
@@ -469,7 +470,6 @@ BlockHeader DBBlock::getBlockHeaderCopy() const
    BlockHeader bh(dataCopy);
    bh.setNumTx(numTx);
    bh.setBlockSize(numBytes);
-   bh.setDuplicateID(duplicateID);
    bh.setBlockFileNum(fileID);
    bh.setBlockFileOffset(offset);
    return bh;
@@ -571,23 +571,22 @@ void DBBlock::serializeDBValue(BinaryWriter& bw, DB_SELECT db,
    }
 
    if (db == DB_SELECT::HEADERS) {
-      BinaryData hgtx = DBUtils::heightAndDupToHgtx(blockHeight, duplicateID);
       bw.put_BinaryData(dataCopy);
-      bw.put_BinaryData(hgtx);
       bw.put_uint32_t(numBytes);
       bw.put_uint32_t(numTx);
-      bw.put_uint16_t(fileID);
       bw.put_uint64_t(offset);
-      bw.put_uint32_t(uniqueID);
+      bw.put_uint16_t(fileID);
+      //set valid merkle by default, update it on failed check
+      bw.put_uint8_t(merkleValid);
    } else if (db == DB_SELECT::BLKDATA) {
       uint32_t version = READ_UINT32_LE(dataCopy.getPtr());
 
       // TODO:  We define merkle serialization types here, but we're not actually
-      //        enforcing it in this function.  Either merkle_ member contains 
-      //        the correct form of the merkle data or it doesn't.  We should 
-      //        figure out whether we need to make sure the correct data is 
+      //        enforcing it in this function.  Either merkle_ member contains
+      //        the correct form of the merkle data or it doesn't.  We should
+      //        figure out whether we need to make sure the correct data is
       //        already here when this function starts, or guarantee the data
-      //        is in the right form as part of this function.  For now I'm 
+      //        is in the right form as part of this function.  For now I'm
       //        assuming that it's already in the right form, and thus the
       //        determination of PARTIAL vs FULL is irrelevant
       MERKLE_SER_TYPE mtype;
@@ -826,7 +825,6 @@ void StoredTx::setKeyData(uint32_t height, uint8_t dup, uint16_t txIdx)
 
    for (auto& stxoPair : stxoMap) {
       stxoPair.second.blockHeight = height;
-      stxoPair.second.duplicateID = dup;
       stxoPair.second.txIndex     = txIdx;
       stxoPair.second.txOutIndex  = stxoPair.first;
    }
@@ -1077,7 +1075,7 @@ void DBTx::pprintOneLine(uint32_t indent) const
 // StoredTxOut
 StoredTxOut::StoredTxOut()
    : txVersion(UINT32_MAX), dataCopy(0), blockHeight(UINT32_MAX),
-   duplicateID(UINT8_MAX), txIndex(UINT16_MAX), txOutIndex(UINT16_MAX),
+   txIndex(UINT16_MAX), txOutIndex(UINT16_MAX),
    parentHash(0), spentness(TXOUT_SPENTUNK), isCoinbase(false),
    spentByTxInKey(0)
 {}
@@ -1184,7 +1182,7 @@ void StoredTxOut::serializeDBValue(
 BinaryData StoredTxOut::getDBKey(bool withPrefix) const
 {
    if (blockHeight == UINT32_MAX ||
-      duplicateID == UINT8_MAX  ||
+      //duplicateID == UINT8_MAX  ||
       txIndex     == UINT16_MAX ||
       txOutIndex  == UINT16_MAX) {
       return {};
@@ -1192,10 +1190,10 @@ BinaryData StoredTxOut::getDBKey(bool withPrefix) const
 
    if (withPrefix) {
       return DBUtils::getBlkDataKey(
-         blockHeight, duplicateID, txIndex, txOutIndex);
+         blockHeight, 0, txIndex, txOutIndex);
    } else {
       return DBUtils::getBlkDataKeyNoPrefix(
-         blockHeight, duplicateID, txIndex, txOutIndex);
+         blockHeight, 0, txIndex, txOutIndex);
    }
 }
 
@@ -1207,14 +1205,13 @@ BinaryData StoredTxOut::getSpentnessKey() const
    }
 
    if (blockHeight == UINT32_MAX ||
-      duplicateID == UINT8_MAX ||
       txIndex == UINT16_MAX ||
       txOutIndex == UINT16_MAX) {
       return {};
    }
 
    return DBUtils::getDBSuperSpentnessKey(
-      blockHeight, duplicateID, txIndex, txOutIndex);
+      blockHeight, 0, txIndex, txOutIndex);
 }
 
 BinaryData StoredTxOut::getDBKeyOfParentTx(bool withPrefix) const
@@ -1312,11 +1309,12 @@ uint64_t StoredTxOut::getValue() const
 void StoredTxOut::unserializeDBKey(BinaryDataRef key)
 {
    BinaryRefReader brr(key);
+   uint8_t dump;
    if (key.getSize() == 8) {
       DBUtils::readBlkDataKeyNoPrefix(brr,
-         blockHeight, duplicateID, txIndex, txOutIndex);
+         blockHeight, dump, txIndex, txOutIndex);
    } else if (key.getSize() == 9) {
-      DBUtils::readBlkDataKey(brr, blockHeight, duplicateID, txIndex, txOutIndex);
+      DBUtils::readBlkDataKey(brr, blockHeight, dump, txIndex, txOutIndex);
    } else {
       LOGERR << "Invalid key for StoredTxOut";
    }
@@ -1340,7 +1338,6 @@ void StoredTxOut::pprintOneLine(uint32_t indent) const
    }
    std::cout << "TXOUT:   "
       << "  (" << blockHeight
-      << "," << (uint32_t)duplicateID
       << "," << txIndex
       << "," << txOutIndex << ")"
       << " Value=" << (double)(getValue())/(100000000.0)
@@ -1465,8 +1462,7 @@ void StoredScriptHistory::unserializeDBValue(BinaryDataRef bdr)
 ////////
 void StoredScriptHistory::decompressManySubssh(BinaryDataRef data,
    unsigned height_base, unsigned spent_offset,
-   unsigned lower_bound, unsigned upper_bound,
-   std::function<bool(unsigned, uint8_t)>& isDupIdValid)
+   unsigned lower_bound, unsigned upper_bound)
 {
    BinaryRefReader brr(data);
 
@@ -1575,10 +1571,6 @@ void StoredScriptHistory::decompressManySubssh(BinaryDataRef data,
                throw std::runtime_error(
                   "unexpected spent flag in compressed subssh");
          }
-      }
-
-      if (!isDupIdValid(this_height, dupId)) {
-         continue;
       }
 
       //add to subssh map
@@ -1800,7 +1792,7 @@ void StoredScriptHistory::substractSummary(const StoredScriptHistory& ssh)
 // for massively-reused addresses like SatoshiDice.
 ////////////////////////////////////////////////////////////////////////////////
 StoredSubHistory::StoredSubHistory() :
-   hgtX(0), height(0), dupID(0), txioCount(0)
+   hgtX(0), height(0), txioCount(0)
 {}
 
 StoredSubHistory::StoredSubHistory(const StoredSubHistory& copy)
@@ -1822,7 +1814,6 @@ StoredSubHistory& StoredSubHistory::operator=(const StoredSubHistory& copy)
    hgtX = copy.hgtX;
    txioMap = copy.txioMap;
    height = copy.height;
-   dupID = copy.dupID;
    txioCount = copy.txioCount;
    return *this;
 }
@@ -1953,7 +1944,6 @@ void StoredSubHistory::unserializeDBKey(BinaryDataRef key, bool withPrefix)
    height = 0;
    uint8_t* hgt = (uint8_t*)&height;
 
-   dupID = hgtXptr[3];
    hgt[0] = hgtXptr[2];
    hgt[1] = hgtXptr[1];
    hgt[2] = hgtXptr[0];
@@ -2257,119 +2247,4 @@ void StoredTxHints::setPreferredTx(
 void StoredTxHints::setPreferredTx(BinaryData dbKey6B)
 {
    preferredDBKey = dbKey6B;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// StoredHeadHgtList
-StoredHeadHgtList::StoredHeadHgtList() :
-   height(UINT32_MAX), preferredDup(UINT8_MAX)
-{}
-
-bool StoredHeadHgtList::isInitialized() const
-{
-   return height != UINT32_MAX;
-}
-
-void StoredHeadHgtList::setPreferredDupID(uint8_t newDup)
-{
-   preferredDup = newDup;
-}
-
-////////
-void StoredHeadHgtList::unserializeDBValue(BinaryRefReader& brr)
-{
-   uint32_t numHeads = brr.get_uint8_t();
-   dupAndHashList.resize(numHeads);
-   preferredDup = UINT8_MAX;
-   for (uint32_t i = 0; i < numHeads; i++) {
-      uint8_t dup = brr.get_uint8_t();
-      dupAndHashList[i].first = dup & 0x7f;
-      brr.get_BinaryData(dupAndHashList[i].second, 32);
-      if ((dup & 0x80) > 0) {
-         preferredDup = dup & 0x7f;
-      }
-   }
-}
-
-void StoredHeadHgtList::serializeDBValue(BinaryWriter& bw) const
-{
-   bw.put_uint8_t(dupAndHashList.size());
-
-   // Write the preferred/valid block header first
-   for (const auto& dahPair : dupAndHashList) {
-      if (dahPair.first != preferredDup) {
-         continue;
-      }
-      bw.put_uint8_t(dahPair.first | 0x80);
-      bw.put_BinaryData(dahPair.second);
-      break;
-   }
-
-   // Now write everything else
-   for (const auto& dahPair : dupAndHashList) {
-      if (dahPair.first == preferredDup) {
-         continue;
-      }
-      bw.put_uint8_t(dahPair.first & 0x7f);
-      bw.put_BinaryData(dahPair.second);
-   }
-}
-
-void StoredHeadHgtList::unserializeDBValue(const BinaryData& bd)
-{
-   BinaryRefReader brr(bd);
-   unserializeDBValue(brr);
-}
-
-void StoredHeadHgtList::unserializeDBValue(BinaryDataRef bdr)
-{
-   BinaryRefReader brr(bdr);
-   unserializeDBValue(brr);
-}
-
-BinaryData StoredHeadHgtList::serializeDBValue() const
-{
-   BinaryWriter bw;
-   serializeDBValue(bw);
-   return bw.getData();
-}
-
-////////
-BinaryData StoredHeadHgtList::getDBKey(bool withPrefix) const
-{
-   BinaryWriter bw(5);
-   if (withPrefix) {
-      bw.put_uint8_t((uint8_t)DbPrefix::HEADHGT);
-   }
-   bw.put_uint32_t(height, BE);
-   return bw.getData();
-
-}
-
-void StoredHeadHgtList::unserializeDBKey(BinaryDataRef key)
-{
-   BinaryRefReader brr(key);
-   if (key.getSize() == 5) {
-      uint8_t prefix = brr.get_uint8_t();
-      if (prefix != (uint8_t)DbPrefix::HEADHGT) {
-         LOGERR << "Unserialized HEADHGT key but wrong prefix";
-         return;
-      }
-   }
-   height = brr.get_uint32_t(BE);
-}
-
-////////
-void StoredHeadHgtList::addDupAndHash(uint8_t dup, BinaryDataRef hash)
-{
-   for (auto& dah : dupAndHashList) {
-      if (dah.first == dup) {
-         if (dah.second != hash) {
-            LOGERR << "Pushing different hash into existing HHL dupID"; 
-         }
-         dah = std::make_pair(dup, hash);
-         return;
-      }
-   }
-   dupAndHashList.emplace_back(std::make_pair(dup, hash));
 }

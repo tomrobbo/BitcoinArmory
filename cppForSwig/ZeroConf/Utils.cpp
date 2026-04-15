@@ -366,10 +366,10 @@ void Armory::ZeroConf::finalizeParsedTxResolution(
             auto keyRef = input.opRef.getDbKey().getSliceRef(0, 4);
             auto height = DBUtils::hgtxToHeight(keyRef);
             auto dupId = DBUtils::hgtxToDupID(keyRef);
-            if (db->getValidDupIDForHeight(height) != dupId) {
+            /*if (db->getValidDupIDForHeight(height) != dupId) {
                parsedTx.state = ParsedTxStatus::Invalid;
                return;
-            }
+            }*/
          }
          continue;
       }

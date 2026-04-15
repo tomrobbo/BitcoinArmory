@@ -27,6 +27,7 @@
 #define REWIND_COUNT 100
 
 using namespace Armory;
+using namespace Armory::Database;
 
 namespace {
    void dumpBlock(
@@ -67,19 +68,18 @@ namespace {
 }
 
 /////////////////////////////////////////////////////////////////////////////
-// DatabaseBuilder
-DatabaseBuilder::DatabaseBuilder(std::shared_ptr<BlockFiles> blockFiles,
+// Builder
+Builder::Builder(std::shared_ptr<BlockFiles> blockFiles,
    BlockDataManager& bdm,
    const ProgressCallback &progress,
    bool forceRescanSSH)
    : blockFiles_(blockFiles), blockchain_(bdm.blockchain()),
    db_(bdm.getIFace()), scrAddrFilter_(bdm.getScrAddrFilter()),
-   progress_(progress), topBlockOffset_(0, 0),
-   forceRescanSSH_(forceRescanSSH)
+   progress_(progress), forceRescanSSH_(forceRescanSSH)
 {}
 
 ////////
-bool DatabaseBuilder::init()
+bool Builder::init()
 {
    if (Config::DBSettings::checkChain()) {
       verifyChain();
@@ -91,13 +91,28 @@ bool DatabaseBuilder::init()
    //list all files in block data folder
    blockFiles_->detectAllBlockFiles();
 
-   //read all blocks already in DB and populate blockchain
+   LOGINFO << "loading headers from db";
    loadBlockHeadersFromDB(progress_);
+
+   LOGINFO << "organizing chain";
+   blockchain_->organize(true, false);
+
+   TIMER_START("updateblocksindb");
+
+   LOGINFO << "parsing chain for new headers";
+   auto startBO = parseForNewHeaders(
+      Config::DBSettings::reportProgress() ? progress_ : nullptr);
+
+   LOGINFO << "organizing chain";
+   auto reorgState = blockchain_->organize(false, false);
+
+   LOGINFO << "commiting new headers";
+   blockchain_->putNewHeaders(db_);
 
    //is there something to repair?
    bool chainIsSain = true;
+   /*
    auto flaggedFileNums = db_->getFlaggedFileNums();
-   LOGINFO << "organizing chain";
    if (!flaggedFileNums.empty()) {
       LOGWARN << "the following block files are flagged for reparsing:";
       for (auto fileNum : flaggedFileNums) {
@@ -124,10 +139,9 @@ bool DatabaseBuilder::init()
       db_->clearFlaggedFileNums();
 
       //flag for rescan
-      /*
-      NOTE: we cannot call resetHistory this early because it nukes
-      the SSH db, which scrAddrFilter reads to populate itself
-      */
+      //NOTE: we cannot call resetHistory this early because it nukes
+      //the SSH db, which scrAddrFilter reads to populate itself
+
       chainIsSain = false;
       LOGWARN << "done fixing chain";
    } else {
@@ -154,11 +168,10 @@ bool DatabaseBuilder::init()
       topBlockOffset_.offset = rewindBlock->getOffset() + rewindBlock->getBlockSize();
       LOGINFO << "Rewinding " << topBlock->getBlockHeight() - rewindHeight << " blocks";
    } catch (const std::exception&) {}
+   */
 
-   //update db
-   TIMER_START("updateblocksindb");
-   LOGINFO << "updating HEADERS db";
-   auto reorgState = updateBlocksInDB(
+   LOGINFO << "parsing chain for new blocks";
+   parseForNewBlocks(startBO,
       Config::DBSettings::reportProgress() ? progress_ : nullptr);
    TIMER_STOP("updateblocksindb");
    double updatetime = TIMER_READ_SEC("updateblocksindb");
@@ -178,6 +191,9 @@ bool DatabaseBuilder::init()
 
       //don't scan without any registered addresses
       if (scrAddrFilter_->getScanFilterAddrMap()->empty()) {
+         TIMER_STOP("initdb");
+         double timeSpent = TIMER_READ_SEC("initdb");
+         LOGINFO << "init db in " << timeSpent << "s";
          return true;
       }
 
@@ -254,59 +270,141 @@ bool DatabaseBuilder::init()
    return true;
 }
 
-/////////////////////////////////////////////////////////////////////////////
-void DatabaseBuilder::loadBlockHeadersFromDB(
-   const ProgressCallback &progress)
+////////
+void Builder::loadBlockHeadersFromDB(
+   const ProgressCallback& progress)
 {
    //TODO: preload the headers db file to speed process up
 
-   LOGINFO << "Reading headers from db";
+   // every ten minutes we get a block, how many blocks exist?
+   const time_t btcEpoch = 1230963300; // genesis block ts
+   const time_t now = time(nullptr);
+   const unsigned expectedTotalBlockCount = (now - btcEpoch) / 60 / 10;
+   ProgressCalculator calc(expectedTotalBlockCount);
 
-   unsigned counter = 0;
-   const unsigned howManyBlocks = [&]() -> unsigned
+   const auto callback = [&calc, &progress](size_t count)
    {
-      const time_t btcEpoch = 1230963300; // genesis block ts
-      const time_t now = time(nullptr);
-
-      // every ten minutes we get a block, how many blocks exist?
-      const unsigned blocks = (now - btcEpoch) / 60 / 10;
-      return blocks;
-   }();
-
-   ProgressCalculator calc(howManyBlocks);
-   std::deque<HeaderPtr> headers;
-
-   const auto callback = [&](HeaderPtr h)
-   {
-      headers.emplace_back(h);
-      if (!Config::DBSettings::reportProgress() || (counter++ % 50000) != 0) {
+      if (!Config::DBSettings::reportProgress()) {
          return;
       }
 
-      calc.advance(counter);
+      calc.advance(count);
       progress(
          BDMPhase_DBHeaders,
          calc.fractionCompleted(),
          calc.remainingSeconds(),
-         counter
+         count
       );
    };
-
-   db_->readAllHeaders(callback);
-   LOGINFO << "found " << headers.size() << " headers in db";
-   if (headers.empty()) {
-      return;
-   }
-   blockchain_->addBlocksInBulk({std::move(headers)}, false);
+   blockchain_->loadHeadersFromDB(db_, callback);
+   
 }
 
-/////////////////////////////////////////////////////////////////////////////
-ReorganizationState DatabaseBuilder::updateBlocksInDB(
-   const ProgressCallback &progress, std::shared_ptr<BlockDataLoader> bdl)
+////////
+BlockOffset Builder::parseForNewHeaders(const ProgressCallback& progress)
+{
+   std::shared_ptr<BlockDataLoader> bdl;
+   auto topBlockOffset = blockchain_->getTopBlockOffset();
+   try {
+      bdl = std::make_shared<BlockDataLoader>(blockFiles_, topBlockOffset);
+      LOGINFO << "looking for new headers starting file " <<
+         topBlockOffset.fileID() << ", offset " << topBlockOffset.offset();
+   } catch (const BlockDataExhausted&) {
+      return {UINT16_MAX, SIZE_MAX};
+   }
+
+   std::atomic<uint32_t> total, count;
+   total.store(0, std::memory_order_relaxed);
+   count.store(0, std::memory_order_relaxed);
+   auto parseBlock = [this, bdl, &total, &count]()
+   {
+      std::vector<std::shared_ptr<BlockHeader>> headers;
+      headers.reserve(200);
+
+      auto deserHeader = [&headers](
+         const uint8_t* ptr, size_t size, size_t offset)->bool
+      {
+         try {
+            if (size < HEADER_SIZE) {
+               throw BtcUtils::BlockDeserializingException(
+                  "not enough data for a header");
+            }
+            BinaryData rawData{ptr, HEADER_SIZE};
+            auto header = std::make_shared<BlockHeader>(rawData.getRef());
+            header->setBlockSize(size);
+            header->setBlockFileOffset(offset);
+            header->setRawData(std::move(rawData));
+            try {
+               BinaryRefReader brr{ptr, size};
+               brr.advance(HEADER_SIZE);
+               header->setNumTx(brr.get_var_int());
+            } catch (const std::exception&) {
+               //data didn't carry numtx varint, nothing to do
+            }
+
+            headers.emplace_back(header);
+            return true;
+         } catch (const std::exception&) {
+            return false;
+         }
+      };
+
+      while (true) {
+         auto fileCopy = bdl->getNextCopy();
+         if (!fileCopy.isValid()) {
+            break;
+         }
+
+         headers.clear();
+         parseBlockFile(fileCopy, deserHeader);
+         total.fetch_add(headers.size(), std::memory_order_relaxed);
+         for (auto& header : headers) {
+            header->setBlockFileNum(fileCopy.fileID);
+            header->setBlockFileOffset(header->getOffset() + fileCopy.offset);
+         }
+         auto added = blockchain_->stageNewHeaders(headers);
+         count.fetch_add(added, std::memory_order_relaxed);
+      }
+   };
+
+   unsigned threadcount = std::min(
+      (size_t)Config::DBSettings::threadCount(),
+      bdl->size()
+   );
+   std::deque<std::thread> tIDs;
+   for (unsigned i = 1; i < threadcount; i++) {
+      tIDs.emplace_back(std::thread(parseBlock));
+   }
+   parseBlock();
+
+   for (auto& tID : tIDs) {
+      if (tID.joinable()) {
+         tID.join();
+      }
+   }
+
+   LOGINFO << "found " << total.load(std::memory_order_relaxed)
+      << " new headers";
+   LOGINFO << "staged " << count.load(std::memory_order_relaxed)
+      << " of them";
+   return topBlockOffset;
+}
+
+////////
+void Builder::parseForNewBlocks(const BlockOffset& startBO,
+   const ProgressCallback& progress)
 {
    //this is a helper to load block data files in memory
-   if (bdl == nullptr) {
-      bdl = std::make_shared<BlockDataLoader>(blockFiles_, topBlockOffset_);
+   if (!startBO.isValid()) {
+      return;
+   }
+
+   std::shared_ptr<BlockDataLoader> bdl;
+   try {
+      bdl = std::make_shared<BlockDataLoader>(blockFiles_, startBO);
+   } catch (const BlockDataExhausted&) {
+      //no more fresh block data available
+      return;
    }
 
    //do not run more threads than there are block files to read
@@ -316,7 +414,7 @@ ReorganizationState DatabaseBuilder::updateBlocksInDB(
    );
 
    std::mutex progressMutex;
-   unsigned lastParsedFileID = topBlockOffset_.fileID;
+   unsigned lastParsedFileID = bdl->getFirstFileID();
    if (lastParsedFileID == UINT16_MAX) {
       lastParsedFileID = 0;
    }
@@ -333,32 +431,21 @@ ReorganizationState DatabaseBuilder::updateBlocksInDB(
    }
 
    //parser threads will start with block fileID + 1
-   std::deque<std::deque<HeaderPtr>> parsedHeaders;
+   std::set<uint32_t> invalidatedBlockIDs;
    auto addBlocks = [&](void)->void
    {
-      BlockOffset topBO{0, 0};
-      std::deque<std::deque<HeaderPtr>> headersList;
       while (true) {
          auto fileCopy = bdl->getNextCopy();
          if (!fileCopy.isValid()) {
             break;
          }
+         auto invalids = addBlocksToDB(fileCopy);
 
-         auto hdrList = addBlocksToDB(fileCopy);
-         for (const auto& hdr : hdrList) {
-            BlockOffset hdrBO{
-               hdr->getBlockFileNum(),
-               hdr->getOffset() + hdr->getBlockSize()
-            };
-            if (hdrBO > topBO) {
-               topBO = hdrBO;
-            }
-         }
-         headersList.emplace_back(std::move(hdrList));
+         std::unique_lock<std::mutex> lock(progressMutex, std::defer_lock);
+         invalidatedBlockIDs.insert(invalids.begin(), invalids.end());
 
          //report to progress callback every ~100 block files
          if (progress && fileCopy.fileID >= lastParsedFileID + 100) {
-            std::unique_lock<std::mutex> lock(progressMutex, std::defer_lock);
             if (lock.try_lock()) {
                LOGINFO << "parsed block file #" << fileCopy.fileID;
                calc.advance(fileCopy.fileID);
@@ -370,17 +457,6 @@ ReorganizationState DatabaseBuilder::updateBlocksInDB(
                lastParsedFileID = fileCopy.fileID;
             }
          }
-      }
-
-      //merge all found headers into the common map
-      std::unique_lock<std::mutex> lock(progressMutex);
-      for (auto& headers : headersList) {
-         parsedHeaders.emplace_back(std::move(headers));
-      }
-
-      //update top block offset
-      if (topBO > topBlockOffset_) {
-         topBlockOffset_ = topBO;
       }
    };
 
@@ -399,44 +475,60 @@ ReorganizationState DatabaseBuilder::updateBlocksInDB(
       }
    }
 
-   //done parsing new blocks, add headers to blockchain
-   if (progress) {
-      progress(BDMPhase_OrganizingChain, 0, UINT32_MAX, 0);
+   if (!invalidatedBlockIDs.empty()) {
+      blockchain_->flagInvalidBlocks(db_, invalidatedBlockIDs);
    }
-   blockchain_->addBlocksInBulk(parsedHeaders, true);
-   auto reorgState = blockchain_->organize(false, progress ? true : false);
-
-   //commit new headers to db
-   blockchain_->putNewBareHeaders(db_);
-   LOGINFO << "top block height is " << reorgState.newTop->getBlockHeight();
-   return reorgState;
 }
 
-/////////////////////////////////////////////////////////////////////////////
-std::deque<HeaderPtr> DatabaseBuilder::addBlocksToDB(
+////////////////////////////////////////////////////////////////////////////////
+std::set<uint32_t> Builder::addBlocksToDB(
    const BlockDataLoader::BlockDataCopy& bdc)
 {
+   /*
+   Expect headers to already exist in blockchain objects.
+   This checks blocks body, computes all tx hashes and merkle root and
+   checks it vs root in header.
+   Finally, it uses tx hashes to build + commits tx hints/filters to db.
+   */
+
    std::vector<std::shared_ptr<BlockData>> blocksVec;
+   std::set<uint32_t> invalidBlockIds;
    blocksVec.reserve(200);
 
    bool fullHints = Config::DBSettings::getDbType() == ARMORY_DB_TYPE::Super;
-   auto tallyBlocks = [&blocksVec, fullHints, &bdc]
-      (const uint8_t* data, size_t size, size_t offset)->bool
+   auto tallyBlocks =
+   [&blocksVec, &invalidBlockIds, fullHints, bc=blockchain_, fileID=bdc.fileID]
+   (const uint8_t* data, size_t size, size_t)->bool
    {
-      //deser full block, check merkle
       try {
+         //deser raw header to get its hash
+         auto header = std::make_shared<BlockHeader>(data, size);
+
+         //look hash it in blockchain obj
+         auto knownHeader = bc->getHeaderByHash(header->getThisHash());
+         if (knownHeader->parsedBlockData()) {
+            //we already parsed this block, skip it
+            return size == knownHeader->getBlockSize();
+         }
+
+         //deser full block, it will compute all tx hashes and merkle root
          auto bd = BlockData::deserialize(
-            data, size, nullptr, nullptr,
+            data, size, knownHeader,
             fullHints ? BlockData::CheckHashes::FullHints :
                BlockData::CheckHashes::TxFilters
          );
-         bd->setFileID(bdc.fileID);
-         bd->setOffset(bdc.offset + offset);
          blocksVec.emplace_back(bd);
+         if (!knownHeader->isMerkleValid()) {
+            invalidBlockIds.emplace(knownHeader->getUniqueID());
+         }
          return true;
       } catch (const BtcUtils::BlockDeserializingException &e) {
          LOGERR << "block deser except: " << e.what();
-         LOGERR << "block fileID: " << bdc.fileID;
+         LOGERR << "block fileID: " << fileID;
+         return false;
+      } catch (const std::range_error& e) {
+         //header hash is unknown, this shouldn't happen
+         LOGERR << "block parse error: " << e.what();
          return false;
       } catch (const std::exception &e) {
          LOGERR << "block deser exception: " << e.what();
@@ -457,27 +549,18 @@ std::deque<HeaderPtr> DatabaseBuilder::addBlocksToDB(
       LOGWARN << "halted block file parsing with error: " << e.what();
    }
 
-   //we got the block data, let's grab all headers from them
-
-   //check which blocks have not been seen yet, we need to
-   //know this to update tx hash hints/filters
-   auto insertedBlocks = blockchain_->checkForNewBlocks(blocksVec);
-   std::deque<HeaderPtr> headers;
-   for (const auto& block : blocksVec) {
-      headers.emplace_back(block->createBlockHeader());
-   }
-
+   //blocksVec only carries unchecked blocks
    if (!fullHints) {
       //process filters
       if (Config::DBSettings::getDbType() == ARMORY_DB_TYPE::Super) {
          //pull existing file filter bucket from db (if any)
          auto pool = db_->getFilterPoolWriter(bdc.fileID);
 
-         if (insertedBlocks.empty()) {
+         if (blocksVec.empty()) {
             if (pool.isValid()) {
                //this block has a filter pool and there is no data to append,
                //we can return
-               return headers;
+               return invalidBlockIds;
             }
 
             //if we got this far, this block file does not add any new blocks
@@ -488,12 +571,7 @@ std::deque<HeaderPtr> DatabaseBuilder::addBlocksToDB(
          //tally all block filters
          std::map<uint32_t, std::shared_ptr<BlockHashVector>> allFilters;
          for (const auto& block : blocksVec) {
-            auto bdId = block->uniqueID();
-            auto iter = insertedBlocks.find(bdId);
-            if (iter == insertedBlocks.end()) {
-               continue;
-            }
-            allFilters.emplace(bdId, block->getTxFilter());
+            allFilters.emplace(block->uniqueID(), block->getTxFilter());
          }
 
          //update bucket
@@ -503,16 +581,16 @@ std::deque<HeaderPtr> DatabaseBuilder::addBlocksToDB(
          db_->putFilterPoolForFileNum(bdc.fileID, pool);
       }
    } else {
-      commitAllTxHints(blocksVec, insertedBlocks);
+      commitAllTxHints(blocksVec);
       if (Config::DBSettings::getDbType() == ARMORY_DB_TYPE::Super) {
-         commitAllStxos(blocksVec, insertedBlocks);
+         commitAllStxos(blocksVec);
       }
    }
-   return headers;
+   return invalidBlockIds;
 }
 
 /////////////////////////////////////////////////////////////////////////////
-void DatabaseBuilder::parseBlockFile(
+void Builder::parseBlockFile(
    const BlockDataLoader::BlockDataCopy& bdc,
    const std::function<bool(const uint8_t* data, size_t size, size_t offset)>& callback)
 {
@@ -569,7 +647,7 @@ void DatabaseBuilder::parseBlockFile(
 }
 
 /////////////////////////////////////////////////////////////////////////////
-BinaryData DatabaseBuilder::initTransactionHistory(int32_t startHeight)
+BinaryData Builder::initTransactionHistory(int32_t startHeight)
 {
    //Scan history
    auto topScannedBlockHash = scanHistory(
@@ -580,7 +658,7 @@ BinaryData DatabaseBuilder::initTransactionHistory(int32_t startHeight)
    return topScannedBlockHash;
 }
 
-BinaryData DatabaseBuilder::scanHistory(int32_t startHeight,
+BinaryData Builder::scanHistory(int32_t startHeight,
    bool reportprogress, bool init)
 {
    if (Config::DBSettings::getDbType() != ARMORY_DB_TYPE::Super) {
@@ -597,7 +675,7 @@ BinaryData DatabaseBuilder::scanHistory(int32_t startHeight,
          LOGERR << "scan failed!";
          return {};
       }
-      bcs.updateSSH(forceRescanSSH_, startHeight);
+      //bcs.updateSSH(forceRescanSSH_, startHeight);
 
       unsigned count = 0;
       while (!bcs.resolveTxHashes()) {
@@ -623,15 +701,18 @@ BinaryData DatabaseBuilder::scanHistory(int32_t startHeight,
 }
 
 /////////////////////////////////////////////////////////////////////////////
-ReorganizationState DatabaseBuilder::update()
+ReorganizationState Builder::update()
 {
    std::unique_lock<std::mutex> lock(scrAddrFilter_->mergeLock_);
 
    //list new files in block data folder
    blockFiles_->detectNewBlockFiles();
 
-   //update db
-   auto reorgState = updateBlocksInDB(nullptr);
+   //update db blocks
+   auto bo = parseForNewHeaders(nullptr);
+   parseForNewBlocks(bo, nullptr);
+   auto reorgState = blockchain_->organize(false, false);
+   blockchain_->putNewHeaders(db_);
    if (!reorgState.hasNewTop) {
       return reorgState;
    }
@@ -655,7 +736,7 @@ ReorganizationState DatabaseBuilder::update()
 }
 
 /////////////////////////////////////////////////////////////////////////////
-void DatabaseBuilder::undoHistory(ReorganizationState& reorgState)
+void Builder::undoHistory(ReorganizationState& reorgState)
 {
    if (Config::DBSettings::getDbType() != ARMORY_DB_TYPE::Super) {
       BlockchainScanner bcs(blockchain_, db_, scrAddrFilter_.get(),
@@ -670,10 +751,9 @@ void DatabaseBuilder::undoHistory(ReorganizationState& reorgState)
          progress_, false);
       bcs.undo(reorgState);
    }
-   blockchain_->updateBranchingMaps(db_, reorgState);
 }
 
-void DatabaseBuilder::resetHistory()
+void Builder::resetHistory()
 {
    //nuke SSH, SUBSSH, TXHINT and STXO DBs
    LOGINFO << "reseting history in DB";
@@ -681,10 +761,10 @@ void DatabaseBuilder::resetHistory()
 }
 
 /////////////////////////////////////////////////////////////////////////////
-void DatabaseBuilder::verifyChain()
+void Builder::verifyChain()
 {
    /*
-   builds db (no scanning) with full txhints, then verifies all tx 
+   builds db (no scanning) with full txhints, then verifies all tx
    (consensus and sigs).
    */
 
@@ -693,17 +773,20 @@ void DatabaseBuilder::verifyChain()
 
    //read all blocks already in DB and populate blockchain
    loadBlockHeadersFromDB(progress_);
+   auto bo = parseForNewHeaders(
+      Config::DBSettings::reportProgress() ? progress_ : nullptr);
+   blockchain_->putNewHeaders(db_);
 
    if (Config::DBSettings::reportProgress()) {
       progress_(BDMPhase_OrganizingChain, 0, UINT32_MAX, 0);
    }
    auto initialReorgState = blockchain_->organize(true, false);
-   blockchain_->updateBranchingMaps(db_, initialReorgState);
 
    //update db
    LOGINFO << "updating HEADERS db";
-   auto reorgState = updateBlocksInDB(
+   parseForNewBlocks(bo,
       Config::DBSettings::reportProgress() ? progress_ : nullptr);
+   auto reorgState = blockchain_->organize(false, false);
    LOGINFO << "updated HEADERS db";
 
    //verify transactions
@@ -712,9 +795,8 @@ void DatabaseBuilder::verifyChain()
 }
 
 /////////////////////////////////////////////////////////////////////////////
-void DatabaseBuilder::commitAllTxHints(
-   const std::vector<std::shared_ptr<BlockData>>& blocks,
-   const std::set<unsigned>& insertedBlocks)
+void Builder::commitAllTxHints(
+   const std::vector<std::shared_ptr<BlockData>>& blocks)
 {
    auto addHint = [](StoredTxHints& stxh, const BinaryData& txkey)->void
    {
@@ -751,10 +833,6 @@ void DatabaseBuilder::commitAllTxHints(
 
       for (const auto& block : blocks) {
          auto blockId = block->uniqueID();
-         if (insertedBlocks.find(blockId) == insertedBlocks.end()) {
-            continue;
-         }
-
          const auto& txns = block->getTxns();
          for (unsigned i=0; i < txns.size(); i++) {
             const auto& txn = txns[i];
@@ -781,9 +859,8 @@ void DatabaseBuilder::commitAllTxHints(
 }
 
 /////////////////////////////////////////////////////////////////////////////
-void DatabaseBuilder::commitAllStxos(
-   const std::vector<std::shared_ptr<BlockData>>& blocks,
-   const std::set<uint32_t>& insertedBlocks)
+void Builder::commitAllStxos(
+   const std::vector<std::shared_ptr<BlockData>>& blocks)
 {
    if (Config::DBSettings::getDbType() != ARMORY_DB_TYPE::Super) {
       throw std::runtime_error("invalid db mode");
@@ -792,10 +869,6 @@ void DatabaseBuilder::commitAllStxos(
 
    for (const auto& block : blocks) {
       auto blockID = block->uniqueID();
-      if (insertedBlocks.find(blockID) == insertedBlocks.end()) {
-         continue;
-      }
-
       const auto& txns = block->getTxns();
       for (unsigned i = 0; i < txns.size(); i++) {
          const auto& hash = txns[i]->getHash();
@@ -848,7 +921,7 @@ void DatabaseBuilder::commitAllStxos(
 
 #if 0
 /////////////////////////////////////////////////////////////////////////////
-void DatabaseBuilder::verifyTransactions()
+void Builder::verifyTransactions()
 {
    struct ParserState
    {
@@ -1090,7 +1163,7 @@ void DatabaseBuilder::verifyTransactions()
 }
 
 /////////////////////////////////////////////////////////////////////////////
-void DatabaseBuilder::verifyTxFilters()
+void Builder::verifyTxFilters()
 {
    if (DBSettings::getDbType() != ARMORY_DB_FULL)
       return;
@@ -1103,8 +1176,7 @@ void DatabaseBuilder::verifyTxFilters()
    mutex resultMutex;
    set<unsigned> damagedFilters;
 
-   auto&& file_id_map = blockchain_->mapIDsPerBlockFile();
-
+   auto file_id_map = blockchain_->mapIDsPerBlockFile();
    auto checkThr = [&](void)->void
    {
       auto&& tx = db_->beginTransaction(TXFILTERS, LMDB::Mode::ReadOnly);
@@ -1187,7 +1259,7 @@ void DatabaseBuilder::verifyTxFilters()
 }
 
 /////////////////////////////////////////////////////////////////////////////
-void DatabaseBuilder::repairTxFilters(const set<unsigned>& badFilters)
+void Builder::repairTxFilters(const set<unsigned>& badFilters)
 {
    {
       LOGINFO << "clearing damaged filters";
@@ -1234,7 +1306,7 @@ void DatabaseBuilder::repairTxFilters(const set<unsigned>& badFilters)
 }
 
 /////////////////////////////////////////////////////////////////////////////
-void DatabaseBuilder::reprocessTxFilter(
+void Builder::reprocessTxFilter(
    shared_ptr<BlockDataFileMap> blockfilemappointer, unsigned fileID)
 {
    auto ptr = blockfilemappointer->getPtr();
@@ -1285,7 +1357,7 @@ void DatabaseBuilder::reprocessTxFilter(
       bdMap.emplace(bd->uniqueID(), move(bd));
       return true;
    };
-   parseBlockFile(bdl,0, tallyBlocks);
+   parseBlockFile(bdl, 0, tallyBlocks);
 
    {
       //delete existing txfilter
@@ -1311,16 +1383,16 @@ void DatabaseBuilder::reprocessTxFilter(
 #endif
 
 /////////////////////////////////////////////////////////////////////////////
-void DatabaseBuilder::cycleDatabases()
+void Builder::cycleDatabases()
 {
    db_->closeDatabases();
    db_->openDatabases(Config::Pathing::dbDir());
 }
 
 /////////////////////////////////////////////////////////////////////////////
-void DatabaseBuilder::checkTxHintsIntegrity()
+void Builder::checkTxHintsIntegrity()
 {
-   BlockDataLoader bdl(blockFiles_, BlockOffset{});
+   BlockDataLoader bdl(blockFiles_, BlockOffset{0, 0});
    unsigned threadcount = std::min(
       size_t(Config::DBSettings::threadCount()),
       bdl.size()
@@ -1346,7 +1418,7 @@ void DatabaseBuilder::checkTxHintsIntegrity()
                try {
                   auto bd = BlockData::deserialize(
                      data, size, nullptr,
-                     nullptr, BlockData::CheckHashes::FullHints);
+                     BlockData::CheckHashes::FullHints);
                   bdList.emplace_back(bd);
                   return true;
                } catch (...) {

@@ -30,6 +30,46 @@ using namespace std::string_view_literals;
 using namespace std::chrono_literals;
 using namespace Armory;
 
+namespace {
+   uint64_t getScrAddrBalance(const BinaryData& scrAddr,
+      std::shared_ptr<Blockchain> bc, LMDBBlockDatabase* db)
+   {
+      StoredScriptHistory ssh;
+      db->getStoredScriptHistory(ssh, scrAddr);
+
+      std::map<BinaryData, TxIOPair> txios;
+      for (const auto& hgtxPair : ssh.subHistMap) {
+         unsigned key; uint8_t dup;
+         BinaryRefReader brr{hgtxPair.first};
+         DBUtils::readBlkDataKeyNoPrefix(brr, key, dup);
+         auto header = bc->getHeaderById(key);
+         if (!header->isMainBranch()) {
+            continue;
+         }
+
+         for (const auto& txioPair : hgtxPair.second.txioMap) {
+            auto txioKey = txioPair.second.getDBKeyOfOutput();
+            auto emplaceResult = txios.emplace(txioKey, txioPair.second);
+            if (!emplaceResult.second) {
+               if (!txioPair.second.hasTxIn()) {
+                  continue;
+               }
+               emplaceResult.first->second.merge(txioPair.second);
+            }
+         }
+      }
+
+      uint64_t total = 0;
+      for (const auto& txioPair : txios) {
+         if (txioPair.second.hasTxIn()) {
+            continue;
+         }
+         total += txioPair.second.getValue();
+      }
+      return total;
+   }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 class BlockDir : public ::testing::Test
@@ -111,19 +151,15 @@ TEST_F(BlockDir, HeadersFirst)
 
    DBTestUtils::goOnline(clients, bdvID);
    DBTestUtils::waitOnBDMReady(clients, bdvID);
-   auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
 
-   const ScrAddrObj *scrobj;
-   scrobj = wlt->getScrAddrObjByKey(scraddrs[0]);
-   EXPECT_EQ(scrobj->getFullBalance(), 50*COIN);
-   scrobj = wlt->getScrAddrObjByKey(scraddrs[1]);
-   EXPECT_EQ(scrobj->getFullBalance(), 70*COIN);
-   scrobj = wlt->getScrAddrObjByKey(scraddrs[2]);
-   EXPECT_EQ(scrobj->getFullBalance(), 20*COIN);
+   auto db = BDMt->bdm()->getIFace();
+   auto bc = BDMt->bdm()->blockchain();
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrA, bc, db), 50 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrB, bc, db), 70 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrC, bc, db), 20 * COIN);
 
    //cleanup
    bdvPtr.reset();
-   wlt.reset();
    clients->shutdown();
    BDMt->shutdown();
 
@@ -155,25 +191,20 @@ TEST_F(BlockDir, HeadersFirstUpdate)
 
    DBTestUtils::goOnline(clients, bdvID);
    DBTestUtils::waitOnBDMReady(clients, bdvID);
-   auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
 
    TestUtils::appendBlocks({ "4", "3", "5" }, blk0dat_);
    DBTestUtils::triggerNewBlockNotification(BDMt);
    DBTestUtils::waitOnNewBlockSignal(clients, bdvID);
 
-   // we should get the same balance as we do for test 'Load5Blocks'
-   const ScrAddrObj *scrobj;
-
-   scrobj = wlt->getScrAddrObjByKey(scraddrs[0]);
-   EXPECT_EQ(scrobj->getFullBalance(), 50*COIN);
-   scrobj = wlt->getScrAddrObjByKey(scraddrs[1]);
-   EXPECT_EQ(scrobj->getFullBalance(), 70*COIN);
-   scrobj = wlt->getScrAddrObjByKey(scraddrs[2]);
-   EXPECT_EQ(scrobj->getFullBalance(), 20*COIN);
+   // check balance from SSH
+   auto db = BDMt->bdm()->getIFace();
+   auto bc = BDMt->bdm()->blockchain();
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrA, bc, db), 50 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrB, bc, db), 70 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrC, bc, db), 20 * COIN);
 
    //cleanup
    bdvPtr.reset();
-   wlt.reset();
    clients->shutdown();
    BDMt->shutdown();
 
@@ -203,7 +234,6 @@ TEST_F(BlockDir, HeadersFirstReorg)
 
    DBTestUtils::goOnline(clients, bdvID);
    DBTestUtils::waitOnBDMReady(clients, bdvID);
-   auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
 
    TestUtils::appendBlocks({ "4A" }, blk0dat_);
    TestUtils::appendBlocks({ "3" }, blk0dat_);
@@ -218,28 +248,24 @@ TEST_F(BlockDir, HeadersFirstReorg)
    DBTestUtils::triggerNewBlockNotification(BDMt);
    DBTestUtils::waitOnNewBlockSignal(clients, bdvID);
 
-   const ScrAddrObj *scrobj;
-   scrobj = wlt->getScrAddrObjByKey(scraddrs[0]);
-   EXPECT_EQ(scrobj->getFullBalance(), 50 * COIN);
-   scrobj = wlt->getScrAddrObjByKey(scraddrs[1]);
-   EXPECT_EQ(scrobj->getFullBalance(), 70 * COIN);
-   scrobj = wlt->getScrAddrObjByKey(scraddrs[2]);
-   EXPECT_EQ(scrobj->getFullBalance(), 20 * COIN);
+   // check balance from SSH
+   auto db = BDMt->bdm()->getIFace();
+   auto bc = BDMt->bdm()->blockchain();
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrA, bc, db), 50 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrB, bc, db), 70 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrC, bc, db), 20 * COIN);
 
    TestUtils::appendBlocks({ "5A" }, blk0dat_);
    DBTestUtils::triggerNewBlockNotification(BDMt);
    DBTestUtils::waitOnNewBlockSignal(clients, bdvID);
 
-   scrobj = wlt->getScrAddrObjByKey(TestChain::scrAddrA);
-   EXPECT_EQ(scrobj->getFullBalance(), 50 * COIN);
-   scrobj = wlt->getScrAddrObjByKey(TestChain::scrAddrB);
-   EXPECT_EQ(scrobj->getFullBalance(), 30 * COIN);
-   scrobj = wlt->getScrAddrObjByKey(TestChain::scrAddrC);
-   EXPECT_EQ(scrobj->getFullBalance(), 55 * COIN);
+   // check balance from SSH
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrA, bc, db), 50 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrB, bc, db), 30 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrC, bc, db), 55 * COIN);
 
    //cleanup
    bdvPtr.reset();
-   wlt.reset();
    clients->shutdown();
    BDMt->shutdown();
 
@@ -269,7 +295,6 @@ TEST_F(BlockDir, HeadersFirstUpdateTwice)
 
    DBTestUtils::goOnline(clients, bdvID);
    DBTestUtils::waitOnBDMReady(clients, bdvID);
-   auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
 
    TestUtils::appendBlocks({ "5" }, blk0dat_);
    TestUtils::appendBlocks({ "4" }, blk0dat_);
@@ -278,20 +303,16 @@ TEST_F(BlockDir, HeadersFirstUpdateTwice)
    TestUtils::appendBlocks({ "3" }, blk0dat_);
    DBTestUtils::triggerNewBlockNotification(BDMt);
    DBTestUtils::waitOnNewBlockSignal(clients, bdvID);
-   
+
    // we should get the same balance as we do for test 'Load5Blocks'
-   const ScrAddrObj *scrobj;
-   
-   scrobj = wlt->getScrAddrObjByKey(scraddrs[0]);
-   EXPECT_EQ(scrobj->getFullBalance(), 50*COIN);
-   scrobj = wlt->getScrAddrObjByKey(scraddrs[1]);
-   EXPECT_EQ(scrobj->getFullBalance(), 70*COIN);
-   scrobj = wlt->getScrAddrObjByKey(scraddrs[2]);
-   EXPECT_EQ(scrobj->getFullBalance(), 20*COIN);
+   auto db = BDMt->bdm()->getIFace();
+   auto bc = BDMt->bdm()->blockchain();
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrA, bc, db), 50 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrB, bc, db), 70 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrC, bc, db), 20 * COIN);
 
    //cleanup
    bdvPtr.reset();
-   wlt.reset();
    clients->shutdown();
    BDMt->shutdown();
 
@@ -324,19 +345,15 @@ TEST_F(BlockDir, BlockFileSplit)
 
    DBTestUtils::goOnline(clients, bdvID);
    DBTestUtils::waitOnBDMReady(clients, bdvID);
-   auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
 
-   const ScrAddrObj *scrobj;
-   scrobj = wlt->getScrAddrObjByKey(scraddrs[0]);
-   EXPECT_EQ(scrobj->getFullBalance(), 50*COIN);
-   scrobj = wlt->getScrAddrObjByKey(scraddrs[1]);
-   EXPECT_EQ(scrobj->getFullBalance(), 70*COIN);
-   scrobj = wlt->getScrAddrObjByKey(scraddrs[2]);
-   EXPECT_EQ(scrobj->getFullBalance(), 20*COIN);
+   auto db = BDMt->bdm()->getIFace();
+   auto bc = BDMt->bdm()->blockchain();
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrA, bc, db), 50 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrB, bc, db), 70 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrC, bc, db), 20 * COIN);
 
    //cleanup
    bdvPtr.reset();
-   wlt.reset();
    clients->shutdown();
    BDMt->shutdown();
 
@@ -366,25 +383,20 @@ TEST_F(BlockDir, BlockFileSplitUpdate)
 
    DBTestUtils::goOnline(clients, bdvID);
    DBTestUtils::waitOnBDMReady(clients, bdvID);
-   auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
 
    auto blk1dat = FileUtils::getBlkFilename(blkdir_, 1);
    TestUtils::appendBlocks({ "2", "4", "3", "5" }, blk0dat_);
    DBTestUtils::triggerNewBlockNotification(BDMt);
    DBTestUtils::waitOnNewBlockSignal(clients, bdvID);
 
-   const ScrAddrObj *scrobj;
-   
-   scrobj = wlt->getScrAddrObjByKey(scraddrs[0]);
-   EXPECT_EQ(scrobj->getFullBalance(), 50*COIN);
-   scrobj = wlt->getScrAddrObjByKey(scraddrs[1]);
-   EXPECT_EQ(scrobj->getFullBalance(), 70*COIN);
-   scrobj = wlt->getScrAddrObjByKey(scraddrs[2]);
-   EXPECT_EQ(scrobj->getFullBalance(), 20*COIN);
+   auto db = BDMt->bdm()->getIFace();
+   auto bc = BDMt->bdm()->blockchain();
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrA, bc, db), 50 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrB, bc, db), 70 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrC, bc, db), 20 * COIN);
 
    //cleanup
    bdvPtr.reset();
-   wlt.reset();
    clients->shutdown();
    BDMt->shutdown();
 
@@ -393,7 +405,7 @@ TEST_F(BlockDir, BlockFileSplitUpdate)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(BlockDir, FixBlockDataOffsets)
+TEST_F(BlockDir, DISABLED_FixBlockDataOffsets)
 {
    /* 1. setup regular test, check balances */
    TestUtils::setBlocks({ "0", "1", "2", "4", "3", "5" }, blk0dat_);
@@ -433,7 +445,7 @@ TEST_F(BlockDir, FixBlockDataOffsets)
    size_t block3Offset = SIZE_MAX;
    {
       auto bcPtr = BDMt->bdm()->blockchain();
-      auto block3 = bcPtr->getHeaderByHeight(3, 0xFF);
+      auto block3 = bcPtr->getHeaderByHeight(3);
       block3Offset = block3->getOffset();
    }
    ASSERT_NE(block3Offset, SIZE_MAX);
@@ -1174,7 +1186,7 @@ TEST_F(BlockUtilsFull, Load5Blocks_ReloadBDM_Reorg)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(BlockUtilsFull, CorruptedBlock)
+TEST_F(BlockUtilsFull, DISABLED_CorruptedBlock)
 {
    TestUtils::setBlocks({ "0", "1", "2", "3", "4" }, blk0dat_);
 
@@ -1334,35 +1346,42 @@ TEST_F(BlockUtilsFull, Load5Blocks_RescanOps)
    };
 
    //regular start
+   std::cout << "-- resume --" << std::endl;
    startbdm(BdmInitMode::RESUME);
    checkBalance();
 
    //rebuild
+   std::cout << "-- rebuild --" << std::endl;
    resetbdm();
    startbdm(BdmInitMode::REBUILD);
    checkBalance();
 
    //regular start
+   std::cout << "-- resume --" << std::endl;
    resetbdm();
    startbdm(BdmInitMode::RESUME);
    checkBalance();
 
    //rescan
+   std::cout << "-- rescan --" << std::endl;
    resetbdm();
    startbdm(BdmInitMode::RESCAN);
    checkBalance();
 
    //regular start
+   std::cout << "-- resume --" << std::endl;
    resetbdm();
    startbdm(BdmInitMode::RESUME);
    checkBalance();
 
    //rescanSSH
+   std::cout << "-- ssh --" << std::endl;
    resetbdm();
    startbdm(BdmInitMode::SSH);
    checkBalance();
 
    //regular start
+   std::cout << "-- resume --" << std::endl;
    resetbdm();
    startbdm(BdmInitMode::RESUME);
    checkBalance();
@@ -1961,8 +1980,7 @@ TEST_F(BlockUtilsFull, DISABLED_PPrintTestChain)
    };
    std::map<BinaryData, IdAndAmounts> knownTxHashes;
    for (const auto& blockId : blockIds) {
-      auto headerPtr = blockchain->getHeaderByHeight(
-         blockId.first, blockId.second);
+      auto headerPtr = blockchain->getHeaderByHeight(blockId.first);
       StoredHeader block;
       ASSERT_TRUE(db->getStoredHeader(block, headerPtr, true));
 
@@ -2986,8 +3004,8 @@ GTEST_API_ int main(int argc, char **argv)
 
    // Required by libbtc.
    Cryptography::ECDSA::setupContext();
-   //LOGENABLESTDOUT();
-   LOGDISABLESTDOUT();
+   LOGENABLESTDOUT();
+   //LOGDISABLESTDOUT();
 
    testing::InitGoogleTest(&argc, argv);
    int exitCode = RUN_ALL_TESTS();

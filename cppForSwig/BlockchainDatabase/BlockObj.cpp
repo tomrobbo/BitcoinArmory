@@ -24,6 +24,46 @@
 using namespace Armory;
 
 ////////////////////////////////////////////////////////////////////////////////
+// BlockOffset
+BlockOffset::BlockOffset(uint16_t fid, size_t off) :
+   fileID_(fid), offset_(off)
+{}
+
+BlockOffset::BlockOffset(const BlockOffset& bo) :
+   fileID_(bo.fileID_), offset_(bo.offset_)
+{}
+
+bool BlockOffset::operator<(const BlockOffset& rhs) const
+{
+   if (fileID_ < rhs.fileID_) {
+      return true;
+   }
+   return offset_ < rhs.offset_;
+}
+
+BlockOffset& BlockOffset::operator=(const BlockOffset& rhs)
+{
+   this->fileID_ = rhs.fileID_;
+   this->offset_ = rhs.offset_;
+   return *this;
+}
+
+bool BlockOffset::isValid() const
+{
+   return fileID_ != UINT16_MAX && offset_ != SIZE_MAX;
+}
+
+uint16_t BlockOffset::fileID() const
+{
+   return fileID_;
+}
+
+size_t BlockOffset::offset() const
+{
+   return offset_;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Hash32
 Hash32::Hash32()
 {
@@ -80,6 +120,11 @@ BinaryDataRef Hash32::getRef() const
 std::string Hash32::toHexStr(bool swapEndian) const
 {
    return getRef().toHexStr(swapEndian);
+}
+
+bool Hash32::valid() const
+{
+   return data[0] != 0 || data[1] != 0 || data[2] != 0 || data[3] != 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -159,7 +204,7 @@ BlockHeader::BlockHeader(Hash32& thisHash, Hash32& prevHash, Hash32& merkleRoot,
    timestamp_(timestamp), version_(version)
 {}
 
-BlockHeader::BlockHeader(const uint8_t* ptr, uint32_t size) :
+BlockHeader::BlockHeader(const uint8_t* ptr, size_t size) :
    BlockHeader{unserialize(ptr, size)}
 {}
 
@@ -168,13 +213,13 @@ BlockHeader::BlockHeader(BinaryDataRef str) :
 {}
 
 BlockHeader::BlockHeader(
-   const uint8_t* ptr, uint32_t size, const BinaryData& hash) :
+   const uint8_t* ptr, size_t size, const BinaryData& hash) :
    BlockHeader{unserialize(ptr, size, hash)}
 {}
 
 ////////
 BlockHeader BlockHeader::unserialize(
-   const uint8_t* ptr, uint32_t size, BinaryData hash)
+   const uint8_t* ptr, size_t size, BinaryData hash)
 {
    if (size < HEADER_SIZE) {
       throw BtcUtils::BlockDeserializingException();
@@ -288,22 +333,22 @@ double BlockHeader::getDifficultySum() const
 }
 
 ////////
-uint64_t BlockHeader::getOffset() const
+size_t BlockHeader::getOffset() const
 {
    return blkFileOffset_;
 }
 
-uint32_t BlockHeader::getBlockFileNum() const
+uint16_t BlockHeader::getBlockFileNum() const
 {
    return blkFileNum_;
 }
 
-void BlockHeader::setBlockFileNum(uint32_t fnum)
+void BlockHeader::setBlockFileNum(uint16_t fnum)
 {
    blkFileNum_ = fnum;
 }
 
-void BlockHeader::setBlockFileOffset(uint64_t offs)
+void BlockHeader::setBlockFileOffset(size_t offs)
 {
    blkFileOffset_ = offs;
 }
@@ -330,17 +375,6 @@ uint32_t BlockHeader::getNumTx() const
 }
 
 ////////
-uint8_t BlockHeader::getDuplicateID() const
-{
-   return duplicateID_;
-}
-
-void BlockHeader::setDuplicateID(uint8_t d)
-{
-   duplicateID_ = d;
-}
-
-////////
 unsigned int BlockHeader::getUniqueID() const
 {
    return uniqueID_;
@@ -349,6 +383,34 @@ unsigned int BlockHeader::getUniqueID() const
 void BlockHeader::setUniqueID(unsigned int ID)
 {
    uniqueID_ = ID;
+}
+
+////////
+void BlockHeader::checkMerkleRoot(const BinaryData& merkleRoot)
+{
+   if (merkleRoot_ == merkleRoot) {
+      checkState_ = MerkleState::Valid;
+   } else {
+      checkState_ = MerkleState::Invalid;
+   }
+}
+
+void BlockHeader::setMerkleValid(bool isValid)
+{
+   if (checkState_ != MerkleState::Unchecked) {
+      throw std::runtime_error("merkle already checked");
+   }
+   checkState_ = isValid ? MerkleState::Valid : MerkleState::Invalid;
+}
+
+bool BlockHeader::parsedBlockData() const
+{
+   return checkState_ != MerkleState::Unchecked;
+}
+
+bool BlockHeader::isMerkleValid() const
+{
+   return checkState_ == MerkleState::Valid;
 }
 
 ////////

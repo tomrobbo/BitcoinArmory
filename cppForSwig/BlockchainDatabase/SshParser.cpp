@@ -15,7 +15,6 @@ using namespace Armory;
 
 SubSshParserResult parseSubSsh(
    std::unique_ptr<LDBIter> sshIter, int32_t scanFrom, bool resolveHashes,
-   std::function<uint8_t(unsigned)> getDupIDForHeight,
    std::shared_ptr<const AddrAndHashMap> scrAddrMapPtr)
 {
    std::map<BinaryData, StoredScriptHistory> sshMap;
@@ -32,7 +31,11 @@ SubSshParserResult parseSubSsh(
          //new address
          auto subsshkey = sshIter->getKey();
          if (subsshkey.getSize() < 5) {
-            LOGWARN << "invalid scrAddr in SUBSSH db";
+            BinaryRefReader brrKey(subsshkey);
+            auto prefix = brrKey.get_uint16_t();
+            if (prefix != 0xFFFF) {
+               LOGWARN << "invalid scrAddr in SUBSSH db";
+            }
             sshIter->advanceAndRead();
             continue;
          }
@@ -79,11 +82,6 @@ SubSshParserResult parseSubSsh(
       //deser subssh
       StoredSubHistory subssh;
       subssh.unserializeDBKey(sshIter->getKeyRef());
-
-      //check dupID
-      if (getDupIDForHeight(subssh.height) != subssh.dupID) {
-         continue;
-      }
       subssh.unserializeDBValue(sshIter->getValueRef());
 
       std::set<BinaryData> txSet;
@@ -506,10 +504,6 @@ void ShardedSshParser::parseSshThread()
 
    //dupId check
    auto dbPtr = db_;
-   auto checkDupId = [dbPtr](unsigned height, uint8_t dupId)->bool
-   {
-      return dupId == dbPtr->getValidDupIDForHeight(height);
-   };
 
    //fetch base height
    auto metaTx = db_->beginTransaction(DB_SELECT::SUBSSH_META, LMDB::Mode::ReadOnly);
@@ -648,9 +642,6 @@ void ShardedSshParser::parseSshThread()
 
                auto subsshHeight = base_height + subssh_height;
                if (subsshHeight < firstHeight_) {
-                  continue;
-               }
-               if (!checkDupId(subsshHeight, subssh_dupid) && !undo_) {
                   continue;
                }
                ssh.totalUnspent += totalValue;

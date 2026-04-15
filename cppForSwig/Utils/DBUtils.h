@@ -27,8 +27,7 @@ enum class BLKDATA_TYPE : int
 
 enum class DbPrefix : uint8_t
 {
-   DBINFO = 0,
-   HEADHASH,
+   HEADHASH = 1,
    HEADHGT,
    TXDATA,
    TXHINTS,
@@ -41,7 +40,8 @@ enum class DbPrefix : uint8_t
    MISSING_HASHES,
    SUBSSH,
    TEMPSCRIPT,
-   FLAGGED_BLOCKFILES
+   FLAGGED_BLOCKFILES,
+   DBINFO = 0xFF,
 };
 
 namespace Armory

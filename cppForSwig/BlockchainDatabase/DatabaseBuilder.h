@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2016-2025, goatpig.                                         //
+//  Copyright (C) 2016-2026, goatpig.                                         //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -24,64 +24,57 @@ namespace Armory
    class Blockchain;
    class ReorganizationState;
    class BlockHeader;
-}
 
-/////////////////////////////////////////////////////////////////////////////
-class DatabaseBuilder
-{
-private:
-   std::shared_ptr<BlockFiles> blockFiles_;
-   std::shared_ptr<Armory::Blockchain> blockchain_;
-   LMDBBlockDatabase* db_;
-   std::shared_ptr<ScrAddrFilter> scrAddrFilter_;
+   namespace Database
+   {
+      class Builder
+      {
+      private:
+         std::shared_ptr<BlockFiles> blockFiles_;
+         std::shared_ptr<Blockchain> blockchain_;
+         LMDBBlockDatabase* db_;
+         std::shared_ptr<ScrAddrFilter> scrAddrFilter_;
 
-   const ProgressCallback progress_;
-   BlockOffset topBlockOffset_;
+         const ProgressCallback progress_;
 
-   unsigned checkedTransactions_ = 0;
-   const bool forceRescanSSH_;
+         unsigned checkedTransactions_ = 0;
+         const bool forceRescanSSH_;
 
-private:
-   void loadBlockHeadersFromDB(const ProgressCallback&);
-   std::deque<std::shared_ptr<Armory::BlockHeader>> addBlocksToDB(
-      const BlockDataLoader::BlockDataCopy&);
-   void parseBlockFile(
-      const BlockDataLoader::BlockDataCopy&,
-      const std::function<bool(const uint8_t* data, size_t size, size_t offset)>&
-   );
+      private:
+         void loadBlockHeadersFromDB(const ProgressCallback&);
+         std::set<uint32_t> addBlocksToDB(
+            const BlockDataLoader::BlockDataCopy&);
+         void parseBlockFile(
+            const BlockDataLoader::BlockDataCopy&,
+            const std::function<bool(const uint8_t*, size_t, size_t)>&
+         );
 
-   Armory::ReorganizationState updateBlocksInDB(
-      const ProgressCallback&,
-      std::shared_ptr<BlockDataLoader> = nullptr);
-   BinaryData initTransactionHistory(int32_t);
-   BinaryData scanHistory(int32_t, bool, bool);
-   void undoHistory(Armory::ReorganizationState&);
+         BlockOffset parseForNewHeaders(const ProgressCallback&);
+         void parseForNewBlocks(const BlockOffset&, const ProgressCallback&);
 
-   void resetHistory(void);
-   void verifyTransactions(void);
-   void commitAllTxHints(
-      const std::vector<std::shared_ptr<BlockData>>&,
-      const std::set<unsigned>&);
-   void commitAllStxos(
-      const std::vector<std::shared_ptr<BlockData>>&,
-      const std::set<unsigned>&);
+         BinaryData initTransactionHistory(int32_t);
+         BinaryData scanHistory(int32_t, bool, bool);
+         void undoHistory(ReorganizationState&);
 
-   //void repairTxFilters(const std::set<unsigned>&);
-   //void reprocessTxFilter(std::shared_ptr<BlockDataFileMap>, unsigned);
+         void resetHistory(void);
+         void verifyTransactions(void);
+         void commitAllTxHints(const std::vector<std::shared_ptr<BlockData>>&);
+         void commitAllStxos(const std::vector<std::shared_ptr<BlockData>>&);
+         void cycleDatabases(void);
 
-   void cycleDatabases(void);
+      public:
+         Builder(std::shared_ptr<BlockFiles>,
+            BlockDataManager&,
+            const ProgressCallback&, bool);
 
-public:
-   DatabaseBuilder(std::shared_ptr<BlockFiles>,
-      BlockDataManager&,
-      const ProgressCallback&, bool);
+         bool init(void);
+         ReorganizationState update(void);
 
-   bool init(void);
-   Armory::ReorganizationState update(void);
+         void verifyChain(void);
+         unsigned getCheckedTxCount(void) const { return checkedTransactions_; }
 
-   void verifyChain(void);
-   unsigned getCheckedTxCount(void) const { return checkedTransactions_; }
-
-   //void verifyTxFilters(void);
-   void checkTxHintsIntegrity(void);
-};
+         //void verifyTxFilters(void);
+         void checkTxHintsIntegrity(void);
+      };
+   } // namespace BlockchainData
+} // namespace Armory

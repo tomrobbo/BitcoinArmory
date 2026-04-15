@@ -46,7 +46,6 @@ namespace Armory
    }
 
    class Blockchain;
-   struct HeightAndDup;
    struct ReorganizationState;
 }
 
@@ -193,8 +192,6 @@ private:
    const unsigned totalThreadCount_;
    const unsigned writeQueueDepth_;
    const unsigned totalBlockFileCount_;
-   std::map<unsigned, Armory::HeightAndDup> heightAndDupMap_;
-
    BinaryData topScannedBlockHash_;
 
    ProgressCallback progress_ = nullptr;

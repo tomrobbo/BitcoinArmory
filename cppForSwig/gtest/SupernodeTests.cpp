@@ -1148,7 +1148,7 @@ TEST_F(BlockUtilsSuper, Load5Blocks_DynamicReorg_GrabSTXO)
 
    //reorg from block 3
    {
-      auto headerPtr = theBDMt_->bdm()->blockchain()->getHeaderByHeight(3, 0xFF);
+      auto headerPtr = theBDMt_->bdm()->blockchain()->getHeaderByHeight(3);
       DBTestUtils::setReorgBranchingPoint(theBDMt_,
          headerPtr->getThisHash().toBinaryData());
    }
@@ -1323,7 +1323,7 @@ TEST_F(BlockUtilsSuper, Load5Blocks_DynamicReorg_GrabSTXO)
       BinaryRefReader brrKey(stxoKey);
       DBUtils::readBlkDataKeyNoPrefix(brrKey, height, dup, txId, txOutId);
       try {
-         auto header = bc->getHeaderByHeight(height, dup);
+         auto header = bc->getHeaderByHeight(height);
          StoredTxOut stxo;
          iface->getStoredTxOut(stxo, header, txId, txOutId);
          return stxo;

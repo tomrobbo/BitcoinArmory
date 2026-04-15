@@ -505,8 +505,7 @@ map<uint32_t, uint32_t> BtcWallet::computeScrAddrMapHistSummary()
       if (preHistAtHeight.second.scrAddrs_.size() > 1)
       {
          //get hgtX for height
-         uint8_t dupID = bdvPtr_->getDB()->getValidDupIDForHeight(preHistAtHeight.first);
-         auto hgtX = DBUtils::heightAndDupToHgtx(preHistAtHeight.first, dupID);
+         auto hgtX = DBUtils::heightAndDupToHgtx(preHistAtHeight.first, 0);
 
          set<BinaryData> txKeys;
 

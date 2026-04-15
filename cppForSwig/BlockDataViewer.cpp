@@ -402,16 +402,10 @@ void BlockDataViewer::updateLockboxesLedgerFilter(
 }
 
 ////////
-StoredHeader BlockDataViewer::getMainBlockFromDB(uint32_t height) const
-{
-   uint8_t dupID = db_->getValidDupIDForHeight(height);
-   return getBlockFromDB(height, dupID);
-}
-
 StoredHeader BlockDataViewer::getBlockFromDB(
-   uint32_t height, uint8_t dupID) const
+   uint32_t height) const
 {
-   auto header = bc_->getHeaderByHeight(height, dupID);
+   auto header = bc_->getHeaderByHeight(height);
    StoredHeader sbh;
    db_->getStoredHeader(sbh, header, true);
    return sbh;
@@ -433,13 +427,6 @@ std::shared_ptr<BlockHeader> BlockDataViewer::getHeaderByHash(
    const BinaryData& blockHash) const
 {
    return bc_->getHeaderByHash(blockHash);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-uint32_t BlockDataViewer::getBlockTimeByHeight(uint32_t height) const
-{
-   auto bh = blockchain().getHeaderByHeight(height, 0xFF);
-   return bh->getTimestamp();
 }
 
 ////////
@@ -538,7 +525,7 @@ uint32_t BlockDataViewer::getClosestBlockHeightForTime(uint32_t timestamp)
 
    //look for a block in the hint vicinity with a timestamp lower than ours
    while (blockHint > 0) {
-      auto block = blockchain().getHeaderByHeight(blockHint, 0xFF);
+      auto block = blockchain().getHeaderByHeight(blockHint);
       if (block->getTimestamp() < timestamp) {
          break;
       }
@@ -555,7 +542,7 @@ uint32_t BlockDataViewer::getClosestBlockHeightForTime(uint32_t timestamp)
       id++) {
       //not looking for a really precise block, 
       //anything within the an hour of the timestamp is enough
-      auto block = blockchain().getHeaderByHeight(id, 0xFF);
+      auto block = blockchain().getHeaderByHeight(id);
       if (block->getTimestamp() + 3600 > timestamp) {
          return block->getBlockHeight();
       }
@@ -577,7 +564,7 @@ TxOut BlockDataViewer::getTxOutCopy(
 
       std::shared_ptr<BlockHeader> header;
       if (dup != 0x7F) {
-         header = bc_->getHeaderByHeight(id, dup);
+         header = bc_->getHeaderByHeight(id);
       } else {
          bc_->getHeaderById(id);
       }
@@ -605,7 +592,7 @@ TxOut BlockDataViewer::getTxOutCopy(const BinaryData& dbKey) const
    try {
       std::shared_ptr<BlockHeader> header;
       if (dup != 0x7F) {
-         header = bc_->getHeaderByHeight(id, dup);
+         header = bc_->getHeaderByHeight(id);
       } else {
          bc_->getHeaderById(id);
       }
