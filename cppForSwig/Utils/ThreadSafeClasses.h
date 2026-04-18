@@ -204,6 +204,15 @@ namespace Armory
          {
             return count_;
          }
+
+         std::deque<T> pop_all(void)
+         {
+            std::unique_lock<std::mutex> lock(condVarMutex_);
+            std::deque<T> newQueue;
+            std::swap(queue_, newQueue);
+            condVar_.notify_all();
+            return std::move(newQueue);
+         }
       };
 
       //////////////////////////////////////////////////////////////////////////

@@ -26,7 +26,7 @@ using namespace Armory;
 
 namespace {
    //helper containers used in Blockchain::traceDownChain
-   using Hash32USet = std::unordered_set<Hash32, Hash32::Hasher, Hash32::Comparator>;
+   using Hash32USet = std::unordered_set<Hash32, Hash32::Hasher, Hash32::IsEqual>;
    std::map<Hash32, Hash32USet> orphans;
 }
 
@@ -62,7 +62,7 @@ HeaderPtr Blockchain::top() const
    return ptr;
 }
 
-HeaderPtr Blockchain::getGenesisBlock() const
+HeaderPtr Blockchain::getGenesisHeader() const
 {
    //NOTE: caller is responsible for holding the lock
    auto iter = headerSet_.find(genesisHash_);
@@ -203,7 +203,7 @@ HeaderPtr Blockchain::organizeChain(
 
    // If this is the first run, the topBlock is the genesis block
    if (topBlockPtr_.load() == nullptr) {
-      auto genBlock = getGenesisBlock();
+      auto genBlock = getGenesisHeader();
       if (!genBlock->getMerkleRoot().valid()) {
          return nullptr;
       }
@@ -420,17 +420,16 @@ void Blockchain::putNewHeaders(LMDBBlockDatabase *db)
    }
 
    //update SDBI, keep within the batch transaction
-   auto sdbiH = db->getStoredDBInfo(DB_SELECT::HEADERS, 0);
+   auto sdbiH = db->getStoredDBInfo(DB_SELECT::HEADERS, 0xFFFF);
    auto topBlock = topBlockPtr_.load();
    if (topBlock == nullptr) {
       LOGINFO << "No known top block, didn't update SDBI";
       return;
    }
 
-   if (topBlock->blockHeight_ >= sdbiH.topBlkHgt) {
-      sdbiH.topBlkHgt = topBlock->blockHeight_;
-      sdbiH.topScannedBlkHash = topBlock->thisHash_.toBinaryData();
-      db->putStoredDBInfo(DB_SELECT::HEADERS, sdbiH, 0);
+   if (topBlock->thisHash_ != sdbiH.topScannedBlkHash) {
+      sdbiH.topScannedBlkHash = topBlock->thisHash_;
+      db->putStoredDBInfo(DB_SELECT::HEADERS, sdbiH, 0xFFFF);
    }
 
    //once commited to the DB, they aren't considered new anymore,
@@ -495,7 +494,7 @@ void Blockchain::loadHeadersFromDB(
       clear();
    } else {
       try {
-         getGenesisBlock();
+         getGenesisHeader();
       } catch (const std::exception&) {
          throw std::runtime_error("missing genesis header in db");
       }
@@ -609,4 +608,10 @@ void Blockchain::flagInvalidBlocks(LMDBBlockDatabase* db,
 BlockOffset Blockchain::getTopBlockOffset() const
 {
    return topBlockOffset_;
+}
+
+const std::vector<HeaderPtr>& Blockchain::headersById() const
+{
+   std::unique_lock<std::mutex> lock(mu_);
+   return headersById_;
 }

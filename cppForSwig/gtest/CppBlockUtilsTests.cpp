@@ -32,39 +32,41 @@ using namespace Armory;
 
 namespace {
    uint64_t getScrAddrBalance(const BinaryData& scrAddr,
-      std::shared_ptr<Blockchain> bc, LMDBBlockDatabase* db)
+      std::shared_ptr<BlockDataManager> bdm)
    {
-      StoredScriptHistory ssh;
-      db->getStoredScriptHistory(ssh, scrAddr);
+      //1. get scrAddr uniqueID
+      uint32_t uniqueID = UINT32_MAX;
+      {
+         auto addrMap = bdm->getScrAddrFilter()->getScanFilterAddrMap();
+         auto iter = addrMap->find(scrAddr);
+         if (iter != addrMap->end()) {
+            uniqueID = iter->second->id;
+         }
+      }
+      if (uniqueID == UINT32_MAX) {
+         return UINT64_MAX;
+      }
 
-      std::map<BinaryData, TxIOPair> txios;
-      for (const auto& hgtxPair : ssh.subHistMap) {
-         unsigned key; uint8_t dup;
-         BinaryRefReader brr{hgtxPair.first};
-         DBUtils::readBlkDataKeyNoPrefix(brr, key, dup);
-         auto header = bc->getHeaderById(key);
+      auto txOutData = bdm->getIFace()->getTxOutDataForScrAddrKey(uniqueID);
+      auto txInData = bdm->getIFace()->getTxInDataForTxOutData(txOutData);
+      auto bc = bdm->blockchain();
+
+      uint64_t total = 0;
+      for (const auto& txOutPair : txOutData) {
+         auto header = bc->getHeaderById(txOutPair.second.blockID);
          if (!header->isMainBranch()) {
             continue;
          }
 
-         for (const auto& txioPair : hgtxPair.second.txioMap) {
-            auto txioKey = txioPair.second.getDBKeyOfOutput();
-            auto emplaceResult = txios.emplace(txioKey, txioPair.second);
-            if (!emplaceResult.second) {
-               if (!txioPair.second.hasTxIn()) {
-                  continue;
-               }
-               emplaceResult.first->second.merge(txioPair.second);
+         auto txInIter = txInData.find(txOutPair.first);
+         if (txInIter != txInData.end()) {
+            uint32_t txInBlockID = ntohl(uint32_t(txInIter->second >> 32));
+            header = bc->getHeaderById(txInBlockID);
+            if (header->isMainBranch()) {
+               continue;
             }
          }
-      }
-
-      uint64_t total = 0;
-      for (const auto& txioPair : txios) {
-         if (txioPair.second.hasTxIn()) {
-            continue;
-         }
-         total += txioPair.second.getValue();
+         total += txOutPair.second.amount;
       }
       return total;
    }
@@ -130,6 +132,12 @@ protected:
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BlockDir, HeadersFirst)
 {
+   const std::vector<BinaryData> scraddrs{
+      TestChain::scrAddrA,
+      TestChain::scrAddrB,
+      TestChain::scrAddrC
+   };
+
    // Put the first 5 blocks out of order
    TestUtils::setBlocks({ "0", "1", "2", "4", "3", "5" }, blk0dat_);
 
@@ -137,26 +145,18 @@ TEST_F(BlockDir, HeadersFirst)
    auto clients = new Clients(BDMt->bdm());
    clients->init();
 
-   BDMt->start(BdmInitMode::RESUME);
-   const std::vector<BinaryData> scraddrs{
-      TestChain::scrAddrA,
-      TestChain::scrAddrB,
-      TestChain::scrAddrC
-   };
-
    auto bdvID = DBTestUtils::registerBDV(clients, Config::BitcoinSettings::getMagicBytes());
+   auto bdvPtr = DBTestUtils::getBDV(clients, bdvID);
    DBTestUtils::registerWallet(clients, bdvID, scraddrs, "wallet1",
       false, false);
-   auto bdvPtr = DBTestUtils::getBDV(clients, bdvID);
 
+   BDMt->start(BdmInitMode::RESUME);
    DBTestUtils::goOnline(clients, bdvID);
    DBTestUtils::waitOnBDMReady(clients, bdvID);
 
-   auto db = BDMt->bdm()->getIFace();
-   auto bc = BDMt->bdm()->blockchain();
-   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrA, bc, db), 50 * COIN);
-   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrB, bc, db), 70 * COIN);
-   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrC, bc, db), 20 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrA, BDMt->bdm()), 50 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrB, BDMt->bdm()), 70 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrC, BDMt->bdm()), 20 * COIN);
 
    //cleanup
    bdvPtr.reset();
@@ -197,11 +197,9 @@ TEST_F(BlockDir, HeadersFirstUpdate)
    DBTestUtils::waitOnNewBlockSignal(clients, bdvID);
 
    // check balance from SSH
-   auto db = BDMt->bdm()->getIFace();
-   auto bc = BDMt->bdm()->blockchain();
-   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrA, bc, db), 50 * COIN);
-   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrB, bc, db), 70 * COIN);
-   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrC, bc, db), 20 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrA, BDMt->bdm()), 50 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrB, BDMt->bdm()), 70 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrC, BDMt->bdm()), 20 * COIN);
 
    //cleanup
    bdvPtr.reset();
@@ -249,20 +247,18 @@ TEST_F(BlockDir, HeadersFirstReorg)
    DBTestUtils::waitOnNewBlockSignal(clients, bdvID);
 
    // check balance from SSH
-   auto db = BDMt->bdm()->getIFace();
-   auto bc = BDMt->bdm()->blockchain();
-   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrA, bc, db), 50 * COIN);
-   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrB, bc, db), 70 * COIN);
-   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrC, bc, db), 20 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrA, BDMt->bdm()), 50 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrB, BDMt->bdm()), 70 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrC, BDMt->bdm()), 20 * COIN);
 
    TestUtils::appendBlocks({ "5A" }, blk0dat_);
    DBTestUtils::triggerNewBlockNotification(BDMt);
    DBTestUtils::waitOnNewBlockSignal(clients, bdvID);
 
    // check balance from SSH
-   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrA, bc, db), 50 * COIN);
-   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrB, bc, db), 30 * COIN);
-   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrC, bc, db), 55 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrA, BDMt->bdm()), 50 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrB, BDMt->bdm()), 30 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrC, BDMt->bdm()), 55 * COIN);
 
    //cleanup
    bdvPtr.reset();
@@ -305,11 +301,9 @@ TEST_F(BlockDir, HeadersFirstUpdateTwice)
    DBTestUtils::waitOnNewBlockSignal(clients, bdvID);
 
    // we should get the same balance as we do for test 'Load5Blocks'
-   auto db = BDMt->bdm()->getIFace();
-   auto bc = BDMt->bdm()->blockchain();
-   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrA, bc, db), 50 * COIN);
-   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrB, bc, db), 70 * COIN);
-   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrC, bc, db), 20 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrA, BDMt->bdm()), 50 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrB, BDMt->bdm()), 70 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrC, BDMt->bdm()), 20 * COIN);
 
    //cleanup
    bdvPtr.reset();
@@ -346,11 +340,9 @@ TEST_F(BlockDir, BlockFileSplit)
    DBTestUtils::goOnline(clients, bdvID);
    DBTestUtils::waitOnBDMReady(clients, bdvID);
 
-   auto db = BDMt->bdm()->getIFace();
-   auto bc = BDMt->bdm()->blockchain();
-   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrA, bc, db), 50 * COIN);
-   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrB, bc, db), 70 * COIN);
-   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrC, bc, db), 20 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrA, BDMt->bdm()), 50 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrB, BDMt->bdm()), 70 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrC, BDMt->bdm()), 20 * COIN);
 
    //cleanup
    bdvPtr.reset();
@@ -389,11 +381,9 @@ TEST_F(BlockDir, BlockFileSplitUpdate)
    DBTestUtils::triggerNewBlockNotification(BDMt);
    DBTestUtils::waitOnNewBlockSignal(clients, bdvID);
 
-   auto db = BDMt->bdm()->getIFace();
-   auto bc = BDMt->bdm()->blockchain();
-   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrA, bc, db), 50 * COIN);
-   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrB, bc, db), 70 * COIN);
-   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrC, bc, db), 20 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrA, BDMt->bdm()), 50 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrB, BDMt->bdm()), 70 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrC, BDMt->bdm()), 20 * COIN);
 
    //cleanup
    bdvPtr.reset();
@@ -793,7 +783,7 @@ TEST_F(BlockUtilsFull, Load4Blocks_Plus2)
    auto wltLB1 = bdvPtr->getWalletOrLockbox(LB1ID);
    auto wltLB2 = bdvPtr->getWalletOrLockbox(LB2ID);
 
-   EXPECT_EQ(DBTestUtils::getTopBlockHeight(iface_, DB_SELECT::HEADERS), 3U);
+   EXPECT_EQ(TestUtils::getTopBlockHeightInDB(theBDMt_->bdm().get(), DB_SELECT::HEADERS), 3U);
    EXPECT_EQ(DBTestUtils::getTopBlockHash(iface_, DB_SELECT::HEADERS), TestChain::blkHash3);
    auto header = theBDMt_->bdm()->blockchain()->getHeaderByHash(TestChain::blkHash3);
    EXPECT_TRUE(header->isMainBranch());
@@ -826,7 +816,7 @@ TEST_F(BlockUtilsFull, Load4Blocks_Plus2)
    DBTestUtils::triggerNewBlockNotification(theBDMt_);
    DBTestUtils::waitOnNewBlockSignal(clients_, bdvID);
 
-   EXPECT_EQ(DBTestUtils::getTopBlockHeight(iface_, DB_SELECT::HEADERS), 5U);
+   EXPECT_EQ(TestUtils::getTopBlockHeightInDB(theBDMt_->bdm().get(), DB_SELECT::HEADERS), 5U);
    EXPECT_EQ(DBTestUtils::getTopBlockHash(iface_, DB_SELECT::HEADERS), TestChain::blkHash5);
    EXPECT_TRUE(theBDMt_->bdm()->blockchain()->getHeaderByHash(TestChain::blkHash5)->isMainBranch());
 

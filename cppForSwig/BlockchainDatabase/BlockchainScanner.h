@@ -1,41 +1,75 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2016-2025, goatpig.                                         //
+//  Copyright (C) 2016-2026, goatpig.                                         //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _BLOCKCHAINSCANNER_H
-#define _BLOCKCHAINSCANNER_H
+/***
+ - DB_BARE/DB_FULL chain scanner -
+
+ Tracks the following, for a known set of scrAddr:
+   . in DB_SELECT::TXOUTS, txouts as <key, txout>
+      * key is 64 bits concatenation of
+         [32 bits scrAddrId | 32 bits block uniqueID (BE)]
+      * txout is tuple {
+         uint64_t amount,
+         uint16_t txId,
+         uint16_t txOutId
+      }
+      * scrAddrId is a 32bit unique key assigned at first scrAddr
+        registration, managed by ScrAddrFilter, tracked in DB_SELECT::SCRADDR
+
+   . in DB_SELECT::TXINS, txins as <txoutkey, txinkey>
+      * txoutkey is 64 bits concatenation of
+         [32 bits block unique ID (BE) | 16 bits txId (BE) | 16 bits txOutId (BE)]
+      * txinkey is 64 bits concatenation of
+         [32 bits block unique ID (BE) | 16 bits txId (BE) | 16 bits outpointId (BE)]
+
+   . in DB_SELECT::KNOWNHASHES, <hash32, txkey> for all tx carrying at least one
+      txout in DB_SELECT::TXOUTS
+      * hash32 is a 32 bytes txhash
+      * txkey is 64 bits concatenation of
+         [32 bits block unique ID (BE) | 16 bits txId (BE) | 0xFFFF]
+
+   . in DB_BARE only, <key, uint64_t txkeys[]> for all tx hashes with at least
+      one relevant output + all outpoint hash for these txs
+      * key is 64 bits concatenation of
+         [first 32 bits of Hash32 | 32 bits block unique ID (BE)]
+      * an array of txkeys, where each txkey is a 64 bits concatention of
+         [32 bits block unique ID (BE) | 16 bits txId (BE) | 0xFFFF]
+
+   ####
+   A scan requires a ScannerContext.
+   Before its first use, a ScannerContext needs initialized via init(db).
+   That call will seed the HashMap, which will be maintained by subsequent scans.
+   After each scan, the ScannerContext object is left ready for the next scan.
+   On each scan, update is called with the blockchain and scrAddrFilter objects.
+***/
+
+#pragma once
 
 #include <future>
 #include <atomic>
 #include <exception>
+#include <unordered_map>
 
 #include <Utils/ThreadSafeClasses.h>
 #include "Progress.h"
 #include "bdmenums.h"
-
-#include "SshParser.h"
-
+#include "BlockObj.h"
 
 #define BATCH_SIZE  1024 * 1024 * 512ULL
-
-class ScanningException : public std::runtime_error
-{
-private:
-   const unsigned badHeight_;
-
-public:
-   ScanningException(unsigned badHeight, const std::string &what = "")
-      : std::runtime_error(what), badHeight_(badHeight)
-   {}
-};
 
 struct TxHashHints;
 struct TxOutScrRef;
 class BlockFiles;
+class LMDBBlockDatabase;
+class ScrAddrFilter;
+class BlockData;
+class StoredSubHistory;
+struct TxOutData;
 
 namespace Armory
 {
@@ -50,42 +84,76 @@ namespace Armory
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+using HashMap = std::unordered_map<Armory::Hash32, std::set<uint64_t>,
+   Armory::Hash32::Hasher, Armory::Hash32::IsEqual>;
+
+using ScrAddrIdMap = std::unordered_map<BinaryData, uint32_t,
+   BinaryData::Hasher, BinaryData::IsEqual>;
+
+class ScannerContext
+{
+private:
+   //tx hash to tx key map
+   HashMap hashMap_;
+
+   //copied from blockchain object
+   std::vector<Armory::HeaderPtr> headersById_;
+
+   //scrAddr and their respective unique int id
+   ScrAddrIdMap scrAddrIds_;
+
+   mutable std::mutex mu_;
+
+public:
+   void init(LMDBBlockDatabase*);
+   void update(std::shared_ptr<Armory::Blockchain>);
+   void update(ScrAddrFilter*);
+   HashMap update(HashMap&);
+   void merge(ScannerContext&);
+
+   const HashMap& getHashMap(void) const;
+   const ScrAddrIdMap& getScrAddrIdMap(void) const;
+   bool isBlockIDValid(uint32_t) const;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+struct TxOutParsingResult
+{
+   HashMap hashMap;
+   std::map<uint32_t, std::map<uint32_t, std::deque<TxOutData>>> txOutMap;
+   std::map<uint32_t, std::shared_ptr<BlockData>> blockMap;
+};
+
+struct TxInParsingResult
+{
+   HashMap diff;
+   std::unordered_map<uint64_t, uint64_t> txInMap;
+};
+
+////////
 struct ParserBatch
 {
 public:
-   std::map<unsigned, std::shared_ptr<Armory::FileUtils::FileCopy>> fileCopies_;
+   const unsigned start;
+   const unsigned end;
+   const unsigned startBlockFileID;
+   const unsigned targetBlockFileID;
+   ScannerContext& context;
 
-   std::atomic<unsigned> blockCounter_;
-   std::mutex mergeMutex_;
+   std::map<unsigned, std::shared_ptr<Armory::FileUtils::FileCopy>> fileCopies;
+   std::atomic<unsigned> blockCounter;
+   std::mutex mergeMutex;
 
-   const unsigned start_;
-   const unsigned end_;
+   TxOutParsingResult outParserResult;
+   TxInParsingResult inParserResult;
 
-   const unsigned startBlockFileID_;
-   const unsigned targetBlockFileID_;
-
-   std::map<unsigned, std::shared_ptr<BlockData>> blockMap_;
-   std::map<BinaryData, std::map<unsigned, StoredTxOut>> outputMap_;
-   std::map<BinaryData, std::map<BinaryData, StoredSubHistory>> sshMap_;
-   std::vector<StoredTxOut> spentOutputs_;
-
-   const std::shared_ptr<std::unordered_map<TxOutScriptRef, int>> scriptRefMap_;
-   std::promise<bool> completedPromise_;
-   unsigned count_;
+   std::promise<bool> completedPromise;
+   unsigned count;
 
 public:
-   ParserBatch(unsigned start, unsigned end,
-      unsigned startID, unsigned endID,
-      std::shared_ptr<std::unordered_map<TxOutScriptRef, int>> scriptRefMap) :
-      start_(start), end_(end),
-      startBlockFileID_(startID), targetBlockFileID_(endID),
-      scriptRefMap_(scriptRefMap)
-   {
-      if (end < start) {
-         throw std::runtime_error("end > start");
-      }
-      blockCounter_.store(start_, std::memory_order_relaxed);
-   }
+   ParserBatch(unsigned, unsigned, unsigned, unsigned, ScannerContext&);
+   void mergeResult(TxOutParsingResult&);
+   void mergeResult(TxInParsingResult&);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -101,13 +169,10 @@ private:
    const unsigned writeQueueDepth_;
    const unsigned totalBlockFileCount_;
 
-   BinaryData topScannedBlockHash_;
+   Armory::Hash32 topScannedBlockHash_;
 
    ProgressCallback progress_ = nullptr;
    bool reportProgress_ = false;
-
-   //only for relevant utxos
-   std::map<BinaryData, std::map<unsigned, StoredTxOut>> utxoMap_;
 
    unsigned startAt_ = 0;
 
@@ -117,13 +182,12 @@ private:
    Armory::Threading::BlockingQueue<std::unique_ptr<ParserBatch>> inputQueue_;
    Armory::Threading::BlockingQueue<std::unique_ptr<ParserBatch>> commitQueue_;
 
-   std::atomic<unsigned> completedBatches_;
-   std::atomic_uint32_t fatalError_;
+   std::atomic<uint32_t> completedBatches_;
+   std::atomic<uint32_t> fatalError_;
 
 private:
-   void writeBlockData(void);
-   void processAndCommitTxHints(ParserBatch*);
-   void preloadUtxos(void);
+   void commitBatches(void);
+   //void processAndCommitTxHints(ParserBatch*);
 
    int32_t check_merkle(int32_t);
 
@@ -150,17 +214,8 @@ public:
       unsigned, unsigned,
       ProgressCallback, bool);
 
-   bool scan(int32_t);
-   bool scan_nocheck(int32_t);
-
-   void undo(Armory::ReorganizationState&);
-   void updateSSH(bool, int32_t);
+   bool scan(ScannerContext&, int32_t);
    bool resolveTxHashes();
 
-   const BinaryData& getTopScannedBlockHash(void) const
-   {
-      return topScannedBlockHash_;
-   }
+   const Armory::Hash32& getTopScannedBlockHash(void) const;
 };
-
-#endif

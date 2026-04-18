@@ -63,20 +63,19 @@ namespace Armory
       //////////////////////////////////////////////////////////////////////////
       namespace SettingsUtils
       {
-         std::vector<std::string> getLines(const std::filesystem::path& path);
+         std::vector<std::string> getLines(const std::filesystem::path&);
          std::map<std::string, std::string> getKeyValsFromLines(
-            const std::vector<std::string>&, char delim);
+            const std::vector<std::string>&, char);
          std::pair<std::string_view, std::string_view> getKeyValFromLine(
-            const std::string_view&, char delim);
+            const std::string_view&, char);
 
          std::string_view stripQuotes(const std::string_view& input);
          std::vector<std::string> keyValToArgv(
             const std::map<std::string, std::string>&);
 
-         bool testConnection(const std::string& ip, const std::string& port);
-         std::string getPortFromCookie(const std::string& datadir);
-         std::string hasLocalDB(const std::string& datadir,
-            const std::string& port);
+         bool testConnection(const std::string&, const std::string&);
+         std::string getPortFromCookie(const std::string&);
+         std::string hasLocalDB(const std::string&, const std::string&);
       };
 
       //////////////////////////////////////////////////////////////////////////
@@ -247,9 +246,9 @@ namespace Armory
       {
          std::map<std::string, std::string> keyvalMap_;
 
-         File(const std::filesystem::path& path);
+         File(const std::filesystem::path&);
          static std::vector<BinaryData> fleshOutArgs(
-            const std::string& path, const std::vector<BinaryData>& argv);
+            const std::string&, const std::vector<BinaryData>&);
       };
    } //namespace Config
 } //namespace Armory

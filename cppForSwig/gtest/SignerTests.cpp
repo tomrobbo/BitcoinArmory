@@ -5442,7 +5442,8 @@ TEST_F(SignerTest, SpendTest_FromAccount_Reload)
    DBTestUtils::waitOnBDMReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    auto dbAssetWlt = bdvPtr->getWalletOrLockbox(assetWlt->getID());
-   EXPECT_EQ(DBTestUtils::getTopBlockHeight(iface_, DB_SELECT::HEADERS), 3U);
+   EXPECT_EQ(TestUtils::getTopBlockHeightInDB(
+      theBDMt_->bdm().get(), DB_SELECT::HEADERS), 3U);
 
    //check balances
    const ScrAddrObj* scrObj;
@@ -5657,7 +5658,8 @@ TEST_F(SignerTest, SpendTest_FromAccount_Reload)
    //mine 2 blocks
    DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrC, 2);
    DBTestUtils::waitOnNewBlockSignal(clients_, bdvID);
-   EXPECT_EQ(DBTestUtils::getTopBlockHeight(iface_, DB_SELECT::HEADERS), 5U);
+   EXPECT_EQ(TestUtils::getTopBlockHeightInDB(
+      theBDMt_->bdm().get(), DB_SELECT::HEADERS), 5U);
 
    //check balances
    scrObj = wlt->getScrAddrObjByKey(TestChain::scrAddrA);
@@ -5830,7 +5832,8 @@ TEST_F(SignerTest, SpendTest_BIP32_Accounts)
    DBTestUtils::goOnline(clients_, bdvID);
    DBTestUtils::waitOnBDMReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
-   EXPECT_EQ(DBTestUtils::getTopBlockHeight(iface_, DB_SELECT::HEADERS), 3U);
+   EXPECT_EQ(TestUtils::getTopBlockHeightInDB(
+      theBDMt_->bdm().get(), DB_SELECT::HEADERS), 3U);
 
    auto newAddr1 = assetWlt->getNewAddress(accountID1);
    auto newAddr2 = assetWlt->getNewAddress(accountID2);
@@ -5935,7 +5938,8 @@ TEST_F(SignerTest, SpendTest_BIP32_Accounts)
    //mine some blocks
    DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrC, 2);
    DBTestUtils::waitOnNewBlockSignal(clients_, bdvID);
-   EXPECT_EQ(DBTestUtils::getTopBlockHeight(iface_, DB_SELECT::HEADERS), 5U);
+   EXPECT_EQ(TestUtils::getTopBlockHeightInDB(
+      theBDMt_->bdm().get(), DB_SELECT::HEADERS), 5U);
 
    //check balances
    scrObj = wlt->getScrAddrObjByKey(TestChain::scrAddrA);
@@ -6075,7 +6079,8 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Armory135)
    DBTestUtils::goOnline(clients_, bdvID);
    DBTestUtils::waitOnBDMReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
-   EXPECT_EQ(DBTestUtils::getTopBlockHeight(iface_, DB_SELECT::HEADERS), 3U);
+   EXPECT_EQ(TestUtils::getTopBlockHeightInDB(
+      theBDMt_->bdm().get(), DB_SELECT::HEADERS), 3U);
 
    //check balances
    const ScrAddrObj* scrObj;
@@ -6185,7 +6190,8 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Armory135)
    //mine some blocks
    DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrC, 2);
    DBTestUtils::waitOnNewBlockSignal(clients_, bdvID);
-   EXPECT_EQ(DBTestUtils::getTopBlockHeight(iface_, DB_SELECT::HEADERS), 5U);
+   EXPECT_EQ(TestUtils::getTopBlockHeightInDB(
+      theBDMt_->bdm().get(), DB_SELECT::HEADERS), 5U);
 
    //check balances
    scrObj = wlt->getScrAddrObjByKey(TestChain::scrAddrA);
@@ -6323,7 +6329,8 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_BIP32)
    DBTestUtils::goOnline(clients_, bdvID);
    DBTestUtils::waitOnBDMReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
-   EXPECT_EQ(DBTestUtils::getTopBlockHeight(iface_, DB_SELECT::HEADERS), 3U);
+   EXPECT_EQ(TestUtils::getTopBlockHeightInDB(
+      theBDMt_->bdm().get(), DB_SELECT::HEADERS), 3U);
 
    //check balances
    const ScrAddrObj* scrObj;
@@ -6435,7 +6442,8 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_BIP32)
    //mine some blocks
    DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrC, 2);
    DBTestUtils::waitOnNewBlockSignal(clients_, bdvID);
-   EXPECT_EQ(DBTestUtils::getTopBlockHeight(iface_, DB_SELECT::HEADERS), 5U);
+   EXPECT_EQ(TestUtils::getTopBlockHeightInDB(
+      theBDMt_->bdm().get(), DB_SELECT::HEADERS), 5U);
 
    //check balances
    scrObj = wlt->getScrAddrObjByKey(TestChain::scrAddrA);
@@ -6595,7 +6603,8 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Salted)
    DBTestUtils::goOnline(clients_, bdvID);
    DBTestUtils::waitOnBDMReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
-   EXPECT_EQ(DBTestUtils::getTopBlockHeight(iface_, DB_SELECT::HEADERS), 3U);
+   EXPECT_EQ(TestUtils::getTopBlockHeightInDB(
+      theBDMt_->bdm().get(), DB_SELECT::HEADERS), 3U);
 
    //check balances
    const ScrAddrObj* scrObj;
@@ -6706,7 +6715,8 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Salted)
    //mine some blocks
    DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrC, 2);
    DBTestUtils::waitOnNewBlockSignal(clients_, bdvID);
-   EXPECT_EQ(DBTestUtils::getTopBlockHeight(iface_, DB_SELECT::HEADERS), 5U);
+   EXPECT_EQ(TestUtils::getTopBlockHeightInDB(
+      theBDMt_->bdm().get(), DB_SELECT::HEADERS), 5U);
 
    //check balances
    scrObj = wlt->getScrAddrObjByKey(TestChain::scrAddrA);
@@ -6866,7 +6876,8 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_ECDH)
    DBTestUtils::goOnline(clients_, bdvID);
    DBTestUtils::waitOnBDMReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
-   EXPECT_EQ(DBTestUtils::getTopBlockHeight(iface_, DB_SELECT::HEADERS), 3U);
+   EXPECT_EQ(TestUtils::getTopBlockHeightInDB(
+      theBDMt_->bdm().get(), DB_SELECT::HEADERS), 3U);
 
    //check balances
    const ScrAddrObj* scrObj;
@@ -6984,7 +6995,8 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_ECDH)
    //mine some blocks
    DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrC, 2);
    DBTestUtils::waitOnNewBlockSignal(clients_, bdvID);
-   EXPECT_EQ(DBTestUtils::getTopBlockHeight(iface_, DB_SELECT::HEADERS), 5U);
+   EXPECT_EQ(TestUtils::getTopBlockHeightInDB(
+      theBDMt_->bdm().get(), DB_SELECT::HEADERS), 5U);
 
    //check balances
    scrObj = wlt->getScrAddrObjByKey(TestChain::scrAddrA);

@@ -32,6 +32,46 @@
 using namespace std;
 using namespace Armory;
 
+namespace {
+   uint64_t getScrAddrBalance(const BinaryData& scrAddr,
+      std::shared_ptr<Blockchain> bc, LMDBBlockDatabase* db)
+   {
+      StoredScriptHistory ssh;
+      db->getStoredScriptHistory(ssh, scrAddr);
+
+      std::map<BinaryData, TxIOPair> txios;
+      for (const auto& hgtxPair : ssh.subHistMap) {
+         unsigned key; uint8_t dup;
+         BinaryRefReader brr{hgtxPair.first};
+         DBUtils::readBlkDataKeyNoPrefix(brr, key, dup);
+         auto header = bc->getHeaderById(key);
+         if (!header->isMainBranch()) {
+            continue;
+         }
+
+         for (const auto& txioPair : hgtxPair.second.txioMap) {
+            auto txioKey = txioPair.second.getDBKeyOfOutput();
+            auto emplaceResult = txios.emplace(txioKey, txioPair.second);
+            if (!emplaceResult.second) {
+               if (!txioPair.second.hasTxIn()) {
+                  continue;
+               }
+               emplaceResult.first->second.merge(txioPair.second);
+            }
+         }
+      }
+
+      uint64_t total = 0;
+      for (const auto& txioPair : txios) {
+         if (txioPair.second.hasTxIn()) {
+            continue;
+         }
+         total += txioPair.second.getValue();
+      }
+      return total;
+   }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 class BlockUtilsSuper : public ::testing::Test
@@ -245,10 +285,10 @@ TEST_F(BlockUtilsSuper, Load5Blocks_ReloadBDM)
    initBDM();
 
    auto subssh_sdbi = iface_->getStoredDBInfo(DB_SELECT::SUBSSH, 0);
-   EXPECT_EQ(subssh_sdbi.topBlkHgt, 5ULL);
+   EXPECT_FALSE(subssh_sdbi.topScannedBlkHash.valid());
 
    auto ssh_sdbi = iface_->getStoredDBInfo(DB_SELECT::SSH, 0);
-   EXPECT_EQ(ssh_sdbi.topBlkHgt, 5ULL);
+   EXPECT_FALSE(ssh_sdbi.topScannedBlkHash.valid());
 
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
@@ -377,11 +417,14 @@ TEST_F(BlockUtilsSuper, Load5Blocks_Reload_Rescan)
 
    initBDM();
 
+   auto header = theBDMt_->bdm()->blockchain()->top();
+   ASSERT_EQ(header->getBlockHeight(), 5U);
+
    auto subssh_sdbi = iface_->getStoredDBInfo(DB_SELECT::SUBSSH, 0);
-   EXPECT_EQ(subssh_sdbi.topBlkHgt, 5U);
+   EXPECT_EQ(subssh_sdbi.topScannedBlkHash, header->getThisHash());
 
    auto ssh_sdbi = iface_->getStoredDBInfo(DB_SELECT::SSH, 0);
-   EXPECT_EQ(ssh_sdbi.topBlkHgt, 5U);
+   EXPECT_EQ(ssh_sdbi.topScannedBlkHash, header->getThisHash());
 
    clients_->init();
    theBDMt_->start(BdmInitMode::RESCAN);
@@ -511,11 +554,14 @@ TEST_F(BlockUtilsSuper, Load5Blocks_RescanSSH)
 
    initBDM();
 
+   auto header = theBDMt_->bdm()->blockchain()->top();
+   ASSERT_EQ(header->getBlockHeight(), 3U);
+
    auto subssh_sdbi = iface_->getStoredDBInfo(DB_SELECT::SUBSSH, 0);
-   EXPECT_EQ(subssh_sdbi.topBlkHgt, 3U);
+   EXPECT_EQ(subssh_sdbi.topScannedBlkHash, header->getThisHash());
 
    auto ssh_sdbi = iface_->getStoredDBInfo(DB_SELECT::SSH, 0);
-   EXPECT_EQ(ssh_sdbi.topBlkHgt, 3U);
+   EXPECT_EQ(ssh_sdbi.topScannedBlkHash, header->getThisHash());
 
    clients_->init();
    theBDMt_->start(BdmInitMode::SSH);
@@ -581,12 +627,14 @@ TEST_F(BlockUtilsSuper, Load5Blocks_RescanSSH)
    delete theBDMt_;
 
    initBDM();
+   auto header3 = theBDMt_->bdm()->blockchain()->top();
+   ASSERT_EQ(header3->getBlockHeight(), 3U);
 
    subssh_sdbi = iface_->getStoredDBInfo(DB_SELECT::SUBSSH, 0);
-   EXPECT_EQ(subssh_sdbi.topBlkHgt, 3U);
+   EXPECT_EQ(subssh_sdbi.topScannedBlkHash, header3->getThisHash());
 
    ssh_sdbi = iface_->getStoredDBInfo(DB_SELECT::SSH, 0);
-   EXPECT_EQ(ssh_sdbi.topBlkHgt, 3U);
+   EXPECT_EQ(ssh_sdbi.topScannedBlkHash, header3->getThisHash());
 
    //add next block
    TestUtils::appendBlocks({ "4" }, blk0dat_);
@@ -597,11 +645,14 @@ TEST_F(BlockUtilsSuper, Load5Blocks_RescanSSH)
    DBTestUtils::goOnline(clients_, bdvID);
    DBTestUtils::waitOnBDMReady(clients_, bdvID);
 
+   auto header4 = theBDMt_->bdm()->blockchain()->top();
+   ASSERT_EQ(header4->getBlockHeight(), 4U);
+
    subssh_sdbi = iface_->getStoredDBInfo(DB_SELECT::SUBSSH, 0);
-   EXPECT_EQ(subssh_sdbi.topBlkHgt, 4U);
+   EXPECT_EQ(subssh_sdbi.topScannedBlkHash, header4->getThisHash());
 
    ssh_sdbi = iface_->getStoredDBInfo(DB_SELECT::SSH, 0);
-   EXPECT_EQ(ssh_sdbi.topBlkHgt, 4U);
+   EXPECT_EQ(ssh_sdbi.topScannedBlkHash, header4->getThisHash());
    
    iface_->getStoredScriptHistory(ssh, TestChain::scrAddrA);
    EXPECT_EQ(ssh.getScriptBalance(), 50 * COIN);
@@ -722,10 +773,10 @@ TEST_F(BlockUtilsSuper, Load3BlocksPlus3)
    DBTestUtils::goOnline(clients_, bdvID);
    DBTestUtils::waitOnBDMReady(clients_, bdvID);
 
-   EXPECT_EQ(DBTestUtils::getTopBlockHeight(iface_, DB_SELECT::HEADERS), 2U);
+   EXPECT_EQ(TestUtils::getTopBlockHeightInDB(theBDMt_->bdm().get(), DB_SELECT::HEADERS), 2U);
    EXPECT_EQ(DBTestUtils::getTopBlockHash(iface_, DB_SELECT::HEADERS), TestChain::blkHash2);
-   EXPECT_TRUE(theBDMt_->bdm()->blockchain()->
-      getHeaderByHash(TestChain::blkHash2)->isMainBranch());
+   EXPECT_TRUE(theBDMt_->bdm()->blockchain()->getHeaderByHash(
+      TestChain::blkHash2)->isMainBranch());
 
    TestUtils::appendBlocks({ "3" }, blk0dat_);
    DBTestUtils::triggerNewBlockNotification(theBDMt_);
@@ -753,10 +804,10 @@ TEST_F(BlockUtilsSuper, Load3BlocksPlus3)
    DBTestUtils::triggerNewBlockNotification(theBDMt_);
    DBTestUtils::waitOnNewBlockSignal(clients_, bdvID);
 
-   EXPECT_EQ(DBTestUtils::getTopBlockHeight(iface_, DB_SELECT::HEADERS), 5U);
+   EXPECT_EQ(TestUtils::getTopBlockHeightInDB(theBDMt_->bdm().get(), DB_SELECT::HEADERS), 5U);
    EXPECT_EQ(DBTestUtils::getTopBlockHash(iface_, DB_SELECT::HEADERS), TestChain::blkHash5);
-   EXPECT_TRUE(theBDMt_->bdm()->blockchain()->
-      getHeaderByHash(TestChain::blkHash5)->isMainBranch());
+   EXPECT_TRUE(theBDMt_->bdm()->blockchain()->getHeaderByHash(
+      TestChain::blkHash5)->isMainBranch());
 
    StoredScriptHistory ssh;
 
@@ -1476,27 +1527,28 @@ TEST_F(BlockUtilsWithWalletTest, Test_WithWallet)
    uint64_t balanceWlt;
    uint64_t balanceDB;
 
+   auto bc = theBDMt_->bdm()->blockchain();
    balanceWlt = wlt->getScrAddrObjByKey(TestChain::scrAddrA)->getFullBalance();
-   balanceDB = iface_->getBalanceForScrAddr(TestChain::scrAddrA);
+   balanceDB = getScrAddrBalance(TestChain::scrAddrA, bc, iface_);
    EXPECT_EQ(balanceWlt, 50 * COIN);
    EXPECT_EQ(balanceDB, 50 * COIN);
 
    balanceWlt = wlt->getScrAddrObjByKey(TestChain::scrAddrB)->getFullBalance();
-   balanceDB = iface_->getBalanceForScrAddr(TestChain::scrAddrB);
+   balanceDB = getScrAddrBalance(TestChain::scrAddrB, bc, iface_);
    EXPECT_EQ(balanceWlt, 70 * COIN);
    EXPECT_EQ(balanceDB, 70 * COIN);
 
    balanceWlt = wlt->getScrAddrObjByKey(TestChain::scrAddrC)->getFullBalance();
-   balanceDB = iface_->getBalanceForScrAddr(TestChain::scrAddrC);
+   balanceDB = getScrAddrBalance(TestChain::scrAddrC, bc, iface_);
    EXPECT_EQ(balanceWlt, 20 * COIN);
    EXPECT_EQ(balanceDB, 20 * COIN);
 
-   balanceDB = iface_->getBalanceForScrAddr(TestChain::scrAddrD);
+   balanceDB = getScrAddrBalance(TestChain::scrAddrD, bc, iface_);
    EXPECT_EQ(balanceDB, 65 * COIN);
-   balanceDB = iface_->getBalanceForScrAddr(TestChain::scrAddrE);
+   balanceDB = getScrAddrBalance(TestChain::scrAddrE, bc, iface_);
    EXPECT_EQ(balanceDB, 30 * COIN);
-   balanceDB = iface_->getBalanceForScrAddr(TestChain::scrAddrF);
-   EXPECT_EQ(balanceDB, 5 * COIN);   
+   balanceDB = getScrAddrBalance(TestChain::scrAddrF, bc, iface_);
+   EXPECT_EQ(balanceDB, 5 * COIN);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1530,29 +1582,30 @@ TEST_F(BlockUtilsWithWalletTest, RegisterAddrAfterWallet)
    DBTestUtils::registerWallet(clients_, bdvID,
       scrAddrVec, "wallet1", false, true);
 
+   auto bc = theBDMt_->bdm()->blockchain();
    balanceWlt = wlt->getScrAddrObjByKey(TestChain::scrAddrA)->getFullBalance();
-   balanceDB = iface_->getBalanceForScrAddr(TestChain::scrAddrA);
+   balanceDB = getScrAddrBalance(TestChain::scrAddrA, bc, iface_);
    EXPECT_EQ(balanceWlt, 50 * COIN);
    EXPECT_EQ(balanceDB, 50 * COIN);
 
    balanceWlt = wlt->getScrAddrObjByKey(TestChain::scrAddrB)->getFullBalance();
-   balanceDB = iface_->getBalanceForScrAddr(TestChain::scrAddrB);
+   balanceDB = getScrAddrBalance(TestChain::scrAddrB, bc, iface_);
    EXPECT_EQ(balanceWlt, 70 * COIN);
    EXPECT_EQ(balanceDB, 70 * COIN);
 
    balanceWlt = wlt->getScrAddrObjByKey(TestChain::scrAddrC)->getFullBalance();
-   balanceDB = iface_->getBalanceForScrAddr(TestChain::scrAddrC);
+   balanceDB = getScrAddrBalance(TestChain::scrAddrC, bc, iface_);
    EXPECT_EQ(balanceWlt, 20 * COIN);
    EXPECT_EQ(balanceDB, 20 * COIN);
 
    balanceWlt = wlt->getScrAddrObjByKey(TestChain::scrAddrD)->getFullBalance();
-   balanceDB = iface_->getBalanceForScrAddr(TestChain::scrAddrD);
+   balanceDB = getScrAddrBalance(TestChain::scrAddrD, bc, iface_);
    EXPECT_EQ(balanceWlt, 65 * COIN);
    EXPECT_EQ(balanceDB, 65 * COIN);
 
-   balanceDB = iface_->getBalanceForScrAddr(TestChain::scrAddrE);
+   balanceDB = getScrAddrBalance(TestChain::scrAddrE, bc, iface_);
    EXPECT_EQ(balanceDB, 30 * COIN);
-   balanceDB = iface_->getBalanceForScrAddr(TestChain::scrAddrF);
+   balanceDB = getScrAddrBalance(TestChain::scrAddrF, bc, iface_);
    EXPECT_EQ(balanceDB, 5 * COIN);
 }
 

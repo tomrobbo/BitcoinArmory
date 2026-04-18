@@ -39,6 +39,7 @@ class TxFilterPoolWriter;
 struct StoredDBInfo;
 struct StoredSubHistory;
 class UnspentTxOut;
+struct TxOutData;
 
 enum class DB_SELECT : int;
 enum class ARMORY_DB_TYPE : int;
@@ -235,13 +236,13 @@ public:
    static std::string getDbName(DB_SELECT);
 
    //virtual
-   virtual StoredDBInfo open(void) = 0;
+   virtual void open(void) = 0;
    virtual void close(void) = 0;
    virtual void eraseOnDisk(void) = 0;
 
    virtual std::unique_ptr<DbTransaction> beginTransaction(LMDB::Mode) const = 0;
    virtual std::unique_ptr<LDBIter> getIterator(void) = 0;
-   
+
    virtual BinaryDataRef getValue(BinaryDataRef) const = 0;
    virtual void putValue(BinaryDataRef, BinaryDataRef) = 0;
    virtual void deleteValue(BinaryDataRef) = 0;
@@ -261,7 +262,7 @@ public:
    ~DatabaseContainer_Single(void) override;
 
    //virtuals
-   StoredDBInfo open(void) override;
+   void open(void) override;
    void close(void) override;
    void eraseOnDisk(void) override;
 
@@ -330,7 +331,7 @@ private:
    std::shared_ptr<DatabaseContainer> getDbPtr(DB_SELECT) const;
 
 public:
-   LMDBBlockDatabase(const std::filesystem::path&);
+   LMDBBlockDatabase(void);
    ~LMDBBlockDatabase(void);
 
    /////////////////////////////////////////////////////////////////////////////
@@ -404,7 +405,6 @@ public:
 
    /////////////////////////////////////////////////////////////////////////////
    // still using the old name even though no block data is stored anymore
-   BinaryData getRawBlock(std::shared_ptr<Armory::BlockHeader>) const;
    bool getStoredHeader(StoredHeader&,
       std::shared_ptr<Armory::BlockHeader>, bool=true) const;
 
@@ -415,7 +415,6 @@ public:
 
    /////////////////////////////////////////////////////////////////////////////
    // StoredTxOut Accessors
-   void putStoredTxOut(const StoredTxOut&);
    void putStoredZcTxOut(const StoredTxOut&, const BinaryData&);
 
    bool getStoredTxOut(StoredTxOut&,
@@ -436,10 +435,6 @@ public:
    bool getStoredTxOut(
       StoredTxOut&, const std::shared_ptr<Armory::BlockHeader>, uint16_t, uint16_t) const;
    void getSpentness(StoredTxOut&);
-
-   void getUTXOflags(std::map<BinaryData, StoredSubHistory>&) const;
-   void getUTXOflags(StoredSubHistory&) const;
-   void getUTXOflags_Super(StoredSubHistory&) const;
 
    /////////////////////////////////////////////////////////////////////////////
    // StoredScriptHistory Accessors
@@ -466,48 +461,35 @@ public:
    bool fillStoredSubHistory(StoredScriptHistory&, unsigned, unsigned) const;
    bool fillStoredSubHistory_Super(StoredScriptHistory&, unsigned, unsigned) const;
 
-   // This method breaks from the convention I've used for getting/putting 
-   // stored objects, because we never really handle Sub-ssh objects directly,
-   // but we do need to harness them.  This method could be renamed to
-   // "getPartialScriptHistory()" ... it reads the main 
-   // sub-ssh from DB and adds it to the supplied regular-ssh.
-   bool fetchStoredSubHistory(StoredScriptHistory&,
-      BinaryData,
-      bool = false,
-      bool = false);
-
-   // This could go in StoredBlockObj if it didn't need to lookup DB data
-   bool getFullUTXOMapForSSH(StoredScriptHistory&,
-      std::map<BinaryData, UnspentTxOut>&);
-
-   uint64_t getBalanceForScrAddr(BinaryDataRef, bool = false);
-
+   /////////////////////////////////////////////////////////////////////////////
+   // tx hints
    bool putStoredTxHints(const StoredTxHints&);
    bool getStoredTxHints(StoredTxHints&, BinaryDataRef) const;
    void updatePreferredTxHint(BinaryDataRef, BinaryData);
 
-   // TxRefs are much simpler with LDB than the previous FileDataPtr construct
+   /////////////////////////////////////////////////////////////////////////////
+   // Tx stuff
    TxRef getTxRef(BinaryDataRef);
    TxRef getTxRef(BinaryData, uint16_t);
    TxRef getTxRef(uint32_t, uint8_t, uint16_t);
-
-   // Sometimes we already know where the Tx is, but we don't know its hash
    Tx getFullTxCopy(uint16_t, std::shared_ptr<Armory::BlockHeader>) const;
-   TxOut getTxOutCopy(const BinaryData&, uint16_t,
-      std::shared_ptr<Armory::BlockHeader>) const;
-
-   // Sometimes we already know where the Tx is, but we don't know its hash
    BinaryData getTxHashForLdbKey(BinaryDataRef,
       std::shared_ptr<Armory::BlockHeader>) const;
 
-   ////////////////////////////////////////////////////////////////////////////
+   /////////////////////////////////////////////////////////////////////////////
+   // TxOut/In stuff
+   std::map<uint64_t, TxOutData> getTxOutDataForScrAddrKey(uint32_t) const;
+   std::unordered_map<uint64_t, uint64_t> getTxInDataForTxOutData(
+      const std::map<uint64_t, TxOutData>&) const;
+
+   /////////////////////////////////////////////////////////////////////////////
    KVLIST getAllDatabaseEntries(DB_SELECT);
    void   printAllDatabaseEntries(DB_SELECT);
 
    const std::filesystem::path& baseDir(void) const;
 
    void closeDB(DB_SELECT);
-   StoredDBInfo openDB(DB_SELECT);
+   void openDB(DB_SELECT);
    void resetSSHdb(void);
    void resetSSHdb_Super(void);
 
@@ -541,9 +523,8 @@ private:
 
    // In this case, a address is any TxOut script, which is usually
    // just a 25-byte script.  But this generically captures all types
-   // of addresses including pubkey-only, P2SH, 
+   // of addresses including pubkey-only, P2SH
    std::map<BinaryData, StoredScriptHistory> registeredSSHs_;
-   std::filesystem::path blkFolder_;
    const static std::set<DB_SELECT> supernodeDBs_;
 
    Armory::Threading::TransactionalMap<unsigned, unsigned> heightToBatchId_;

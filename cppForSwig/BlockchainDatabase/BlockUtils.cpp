@@ -25,6 +25,7 @@
 #include <gtest/MockedNode.h>
 
 #include "Progress.h"
+#include "lmdb_wrapper.h"
 #include "BlockchainScanner.h"
 #include "DatabaseBuilder.h"
 #include "BDV_Notification.h"
@@ -45,42 +46,15 @@ public:
    {}
 
 protected:
-   virtual bool bdmIsRunning() const
+   bool bdmIsRunning() const override
    {
-      return bdm_->BDMstate_ != BDMState::Offline;
+      return bdm_->isRunning();
    }
 
-   virtual bool applyBlockRangeToDB(
+   bool applyBlockRangeToDB(
       uint32_t startBlock, const std::vector<std::string>& wltIDs,
-      bool reportProgress)
+      bool reportProgress) override
    {
-      //make sure sdbis are initialized (fresh ids wont have sdbi entries)
-      try {
-         getSshSDBI();
-      } catch (const std::runtime_error&) {
-         StoredDBInfo sdbi;
-         sdbi.magic = Config::BitcoinSettings::getMagicBytes();
-         sdbi.metaHash = BtcUtils::EmptyHash;
-         sdbi.topBlkHgt = 0;
-         sdbi.armoryType = Config::DBSettings::getDbType();
-
-         //write sdbi
-         putSshSDBI(sdbi);
-      }
-
-      try {
-         getSubSshSDBI();
-      } catch (const std::runtime_error&) {
-         StoredDBInfo sdbi;
-         sdbi.magic = Config::BitcoinSettings::getMagicBytes();
-         sdbi.metaHash = BtcUtils::EmptyHash;
-         sdbi.topBlkHgt = 0;
-         sdbi.armoryType = Config::DBSettings::getDbType();
-
-         //write sdbi
-         putSubSshSDBI(sdbi);
-      }
-
       const auto progress = [&](
          BDMPhase phase, double prog, unsigned time, unsigned numericProgress)
       {
@@ -105,12 +79,12 @@ protected:
       return result;
    }
 
-   std::shared_ptr<Blockchain> blockchain(void) const
+   std::shared_ptr<Blockchain> blockchain() const override
    {
       return bdm_->blockchain();
    }
 
-   std::shared_ptr<ScrAddrFilter> getNew(unsigned sdbiID)
+   std::shared_ptr<ScrAddrFilter> getNew(unsigned sdbiID) override
    {
       return std::make_shared<BDM_ScrAddrFilter>(bdm_, sdbiID);
    }
@@ -124,7 +98,7 @@ BlockDataManager::BlockDataManager(std::function<bool(void)> shutdownLbd) :
    blockchain_ = std::make_shared<Blockchain>(
       Config::BitcoinSettings::getGenesisBlockHash());
    blockFiles_ = std::make_shared<BlockFiles>(Config::Pathing::blkFilePath());
-   iface_ = new LMDBBlockDatabase(Config::Pathing::blkFilePath());
+   iface_ = new LMDBBlockDatabase();
    nodeStatusPollMutex_ = std::make_shared<std::mutex>();
 
    try {
@@ -143,7 +117,8 @@ BlockDataManager::BlockDataManager(std::function<bool(void)> shutdownLbd) :
       zeroConfCont_->setWatcherNode(watchNode_);
 
       scrAddrData_ = std::make_shared<BDM_ScrAddrFilter>(this);
-      scrAddrData_->init();
+   } catch (const std::exception& e) {
+      std::cout << "dp open error: " << e.what() << std::endl;
    } catch (...) {
       exceptPtr_ = std::current_exception();
    }
@@ -154,7 +129,7 @@ BlockDataManager::~BlockDataManager()
    cleanup();
 }
 
-/////////////////////////////////////////////////////////////////////////////
+////////
 void BlockDataManager::cleanup()
 {
    zeroConfCont_.reset();
@@ -194,7 +169,7 @@ void BlockDataManager::triggerShutdown()
    }
 }
 
-/////////////////////////////////////////////////////////////////////////////
+////////
 void BlockDataManager::openDatabase()
 {
    LOGINFO << "blkfile dir: " << Config::Pathing::blkFilePath().string();
@@ -213,7 +188,7 @@ void BlockDataManager::openDatabase()
    }
 }
 
-/////////////////////////////////////////////////////////////////////////////
+////////
 bool BlockDataManager::applyBlockRangeToDB(
    ProgressCallback prog, uint32_t blk0, ScrAddrFilter& scrAddrData)
 {
@@ -222,16 +197,18 @@ bool BlockDataManager::applyBlockRangeToDB(
       blockFiles_,
       Config::DBSettings::threadCount(), Config::DBSettings::ramUsage(),
       prog, Config::DBSettings::reportProgress());
-   if (!bcs.scan_nocheck(blk0)) {
-      return false;
-   }
 
-   //bcs.updateSSH(false, blk0);
-   //bcs.resolveTxHashes();
-   return true;
+   //no need to setup a context for a side scan, it assumes
+   //address history is fresh
+   ScannerContext ctx;
+   auto result = bcs.scan(ctx, blk0);
+
+   //need to merge hashmap with main context now
+   dbBuilder_->mergeContext(ctx);
+   return result;
 }
 
-/////////////////////////////////////////////////////////////////////////////
+////////
 void BlockDataManager::resetDatabases(BdmInitMode mode)
 {
    if (mode == BdmInitMode::RESUME) {
@@ -241,11 +218,6 @@ void BlockDataManager::resetDatabases(BdmInitMode mode)
    if (mode == BdmInitMode::SSH) {
       iface_->resetSSHdb();
       return;
-   }
-
-   if (Config::DBSettings::getDbType() != ARMORY_DB_TYPE::Super) {
-      //we keep all scrAddr data in between db reset/clear
-      scrAddrData_->getAllScrAddrInDB();
    }
 
    switch (mode)
@@ -263,12 +235,12 @@ void BlockDataManager::resetDatabases(BdmInitMode mode)
    }
 
    if (Config::DBSettings::getDbType() != ARMORY_DB_TYPE::Super) {
-      //reapply ssh map to the db
-      scrAddrData_->resetSshDB();
+      //reset top scanned block hash
+      scrAddrData_->updateScannedHash(Hash32{});
    }
 }
 
-/////////////////////////////////////////////////////////////////////////////
+////////
 bool BlockDataManager::doInitialSyncOnLoad(BdmInitMode mode,
    const ProgressCallback &progress)
 {
@@ -277,13 +249,14 @@ bool BlockDataManager::doInitialSyncOnLoad(BdmInitMode mode,
    return loadDiskState(progress, mode == BdmInitMode::SSH);
 }
 
-////////////////////////////////////////////////////////////////////////////////
 bool BlockDataManager::loadDiskState(const ProgressCallback &progress,
    bool forceRescanSSH)
 {
+   scrAddrData_->start();
+
    BDMstate_ = BDMState::Initializing;
    dbBuilder_ = std::make_shared<Database::Builder>(
-      blockFiles_, *this, progress, forceRescanSSH);
+      *this, progress, forceRescanSSH);
    if (!dbBuilder_->init()) {
       //fatal error in db startup, terminate bdm
       return false;
@@ -298,29 +271,16 @@ bool BlockDataManager::loadDiskState(const ProgressCallback &progress,
    return true;
 }
 
-////////////////////////////////////////////////////////////////////////////////
 ReorganizationState BlockDataManager::readBlkFileUpdate()
 {
    return dbBuilder_->update();
 }
 
-////////////////////////////////////////////////////////////////////////////////
-std::shared_ptr<ScrAddrFilter> BlockDataManager::getScrAddrFilter() const
-{
-   return scrAddrData_;
-}
-
-////////////////////////////////////////////////////////////////////////////////
+////////
 void BlockDataManager::registerZcCallbacks(
    std::unique_ptr<ZeroConf::ZeroConfCallbacks> ptr)
 {
    zeroConfCont_->setZeroConfCallbacks(std::move(ptr));
-}
-
-std::shared_ptr<ZeroConf::ZeroConfContainer>
-BlockDataManager::zeroConfCont() const
-{
-   return zeroConfCont_;
 }
 
 void BlockDataManager::enableZeroConf(bool clearMempool)
@@ -331,7 +291,6 @@ void BlockDataManager::enableZeroConf(bool clearMempool)
    zeroConfCont_->init(scrAddrData_, clearMempool);
 }
 
-////////////////////////////////////////////////////////////////////////////////
 bool BlockDataManager::isZcEnabled() const
 {
    if (zeroConfCont_ == nullptr) {
@@ -340,7 +299,6 @@ bool BlockDataManager::isZcEnabled() const
    return zeroConfCont_->isEnabled();
 }
 
-////////////////////////////////////////////////////////////////////////////////
 void BlockDataManager::disableZeroConf()
 {
    if (zeroConfCont_ == nullptr) {
@@ -349,7 +307,7 @@ void BlockDataManager::disableZeroConf()
    zeroConfCont_->shutdown();
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 std::shared_ptr<CoreRPC::NodeStatus> BlockDataManager::getNodeStatus() const
 {
    if (processNode_ == nullptr) {
@@ -377,7 +335,6 @@ std::shared_ptr<CoreRPC::NodeStatus> BlockDataManager::getNodeStatus() const
    return nss;
 }
 
-////////////////////////////////////////////////////////////////////////////////
 void BlockDataManager::pollNodeStatus() const
 {
    if (!nodeRPC_->canPoll()) {
@@ -411,7 +368,7 @@ void BlockDataManager::pollNodeStatus() const
    }
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 void BlockDataManager::blockUntilReady() const
 {
    while (true) {
@@ -424,7 +381,6 @@ void BlockDataManager::blockUntilReady() const
    }
 }
 
-////////////////////////////////////////////////////////////////////////////////
 bool BlockDataManager::isReady() const
 {
    bool isready = false;
@@ -440,14 +396,18 @@ bool BlockDataManager::isReady() const
    return isready;
 }
 
-////////////////////////////////////////////////////////////////////////////////
+bool BlockDataManager::isRunning() const
+{
+   return BDMstate_ != BDMState::Uninitialized;
+}
+
+////////
 void BlockDataManager::registerOneTimeHook(
    std::shared_ptr<BDVNotificationHook> hook)
 {
    oneTimeHooks_.push_back(move(hook));
 }
 
-////////////////////////////////////////////////////////////////////////////////
 void BlockDataManager::triggerOneTimeHooks(BDV_Notification* notifPtr)
 {
    try {
@@ -477,6 +437,17 @@ std::shared_ptr<BlockFiles> BlockDataManager::blockFiles() const
    return blockFiles_;
 }
 
+std::shared_ptr<ScrAddrFilter> BlockDataManager::getScrAddrFilter() const
+{
+   return scrAddrData_;
+}
+
+std::shared_ptr<ZeroConf::ZeroConfContainer>
+BlockDataManager::zeroConfCont() const
+{
+   return zeroConfCont_;
+}
+
 ////////
 bool BlockDataManager::hasException() const
 {
@@ -489,11 +460,6 @@ std::exception_ptr BlockDataManager::getException() const
 }
 
 ////////
-bool BlockDataManager::isRunning() const
-{
-   return BDMstate_ != BDMState::Offline;
-}
-
 unsigned BlockDataManager::getCheckedTxCount() const
 {
    return checkTransactionCount_;

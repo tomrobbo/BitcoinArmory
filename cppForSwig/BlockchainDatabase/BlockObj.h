@@ -42,7 +42,7 @@ namespace Armory
          std::size_t operator()(const BinaryDataRef&) const;
       };
 
-      struct Comparator
+      struct IsEqual
       {
          using is_transparent = void;
          bool operator()(const Hash32&, const Hash32&) const;
@@ -95,7 +95,7 @@ namespace Armory
          std::size_t operator()(const BinaryDataRef&) const;
       };
 
-      struct Comparator
+      struct IsEqual
       {
          using is_transparent = void;
          bool operator()(const HeaderPtr&, const HeaderPtr&) const;

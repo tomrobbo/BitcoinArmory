@@ -5,11 +5,13 @@
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
 //                                                                            //
-//  Copyright (C) 2016-2025, goatpig                                          //
+//  Copyright (C) 2016-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
+
+#include <cstring>
 
 #include "StoredBlockObj.h"
 #include <Utils/BtcUtils.h>
@@ -30,68 +32,47 @@ StoredDBInfo::StoredDBInfo() :
 
 bool StoredDBInfo::isInitialized() const
 {
-   return !magic.empty();
+   return !magicBytes.empty();
 }
 
 BinaryData StoredDBInfo::getDBKey(uint16_t id)
 {
    BinaryWriter bw(4);
-   bw.put_uint8_t((uint8_t)DbPrefix::DBINFO);
-   bw.put_uint8_t((uint8_t)DbPrefix::DBINFO);
-   bw.put_uint16_t(id, BE);
+   bw.put_uint32_t(0xFFFF0000 | id, BE);
    return bw.getData();
 }
 
 ////////
 void StoredDBInfo::unserializeDBValue(BinaryRefReader& brr)
 {
-   if (brr.getSizeRemaining() < 44) {
-      magic.resize(0);
-      topBlkHgt = UINT32_MAX;
-      metaHash.resize(0);
+   if (brr.getSizeRemaining() != 82) {
+      magicBytes.resize(0);
       return;
    }
-   brr.get_BinaryData(magic, 4);
-
-   BitUnpacker<uint32_t> bitunpack(brr);
-   armoryVer  = bitunpack.getBits(16);
-   if (armoryVer != ARMORY_DB_VERSION) {
+   armoryVer = brr.get_uint32_t();
+   if (armoryVer != (uint32_t)ARMORY_DB_VERSION) {
       std::stringstream ss;
       ss << "DB version mismatch. Use another dbdir or empty the current one!";
       LOGERR << ss.str();
       throw DbErrorMsg(ss.str());
    }
+   armoryType = (ARMORY_DB_TYPE)brr.get_uint16_t();
+   brr.get_BinaryData(magicBytes, 4);
 
-   armoryType = (ARMORY_DB_TYPE)bitunpack.getBits(4);
-   topBlkHgt = brr.get_uint32_t();
-   appliedToHgt = brr.get_uint32_t();
-   brr.get_BinaryData(metaHash, 32);
-   brr.get_BinaryData(topScannedBlkHash, 32);
+   auto topHashRef = brr.get_BinaryDataRef(32);
+   std::memcpy(topScannedBlkHash.data, topHashRef.getPtr(), 32);
+   auto metaRef = brr.get_BinaryDataRef(32);
+   std::memcpy(metaHash.data, metaRef.getPtr(), 32);
    metaInt = brr.get_uint64_t();
 }
 
 void StoredDBInfo::serializeDBValue(BinaryWriter& bw) const
 {
-   BitPacker<uint32_t> bitpack;
-   bitpack.putBits((uint32_t)armoryVer, 16);
-   bitpack.putBits((uint32_t)armoryType, 4);
-
-   bw.put_BinaryData(magic);
-   bw.put_BitPacker(bitpack);
-   bw.put_uint32_t(topBlkHgt); // top blk height
-   bw.put_uint32_t(appliedToHgt); // top blk height
-
-   if (metaHash.empty()) {
-      bw.put_BinaryData(BtcUtils::EmptyHash);
-   } else {
-      bw.put_BinaryData(metaHash);
-   }
-
-   BinaryDataRef hashRef(topScannedBlkHash);
-   if (topScannedBlkHash.empty()) {
-      hashRef.setRef(BtcUtils::EmptyHash);
-   }
-   bw.put_BinaryDataRef(hashRef);
+   bw.put_uint32_t((uint32_t)armoryVer);
+   bw.put_uint16_t((uint16_t)armoryType);
+   bw.put_BinaryData(magicBytes);
+   bw.put_BinaryDataRef(topScannedBlkHash.getRef());
+   bw.put_BinaryDataRef(metaHash.getRef());
    bw.put_uint64_t(metaInt);
 }
 
@@ -105,18 +86,6 @@ void StoredDBInfo::unserializeDBValue(BinaryDataRef bdr)
 {
    BinaryRefReader brr(bdr);
    unserializeDBValue(brr);
-}
-
-////////
-void StoredDBInfo::pprintOneLine(uint32_t indent) const
-{
-   for (uint32_t i=0; i < indent; i++) {
-      std::cout << " ";
-   }
-   std::cout << "DBINFO: " <<
-      " TopBlk: " << topBlkHgt <<
-      " , " << metaHash.getSliceCopy(0,4).toHexStr().c_str() <<
-      std::endl;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -483,164 +452,56 @@ BinaryData DBBlock::getSerializedBlockHeader() const
    return dataCopy;
 }
 
-void DBBlock::unserializeDBValue(DB_SELECT db, const BinaryData& bd,
-   bool ignoreMerkle)
+void DBBlock::unserializeDBValue(const BinaryData& bd)
 {
    BinaryRefReader brr(bd);
-   unserializeDBValue(db, brr, ignoreMerkle);
+   unserializeDBValue(brr);
 }
 
-void DBBlock::unserializeDBValue(DB_SELECT db, BinaryDataRef bdr,
-   bool ignoreMerkle)
+void DBBlock::unserializeDBValue(BinaryDataRef bdr)
 {
    BinaryRefReader brr(bdr);
-   unserializeDBValue(db, brr, ignoreMerkle);
+   unserializeDBValue(brr);
 }
 
 ////////
-void DBBlock::unserializeDBValue(DB_SELECT db, BinaryRefReader& brr,
-   bool ignoreMerkle)
+void DBBlock::unserializeDBValue(BinaryRefReader& brr)
 {
-   if (db == DB_SELECT::HEADERS) {
-      if (brr.getSize() < HEADER_SIZE + 26) {
-         std::stringstream err;
-         err << "buffer is too small: " << dataCopy.getSize();
-         err << " bytes. expected: " << HEADER_SIZE + 26;
+   if (brr.getSize() < HEADER_SIZE + 26) {
+      std::stringstream err;
+      err << "buffer is too small: " << dataCopy.getSize();
+      err << " bytes. expected: " << HEADER_SIZE + 26;
 
-         LOGERR << err.str();
-         throw BtcUtils::BlockDeserializingException(err.str());
-      }
-
-      brr.get_BinaryData(dataCopy, HEADER_SIZE);
-      BinaryData hgtx = brr.get_BinaryData(4);
-      blockHeight = DBUtils::hgtxToHeight(hgtx);
-      duplicateID = DBUtils::hgtxToDupID(hgtx);
-      BtcUtils::getHash256(dataCopy, thisHash);
-      numBytes = brr.get_uint32_t();
-      numTx = brr.get_uint32_t();
-      fileID = brr.get_uint16_t();
-      offset = brr.get_uint64_t();
-      uniqueID = brr.get_uint32_t();
-   } else if(db == DB_SELECT::BLKDATA) {
-      if (brr.getSize() < HEADER_SIZE + 12) {
-         std::stringstream err;
-         err << "buffer is too small: " << dataCopy.getSize();
-         err << " bytes. expected: " << HEADER_SIZE + 12;
-
-         LOGERR << err.str();
-         throw BtcUtils::BlockDeserializingException(err.str());
-      }
-
-      // Read the flags byte
-      BitUnpacker<uint32_t> bitunpack(brr);
-      unserArmVer       =                  bitunpack.getBits(16);
-      unserBlkVer       =                  bitunpack.getBits(4);
-      unserDbType       = (ARMORY_DB_TYPE) bitunpack.getBits(4);
-      unserMkType       = (MERKLE_SER_TYPE)bitunpack.getBits(2);
-      blockAppliedToDB  =                  bitunpack.getBit();
-
-      // Unserialize the raw header into the SBH object
-      brr.get_BinaryData(dataCopy, HEADER_SIZE);
-      BtcUtils::getHash256(dataCopy, thisHash);
-      numTx    = brr.get_uint32_t();
-      numBytes = brr.get_uint32_t();
-
-      if (unserArmVer != ARMORY_DB_VERSION) {
-         LOGWARN << "Version mismatch in unserialize DB header";
-      }
-      if (!ignoreMerkle ) {
-         uint32_t currPos = brr.getPosition();
-         uint32_t totalSz = brr.getSize();
-         if (unserMkType == MERKLE_SER_NONE) {
-            merkle.resize(0);
-         } else {
-            merkleIsPartial = unserMkType == MERKLE_SER_PARTIAL;
-            brr.get_BinaryData(merkle, totalSz - currPos);
-         }
-      }
+      LOGERR << err.str();
+      throw BtcUtils::BlockDeserializingException(err.str());
    }
+
+   brr.get_BinaryData(dataCopy, HEADER_SIZE);
+   BinaryData hgtx = brr.get_BinaryData(4);
+   blockHeight = DBUtils::hgtxToHeight(hgtx);
+   duplicateID = DBUtils::hgtxToDupID(hgtx);
+   BtcUtils::getHash256(dataCopy, thisHash);
+   numBytes = brr.get_uint32_t();
+   numTx = brr.get_uint32_t();
+   fileID = brr.get_uint16_t();
+   offset = brr.get_uint64_t();
+   uniqueID = brr.get_uint32_t();
 }
 
-void DBBlock::serializeDBValue(BinaryWriter& bw, DB_SELECT db,
-   ARMORY_DB_TYPE dbType
-) const
+void DBBlock::serializeDBValue(BinaryWriter& bw) const
 {
    if (!isInitialized()) {
       LOGERR << "Attempted to serialize uninitialized block header";
       return;
    }
 
-   if (db == DB_SELECT::HEADERS) {
-      bw.put_BinaryData(dataCopy);
-      bw.put_uint32_t(numBytes);
-      bw.put_uint32_t(numTx);
-      bw.put_uint64_t(offset);
-      bw.put_uint16_t(fileID);
-      //set valid merkle by default, update it on failed check
-      bw.put_uint8_t(merkleValid);
-   } else if (db == DB_SELECT::BLKDATA) {
-      uint32_t version = READ_UINT32_LE(dataCopy.getPtr());
-
-      // TODO:  We define merkle serialization types here, but we're not actually
-      //        enforcing it in this function.  Either merkle_ member contains
-      //        the correct form of the merkle data or it doesn't.  We should
-      //        figure out whether we need to make sure the correct data is
-      //        already here when this function starts, or guarantee the data
-      //        is in the right form as part of this function.  For now I'm
-      //        assuming that it's already in the right form, and thus the
-      //        determination of PARTIAL vs FULL is irrelevant
-      MERKLE_SER_TYPE mtype;
-      switch (dbType)
-      {
-         // If we store all the tx anyway, don't need any/partial merkle trees
-         case ARMORY_DB_TYPE::Bare:    mtype = MERKLE_SER_NONE; break;
-         case ARMORY_DB_TYPE::Full:    mtype = MERKLE_SER_NONE; break;
-         case ARMORY_DB_TYPE::Super:   mtype = MERKLE_SER_NONE; break;
-         default:
-            LOGERR << "Invalid DB mode in serializeStoredHeaderValue";
-      }
-
-      // Override the above mtype if the merkle data is zero-length
-      if (merkle.empty()) {
-         mtype = MERKLE_SER_NONE;
-      }
-
-      // Create the flags byte
-      BitPacker<uint32_t> bitpack;
-      bitpack.putBits((uint32_t)ARMORY_DB_VERSION, 16);
-      bitpack.putBits((uint32_t)version,           4);
-      bitpack.putBits((uint32_t)dbType,            4);
-      bitpack.putBits((uint32_t)mtype,             2);
-      bitpack.putBit(blockAppliedToDB);
-
-      bw.put_BitPacker(bitpack);
-      bw.put_BinaryData(dataCopy);
-      bw.put_uint32_t(numTx);
-      bw.put_uint32_t(numBytes);
-
-      if (mtype != MERKLE_SER_NONE ) {
-         bw.put_BinaryData(merkle);
-         if (merkle.empty()) {
-            LOGERR << "Expected to serialize merkle tree, but empty string";
-         }
-      }
-   }
-}
-
-void DBBlock::unserializeDBKey(DB_SELECT db, BinaryDataRef key)
-{
-   if (db == DB_SELECT::BLKDATA) {
-      BinaryRefReader brr(key);
-      if (key.getSize() == 4) {
-         DBUtils::readBlkDataKeyNoPrefix(brr, blockHeight, duplicateID);
-      } else if (key.getSize() == 5) {
-         DBUtils::readBlkDataKey(brr, blockHeight, duplicateID);
-      } else {
-         LOGERR << "Invalid key for StoredHeader";
-      }
-   } else {
-      LOGERR << "This method not intended for HEADERS DB";
-   }
+   bw.put_BinaryData(dataCopy);
+   bw.put_uint32_t(numBytes);
+   bw.put_uint32_t(numTx);
+   bw.put_uint64_t(offset);
+   bw.put_uint16_t(fileID);
+   //set valid merkle by default, update it on failed check
+   bw.put_uint8_t(merkleValid);
 }
 
 ////
@@ -654,11 +515,6 @@ void DBBlock::pprintOneLine(uint32_t indent) const
       << "     #Tx: " << numTx
       << " Applied: " << (blockAppliedToDB ? "T" : "F")
       << std::endl;
-}
-
-bool DBBlock::isMerkleCreated()
-{
-   return !merkle.empty();
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -704,14 +560,14 @@ void StoredTx::serializeDBValue(BinaryWriter& bw, ARMORY_DB_TYPE dbType) const
    {
       // In most cases, if storing separate TxOuts, fragged Tx is fine
       // UPDATE:  I'm not sure there's a good reason to NOT frag ever
-      case ARMORY_DB_TYPE::Bare:    serType = TX_SER_FRAGGED; break;
-      case ARMORY_DB_TYPE::Full:    serType = TX_SER_FRAGGED; break;
-      case ARMORY_DB_TYPE::Super:   serType = TX_SER_FRAGGED; break;
+      case ARMORY_DB_TYPE::Bare:    serType = TX_SERIALIZE_TYPE::FRAGGED; break;
+      case ARMORY_DB_TYPE::Full:    serType = TX_SERIALIZE_TYPE::FRAGGED; break;
+      case ARMORY_DB_TYPE::Super:   serType = TX_SERIALIZE_TYPE::FRAGGED; break;
       default:
          LOGERR << "Invalid DB mode in serializeStoredTxValue";
    }
 
-   if (serType == TX_SER_FULL && !haveAllTxOut()) {
+   if (serType == TX_SERIALIZE_TYPE::FULL && !haveAllTxOut()) {
       LOGERR << "Supposed to write out full Tx, but don't have it";
       return;
    }
@@ -730,9 +586,9 @@ void StoredTx::serializeDBValue(BinaryWriter& bw, ARMORY_DB_TYPE dbType) const
    bw.put_BitPacker(bitpack);
    bw.put_BinaryData(thisHash);
 
-   if (serType == TX_SER_FULL) {
+   if (serType == TX_SERIALIZE_TYPE::FULL) {
       bw.put_BinaryData(getSerializedTx());
-   } else if(serType == TX_SER_FRAGGED) {
+   } else if(serType == TX_SERIALIZE_TYPE::FRAGGED) {
       bw.put_BinaryData(getSerializedTxFragged());
    } else {
       bw.put_var_int(numTxOut);
@@ -991,8 +847,9 @@ void DBTx::unserializeDBValue(BinaryRefReader& brr)
    }
    brr.get_BinaryData(thisHash, 32);
 
-   if (unserTxType == TX_SER_FULL || unserTxType == TX_SER_FRAGGED) {
-      unserialize(brr, unserTxType == TX_SER_FRAGGED);
+   if (unserTxType == TX_SERIALIZE_TYPE::FULL ||
+      unserTxType == TX_SERIALIZE_TYPE::FRAGGED) {
+      unserialize(brr, unserTxType == TX_SERIALIZE_TYPE::FRAGGED);
    } else {
       numTxOut = (uint32_t)brr.get_var_int();
    }
@@ -1076,7 +933,7 @@ void DBTx::pprintOneLine(uint32_t indent) const
 StoredTxOut::StoredTxOut()
    : txVersion(UINT32_MAX), dataCopy(0), blockHeight(UINT32_MAX),
    txIndex(UINT16_MAX), txOutIndex(UINT16_MAX),
-   parentHash(0), spentness(TXOUT_SPENTUNK), isCoinbase(false),
+   parentHash(0), spentness(SPENTNESS::SPENTUNK), isCoinbase(false),
    spentByTxInKey(0)
 {}
 
@@ -1134,13 +991,13 @@ void StoredTxOut::unserializeDBValue(BinaryRefReader& brr)
    //    TxVersion   2 bits
    //    Spentness   2 bits
    BitUnpacker<uint16_t> bitunpack(brr);
-   unserArmVer =                  bitunpack.getBits(4);
-   txVersion   =                  bitunpack.getBits(2);
-   spentness   = (TXOUT_SPENTNESS)bitunpack.getBits(2);
-   isCoinbase  =                  bitunpack.getBit();
+   unserArmVer = bitunpack.getBits(4);
+   txVersion   = bitunpack.getBits(2);
+   spentness   = (SPENTNESS)bitunpack.getBits(2);
+   isCoinbase  = bitunpack.getBit();
 
    unserialize(brr);
-   if (spentness == TXOUT_SPENT && brr.getSizeRemaining() >= 8) {
+   if (spentness == SPENTNESS::SPENT && brr.getSizeRemaining() >= 8) {
       spentByTxInKey = brr.get_BinaryData(8);
    }
 }
@@ -1156,7 +1013,7 @@ void StoredTxOut::serializeDBValue(
    BinaryWriter& bw,
    uint16_t txVersion, bool isCoinbase,
    const BinaryDataRef dataRef,
-   TXOUT_SPENTNESS spentness, BinaryDataRef spentByTxin)
+   SPENTNESS spentness, BinaryDataRef spentByTxin)
 {
    size_t len = 2 + dataRef.getSize();
    bw.reserve(len);
@@ -1170,7 +1027,7 @@ void StoredTxOut::serializeDBValue(
    bw.put_BitPacker(bitpack);
    bw.put_BinaryData(dataRef);  // 8-byte value, var_int sz, pkscript
 
-   if (spentness == TXOUT_SPENT) {
+   if (spentness == SPENTNESS::SPENT) {
       if (spentByTxin.empty()) {
          LOGERR << "Need to write out spentByTxIn but no spentness data";
       }
@@ -1322,7 +1179,7 @@ void StoredTxOut::unserializeDBKey(BinaryDataRef key)
 
 bool StoredTxOut::isSpent() const
 {
-   return spentness == TXOUT_SPENT;
+   return spentness == SPENTNESS::SPENT;
 }
 
 ////////
@@ -1343,9 +1200,9 @@ void StoredTxOut::pprintOneLine(uint32_t indent) const
       << " Value=" << (double)(getValue())/(100000000.0)
       << " isCB: " << (isCoinbase ? "(X)" : "   ");
 
-   if (spentness == TXOUT_SPENTUNK) {
+   if (spentness == SPENTNESS::SPENTUNK) {
       std::cout << " Spnt: " << "<-----UNKNOWN---->" << std::endl;
-   } else if (spentness == TXOUT_UNSPENT) {
+   } else if (spentness == SPENTNESS::UNSPENT) {
       std::cout << " Spnt: " << "<                >" << std::endl;
    } else {
       std::cout << " Spnt: " << "<" <<
@@ -1427,7 +1284,6 @@ void StoredScriptHistory::serializeDBValue(BinaryWriter& bw,
    // Write out all the flags
    BitPacker<uint16_t> bitpack;
    bitpack.putBits((uint16_t)dbType, 4);
-   bitpack.putBits((uint16_t)SCRIPT_UTXO_VECTOR, 2);
    bw.put_BitPacker(bitpack);
 
    //

@@ -16,6 +16,7 @@
 #include <set>
 #include <cmath>
 #include <cstring>
+#include <arpa/inet.h>
 
 #include "lmdb_wrapper.h"
 #include <Utils/BtcUtils.h>
@@ -37,19 +38,25 @@
 
 using namespace Armory;
 
-const std::set<DB_SELECT> LMDBBlockDatabase::supernodeDBs_({});
+const std::set<DB_SELECT> LMDBBlockDatabase::supernodeDBs_({
+   DB_SELECT::SSH, DB_SELECT::SUBSSH, DB_SELECT::SUBSSH_META,
+   DB_SELECT::SPENTNESS
+});
+
 const std::map<std::string, size_t> LMDBBlockDatabase::mapSizes_ = {
-   {"headers", 50 * 1024 * 1024 * 1024ULL},
-   {"blkdata", 50 * 1024 * 1024ULL},
-   {"history", 50 * 1024 * 1024ULL},
-   {"txhints", 50 * 1024 * 1024 * 1024ULL},
-   {"ssh",   2000 * 1024 * 1024 * 1024ULL},
-   {"subssh", 2000 * 1024 * 1024 * 1024ULL},
-   {"subssh_meta", 1024 * 1024 * 1024ULL},
-   {"stxo", 2000 * 1024 * 1024 * 1024ULL},
-   {"zeroconf", 10 * 1024 * 1024 * 1024ULL},
-   {"txfilters", 100 * 1024 * 1024 * 1024ULL},
-   {"spentness", 2000 * 1024 * 1024 * 1024ULL},
+   {"headers",         50 * 1024 * 1024 * 1024ULL},
+   {"txhints",         50 * 1024 * 1024 * 1024ULL},
+   {"ssh",           2000 * 1024 * 1024 * 1024ULL},
+   {"subssh",        2000 * 1024 * 1024 * 1024ULL},
+   {"subssh_meta",          1024 * 1024 * 1024ULL},
+   {"stxo",          2000 * 1024 * 1024 * 1024ULL},
+   {"zeroconf",        10 * 1024 * 1024 * 1024ULL},
+   {"txfilters",      100 * 1024 * 1024 * 1024ULL},
+   {"spentness",     2000 * 1024 * 1024 * 1024ULL},
+   {"scraddr",        500 * 1024 * 1024 * 1024ULL},
+   {"txouts",        2000 * 1024 * 1024 * 1024ULL},
+   {"txins",         2000 * 1024 * 1024 * 1024ULL},
+   {"known_hashes",   100 * 1024 * 1024 * 1024ULL}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -141,7 +148,7 @@ BinaryDataRef LDBIter::getKeyRef() const
    }
    return currKeyReader_.getRawRef();
 }
-   
+
 BinaryDataRef LDBIter::getValueRef() const
 {
    if(isDirty_) {
@@ -189,7 +196,6 @@ bool LDBIter::seekToStartsWith(BinaryDataRef key)
       return false;
    }
    return checkKeyStartsWith(key);
-
 }
 
 bool LDBIter::seekToStartsWith(DbPrefix prefix)
@@ -200,7 +206,6 @@ bool LDBIter::seekToStartsWith(DbPrefix prefix)
       return false;
    }
    return checkKeyStartsWith(bw.getDataRef());
-
 }
 
 bool LDBIter::seekToStartsWith(DbPrefix pref, BinaryDataRef key)
@@ -369,11 +374,10 @@ bool LDBIter_Single::seekToLast()
 
 ////////////////////////////////////////////////////////////////////////////////
 // LMDBBlockDatabase
-LMDBBlockDatabase::LMDBBlockDatabase(const std::filesystem::path& blkFolder) :
-   blkFolder_(blkFolder)
+LMDBBlockDatabase::LMDBBlockDatabase()
 {}
 
-LMDBBlockDatabase::~LMDBBlockDatabase(void)
+LMDBBlockDatabase::~LMDBBlockDatabase()
 {
    closeDatabases();
 }
@@ -439,51 +443,43 @@ void LMDBBlockDatabase::openDatabases(const std::filesystem::path& basedir)
    // Just in case this isn't the first time we tried to open it.
    closeDatabases();
 
-
    for (int i = 0; i < (int)DB_SELECT::COUNT; i++) {
       DB_SELECT CURRDB = DB_SELECT(i);
       auto iter = dbMap_.find(CURRDB);
       if (iter == dbMap_.end()) {
-         if (getDbType() == ARMORY_DB_TYPE::Super) {
+         if (getDbType() != ARMORY_DB_TYPE::Super) {
             if (supernodeDBs_.find(CURRDB) != supernodeDBs_.end()) {
                continue;
             }
          }
-
          dbMap_.emplace(CURRDB,
             std::make_shared<DatabaseContainer_Single>(CURRDB));
       }
 
-      StoredDBInfo sdbi = openDB(CURRDB);
+      openDB(CURRDB);
+   }
 
-      // Check that the magic bytes are correct
-      if (Config::BitcoinSettings::getMagicBytes() != sdbi.magic) {
-         throw DbErrorMsg("Magic bytes mismatch!  Different blokchain?");
+   //check/seed headers SDBI
+   try {
+      auto sdbi = getStoredDBInfo(DB_SELECT::HEADERS, 0xFFFF);
+      if (Config::BitcoinSettings::getMagicBytes() != sdbi.magicBytes) {
+         LOGERR << "magic bytes mismatch, aborting";
+         exit(-2);
+      } else if (getDbType() != sdbi.armoryType) {
+         LOGERR << "db type mismatch, aborting";
+         exit(-3);
       }
-
-      if (CURRDB == DB_SELECT::HEADERS) {
-         if (getDbType() != sdbi.armoryType) {
-            LOGERR << "db type mismatch, aborting";
-            exit(-2);
-         }
-      }
+   } catch (const LmdbWrapperException&) {
+      //fresh db, seed headers sdbi
+      StoredDBInfo sdbi;
+      sdbi.armoryType = getDbType();
+      sdbi.magicBytes = Config::BitcoinSettings::getMagicBytes();
+      auto tx = beginTransaction(DB_SELECT::HEADERS, LMDB::Mode::ReadWrite);
+      putStoredDBInfo(DB_SELECT::HEADERS, sdbi, 0xFFFF);
    }
 
    if (getDbType() == ARMORY_DB_TYPE::Super) {
       loadHeightToIdMap();
-   }
- 
-   //sanity check: try to open older SDBI version
-   auto dbPtr = getDbPtr(DB_SELECT::HEADERS);
-   auto tx = dbPtr->beginTransaction(LMDB::Mode::ReadOnly);
-   BinaryData key;
-   key.append((uint8_t)DbPrefix::DBINFO);
-   auto valueRef = dbPtr->getValue(key.getRef());
-
-   if (!valueRef.empty()) {
-      //old style db, fail
-      LOGERR << "DB version mismatch. Use another dbdir!";
-      throw DbErrorMsg("DB version mismatch. Use another dbdir!");
    }
    dbIsOpen_ = true;
 }
@@ -539,12 +535,12 @@ void LMDBBlockDatabase::resetHistoryDatabases()
 
       auto db_subssh = getDbPtr(DB_SELECT::SUBSSH);
       auto db_hints = getDbPtr(DB_SELECT::TXHINTS);
-      auto db_stxo = getDbPtr(DB_SELECT::STXO);
+      auto db_spentness = getDbPtr(DB_SELECT::SPENTNESS);
       closeDatabases();
 
       db_subssh->eraseOnDisk();
       db_hints->eraseOnDisk();
-      db_stxo->eraseOnDisk();
+      db_spentness->eraseOnDisk();
    } else {
       auto db_subssh = getDbPtr(DB_SELECT::SUBSSH);
       auto db_subssh_meta = getDbPtr(DB_SELECT::SUBSSH_META);
@@ -881,7 +877,7 @@ bool LMDBBlockDatabase::fillStoredSubHistory_Super(
    return true;
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 void LMDBBlockDatabase::putStoredScriptHistorySummary(StoredScriptHistory& ssh)
 {
    SCOPED_TIMER("putStoredScriptHistory");
@@ -894,7 +890,7 @@ void LMDBBlockDatabase::putStoredScriptHistorySummary(StoredScriptHistory& ssh)
    putValue(DB_SELECT::SSH, ssh.getDBKey(), bw.getDataRef());
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 bool LMDBBlockDatabase::getStoredScriptHistorySummary(StoredScriptHistory& ssh,
    BinaryDataRef scrAddr) const
 {
@@ -911,24 +907,16 @@ bool LMDBBlockDatabase::getStoredScriptHistorySummary(StoredScriptHistory& ssh,
    return has;
 }
 
-////////////////////////////////////////////////////////////////////////////////
 bool LMDBBlockDatabase::getStoredScriptHistory(StoredScriptHistory& ssh,
    BinaryDataRef scrAddr, uint32_t startBlock, uint32_t endBlock) const
 {
-   /*if (!getStoredScriptHistorySummary(ssh, scrAddr)) {
-      return false;
-   }*/
    ssh.uniqueKey = scrAddr;
    if (!fillStoredSubHistory(ssh, startBlock, endBlock)) {
       return false;
    }
-
-   //grab UTXO flags
-   getUTXOflags(ssh.subHistMap);
    return true;
 }
 
-////////////////////////////////////////////////////////////////////////////////
 bool LMDBBlockDatabase::getStoredSubHistoryAtHgtX(StoredSubHistory& subssh,
    const BinaryDataRef scrAddrStr, const BinaryData& hgtX) const
 {
@@ -938,7 +926,6 @@ bool LMDBBlockDatabase::getStoredSubHistoryAtHgtX(StoredSubHistory& subssh,
    return getStoredSubHistoryAtHgtX(subssh, bw.getDataRef());
 }
 
-////////////////////////////////////////////////////////////////////////////////
 bool LMDBBlockDatabase::getStoredSubHistoryAtHgtX(StoredSubHistory& subssh,
    const BinaryData& dbkey) const
 {
@@ -958,104 +945,11 @@ bool LMDBBlockDatabase::getStoredSubHistoryAtHgtX(StoredSubHistory& subssh,
    return true;
 }
 
-
-////////////////////////////////////////////////////////////////////////////////
 void LMDBBlockDatabase::getStoredScriptHistoryByRawScript(
    StoredScriptHistory& ssh, BinaryDataRef script) const
 {
    BinaryData uniqueKey = BtcUtils::getTxOutScrAddr(script);
    getStoredScriptHistory(ssh, uniqueKey);
-}
-
-/////////////////////////////////////////////////////////////////////////////
-// This doesn't actually return a SUBhistory, it grabs it and adds it to the
-// regular-ssh object.  This does not affect balance or Txio count. It's
-// simply filling in data that the ssh may be expected to have.
-bool LMDBBlockDatabase::fetchStoredSubHistory(StoredScriptHistory& ssh,
-   BinaryData hgtX, bool createIfDNE, bool forceReadDB)
-{
-   auto subIter = ssh.subHistMap.find(hgtX);
-   if (!forceReadDB && subIter != ssh.subHistMap.end()) {
-      return true;
-   }
-
-   BinaryData key = ssh.uniqueKey + hgtX;
-   BinaryRefReader brr = getValueReader(DB_SELECT::BLKDATA, DbPrefix::SCRIPT, key);
-
-   StoredSubHistory subssh;
-   subssh.hgtX = hgtX;
-
-   if (brr.getSize() > 0) {
-      subssh.unserializeDBValue(brr);
-   } else if (!createIfDNE) {
-      return false;
-   }
-   ssh.mergeSubHistory(subssh);
-   return true;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-uint64_t LMDBBlockDatabase::getBalanceForScrAddr(
-   BinaryDataRef scrAddr, bool withMulti)
-{
-   StoredScriptHistory ssh;
-   if (!withMulti) {
-      getStoredScriptHistorySummary(ssh, scrAddr);
-      return ssh.totalUnspent;
-   } else {
-      getStoredScriptHistory(ssh, scrAddr);
-      uint64_t total = ssh.totalUnspent;
-      std::map<BinaryData, UnspentTxOut> utxoList;
-      getFullUTXOMapForSSH(ssh, utxoList);
-      for (const auto& utxoPair : utxoList) {
-         if (utxoPair.second.isMultisigRef()) {
-            total += utxoPair.second.getValue();
-         }
-      }
-      return total;
-   }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// We need the block hashes and scripts, which need to be retrieved from the
-// DB, which is why this method can't be part of StoredBlockObj.h/.cpp
-bool LMDBBlockDatabase::getFullUTXOMapForSSH(StoredScriptHistory& ssh,
-   std::map<BinaryData, UnspentTxOut>& mapToFill)
-{
-   //TODO: deprecate. replace with paged version once new coin control is
-   //implemented
-
-   if (!ssh.haveFullHistoryLoaded()) {
-      return false;
-   }
-   auto stxotx = beginTransaction(DB_SELECT::STXO, LMDB::Mode::ReadOnly);
-   auto hinttx = beginTransaction(DB_SELECT::TXHINTS, LMDB::Mode::ReadOnly);
-
-   for (const auto& ssPair : ssh.subHistMap) {
-      const StoredSubHistory& subSSH = ssPair.second;
-      for (const auto& txioPair : subSSH.txioMap) {
-         const TxIOPair& txio = txioPair.second;
-         if (!txio.isUTXO()) {
-            continue;
-         }
-
-         BinaryData txoKey = txio.getDBKeyOfOutput();
-         BinaryData txKey = txio.getTxRefOfOutput().getDBKey();
-         uint16_t txoIdx = txio.getIndexOfOutput();
-
-         StoredTxOut stxo;
-         getStoredTxOut(stxo, txoKey);
-         BinaryData txHash = getTxHashForLdbKey(txKey, nullptr);
-
-         mapToFill[txoKey] = UnspentTxOut{
-            txHash,
-            txoIdx,
-            stxo.blockHeight,
-            txio.getValue(),
-            stxo.getScriptRef()};
-      }
-   }
-   return true;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -1083,7 +977,7 @@ void LMDBBlockDatabase::readAllHeaders(
 
       //key is uniqueID
       uint32_t uniqueID = keyReader.get_uint32_t(BE);
-      if (uniqueID == 0xFFFF0000) {
+      if (uniqueID == 0xFFFFFFFF) {
          //we've hit the SDBI entry, we are done
          return;
       }
@@ -1125,7 +1019,7 @@ void LMDBBlockDatabase::putBareHeader(const StoredHeader& sbh)
    BinaryWriter bwKey(4);
    bwKey.put_uint32_t(sbh.uniqueID, BE);
    BinaryWriter bwData;
-   sbh.serializeDBValue(bwData, DB_SELECT::HEADERS, getDbType());
+   sbh.serializeDBValue(bwData);
    putValue(DB_SELECT::HEADERS,
       bwKey.getDataRef(),
       bwData.getDataRef()
@@ -1196,12 +1090,9 @@ Tx LMDBBlockDatabase::getFullTxCopy(
       throw std::range_error("txid > numTx");
    }
 
-   if (blkFolder_.empty()) {
-      throw LmdbWrapperException("invalid blkFolder");
-   }
-
    //open block file
-   auto path = FileUtils::getBlkFilename(blkFolder_, bhPtr->getBlockFileNum());
+   auto path = FileUtils::getBlkFilename(
+      Config::Pathing::blkFilePath(), bhPtr->getBlockFileNum());
    auto fileMap = FileUtils::FileMap(path, false);
    try {
       std::vector<uint64_t> xoredData;
@@ -1249,52 +1140,6 @@ Tx LMDBBlockDatabase::getFullTxCopy(
    }
 }
 
-TxOut LMDBBlockDatabase::getTxOutCopy(
-   const BinaryData& ldbKey6B, uint16_t txOutIdx,
-   std::shared_ptr<BlockHeader> bhPtr) const
-{
-   if (ldbKey6B.startsWith(DBUtils::ZCPrefix)) {
-      throw std::runtime_error("this is a zc TxOut!");
-   }
-
-   BinaryRefReader brr;
-   if (getDbType() == ARMORY_DB_TYPE::Super) {
-      if (bhPtr == nullptr) {
-         throw std::runtime_error("need a valid header ptr");
-      }
-
-      BinaryRefReader brr_key(ldbKey6B);
-      unsigned block;
-      uint8_t dup;
-      uint16_t txid;
-      DBUtils::readBlkDataKeyNoPrefix(brr_key, block, dup, txid);
-
-      auto key_super = DBUtils::getBlkDataKeyNoPrefix(
-         bhPtr->getUniqueID(), 0xFF, txid, txOutIdx);
-      brr = getValueReader(DB_SELECT::STXO, key_super);
-      if (brr.empty()) {
-         throw std::runtime_error("TxOut key does not exist in STXO DB");
-      }
-
-      StoredTxOut stxo;
-      stxo.unserializeDBValue(brr.getRawRef());
-      auto txout_raw = stxo.getSerializedTxOut();
-      return {txout_raw, txout_raw.getSize(), txOutIdx};
-   } else {
-      BinaryWriter bw(8);
-      bw.put_BinaryData(ldbKey6B);
-      bw.put_uint16_t(txOutIdx, BE);
-      BinaryDataRef ldbKey8 = bw.getDataRef();
-      brr = getValueReader(DB_SELECT::STXO, DbPrefix::TXDATA, ldbKey8);
-      if (brr.empty()) {
-         throw std::runtime_error("TxOut key does not exist in STXO DB");
-      }
-
-      brr.advance(2);
-      return {brr.getCurrPtr(), brr.getSizeRemaining(), txOutIdx};
-   }
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 BinaryData LMDBBlockDatabase::getTxHashForLdbKey(
    BinaryDataRef ldbKey6B, std::shared_ptr<BlockHeader> bhPtr) const
@@ -1316,28 +1161,9 @@ BinaryData LMDBBlockDatabase::getTxHashForLdbKey(
          uint8_t dupId;
          uint16_t txid;
          BinaryRefReader brr(ldbKey6B);
-
          DBUtils::readBlkDataKeyNoPrefix(brr, height, dupId, txid);
-         auto blockId = height;
-         if (dupId != 0x7F) {
-            if (bhPtr == nullptr) {
-               LOGWARN << "null header with block height key";
-               return {};
-            }
-            blockId = bhPtr->getUniqueID();
-         }
-         auto id_key = DBUtils::getBlkDataKeyNoPrefix(blockId, 0xFF, txid);
-
-         //get hash & height entry
-         auto tx = beginTransaction(DB_SELECT::STXO, LMDB::Mode::ReadOnly);
-         auto data = getValueNoCopy(DB_SELECT::STXO, id_key);
-         if (data.getSize() <= 32) {
-            LOGWARN << "no tx hash entry for this key: " << id_key.toHexStr();
-            return {};
-         }
-
-         BinaryRefReader brr_result(data);
-         return brr_result.get_BinaryData(32);
+         auto tx = getFullTxCopy(txid, bhPtr);
+         return tx.getThisHash();
       }
    }
    return {};
@@ -1348,11 +1174,9 @@ bool LMDBBlockDatabase::getStoredHeader(
    StoredHeader& sbh, std::shared_ptr<BlockHeader> bh, bool withTx) const
 {
    try {
-      if (blkFolder_.empty()) {
-         throw LmdbWrapperException("invalid blkFolder");
-      }
       //open block file
-      auto path = FileUtils::getBlkFilename(blkFolder_, bh->getBlockFileNum());
+      auto path = FileUtils::getBlkFilename(
+         Config::Pathing::blkFilePath(), bh->getBlockFileNum());
       auto fileMap = FileUtils::FileMap(path, false);
       BinaryRefReader brr(fileMap.ptr() + bh->getOffset(), bh->getBlockSize());
 
@@ -1365,17 +1189,6 @@ bool LMDBBlockDatabase::getStoredHeader(
       return false;
    }
    return true;
-}
-
-BinaryData LMDBBlockDatabase::getRawBlock(std::shared_ptr<BlockHeader> bh) const
-{
-   //open block file
-   if (blkFolder_.empty()) {
-      throw LmdbWrapperException("invalid blkFolder");
-   }
-   auto path = FileUtils::getBlkFilename(blkFolder_, bh->getBlockFileNum());
-   auto fileMap = FileUtils::FileMap(path, false);
-   return BinaryData(fileMap.ptr() + bh->getOffset(), bh->getBlockSize());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1436,15 +1249,6 @@ bool LMDBBlockDatabase::getStoredZC(StoredTx& stx, BinaryDataRef zcKey) const
    return true;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-void LMDBBlockDatabase::putStoredTxOut(const StoredTxOut& stxo)
-{
-   BinaryData ldbKey = stxo.getDBKey(false);
-   BinaryWriter bw;
-   stxo.serializeDBValue(bw);
-   putValue(DB_SELECT::STXO, DbPrefix::TXDATA, ldbKey, bw.getDataRef());
-}
-
 void LMDBBlockDatabase::putStoredZcTxOut(const StoredTxOut& stxo,
    const BinaryData& zcKey)
 {
@@ -1454,9 +1258,11 @@ void LMDBBlockDatabase::putStoredZcTxOut(const StoredTxOut& stxo,
 }
 
 ////////
-bool LMDBBlockDatabase::getStoredTxOut(StoredTxOut& stxo,
-   const BinaryData& txHash, uint16_t txoutid) const
+bool LMDBBlockDatabase::getStoredTxOut(StoredTxOut&,
+   const BinaryData&, uint16_t) const
 {
+   throw std::runtime_error("[LMDBBlockDatabase::getStoredTxOut] deprecated");
+   #if 0
    if (getDbType() != ARMORY_DB_TYPE::Super) {
       throw LmdbWrapperException("supernode only call");
    }
@@ -1492,11 +1298,14 @@ bool LMDBBlockDatabase::getStoredTxOut(StoredTxOut& stxo,
    stxo.txOutIndex = txoutid;
    stxo.isCoinbase = (txIdx == 0);
    return true;
+   #endif
 }
 
-bool LMDBBlockDatabase::getStoredTxOut(StoredTxOut& stxo,
-   const BinaryData& dbKey) const
+bool LMDBBlockDatabase::getStoredTxOut(StoredTxOut&,
+   const BinaryData&) const
 {
+   throw std::runtime_error("[LMDBBlockDatabase::getStoredTxOut] deprecated");
+   #if 0
    if (dbKey.getSize() != 8) {
       LOGERR << "Tried to get StoredTxOut, but the provided key is not of the "
          "proper size. Expect size is 8, this key is: " << dbKey.getSize();
@@ -1528,11 +1337,14 @@ bool LMDBBlockDatabase::getStoredTxOut(StoredTxOut& stxo,
       throw std::runtime_error("invalid call for supernode db");
    }
    return false;
+   #endif
 }
 
-bool LMDBBlockDatabase::getStoredTxOut(StoredTxOut& stxo,
-   std::shared_ptr<BlockHeader> header, uint16_t txId, uint16_t txOutId) const
+bool LMDBBlockDatabase::getStoredTxOut(StoredTxOut&,
+   std::shared_ptr<BlockHeader>, uint16_t, uint16_t) const
 {
+   throw std::runtime_error("[LMDBBlockDatabase::getStoredTxOut] deprecated");
+   #if 0
    if (getDbType() != ARMORY_DB_TYPE::Super) {
       throw std::runtime_error("supernode only");
    }
@@ -1565,21 +1377,28 @@ bool LMDBBlockDatabase::getStoredTxOut(StoredTxOut& stxo,
       stxo.spentness = TXOUT_UNSPENT;
    }
    return true;
+   #endif
 }
 
-bool LMDBBlockDatabase::getStoredTxOut(StoredTxOut& stxo,
-   uint32_t blockHeight, uint8_t dupID, uint16_t txIndex,
-   uint16_t txOutIndex) const
+bool LMDBBlockDatabase::getStoredTxOut(StoredTxOut&,
+   uint32_t, uint8_t, uint16_t,
+   uint16_t) const
 {
+   throw std::runtime_error("[LMDBBlockDatabase::getStoredTxOut] deprecated");
+   #if 0
    auto blkKey = DBUtils::getBlkDataKeyNoPrefix(
       blockHeight, dupID, txIndex, txOutIndex);
    return getStoredTxOut(stxo, blkKey);
+   #endif
 }
 
-bool LMDBBlockDatabase::getStoredTxOut(StoredTxOut& stxo,
-   uint32_t blockHeight, uint16_t txIndex, uint16_t txOutIndex) const
+bool LMDBBlockDatabase::getStoredTxOut(StoredTxOut&,
+   uint32_t, uint16_t, uint16_t) const
 {
+   throw std::runtime_error("[LMDBBlockDatabase::getStoredTxOut] deprecated");
+   #if 0
    return getStoredTxOut(stxo, blockHeight, 0, txIndex, txOutIndex);
+   #endif
 }
 
 ////////
@@ -1594,80 +1413,9 @@ void LMDBBlockDatabase::getSpentness(StoredTxOut& stxo)
    auto spentnessVal = getValueNoCopy(DB_SELECT::SPENTNESS, stxo.getSpentnessKey());
    if (!spentnessVal.empty()) {
       stxo.spentByTxInKey = spentnessVal;
-      stxo.spentness = TXOUT_SPENT;
+      stxo.spentness = SPENTNESS::SPENT;
    } else {
-      stxo.spentness = TXOUT_UNSPENT;
-   }
-}
-
-////////
-void LMDBBlockDatabase::getUTXOflags(std::map<BinaryData, StoredSubHistory>&
-   subSshMap) const
-{
-   if (getDbType() != ARMORY_DB_TYPE::Super) {
-      auto tx = beginTransaction(DB_SELECT::STXO, LMDB::Mode::ReadOnly);
-      for (auto& subssh : subSshMap) {
-         getUTXOflags(subssh.second);
-      }
-   } else {
-      auto tx = beginTransaction(DB_SELECT::SPENTNESS, LMDB::Mode::ReadOnly);
-      for (auto& subssh : subSshMap) {
-         getUTXOflags(subssh.second);
-      }
-   }
-}
-
-void LMDBBlockDatabase::getUTXOflags(StoredSubHistory& subssh) const
-{
-   if (getDbType() == ARMORY_DB_TYPE::Super) {
-      getUTXOflags_Super(subssh);
-      return;
-   }
-
-   for (auto& txioPair : subssh.txioMap) {
-      auto& txio = txioPair.second;
-
-      txio.setUTXO(false);
-      if (txio.hasTxIn()) {
-         continue;
-      }
-
-      StoredTxOut stxo;
-      auto stxoKey = txio.getDBKeyOfOutput();
-      if (!getStoredTxOut(stxo, stxoKey)) {
-         continue;
-      }
-      if (stxo.spentness == TXOUT_UNSPENT) {
-         txio.setUTXO(true);
-      }
-   }
-}
-
-void LMDBBlockDatabase::getUTXOflags_Super(StoredSubHistory& subSsh) const
-{
-   for (auto& txioPair : subSsh.txioMap) {
-      auto& txio = txioPair.second;
-
-      txio.setUTXO(false);
-      if (txio.hasTxIn()) {
-         continue;
-      }
-
-      unsigned height;
-      uint8_t dupid;
-      uint16_t txid, txoid;
-
-      auto txRef = txio.getTxRefOfOutput();
-      BinaryRefReader keyReader(txRef.getDBKeyRef());
-      DBUtils::readBlkDataKeyNoPrefix(keyReader, height, dupid, txid);
-      txoid = txio.getIndexOfOutput();
-
-      auto stxoKey = DBUtils::getBlkDataKeyNoPrefix(
-         UINT32_MAX - height, dupid, txid, txoid);
-      auto value = getValueNoCopy(DB_SELECT::SPENTNESS, stxoKey.getRef());
-      if (value.empty()) {
-         txio.setUTXO(true);
-      }
+      stxo.spentness = SPENTNESS::UNSPENT;
    }
 }
 
@@ -1846,8 +1594,7 @@ void LMDBBlockDatabase::resetSSHdb()
       }
 
       auto sdbi = getStoredDBInfo(DB_SELECT::SSH, 0);
-      sdbi.topBlkHgt = 0;
-      sdbi.topScannedBlkHash = BtcUtils::EmptyHash;
+      sdbi.topScannedBlkHash = Hash32{};
       putStoredDBInfo(DB_SELECT::SSH, sdbi, 0);
    }
 }
@@ -1961,10 +1708,10 @@ StoredDBInfo LMDBBlockDatabase::getStoredDBInfo(DB_SELECT db, uint16_t id)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-StoredDBInfo LMDBBlockDatabase::openDB(DB_SELECT db)
+void LMDBBlockDatabase::openDB(DB_SELECT db)
 {
    auto dbPtr = getDbPtr(db);
-   return dbPtr->open();
+   dbPtr->open();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2068,6 +1815,71 @@ void LMDBBlockDatabase::updateHeightToIdMap(std::map<unsigned, unsigned>& idmap)
    heightToBatchId_.update(std::move(idmap));
 }
 
+////////
+std::map<uint64_t, TxOutData> LMDBBlockDatabase::getTxOutDataForScrAddrKey(
+   uint32_t scrAddrId) const
+{
+   auto tx = beginTransaction(DB_SELECT::TXOUTS, LMDB::Mode::ReadWrite);
+   auto dbIter = getIterator(DB_SELECT::TXOUTS);
+   //uint64_t scrAddrId64 = (uint64_t)scrAddrId << 32;
+   BinaryDataRef scrAddrIdRef{(const uint8_t*)&scrAddrId, sizeof(uint32_t)};
+   //dbIter->seekToFirst();
+   if (!dbIter->seekToStartsWith(scrAddrIdRef)) {
+      return {};
+   }
+
+   std::map<uint64_t, TxOutData> result;
+   do {
+      auto keyReader = dbIter->getKeyReader();
+      if (keyReader.getSize() != 8) {
+         continue;
+      }
+      //key is [32 bits scrAddrId | 32 bits blockID (BE)]
+      uint64_t scrAddrKey = keyReader.get_uint64_t();
+      uint32_t id = uint32_t(scrAddrKey);
+      if (id != scrAddrId) {
+         break;
+      }
+
+      //get blockID
+      uint32_t blockID_BE = uint32_t(scrAddrKey >> 32);
+      uint32_t blockID = ntohl(blockID_BE);
+
+      auto valReader = dbIter->getValueReader();
+      while (valReader.getSizeRemaining() >= 12) {
+         uint64_t amount = valReader.get_uint64_t();
+         uint16_t txId = valReader.get_uint16_t();
+         uint16_t txOutId = valReader.get_uint16_t();
+         uint64_t txOutKey = (uint64_t)blockID_BE << 32 |
+            htons(txId) << 16 |
+            htons(txOutId);
+
+         result.emplace(txOutKey, TxOutData{
+            amount, blockID, txId, txOutId});
+      }
+   } while (dbIter->advanceAndRead());
+   return result;
+}
+
+std::unordered_map<uint64_t, uint64_t>
+LMDBBlockDatabase::getTxInDataForTxOutData(
+   const std::map<uint64_t, TxOutData>& txOutData) const
+{
+   auto tx = beginTransaction(DB_SELECT::TXINS, LMDB::Mode::ReadWrite);
+   auto dbIter = getIterator(DB_SELECT::TXINS);
+
+   std::unordered_map<uint64_t, uint64_t> result;
+   for (const auto& txoutPair : txOutData) {
+      BinaryDataRef txOutKeyRef{
+         (const uint8_t*)&txoutPair.first, sizeof(uint64_t)};
+      if (dbIter->seekToExact(txOutKeyRef)) {
+         uint64_t txInKey = dbIter->getValueReader().get_uint64_t();
+         result.emplace(txoutPair.first, txInKey);
+      }
+   }
+   return result;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // DatabaseContainer
 std::filesystem::path DatabaseContainer::baseDir_;
@@ -2098,14 +1910,8 @@ std::string DatabaseContainer::getDbName(DB_SELECT db)
    case DB_SELECT::HEADERS:
       return "headers";
 
-   case DB_SELECT::BLKDATA:
-      return "blkdata";
-
-   case DB_SELECT::HISTORY:
-      return "history";
-
-   case DB_SELECT::TXHINTS:
-      return "txhints";
+   case DB_SELECT::SCRADDR:
+      return "scraddr";
 
    case DB_SELECT::SSH:
       return "ssh";
@@ -2116,14 +1922,23 @@ std::string DatabaseContainer::getDbName(DB_SELECT db)
    case DB_SELECT::SUBSSH_META:
       return "subssh_meta";
 
-   case DB_SELECT::STXO:
-      return "stxo";
+   case DB_SELECT::TXOUTS:
+      return "txouts";
 
-   case DB_SELECT::ZERO_CONF:
-      return "zeroconf";
+   case DB_SELECT::TXINS:
+      return "txins";
+
+   case DB_SELECT::KNOWNHASHES:
+      return "known_hashes";
+
+   case DB_SELECT::TXHINTS:
+      return "txhints";
 
    case DB_SELECT::TXFILTERS:
       return "txfilters";
+
+   case DB_SELECT::ZERO_CONF:
+      return "zeroconf";
 
    case DB_SELECT::SPENTNESS:
       return "spentness";
@@ -2158,8 +1973,7 @@ void DBPair::open(const std::filesystem::path& path, const std::string& dbName)
    unsigned flags = MDB_NOSYNC | MDB_NOTLS;
 
    env_.open(path, flags);
-   auto map_size = LMDBBlockDatabase::mapSizes_.at(dbName);
-   env_.setMapSize(map_size);
+   env_.setMapSize(LMDBBlockDatabase::mapSizes_.at(dbName));
 
    auto tx = beginTransaction(LMDB::Mode::ReadWrite);
    db_.open(&env_, dbName);
@@ -2233,24 +2047,9 @@ void DatabaseContainer_Single::close()
    db_.close();
 }
 
-StoredDBInfo DatabaseContainer_Single::open()
+void DatabaseContainer_Single::open()
 {
    db_.open(getDbPath(dbSelect_), getDbName(dbSelect_));
-
-   StoredDBInfo sdbi;
-   try {
-      sdbi = std::move(getStoredDBInfo(0));
-   } catch (const std::runtime_error&) {
-      // If DB didn't exist yet (dbinfo key is empty), seed it
-      auto tx = db_.beginTransaction(LMDB::Mode::ReadWrite);
-
-      sdbi.magic = magicBytes_;
-      sdbi.metaHash = BtcUtils::EmptyHash;
-      sdbi.topBlkHgt = 0;
-      sdbi.armoryType = Config::DBSettings::getDbType();
-      putStoredDBInfo(sdbi, 0);
-   }
-   return sdbi;
 }
 
 ////////

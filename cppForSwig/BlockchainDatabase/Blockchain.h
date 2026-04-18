@@ -69,7 +69,7 @@ namespace Armory
       ReorganizationState organize(bool, bool);
 
       std::shared_ptr<BlockHeader> top(void) const;
-      std::shared_ptr<BlockHeader> getGenesisBlock(void) const;
+      std::shared_ptr<BlockHeader> getGenesisHeader(void) const;
 
       const std::shared_ptr<BlockHeader> getHeaderByHeight(unsigned) const;
       HeaderPtr getHeaderByHash(const BinaryData&) const;
@@ -81,10 +81,11 @@ namespace Armory
 
       std::map<unsigned, std::set<unsigned>> mapIDsPerBlockFile(void) const;
       void flagBlockHeader(std::shared_ptr<BlockHeader>, LMDBBlockDatabase*);
+      const std::vector<HeaderPtr>& headersById(void) const;
 
    private:
       const BinaryData genesisHash_;
-      std::unordered_set<HeaderPtr, BlockHeader::Hasher, BlockHeader::Comparator> headerSet_;
+      std::unordered_set<HeaderPtr, BlockHeader::Hasher, BlockHeader::IsEqual> headerSet_;
       std::vector<HeaderPtr> headersById_;
       std::vector<HeaderPtr> headersByHeight_;
 

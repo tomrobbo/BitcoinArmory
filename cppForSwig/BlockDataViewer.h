@@ -40,6 +40,7 @@ struct WalletRegistrationRequest
    const bool isNew;
    const WalletRegType type;
    std::function<void(const std::set<BinaryDataRef>&)> zcCallback;
+   std::shared_future<bool> fut;
 
    WalletRegistrationRequest(const std::string& wId,
       std::vector<BinaryData>& addrs,
@@ -279,8 +280,6 @@ public:
 
    TxOut getTxOutCopy(const BinaryData&, uint16_t) const;
    TxOut getTxOutCopy(const BinaryData&) const;
-   StoredTxOut getStoredTxOut(const BinaryData&) const;
-
    Tx getSpenderTxForTxOut(uint32_t, uint32_t, uint16_t) const;
 
    bool isZcEnabled(void) const;

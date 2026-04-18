@@ -1,14 +1,13 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
 //                                                                            //
-//  Copyright (C) 2016-2021, goatpig                                          //
+//  Copyright (C) 2016-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _TEST_UTILS_H
-#define _TEST_UTILS_H
+#pragma once
 
 #include <limits.h>
 #include <iostream>
@@ -57,6 +56,7 @@ namespace Armory
    {
       class AssetEntry;
    };
+   struct Hash32;
 };
 
 class BlockDataManagerThread;
@@ -79,19 +79,19 @@ namespace TestUtils
 
    int char2int(char input);
 
-   bool searchFile(const std::filesystem::path& filename, BinaryData& data);
-   uint32_t getTopBlockHeightInDB(BlockDataManager &bdm, DB_SELECT db);
+   bool searchFile(const std::filesystem::path&, BinaryData&);
+   uint32_t getTopBlockHeightInDB(BlockDataManager*, DB_SELECT);
    uint64_t getDBBalanceForHash160(
-      BlockDataManager &bdm, BinaryDataRef addr160);
+      BlockDataManager&, BinaryDataRef);
 
-   void concatFile(const std::vector<std::filesystem::path> &from,
-      const std::filesystem::path &to);
-   void appendBlocks(const std::vector<std::string> &files,
-      const std::filesystem::path &to);
-   void setBlocks(const std::vector<std::string> &files,
-      const std::filesystem::path &to);
+   void concatFile(const std::vector<std::filesystem::path>&,
+      const std::filesystem::path&);
+   void appendBlocks(const std::vector<std::string>&,
+      const std::filesystem::path&);
+   void setBlocks(const std::vector<std::string>&,
+      const std::filesystem::path&);
    void nullProgress(unsigned, double, unsigned, unsigned);
-   BinaryData getTx(unsigned height, unsigned id);
+   BinaryData getTx(unsigned, unsigned);
 
    std::shared_ptr<Armory::Assets::AssetEntry> getMainAccountAssetForIndex(
       std::shared_ptr<Armory::Wallets::AssetWallet>, Armory::Wallets::AssetKeyType);
@@ -105,16 +105,15 @@ namespace DBTestUtils
 
    void init(void);
 
-   unsigned getTopBlockHeight(LMDBBlockDatabase*, DB_SELECT);
-   BinaryData getTopBlockHash(LMDBBlockDatabase*, DB_SELECT);
+   Armory::Hash32 getTopBlockHash(LMDBBlockDatabase*, DB_SELECT);
 
-   BdvIdKey registerBDV(Clients*, const BinaryData& magic_word);
+   BdvIdKey registerBDV(Clients*, const BinaryData&);
    void goOnline(Clients*, BdvIdKey);
    const std::shared_ptr<BDV_Server_Object> getBDV(Clients*, BdvIdKey);
    
    void registerWallet(Clients*, BdvIdKey,
-      const std::vector<BinaryData>& scrAddrs, const std::string& wltName,
-      bool isLockbox, bool waitOnReg);
+      const std::vector<BinaryData>&, const std::string&,
+      bool, bool);
 
    std::vector<uint64_t> getBalanceAndCount(Clients*,
       BdvIdKey, const std::string&, unsigned);
@@ -123,7 +122,7 @@ namespace DBTestUtils
       Clients*, BdvIdKey, const std::string&, uint32_t);
 
    std::tuple<BinaryData, unsigned> waitOnSignal(
-      Clients*, BdvIdKey, int signal);
+      Clients*, BdvIdKey, int);
    void waitOnBDMSignal(std::shared_ptr<BlockDataManager>, BDV_Action);
    void waitOnBDMReady(Clients*, BdvIdKey);
    void waitOnBDMError(std::shared_ptr<BlockDataManager>);
@@ -133,8 +132,8 @@ namespace DBTestUtils
       waitOnNewZcSignal(Clients*, BdvIdKey);
    void waitOnWalletRefresh(Clients*, BdvIdKey, const std::string&);
    void triggerNewBlockNotification(BlockDataManagerThread*);
-   void mineNewBlock(BlockDataManagerThread*, const BinaryData& h160,
-      unsigned count);
+   void mineNewBlock(BlockDataManagerThread*, const BinaryData&,
+      unsigned);
 
    struct ZcVector
    {
@@ -151,10 +150,10 @@ namespace DBTestUtils
       void clear(void) { zcVec_.clear(); }
    };
 
-   void pushNewZc(BlockDataManagerThread*, const ZcVector&, bool stage = false);
+   void pushNewZc(BlockDataManagerThread*, const ZcVector&, bool = false);
    void setNextZcPushDelay(unsigned);
    std::pair<BinaryData, BinaryData> getAddrAndPubKeyFromPrivKey(
-      BinaryData privKey, bool compressed = false);
+      BinaryData, bool = false);
 
    Tx getTxByHash(Clients*, BdvIdKey, const BinaryData&);
    Tx getTxByKey(Clients*, BdvIdKey, const BinaryData&);
@@ -162,7 +161,7 @@ namespace DBTestUtils
 
    void addTxioToSsh(StoredScriptHistory&,
       const std::map<BinaryDataRef, std::shared_ptr<const TxIOPair>>&);
-   void prettyPrintSsh(StoredScriptHistory& ssh);
+   void prettyPrintSsh(StoredScriptHistory&);
    Armory::Ledgers::Entry getLedgerEntryFromWallet(std::shared_ptr<BtcWallet>, const BinaryData&);
    Armory::Ledgers::Entry getLedgerEntryFromAddr(ScrAddrObj*, const BinaryData&);
    void updateWalletsLedgerFilter(
@@ -172,10 +171,10 @@ namespace DBTestUtils
 
    /////////////////////////////////////////////////////////////////////////////
    AsyncClient::LedgerDelegate getLedgerDelegate(
-      std::shared_ptr<AsyncClient::BlockDataViewer> bdv);
+      std::shared_ptr<AsyncClient::BlockDataViewer>);
    AsyncClient::LedgerDelegate getLedgerDelegateForScrAddr(
-      std::shared_ptr<AsyncClient::BlockDataViewer> bdv,
-      const std::string& walletId, const BinaryData& scrAddr);
+      std::shared_ptr<AsyncClient::BlockDataViewer>,
+      const std::string&, const BinaryData&);
    
    std::vector<DBClientClasses::LedgerEntry> getHistoryPage(
       AsyncClient::LedgerDelegate& del, uint32_t id);
@@ -184,16 +183,16 @@ namespace DBTestUtils
    std::map<BinaryData, std::vector<uint64_t>> getAddrBalancesFromDB(
       std::shared_ptr<AsyncClient::BlockDataViewer>, const std::string&);
 
-   std::vector<uint64_t> getBalancesAndCount(AsyncClient::BtcWallet& wlt,
-      uint32_t blockheight);
+   std::vector<uint64_t> getBalancesAndCount(AsyncClient::BtcWallet&,
+      uint32_t);
 
    AsyncClient::TxResult getTxByHash(
-      std::shared_ptr<AsyncClient::BlockDataViewer> bdv,
-      const BinaryData& hash);
+      std::shared_ptr<AsyncClient::BlockDataViewer>,
+      const BinaryData&);
 
    std::vector<UTXO> getSpendableTxOutListForValue(
-      AsyncClient::BtcWallet& wlt, uint64_t value);
-   std::vector<UTXO> getSpendableZCList(AsyncClient::BtcWallet& wlt);
+      AsyncClient::BtcWallet&, uint64_t);
+   std::vector<UTXO> getSpendableZCList(AsyncClient::BtcWallet&);
 
    /////////////////////////////////////////////////////////////////////////////
    std::vector<UnitTestBlock> getMinedBlocks(BlockDataManagerThread*);
@@ -524,5 +523,3 @@ namespace ResolverUtils
       {}
    };
 }
-
-#endif

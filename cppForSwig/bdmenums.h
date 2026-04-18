@@ -59,7 +59,7 @@ enum BDMAction
 
 enum class ARMORY_DB_TYPE : int
 {
-   Bare,
+   Bare = 1,
    Full,
    Super
 };

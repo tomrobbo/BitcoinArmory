@@ -279,6 +279,8 @@ vector<UTXO> BtcWallet::getSpendableTxOutListForValue(uint64_t val)
    grabbing all UTXOs in the wallet
    ***/
 
+   throw std::runtime_error("[BtcWallet::getSpendableTxOutListForValue] deprecated");
+   #if 0
    prepareTxOutHistory(val);
    LMDBBlockDatabase *db = bdvPtr_->getDB();
 
@@ -324,6 +326,7 @@ vector<UTXO> BtcWallet::getSpendableTxOutListForValue(uint64_t val)
    //we dont know if any TxOut will be spent
    resetTxOutHistory();
    return utxoList;
+   #endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -373,7 +376,8 @@ vector<UTXO> BtcWallet::getRBFTxOutList()
    BinaryDataRef prevTxKey;
    BinaryDataRef prevTxHash;
    for (auto& txoutkey : txoutKeys) {
-      auto stxo = bdvPtr_->getStoredTxOut(txoutkey);
+      StoredTxOut stxo;
+      bdvPtr_->getDB()->getStoredTxOut(stxo, txoutkey);
       UTXO utxo(
          stxo.getValue(), stxo.getHeight(),
          stxo.txIndex, stxo.txOutIndex,
@@ -428,6 +432,7 @@ map<BinaryData, TxIOPair> BtcWallet::scanWalletZeroConf(
 ////////////////////////////////////////////////////////////////////////////////
 bool BtcWallet::scanWallet(ScanWalletStruct& scanInfo, int32_t updateID)
 {
+   #if 0
    if (scanInfo.action_ != BDV_ZC) {
       //new top block
       auto tx = bdvPtr_->getDB()->beginTransaction(DB_SELECT::SSH, LMDB::Mode::ReadOnly);
@@ -450,7 +455,9 @@ bool BtcWallet::scanWallet(ScanWalletStruct& scanInfo, int32_t updateID)
          return false;
       }
    }
+   #endif
 
+   //NOTE: retire this, balance is managed bridge side now
    updateID_ = updateID;
    return true;
 }
@@ -464,6 +471,9 @@ void BtcWallet::reset()
 ////////////////////////////////////////////////////////////////////////////////
 map<uint32_t, uint32_t> BtcWallet::computeScrAddrMapHistSummary()
 {
+   return {};
+   //retire this stuff
+
    if (Armory::Config::DBSettings::getDbType() == ARMORY_DB_TYPE::Super)
       return computeScrAddrMapHistSummary_Super();
 

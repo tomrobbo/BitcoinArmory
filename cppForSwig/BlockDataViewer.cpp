@@ -568,7 +568,8 @@ TxOut BlockDataViewer::getTxOutCopy(
       } else {
          bc_->getHeaderById(id);
       }
-      return db_->getTxOutCopy(key, index, header);
+      auto tx = db_->getFullTxCopy(txId, header);
+      return tx.getTxOutCopy(index);
    }
 
    auto ss = zeroConfCont_->getSnapshot();
@@ -596,26 +597,12 @@ TxOut BlockDataViewer::getTxOutCopy(const BinaryData& dbKey) const
       } else {
          bc_->getHeaderById(id);
       }
-      return db_->getTxOutCopy(dbKey, txOutIndex, header);
+      auto tx = db_->getFullTxCopy(txId, header);
+      return tx.getTxOutCopy(txOutIndex);
    } catch (const std::exception&) {
       auto ss = zeroConfCont_->getSnapshot();
       return ss->getTxOutCopy(dbKey, txOutIndex);
    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-StoredTxOut BlockDataViewer::getStoredTxOut(const BinaryData& dbKey) const
-{
-   if (dbKey.getSize() != 8) {
-      throw std::runtime_error("invalid txout key length");
-   }
-   auto tx = db_->beginTransaction(DB_SELECT::STXO, LMDB::Mode::ReadOnly);
-
-   StoredTxOut stxo;
-   db_->getStoredTxOut(stxo, dbKey);
-   stxo.parentHash = std::move(
-      db_->getTxHashForLdbKey(dbKey.getSliceRef(0, 6), nullptr));
-   return stxo;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -982,6 +969,8 @@ std::vector<std::pair<StoredTxOut, BinaryDataRef>>
 BlockDataViewer::getOutputsForOutpoints(
    const std::map<BinaryDataRef, std::set<unsigned>>& outpoints, bool withZc) const
 {
+   throw std::runtime_error("[BlockDataViewer::getOutputsForOutpoints] deprecated");
+   #if 0
    std::vector<std::pair<StoredTxOut, BinaryDataRef>> result;
    auto zcSS = !withZc ? nullptr : zeroConfCont_->getSnapshot();
 
@@ -1070,6 +1059,7 @@ BlockDataViewer::getOutputsForOutpoints(
       }
    }
    return result;
+   #endif
 }
 
 ////////
@@ -1376,11 +1366,8 @@ void WalletGroup::registerAddresses(WalletRegistrationRequest& request)
       theWallet->setRegistered();
    };
 
-   auto batch = std::make_shared<RegistrationBatch>();
-   batch->scrAddrSet_ = std::move(scrAddrSet);
-   batch->isNew_ = request.isNew;
-   batch->callback_ = callback;
-
+   auto batch = std::make_shared<RegistrationBatch>(
+      std::move(scrAddrSet), request.isNew, callback);
    saf->pushAddressBatch(batch);
    theWallet->resetCounters();
 }

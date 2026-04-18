@@ -13,6 +13,7 @@
 #include <Utils/BinaryData.h>
 #include "Progress.h"
 #include "bdmenums.h"
+#include "BlockObj.h"
 
 #include <future>
 #include <atomic>
@@ -192,7 +193,7 @@ private:
    const unsigned totalThreadCount_;
    const unsigned writeQueueDepth_;
    const unsigned totalBlockFileCount_;
-   BinaryData topScannedBlockHash_;
+   Armory::Hash32 topScannedBlockHash_;
 
    ProgressCallback progress_ = nullptr;
    bool reportProgress_ = false;
@@ -235,10 +236,7 @@ public:
    void updateSSH(bool);
    void undo(Armory::ReorganizationState&);
 
-   const BinaryData& getTopScannedBlockHash(void) const
-   {
-      return topScannedBlockHash_;
-   }
+   const Armory::Hash32& getTopScannedBlockHash(void) const;
 };
 
 #endif

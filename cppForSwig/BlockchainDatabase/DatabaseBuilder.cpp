@@ -16,6 +16,8 @@
 #include <TxClasses.h>
 
 #include "BlockUtils.h"
+#include "lmdb_wrapper.h"
+#include "Blockchain.h"
 #include "BlockchainScanner.h"
 #include "BlockchainScanner_Super.h"
 #include "ScrAddrFilter.h"
@@ -69,14 +71,14 @@ namespace {
 
 /////////////////////////////////////////////////////////////////////////////
 // Builder
-Builder::Builder(std::shared_ptr<BlockFiles> blockFiles,
-   BlockDataManager& bdm,
-   const ProgressCallback &progress,
-   bool forceRescanSSH)
-   : blockFiles_(blockFiles), blockchain_(bdm.blockchain()),
+Builder::Builder(BlockDataManager& bdm,
+   const ProgressCallback &progress, bool forceRescanSSH)
+   : blockFiles_(bdm.blockFiles()), blockchain_(bdm.blockchain()),
    db_(bdm.getIFace()), scrAddrFilter_(bdm.getScrAddrFilter()),
    progress_(progress), forceRescanSSH_(forceRescanSSH)
-{}
+{
+   scannerCtx_ = std::make_unique<ScannerContext>();
+}
 
 ////////
 bool Builder::init()
@@ -182,58 +184,20 @@ bool Builder::init()
    }
    cycleDatabases();
 
-   int scanFrom = -1;
-   bool reset = false;
+   /* blockchain object now has the longest chain, update address history */
    if (Config::DBSettings::getDbType() != ARMORY_DB_TYPE::Super) {
-      //blockchain object now has the longest chain, update address history
-      //retrieve all tracked addresses from DB
-      scrAddrFilter_->getAllScrAddrInDB();
-
       //don't scan without any registered addresses
-      if (scrAddrFilter_->getScanFilterAddrMap()->empty()) {
+      if (scrAddrFilter_->empty()) {
          TIMER_STOP("initdb");
          double timeSpent = TIMER_READ_SEC("initdb");
          LOGINFO << "init db in " << timeSpent << "s";
          return true;
       }
-
-      //determine from which block to start scanning
-      scrAddrFilter_->getScrAddrCurrentSyncState();
-      scanFrom = scrAddrFilter_->scanFrom();
-
-      //DatabaseBuilder objects always operate on sdbi index 0
-      //BlockchainScanner object depend on the underlying ScrAddrFilter uniqueID
-      auto subsshSdbi = db_->getStoredDBInfo(DB_SELECT::SUBSSH, 0);
-      auto sshsdbi = db_->getStoredDBInfo(DB_SELECT::SSH, 0);
-
-      //check merkle of registered addresses vs what's in the DB
-      if (!scrAddrFilter_->hasNewAddresses() && chainIsSain) {
-         //no new addresses were registered in between runs.
-         if (subsshSdbi.topBlkHgt > sshsdbi.topBlkHgt) {
-            //SUBSSH db has scanned ahead of SSH db, no point rescanning these
-            //blocks
-            scanFrom = subsshSdbi.topBlkHgt;
-         }
-      } else {
-         //we have newly registered addresses this run, force a full rescan
-         resetHistory();
-         scrAddrFilter_->resetSshDB();
-         scanFrom = -1;
-         reset = true;
-      }
-   }
-
-   if (!reorgState.prevTopStillValid && !reset) {
-      undoHistory(reorgState);
-      scanFrom = std::min(
-         scanFrom,
-         (int)reorgState.reorgBranchPoint->getBlockHeight() + 1
-      );
    }
 
    TIMER_START("scanning");
    while (true) {
-      auto topScannedBlockHash = initTransactionHistory(scanFrom);
+      auto topScannedBlockHash = initTransactionHistory(reorgState);
       cycleDatabases();
 
       if (blockchain_->top()->getThisHash() == topScannedBlockHash) {
@@ -241,7 +205,7 @@ bool Builder::init()
       }
 
       //if we got this far the scan failed, diagnose the DB and repair it
-      if (topScannedBlockHash.empty()) {
+      if (!topScannedBlockHash.valid()) {
          //scan ran into a fatal error, notify clients and shutdown
          LOGERR << "ArmoryDB has failed to initialize, it will now terminate";
          LOGWARN << "you may restart it to enter the autorepair procedure";
@@ -646,23 +610,48 @@ void Builder::parseBlockFile(
    }
 }
 
-/////////////////////////////////////////////////////////////////////////////
-BinaryData Builder::initTransactionHistory(int32_t startHeight)
+////////
+Hash32 Builder::initTransactionHistory(
+   const ReorganizationState& reorgState)
 {
    //Scan history
+   scannerCtx_->init(db_);
    auto topScannedBlockHash = scanHistory(
-      startHeight, Config::DBSettings::reportProgress(), true
+      reorgState, Config::DBSettings::reportProgress(), true
    );
 
    //return the hash of the last scanned block
    return topScannedBlockHash;
 }
 
-BinaryData Builder::scanHistory(int32_t startHeight,
+Hash32 Builder::scanHistory(const ReorganizationState& reorgState,
    bool reportprogress, bool init)
 {
+   auto scanFrom = scrAddrFilter_->scanFrom();
+   HeaderPtr startHeader = nullptr;
+   if (scanFrom.valid()) {
+      startHeader = blockchain_->getHeaderByHash(scanFrom);
+      if (!reorgState.prevTopStillValid) {
+         //reorg
+         if (startHeader->isMainBranch()) {
+            if (reorgState.reorgBranchPoint->getBlockHeight() <
+               startHeader->getBlockHeight()) {
+               startHeader = reorgState.reorgBranchPoint;
+            }
+         } else {
+            startHeader = reorgState.reorgBranchPoint;
+         }
+      }
+   }
+
+   if (startHeader == nullptr) {
+      startHeader = blockchain_->getGenesisHeader();
+   } else {
+      startHeader = blockchain_->getHeaderByHash(*startHeader->getNextHash());
+   }
+
    if (Config::DBSettings::getDbType() != ARMORY_DB_TYPE::Super) {
-      LOGINFO << "scanning new blocks from #" << startHeight << " to #" <<
+      LOGINFO << "scanning new blocks from #" << startHeader->getBlockHeight() << " to #" <<
          blockchain_->top()->getBlockHeight();
 
       BlockchainScanner bcs(blockchain_,
@@ -671,11 +660,10 @@ BinaryData Builder::scanHistory(int32_t startHeight,
          Config::DBSettings::threadCount(), Config::DBSettings::ramUsage(),
          progress_, reportprogress);
 
-      if (!bcs.scan(startHeight)) {
+      if (!bcs.scan(*scannerCtx_, startHeader->getBlockHeight())) {
          LOGERR << "scan failed!";
-         return {};
+         return Hash32{};
       }
-      //bcs.updateSSH(forceRescanSSH_, startHeight);
 
       unsigned count = 0;
       while (!bcs.resolveTxHashes()) {
@@ -685,6 +673,8 @@ BinaryData Builder::scanHistory(int32_t startHeight,
             break;
          }
       }
+
+      scrAddrFilter_->updateScannedHash(bcs.getTopScannedBlockHash());
       return bcs.getTopScannedBlockHash();
    } else {
       BlockchainScanner_Super bcs(
@@ -716,16 +706,9 @@ ReorganizationState Builder::update()
    if (!reorgState.hasNewTop) {
       return reorgState;
    }
-   uint32_t startHeight = reorgState.prevTop->getBlockHeight() + 1;
-
-   if (!reorgState.prevTopStillValid) {
-      //reorg, undo blocks up to branch point
-      undoHistory(reorgState);
-      startHeight = reorgState.reorgBranchPoint->getBlockHeight() + 1;
-   }
 
    //scan new blocks
-   BinaryData topScannedHash = scanHistory(startHeight, false, false);
+   auto topScannedHash = scanHistory(reorgState, false, false);
    if (topScannedHash != blockchain_->top()->getThisHash()) {
       LOGERR << "scan failure during DatabaseBuilder::update";
       throw std::runtime_error("scan failure during DatabaseBuilder::update");
@@ -736,6 +719,7 @@ ReorganizationState Builder::update()
 }
 
 /////////////////////////////////////////////////////////////////////////////
+#if 0
 void Builder::undoHistory(ReorganizationState& reorgState)
 {
    if (Config::DBSettings::getDbType() != ARMORY_DB_TYPE::Super) {
@@ -752,6 +736,7 @@ void Builder::undoHistory(ReorganizationState& reorgState)
       bcs.undo(reorgState);
    }
 }
+#endif
 
 void Builder::resetHistory()
 {
@@ -862,6 +847,8 @@ void Builder::commitAllTxHints(
 void Builder::commitAllStxos(
    const std::vector<std::shared_ptr<BlockData>>& blocks)
 {
+   throw std::runtime_error("[Builder::commitAllStxos] not a thing anymore");
+   #if 0
    if (Config::DBSettings::getDbType() != ARMORY_DB_TYPE::Super) {
       throw std::runtime_error("invalid db mode");
    }
@@ -917,6 +904,7 @@ void Builder::commitAllStxos(
       db_->putValue(
          DB_SELECT::STXO, bwPair.first.getRef(), bwPair.second.getDataRef());
    }
+   #endif
 }
 
 #if 0
@@ -1491,4 +1479,15 @@ void Builder::checkTxHintsIntegrity()
       }
    }
    LOGINFO << "done checking txhints";
+}
+
+unsigned Builder::getCheckedTxCount() const
+{
+   return checkedTransactions_;
+}
+
+////////
+void Builder::mergeContext(ScannerContext& incoming)
+{
+   scannerCtx_->merge(incoming);
 }

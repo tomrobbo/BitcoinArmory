@@ -28,6 +28,7 @@ class BlockFiles;
 struct BDV_Notification;
 struct BDVNotificationHook;
 struct StoredHeader;
+class ScannerContext;
 
 namespace Armory
 {
@@ -56,7 +57,7 @@ namespace CoreRPC
 
 enum class BDMState : int
 {
-   Offline,
+   Uninitialized,
    Initializing,
    Ready
 };
@@ -93,7 +94,7 @@ private:
    std::shared_ptr<Armory::Database::Builder> dbBuilder_;
 
    std::function<bool(void)> shutdownLbd_;
-   BDMState BDMstate_ = BDMState::Offline;
+   BDMState BDMstate_ = BDMState::Uninitialized;
    std::exception_ptr exceptPtr_ = nullptr;
 
    unsigned checkTransactionCount_ = 0;
@@ -109,6 +110,10 @@ public:
    Armory::Threading::TimedQueue<std::unique_ptr<BDV_Notification>> notificationStack_;
    std::shared_ptr<Armory::ZeroConf::ZeroConfContainer> zeroConfCont_;
 
+private:
+   bool loadDiskState(const ProgressCallback&, bool=false);
+   void pollNodeStatus() const;
+
 public:
    BlockDataManager(std::function<bool(void)>);
    ~BlockDataManager(void);
@@ -116,22 +121,16 @@ public:
    std::shared_ptr<Armory::Blockchain> blockchain(void) const;
    LMDBBlockDatabase *getIFace(void) const;
    std::shared_ptr<BlockFiles> blockFiles(void) const;
-   bool hasException(void) const;
-   std::exception_ptr getException(void) const;
+   std::shared_ptr<ScrAddrFilter> getScrAddrFilter(void) const;
 
    void openDatabase(void);
    bool doInitialSyncOnLoad(BdmInitMode, const ProgressCallback&);
+   bool hasException(void) const;
+   std::exception_ptr getException(void) const;
 
-private:
-   bool loadDiskState(const ProgressCallback&, bool=false);
-   void pollNodeStatus() const;
-
-public:
    Armory::ReorganizationState readBlkFileUpdate(void);
    bool applyBlockRangeToDB(ProgressCallback,
       uint32_t, ScrAddrFilter&);
-
-   std::shared_ptr<ScrAddrFilter> getScrAddrFilter(void) const;
 
    void enableZeroConf(bool=false);
    void registerZcCallbacks(

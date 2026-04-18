@@ -155,20 +155,20 @@ std::size_t Hash32::Hasher::operator()(const BinaryDataRef& bdr) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Comparator
-bool Hash32::Comparator::operator()(
+// IsEqual
+bool Hash32::IsEqual::operator()(
    const Hash32& lhs, const Hash32& rhs) const
 {
    return lhs == rhs;
 }
 
-bool Hash32::Comparator::operator()(
+bool Hash32::IsEqual::operator()(
    const Hash32& lhs, const BinaryData& rhs) const
 {
    return lhs == rhs;
 }
 
-bool Hash32::Comparator::operator()(
+bool Hash32::IsEqual::operator()(
    const BinaryData& lhs, const Hash32& rhs) const
 {
    if (lhs.getSize() != 32) {
@@ -177,7 +177,7 @@ bool Hash32::Comparator::operator()(
    return std::memcmp(lhs.getPtr(), rhs.data, 32) == 0;
 }
 
-bool Hash32::Comparator::operator()(
+bool Hash32::IsEqual::operator()(
    const Hash32& lhs, const BinaryDataRef& rhs) const
 {
    if (rhs.getSize() != 32) {
@@ -186,7 +186,7 @@ bool Hash32::Comparator::operator()(
    return std::memcmp(lhs.data, rhs.getPtr(), 32) == 0;
 }
 
-bool Hash32::Comparator::operator()(
+bool Hash32::IsEqual::operator()(
    const BinaryDataRef& lhs, const Hash32& rhs) const
 {
    if (lhs.getSize() != 32) {
@@ -452,9 +452,9 @@ std::size_t BlockHeader::Hasher::operator()(const BinaryDataRef& bdr) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Comparator
+// IsEqual
 
-bool BlockHeader::Comparator::operator()(
+bool BlockHeader::IsEqual::operator()(
    const HeaderPtr& lhs, const HeaderPtr& rhs) const
 {
    if (lhs == nullptr || rhs == nullptr) {
@@ -463,7 +463,7 @@ bool BlockHeader::Comparator::operator()(
    return lhs->getThisHash() == rhs->getThisHash();
 }
 
-bool BlockHeader::Comparator::operator()(
+bool BlockHeader::IsEqual::operator()(
    const HeaderPtr& lhs, const Hash32& rhs) const
 {
    if (lhs == nullptr) {
@@ -472,7 +472,7 @@ bool BlockHeader::Comparator::operator()(
    return lhs->getThisHash() == rhs;
 }
 
-bool BlockHeader::Comparator::operator()(
+bool BlockHeader::IsEqual::operator()(
    const Hash32& lhs, const HeaderPtr& rhs) const
 {
    if (rhs == nullptr) {
@@ -481,38 +481,38 @@ bool BlockHeader::Comparator::operator()(
    return lhs == rhs->getThisHash();
 }
 
-bool BlockHeader::Comparator::operator()(
+bool BlockHeader::IsEqual::operator()(
    const HeaderPtr& lhs, const BinaryData& bd) const
 {
    if (lhs == nullptr) {
       return false;
    }
-   return Hash32::Comparator()(lhs->getThisHash(), bd);
+   return Hash32::IsEqual()(lhs->getThisHash(), bd);
 }
 
-bool BlockHeader::Comparator::operator()(
+bool BlockHeader::IsEqual::operator()(
    const BinaryData& bd, const HeaderPtr& rhs) const
 {
    if (rhs == nullptr) {
       return false;
    }
-   return Hash32::Comparator()(bd, rhs->getThisHash());
+   return Hash32::IsEqual()(bd, rhs->getThisHash());
 }
 
-bool BlockHeader::Comparator::operator()(
+bool BlockHeader::IsEqual::operator()(
    const HeaderPtr& lhs, const BinaryDataRef& bdr) const
 {
    if (lhs == nullptr) {
       return false;
    }
-   return Hash32::Comparator()(lhs->getThisHash(), bdr);
+   return Hash32::IsEqual()(lhs->getThisHash(), bdr);
 }
 
-bool BlockHeader::Comparator::operator()(
+bool BlockHeader::IsEqual::operator()(
    const BinaryDataRef& bdr, const HeaderPtr& rhs) const
 {
    if (rhs == nullptr) {
       return false;
    }
-   return Hash32::Comparator()(bdr, rhs->getThisHash());
+   return Hash32::IsEqual()(bdr, rhs->getThisHash());
 }

@@ -15,6 +15,7 @@
 class LMDBBlockDatabase;
 class BlockDataManager;
 class ScrAddrFilter;
+class ScannerContext;
 class UnresolvedHashException {};
 
 typedef std::function<void(BDMPhase, double, unsigned, unsigned)> ProgressCallback;
@@ -34,6 +35,7 @@ namespace Armory
          std::shared_ptr<Blockchain> blockchain_;
          LMDBBlockDatabase* db_;
          std::shared_ptr<ScrAddrFilter> scrAddrFilter_;
+         std::unique_ptr<ScannerContext> scannerCtx_;
 
          const ProgressCallback progress_;
 
@@ -52,8 +54,8 @@ namespace Armory
          BlockOffset parseForNewHeaders(const ProgressCallback&);
          void parseForNewBlocks(const BlockOffset&, const ProgressCallback&);
 
-         BinaryData initTransactionHistory(int32_t);
-         BinaryData scanHistory(int32_t, bool, bool);
+         Hash32 initTransactionHistory(const ReorganizationState&);
+         Hash32 scanHistory(const ReorganizationState&, bool, bool);
          void undoHistory(ReorganizationState&);
 
          void resetHistory(void);
@@ -63,18 +65,16 @@ namespace Armory
          void cycleDatabases(void);
 
       public:
-         Builder(std::shared_ptr<BlockFiles>,
-            BlockDataManager&,
+         Builder(BlockDataManager&,
             const ProgressCallback&, bool);
 
          bool init(void);
          ReorganizationState update(void);
+         void mergeContext(ScannerContext&);
 
          void verifyChain(void);
-         unsigned getCheckedTxCount(void) const { return checkedTransactions_; }
-
-         //void verifyTxFilters(void);
          void checkTxHintsIntegrity(void);
+         unsigned getCheckedTxCount(void) const;
       };
    } // namespace BlockchainData
 } // namespace Armory

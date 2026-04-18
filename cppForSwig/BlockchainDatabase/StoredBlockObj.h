@@ -5,7 +5,7 @@
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
 //                                                                            //
-//  Copyright (C) 2016-2025, goatpig                                          //
+//  Copyright (C) 2016-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -25,54 +25,35 @@
 #define ARMORY_DB_DEFAULT   ARMORY_DB_FULL
 #define UTXO_STORAGE        SCRIPT_UTXO_VECTOR
 
-enum DB_TX_AVAIL
-{
-   DB_TX_EXISTS,
-   DB_TX_GETBLOCK,
-   DB_TX_UNKNOWN
-};
-
 enum class DB_SELECT : int
 {
    HEADERS,
-   BLKDATA,
+   SCRADDR,
    SSH,
    SUBSSH,
    SUBSSH_META,
-   HISTORY,
-   STXO,
+   TXOUTS,
+   TXINS,
    TXHINTS,
-   ZERO_CONF,
    TXFILTERS,
+   KNOWNHASHES,
    SPENTNESS,
+   ZERO_CONF,
    COUNT
 };
 
-enum TX_SERIALIZE_TYPE
+enum class TX_SERIALIZE_TYPE : int
 {
-   TX_SER_FULL,
-   TX_SER_FRAGGED,
-   TX_SER_COUNTOUT
+   FULL = 1,
+   FRAGGED,
+   COUNTOUT
 };
 
-enum TXOUT_SPENTNESS
+enum class SPENTNESS : int
 {
-   TXOUT_UNSPENT,
-   TXOUT_SPENT,
-   TXOUT_SPENTUNK,
-};
-
-enum MERKLE_SER_TYPE
-{
-   MERKLE_SER_NONE,
-   MERKLE_SER_PARTIAL,
-   MERKLE_SER_FULL
-};
-
-enum SCRIPT_UTXO_TYPE
-{
-   SCRIPT_UTXO_VECTOR,
-   SCRIPT_UTXO_TREE
+   UNSPENT = 1,
+   SPENT,
+   SPENTUNK,
 };
 
 class Tx;
@@ -99,17 +80,13 @@ struct StoredDBInfo
    void unserializeDBValue(const BinaryData&);
    void unserializeDBValue(BinaryDataRef);
 
-   void pprintOneLine(uint32_t = 3) const;
-
 public:
-   BinaryData magic;
-   uint32_t topBlkHgt = 0;
-   BinaryData metaHash; //32 bytes
-   BinaryData topScannedBlkHash; //32 bytes
-   uint32_t appliedToHgt = 0;
-   uint32_t armoryVer = ARMORY_DB_VERSION;
-   ARMORY_DB_TYPE armoryType = ARMORY_DB_TYPE::Full; //default db mode
+   Armory::Hash32 metaHash; //32 bytes
+   Armory::Hash32 topScannedBlkHash; //32 bytes
    uint64_t metaInt = UINT64_MAX;
+   uint32_t armoryVer = ARMORY_DB_VERSION;
+   BinaryData magicBytes;
+   ARMORY_DB_TYPE armoryType = ARMORY_DB_TYPE::Full; //default db mode
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -132,7 +109,7 @@ struct StoredTxOut
    static void serializeDBValue(
       BinaryWriter&, uint16_t, bool,
       const BinaryDataRef,
-      TXOUT_SPENTNESS, BinaryDataRef);
+      SPENTNESS, BinaryDataRef);
 
    BinaryData getDBKey(bool = true) const;
    BinaryData getSpentnessKey(void) const;
@@ -158,7 +135,7 @@ public:
    uint16_t          txIndex;
    uint16_t          txOutIndex;
    BinaryData        parentHash;
-   TXOUT_SPENTNESS   spentness;
+   SPENTNESS         spentness;
    bool              isCoinbase;
    BinaryData        spentByTxInKey;
 
@@ -169,6 +146,14 @@ public:
    uint32_t          unserDbType;
    unsigned          parentTxOutCount = 0;
    BinaryData        spenderHash;
+};
+
+struct TxOutData
+{
+   const uint64_t amount;
+   const uint32_t blockID;
+   const uint16_t txId;
+   const uint16_t txOutId;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -261,15 +246,12 @@ struct DBBlock
    void setHeightAndDup(const BinaryData&);
    void setHeaderData(const BinaryData&);
 
-   void unserializeDBValue(DB_SELECT, BinaryRefReader&, bool = false);
-   void serializeDBValue(BinaryWriter&, DB_SELECT, ARMORY_DB_TYPE) const;
+   void unserializeDBValue(BinaryRefReader&);
+   void serializeDBValue(BinaryWriter&) const;
 
-   void unserializeDBValue(DB_SELECT, const BinaryData&, bool = false);
-   void unserializeDBValue(DB_SELECT, BinaryDataRef, bool = false);
-   void unserializeDBKey(DB_SELECT, BinaryDataRef);
+   void unserializeDBValue(const BinaryData&);
+   void unserializeDBValue(BinaryDataRef);
    BinaryData getDBKey(bool = true) const;
-
-   bool isMerkleCreated(void);
    void pprintOneLine(uint32_t = 3) const;
 
    virtual void unserializeFullBlock(BinaryRefReader,
@@ -282,8 +264,6 @@ public:
    size_t         numBytes = UINT32_MAX;
    uint32_t       blockHeight = UINT32_MAX;
    uint8_t        duplicateID = UINT8_MAX;
-   BinaryData     merkle;
-   bool           merkleIsPartial = false;
    bool           isMainBranch = false;
    bool           blockAppliedToDB = false;
    bool           isPartial = false;
@@ -296,7 +276,6 @@ public:
    uint32_t        unserArmVer;
    uint32_t        unserBlkVer;
    ARMORY_DB_TYPE  unserDbType;
-   MERKLE_SER_TYPE unserMkType;
 
    size_t         offset;
    uint16_t       fileID;

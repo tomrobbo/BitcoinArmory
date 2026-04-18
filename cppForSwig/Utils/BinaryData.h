@@ -5,7 +5,7 @@
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
 //                                                                            //
-//  Copyright (C) 2016-2025, goatpig                                          //
+//  Copyright (C) 2016-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -271,7 +271,22 @@ public:
    // For deallocating all the memory that is currently used by this BD
    void clear(void);
    std::vector<uint8_t> release(void);
-   const std::vector<uint8_t>& getVector(void) const;
+
+   //for unordered containers
+   struct Hasher
+   {
+      using is_transparent = void;
+      std::size_t operator()(const BinaryData&) const;
+      std::size_t operator()(const BinaryDataRef&) const;
+   };
+
+   struct IsEqual
+   {
+      using is_transparent = void;
+      bool operator()(const BinaryData&, const BinaryData&) const;
+      bool operator()(const BinaryData&, const BinaryDataRef&) const;
+      bool operator()(const BinaryDataRef&, const BinaryData&) const;
+   };
 
 protected:
    std::vector<uint8_t> data_;
@@ -653,17 +668,4 @@ public:
 
 private:
    BinaryData theString_;
-};
-
-namespace std
-{
-   template<> struct hash<BinaryData>
-   {
-      std::size_t operator()(const BinaryData&) const;
-   };
-
-   template<> struct hash<BinaryDataRef>
-   {
-      std::size_t operator()(const BinaryDataRef&) const;
-   };
 };

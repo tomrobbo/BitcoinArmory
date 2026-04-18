@@ -5,7 +5,7 @@
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
 //                                                                            //
-//  Copyright (C) 2016-2025, goatpig                                          //
+//  Copyright (C) 2016-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -33,6 +33,17 @@ using namespace Armory::ZeroConf;
 using namespace std::chrono_literals;
 
 #define ZC_GETDATA_TIMEOUT_MS 60000
+
+namespace {
+   BinaryData getRawBlock(std::shared_ptr<BlockHeader> bh)
+   {
+      //open block file
+      auto path = FileUtils::getBlkFilename(
+         Config::Pathing::blkFilePath(), bh->getBlockFileNum());
+      auto fileMap = FileUtils::FileMap(path, false);
+      return BinaryData(fileMap.ptr() + bh->getOffset(), bh->getBlockSize());
+   }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // misc
@@ -219,7 +230,7 @@ ZeroConfContainer::purgeToBranchpoint(
    //loop over headers
    while (currentHeader != reorgState.reorgBranchPoint) {
       //grab block
-      auto rawBlock = db_->getRawBlock(currentHeader);
+      auto rawBlock = getRawBlock(currentHeader);
       auto block = BlockData::deserialize(
          rawBlock.getPtr(), rawBlock.getSize(),
          currentHeader,
@@ -320,7 +331,7 @@ std::map<BinaryData, std::shared_ptr<ParsedTx>> ZeroConfContainer::purge(
    while (nextHashPtr != nullptr) {
       //grab block
       currentHeader = bc_->getHeaderByHash(*nextHashPtr);
-      auto rawBlock = db_->getRawBlock(currentHeader);
+      auto rawBlock = getRawBlock(currentHeader);
       auto block = BlockData::deserialize(
          rawBlock.getPtr(), rawBlock.getSize(),
          currentHeader,

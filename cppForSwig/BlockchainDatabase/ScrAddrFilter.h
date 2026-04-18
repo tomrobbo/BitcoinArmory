@@ -5,7 +5,7 @@
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
 //                                                                            //
-//  Copyright (C) 2016-2021, goatpig                                          //
+//  Copyright (C) 2016-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -14,12 +14,15 @@
 #pragma once
 
 #include <vector>
+#include <string>
+#include <unordered_map>
 #include <atomic>
 #include <functional>
 #include <memory>
 
 #include <Utils/ThreadSafeClasses.h>
 #include <Utils/BinaryData.h>
+#include "BlockObj.h"
 
 namespace Armory
 {
@@ -28,52 +31,45 @@ namespace Armory
       class ZeroConfContainer;
    }
    class Blockchain;
+   struct Hash32;
 }
 class LMDBBlockDatabase;
 struct StoredDBInfo;
 
-#define SIDESCAN_ID 0x100000ff
-
 ////////////////////////////////////////////////////////////////////////////////
-enum AddressBatchType
+enum class AddressBatchType : int
 {
-   AddressBatch_register,
-   AddressBatch_unregister
+   Register,
+   Unregister
 };
 
 struct AddressBatch
 {
-   const AddressBatchType type_;
+   const AddressBatchType type;
 
-   AddressBatch(AddressBatchType type) :
-      type_(type)
-   {}
-
+   AddressBatch(AddressBatchType);
    virtual ~AddressBatch(void) = 0;
 };
 
 ////
 struct RegistrationBatch : public AddressBatch
 {
-   std::function<void(std::set<BinaryDataRef>, bool)> callback_;
-   std::set<BinaryData> scrAddrSet_;
-   bool isNew_;
-   std::string walletID_;
+   using Callback = std::function<void(std::set<BinaryDataRef>, bool)>;
+   const Callback callback;
+   const bool isNew;
+   const std::set<BinaryData> scrAddrSet;
+   std::string walletID;
 
-   RegistrationBatch(void) :
-      AddressBatch(AddressBatch_register)
-   {}
+   RegistrationBatch(std::set<BinaryData>, bool, const Callback&);
 };
 
 ////
 struct UnregistrationBatch : public AddressBatch
 {
-   std::set<BinaryData> scrAddrSet_;
-   std::function<void(void)> callback_;
+   std::set<BinaryData> scrAddrSet;
+   std::function<void(void)> callback;
 
-   UnregistrationBatch(void) :
-      AddressBatch(AddressBatch_unregister)
-   {}
+   UnregistrationBatch(void);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -83,18 +79,20 @@ private:
    mutable BinaryData addrHash_;
 
 public:
-   const BinaryData scrAddr_;
-   unsigned scannedHeight_ = 0;
+   const BinaryData scrAddr;
+   const uint32_t id;
+   unsigned scannedHeight = 0;
 
 public:
-   AddrAndHash(BinaryDataRef);
+   AddrAndHash(BinaryDataRef, uint32_t);
 
    const BinaryData& getHash(void) const;
    bool operator<(const AddrAndHash&) const;
    bool operator<(const BinaryDataRef&) const;
 };
 
-class TxOutScriptRef;
+using ScrAddrIdMap = std::unordered_map<BinaryData, uint32_t,
+   BinaryData::Hasher, BinaryData::IsEqual>;
 
 ////////////////////////////////////////////////////////////////////////////////
 class ScrAddrFilter
@@ -136,10 +134,11 @@ class ScrAddrFilter
    up from there.
    ***/
 
-   friend class Armory::ZeroConf::ZeroConfContainer;
+public:
+   using AddrMap = std::map<BinaryData, std::shared_ptr<AddrAndHash>>;
 
 private:
-   const unsigned sdbiKey_;
+   const uint16_t sdbiKey_;
    LMDBBlockDatabase *const lmdb_;
 
    std::shared_ptr<Armory::Threading::TransactionalMap<
@@ -149,91 +148,56 @@ private:
       std::shared_ptr<AddressBatch>> registrationStack_;
 
    std::thread thr_;
+   uint32_t topScrAddrID_ = 0;
+   Armory::Hash32 merkleRoot_;
 
 public:
    std::mutex mergeLock_;
 
 private:
-   static void cleanUpPreviousChildren(LMDBBlockDatabase* lmdb);
-   void registrationThread(void);
+   void run(void);
+   AddrMap prepareRegistrationBatch(std::shared_ptr<RegistrationBatch>);
+   std::set<BinaryDataRef> mergeAddresses(AddrMap, bool);
+   AddrMap assignScrAddrKeys(const std::set<BinaryData>&);
 
-   std::shared_ptr<Armory::Threading::TransactionalMap<
-      BinaryData, std::shared_ptr<AddrAndHash>>> getZcFilterMapPtr(void) const
-   {
-      return scanFilterAddrMap_;
-   }
-
-   std::set<BinaryDataRef> updateAddrMap(
-      const std::set<BinaryData>&, unsigned, bool );
-   void setSSHLastScanned(std::set<BinaryData>&, unsigned);
-
-protected:
-   std::function<void(
-      const std::vector<std::string>& wltIDs, double prog, unsigned time)>
-      scanThreadProgressCallback_;
+   Armory::Hash32 computeMerkleRoot(void) const;
+   void updateAddressMerkle(void);
 
 public:
-   ScrAddrFilter(LMDBBlockDatabase* lmdb, unsigned sdbiKey)
-      : sdbiKey_(sdbiKey), lmdb_(lmdb)
-   {
-      scanFilterAddrMap_ = std::make_shared<
-         Armory::Threading::TransactionalMap<
-         BinaryData, std::shared_ptr<AddrAndHash>>>();
-   }
+   ScrAddrFilter(LMDBBlockDatabase*, uint16_t);
+   virtual ~ScrAddrFilter(void);
 
-   virtual ~ScrAddrFilter() { shutdown(); }
-
-   LMDBBlockDatabase* db() { return lmdb_; }
+   void start(void);
+   void shutdown(void);
 
    ////
-   std::shared_ptr<const std::map<BinaryData, std::shared_ptr<AddrAndHash>>>
-      getScanFilterAddrMap(void) const
-   {
-      return scanFilterAddrMap_->get();
-   }
-
-   size_t getScanFilterAddrCount(void) const
-   {
-      return scanFilterAddrMap_->size();
-   }
+   std::shared_ptr<const AddrMap> getScanFilterAddrMap(void) const;
+   bool empty(void) const;
+   std::shared_ptr<Armory::Threading::TransactionalMap<
+      BinaryData, std::shared_ptr<AddrAndHash>>> getZcFilterMapPtr(void) const;
 
    ////
-   std::shared_ptr<std::unordered_map<TxOutScriptRef, int>> getOutScrRefMap(void);
-   int32_t scanFrom(void) const;
+   ScrAddrIdMap getScrAddrIds(void) const;
+   Armory::Hash32 scanFrom(void) const;
    void pushAddressBatch(std::shared_ptr<AddressBatch>);
 
-   void resetSshDB(void);
+   StoredDBInfo getSDBI(void) const;
+   void updateScannedHash(const Armory::Hash32&);
+   void cleanUpSdbis(void);
 
-   void getScrAddrCurrentSyncState();
-   void setSSHLastScanned(unsigned);
-   void getAllScrAddrInDB(void);
-
-   BinaryData getAddressMapMerkle(void) const;
-   void updateAddressMerkleInDB(void);
-   bool hasNewAddresses(void) const;
-
-   StoredDBInfo getSubSshSDBI(void) const;
-   void putSubSshSDBI(const StoredDBInfo&);
-   StoredDBInfo getSshSDBI(void) const;
-   void putSshSDBI(const StoredDBInfo&);
-   
    std::set<BinaryData> getMissingHashes(void) const;
    void putMissingHashes(const std::set<BinaryData>&);
 
-   void cleanUpSdbis(void);
-   void shutdown(void);
-
-   void init(void);
-
    ////
-   void unregisterAddresses(const std::set<BinaryDataRef>& scrAddrSet, 
-      const std::function<void(void)>& callback);
+   void unregisterAddresses(
+      const std::set<BinaryDataRef>&,
+      const std::function<void(void)>&);
 
 //virtuals
 protected:
    virtual std::shared_ptr<ScrAddrFilter> getNew(unsigned) = 0;
    virtual bool applyBlockRangeToDB(uint32_t,
-      const std::vector<std::string>&, bool)=0;
+      const std::vector<std::string>&, bool) = 0;
    virtual std::shared_ptr<Armory::Blockchain> blockchain(void) const = 0;
    virtual bool bdmIsRunning(void) const = 0;
 };

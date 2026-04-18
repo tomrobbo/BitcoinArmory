@@ -395,6 +395,8 @@ bool ScrAddrObj::getMoreUTXOs(PagedUTXOs& utxos,
 std::vector<UnspentTxOut> ScrAddrObj::getAllUTXOs(
    std::function<bool(const BinaryData&)> hasTxOutInZC) const
 {
+   throw std::runtime_error("[ScrAddrObj::getAllUTXOs] deprecated");
+   #if 0
    PagedUTXOs utxos(this);
    while (getMoreUTXOs(utxos, hasTxOutInZC)) {}
 
@@ -420,6 +422,7 @@ std::vector<UnspentTxOut> ScrAddrObj::getAllUTXOs(
       );
    }
    return utxoList;
+   #endif
 }
 
 uint64_t ScrAddrObj::getLoadedTxOutsValue() const

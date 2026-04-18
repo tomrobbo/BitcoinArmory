@@ -1,7 +1,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
 //                                                                            //
-//  Copyright (C) 2016-2025, goatpig                                          //
+//  Copyright (C) 2016-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -134,7 +134,6 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 namespace TestUtils
 {
-
    /////////////////////////////////////////////////////////////////////////////
    bool searchFile(const std::filesystem::path& filename, BinaryData& data)
    {
@@ -165,11 +164,12 @@ namespace TestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   uint32_t getTopBlockHeightInDB(BlockDataManager &bdm, DB_SELECT db)
+   uint32_t getTopBlockHeightInDB(BlockDataManager* bdm, DB_SELECT db)
    {
       StoredDBInfo sdbi;
-      bdm.getIFace()->getStoredDBInfo(db, 0);
-      return sdbi.topBlkHgt;
+      bdm->getIFace()->getStoredDBInfo(db, 0);
+      auto header = bdm->blockchain()->getHeaderByHash(sdbi.topScannedBlkHash);
+      return header->getBlockHeight();
    }
 
    /////////////////////////////////////////////////////////////////////////////
@@ -308,16 +308,9 @@ namespace DBTestUtils
    deque<unsigned> zcDelays_;
 
    /////////////////////////////////////////////////////////////////////////////
-   unsigned getTopBlockHeight(LMDBBlockDatabase* db, DB_SELECT dbSelect)
+   Hash32 getTopBlockHash(LMDBBlockDatabase* db, DB_SELECT dbSelect)
    {
-      auto&& sdbi = db->getStoredDBInfo(dbSelect, 0);
-      return sdbi.topBlkHgt;
-   }
-
-   /////////////////////////////////////////////////////////////////////////////
-   BinaryData getTopBlockHash(LMDBBlockDatabase* db, DB_SELECT dbSelect)
-   {
-      auto&& sdbi = db->getStoredDBInfo(dbSelect, 0);
+      auto sdbi = db->getStoredDBInfo(dbSelect, 0);
       return sdbi.topScannedBlkHash;
    }
 

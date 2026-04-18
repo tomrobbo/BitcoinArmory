@@ -1142,43 +1142,20 @@ void BDV_Server_Object::init()
    bdm_->blockUntilReady();
    while (true) {
       std::map<std::string, WalletRegistrationRequest> wltMap;
-
       {
          std::unique_lock<std::mutex> lock(registerWalletMutex_);
-
          if (wltRegMap_.empty()) {
             break;
          }
-
          wltMap = std::move(wltRegMap_);
          wltRegMap_.clear();
       }
 
-      //create address batch
-      auto batch = std::make_shared<RegistrationBatch>();
-      batch->isNew_ = false;
-
-      //fill with addresses from proto payloads
-      for (const auto& wlt : wltMap) {
-         for (const auto& addr : wlt.second.addresses) {
-            batch->scrAddrSet_.insert(addr);
+      //wait on registration callbacks
+      for (auto& wltPair : wltMap) {
+         if (wltPair.second.fut.get() == false) {
+            return;
          }
-      }
-
-      //callback only serves to wait on the registration event
-      auto promPtr = std::make_shared<std::promise<bool>>();
-      auto fut = promPtr->get_future();
-      auto callback = [promPtr](std::set<BinaryDataRef>, bool success)->void
-      {
-         promPtr->set_value(success);
-      };
-      batch->callback_ = callback;
-
-      //register the batch
-      auto saf = bdm_->getScrAddrFilter();
-      saf->pushAddressBatch(batch);
-      if (fut.get() == false) {
-         return;
       }
 
       //addresses are now registered, populate the wallet maps
@@ -1434,8 +1411,27 @@ void BDV_Server_Object::registerWallet(WalletRegistrationRequest& regReq)
       //only run this code if the bdv maintenance thread hasn't started yet
       std::unique_lock<std::mutex> lock(registerWalletMutex_);
 
-      //save data
-      wltRegMap_.emplace(regReq.walletId, std::move(regReq));
+      //save request
+      auto emplaceResult = wltRegMap_.emplace(regReq.walletId, std::move(regReq));
+      auto& wltRegReq = emplaceResult.first->second;
+      std::set<BinaryData> addrSet;
+      for (const auto& addr : wltRegReq.addresses) {
+         addrSet.emplace(addr);
+      }
+
+      //setup registration callback and track future in request
+      auto promPtr = std::make_shared<std::promise<bool>>();
+      wltRegReq.fut = promPtr->get_future();
+      auto callback = [promPtr](std::set<BinaryDataRef>, bool success)->void
+      {
+         promPtr->set_value(success);
+      };
+
+      //queue up registration
+      auto batch = std::make_shared<RegistrationBatch>(
+         std::move(addrSet), false, callback);
+      auto saf = bdm_->getScrAddrFilter();
+      saf->pushAddressBatch(batch);
       return;
    }
 
@@ -1482,7 +1478,7 @@ void BDV_Server_Object::populateWallets(
             throw std::runtime_error("address missing from saf");
          }
 
-         auto addrRef = iter->second->scrAddr_.getRef();
+         auto addrRef = iter->second->scrAddr.getRef();
          auto addrObj = std::make_shared<ScrAddrObj>(
             db_, &blockchain(), zeroConfCont_.get(), addrRef);
          newAddrMap.emplace(addrRef, addrObj);
