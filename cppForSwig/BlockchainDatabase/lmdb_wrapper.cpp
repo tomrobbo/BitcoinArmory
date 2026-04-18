@@ -16,7 +16,6 @@
 #include <set>
 #include <cmath>
 #include <cstring>
-#include <arpa/inet.h>
 
 #include "lmdb_wrapper.h"
 #include <Utils/BtcUtils.h>
@@ -1821,9 +1820,7 @@ std::map<uint64_t, TxOutData> LMDBBlockDatabase::getTxOutDataForScrAddrKey(
 {
    auto tx = beginTransaction(DB_SELECT::TXOUTS, LMDB::Mode::ReadWrite);
    auto dbIter = getIterator(DB_SELECT::TXOUTS);
-   //uint64_t scrAddrId64 = (uint64_t)scrAddrId << 32;
    BinaryDataRef scrAddrIdRef{(const uint8_t*)&scrAddrId, sizeof(uint32_t)};
-   //dbIter->seekToFirst();
    if (!dbIter->seekToStartsWith(scrAddrIdRef)) {
       return {};
    }
@@ -1842,17 +1839,15 @@ std::map<uint64_t, TxOutData> LMDBBlockDatabase::getTxOutDataForScrAddrKey(
       }
 
       //get blockID
-      uint32_t blockID_BE = uint32_t(scrAddrKey >> 32);
-      uint32_t blockID = ntohl(blockID_BE);
+      uint32_t blockID = DBUtils::getBlockIDFromScrAddrKey(scrAddrKey);
 
+      //deser txoutdata bodies
       auto valReader = dbIter->getValueReader();
       while (valReader.getSizeRemaining() >= 12) {
          uint64_t amount = valReader.get_uint64_t();
          uint16_t txId = valReader.get_uint16_t();
          uint16_t txOutId = valReader.get_uint16_t();
-         uint64_t txOutKey = (uint64_t)blockID_BE << 32 |
-            htons(txId) << 16 |
-            htons(txOutId);
+         uint64_t txOutKey = DBUtils::constructTxIOKey(blockID, txId, txOutId);
 
          result.emplace(txOutKey, TxOutData{
             amount, blockID, txId, txOutId});
@@ -1866,16 +1861,18 @@ LMDBBlockDatabase::getTxInDataForTxOutData(
    const std::map<uint64_t, TxOutData>& txOutData) const
 {
    auto tx = beginTransaction(DB_SELECT::TXINS, LMDB::Mode::ReadWrite);
-   auto dbIter = getIterator(DB_SELECT::TXINS);
+   auto dbPtr = getDbPtr(DB_SELECT::TXINS);
 
    std::unordered_map<uint64_t, uint64_t> result;
    for (const auto& txoutPair : txOutData) {
       BinaryDataRef txOutKeyRef{
          (const uint8_t*)&txoutPair.first, sizeof(uint64_t)};
-      if (dbIter->seekToExact(txOutKeyRef)) {
-         uint64_t txInKey = dbIter->getValueReader().get_uint64_t();
-         result.emplace(txoutPair.first, txInKey);
+      auto valueRef = dbPtr->getValue(txOutKeyRef);
+      if (valueRef.getSize() != 8) {
+         continue;
       }
+      auto emplaceResult = result.emplace(txoutPair.first, 0UL).first;
+      std::memcpy(&emplaceResult->second, valueRef.getPtr(), 8);
    }
    return result;
 }

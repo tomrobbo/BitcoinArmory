@@ -31,34 +31,6 @@
 
 using namespace Armory;
 
-namespace {
-   using HashToKeyMap = std::unordered_map<
-      Hash32, std::vector<uint64_t>,
-      Hash32::Hasher, Hash32::IsEqual
-   >;
-
-   uint64_t getTxKey(uint32_t blockId, uint16_t txId)
-   {
-      return
-         (uint64_t)htonl(blockId) << 32 |
-         htons(txId) << 16 |
-         0xFFFF;
-   }
-
-   uint64_t getTxKey(uint32_t blockId, uint16_t txId, uint16_t txOutId)
-   {
-      return
-         (uint64_t)htonl(blockId) << 32 |
-         htons(txId) << 16 |
-         htons(txOutId);
-   }
-
-   uint32_t getBlockIDFromKey(uint64_t key)
-   {
-      return ntohl(uint32_t(key >> 32));
-   }
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 // ScannerContext
 void ScannerContext::init(LMDBBlockDatabase* db)
@@ -617,7 +589,7 @@ void BlockchainScanner::processOutputsThread(ParserBatch* batch)
             /* if we got this far, this txout is ours */
 
             //track known hash and its txkey
-            auto txKey = getTxKey(header->getUniqueID(), i);
+            auto txKey = DBUtils::constructTxKey(header->getUniqueID(), i);
             const auto& txHash = txn.getHash();
             result.hashMap.emplace(txHash, std::set<uint64_t>{txKey});
 
@@ -707,7 +679,7 @@ void BlockchainScanner::processInputsThread(ParserBatch* batch)
                //multiple blocks carry this hash, grab the valid one
                txKey = UINT64_MAX;
                for (const auto& key : hashIter->second) {
-                  auto blockID = getBlockIDFromKey(key);
+                  auto blockID = DBUtils::getBlockIDFromScrAddrKey(key);
                   if (batch->context.isBlockIDValid(blockID)) {
                      txKey = key;
                      break;
@@ -723,9 +695,8 @@ void BlockchainScanner::processInputsThread(ParserBatch* batch)
             //create keys, add to result map
             uint32_t outpointId;
             memcpy(&outpointId, txn.data_ + txin.first + 32, 4);
-            uint64_t txOutIdMask = 0xFFFFFFFFFFFF0000 | htons((uint16_t)outpointId);
-            uint64_t txOutKey = txKey & txOutIdMask;
-            uint64_t txInKey = getTxKey(header->getUniqueID(), i, y);
+            uint64_t txOutKey = DBUtils::constructTxIOKeyFromTxKey(txKey, (uint16_t)outpointId);
+            uint64_t txInKey = DBUtils::constructTxIOKey(header->getUniqueID(), i, y);
             result.txInMap.emplace(txOutKey, txInKey);
          }
       }

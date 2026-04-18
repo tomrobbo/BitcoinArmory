@@ -188,6 +188,7 @@ bool Builder::init()
    if (Config::DBSettings::getDbType() != ARMORY_DB_TYPE::Super) {
       //don't scan without any registered addresses
       if (scrAddrFilter_->empty()) {
+         LOGINFO << "found no address to scan";
          TIMER_STOP("initdb");
          double timeSpent = TIMER_READ_SEC("initdb");
          LOGINFO << "init db in " << timeSpent << "s";
@@ -546,9 +547,6 @@ std::set<uint32_t> Builder::addBlocksToDB(
       }
    } else {
       commitAllTxHints(blocksVec);
-      if (Config::DBSettings::getDbType() == ARMORY_DB_TYPE::Super) {
-         commitAllStxos(blocksVec);
-      }
    }
    return invalidBlockIds;
 }
@@ -841,70 +839,6 @@ void Builder::commitAllTxHints(
          txhint.first.getRef(),
          txhint.second.getDataRef());
    }
-}
-
-/////////////////////////////////////////////////////////////////////////////
-void Builder::commitAllStxos(
-   const std::vector<std::shared_ptr<BlockData>>& blocks)
-{
-   throw std::runtime_error("[Builder::commitAllStxos] not a thing anymore");
-   #if 0
-   if (Config::DBSettings::getDbType() != ARMORY_DB_TYPE::Super) {
-      throw std::runtime_error("invalid db mode");
-   }
-   std::vector<std::pair<BinaryData, BinaryWriter>> serializedStxos;
-
-   for (const auto& block : blocks) {
-      auto blockID = block->uniqueID();
-      const auto& txns = block->getTxns();
-      for (unsigned i = 0; i < txns.size(); i++) {
-         const auto& hash = txns[i]->getHash();
-         const auto& txouts = txns[i]->txouts_;
-         bool isCoinbase = (i == 0);
-
-         //commit stxo count
-         std::pair<BinaryData, BinaryWriter> stxocount;
-         stxocount.first = std::move(
-            DBUtils::getBlkDataKeyNoPrefix(blockID, 0xFF, i));
-         stxocount.second.put_BinaryData(hash);
-         stxocount.second.put_var_int(txouts.size());
-         serializedStxos.push_back(std::move(stxocount));
-
-         for (unsigned y = 0; y < txouts.size(); y++) {
-            std::pair<BinaryData, BinaryWriter> bwPair;
-
-            bwPair.first = std::move(
-               DBUtils::getBlkDataKeyNoPrefix(blockID, 0xFF, i, y));
-            auto txoutDataRef = txns[i]->getTxOutRef(y);
-
-            StoredTxOut::serializeDBValue(
-               bwPair.second,
-               0, isCoinbase,
-               txoutDataRef,
-               TXOUT_UNSPENT, {});
-            serializedStxos.push_back(std::move(bwPair));
-         }
-      }
-   }
-
-   auto tx = db_->beginTransaction(DB_SELECT::STXO, LMDB::Mode::ReadWrite);
-   for (auto& bwPair : serializedStxos) {
-      if (bwPair.first.getSize() == 6) {
-         auto key = db_->getValueNoCopy(DB_SELECT::STXO, bwPair.first.getRef());
-         if (!key.empty()) {
-            std::string errMsg{"trying to commit stxo key " +
-               bwPair.first.toHexStr() +
-               " which already exists, aborting!"
-            };
-            LOGERR << errMsg;
-            throw std::runtime_error(errMsg);
-         }
-      }
-
-      db_->putValue(
-         DB_SELECT::STXO, bwPair.first.getRef(), bwPair.second.getDataRef());
-   }
-   #endif
 }
 
 #if 0

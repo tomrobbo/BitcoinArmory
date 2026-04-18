@@ -252,13 +252,15 @@ bool BlockDataManager::doInitialSyncOnLoad(BdmInitMode mode,
 bool BlockDataManager::loadDiskState(const ProgressCallback &progress,
    bool forceRescanSSH)
 {
-   scrAddrData_->start();
+   std::promise<bool> readyProm;
+   scrAddrData_->start(readyProm.get_future());
 
    BDMstate_ = BDMState::Initializing;
    dbBuilder_ = std::make_shared<Database::Builder>(
       *this, progress, forceRescanSSH);
    if (!dbBuilder_->init()) {
       //fatal error in db startup, terminate bdm
+      readyProm.set_value(false);
       return false;
    }
 
@@ -267,6 +269,7 @@ bool BlockDataManager::loadDiskState(const ProgressCallback &progress,
    }
 
    BDMstate_ = BDMState::Ready;
+   readyProm.set_value(true);
    LOGINFO << "BDM is ready";
    return true;
 }

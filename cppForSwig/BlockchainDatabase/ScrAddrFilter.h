@@ -155,7 +155,7 @@ public:
    std::mutex mergeLock_;
 
 private:
-   void run(void);
+   void run(std::shared_future<bool>);
    AddrMap prepareRegistrationBatch(std::shared_ptr<RegistrationBatch>);
    std::set<BinaryDataRef> mergeAddresses(AddrMap, bool);
    AddrMap assignScrAddrKeys(const std::set<BinaryData>&);
@@ -167,7 +167,7 @@ public:
    ScrAddrFilter(LMDBBlockDatabase*, uint16_t);
    virtual ~ScrAddrFilter(void);
 
-   void start(void);
+   void start(std::shared_future<bool>);
    void shutdown(void);
 
    ////

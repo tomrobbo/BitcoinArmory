@@ -20,6 +20,7 @@
 #include <unistd.h>
 #include <string_view>
 #include <cstring>
+#include <arpa/inet.h>
 
 #include "DBUtils.h"
 
@@ -270,6 +271,40 @@ BinaryDataRef DBUtils::getDataRefForPacket(
       throw std::runtime_error("on disk data length mismatch");
    }
    return brr.get_BinaryDataRef(brr.getSizeRemaining());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+uint64_t DBUtils::constructTxKey(
+   uint32_t blockID, uint16_t txId)
+{
+   return
+      0xFFFF000000000000 |
+      (uint64_t)htonl(blockID) |
+      (uint64_t)htons(txId) << 32;
+}
+
+uint64_t DBUtils::constructTxIOKey(
+   uint32_t blockID, uint16_t txId, uint16_t txIOId)
+{
+   return
+      (uint64_t)htonl(blockID) |
+      (uint64_t)htons(txId) << 32 |
+      (uint64_t)htons(txIOId) << 48;
+}
+
+uint64_t DBUtils::constructTxIOKeyFromTxKey(uint64_t txKey, uint16_t txIOId)
+{
+   return txKey & (0x0000FFFFFFFFFFFF | (uint64_t)htons((uint16_t)txIOId) << 48);
+}
+
+uint32_t DBUtils::getBlockIDFromScrAddrKey(uint64_t key)
+{
+   return ntohl(uint32_t(key >> 32));
+}
+
+uint32_t DBUtils::getBlockIDFromTxKey(uint64_t txKey)
+{
+   return htonl((uint32_t)txKey);
 }
 
 /////////////////////////////////////////////////////////////////////////////

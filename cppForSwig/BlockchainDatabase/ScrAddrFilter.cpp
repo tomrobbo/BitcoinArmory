@@ -58,7 +58,7 @@ bool ScrAddrFilter::empty() const
    return scanFilterAddrMap_->empty();
 }
 
-void ScrAddrFilter::start()
+void ScrAddrFilter::start(std::shared_future<bool> bdmReadyFut)
 {
    LOGINFO << "loading known addresses";
 
@@ -115,7 +115,7 @@ void ScrAddrFilter::start()
    }
 
    /* start operation thread */
-   thr_ = std::thread([this]{ run(); });
+   thr_ = std::thread([this, fut=bdmReadyFut]{ run(fut); });
 }
 
 void ScrAddrFilter::shutdown()
@@ -299,8 +299,12 @@ void ScrAddrFilter::pushAddressBatch(std::shared_ptr<AddressBatch> batch)
    registrationStack_.push_back(std::move(batch));
 }
 
-void ScrAddrFilter::run()
+void ScrAddrFilter::run(std::shared_future<bool> bdmReadyFut)
 {
+   if (bdmReadyFut.get() == false) {
+      return;
+   }
+
    while (true) {
       std::shared_ptr<AddressBatch> batch;
       try {
@@ -309,6 +313,7 @@ void ScrAddrFilter::run()
          //end loop condition
          break;
       }
+
 
       switch (batch->type)
       {
@@ -405,25 +410,8 @@ ScrAddrIdMap ScrAddrFilter::getScrAddrIds() const
 ////////
 void ScrAddrFilter::cleanUpSdbis()
 {
-   //SSH
-   {
-      auto tx = lmdb_->beginTransaction(DB_SELECT::SSH, LMDB::Mode::ReadWrite);
-      lmdb_->deleteValue(DB_SELECT::SSH, StoredDBInfo::getDBKey(sdbiKey_));
-   }
-
-   //SUBSSH
-   {
-      auto tx = lmdb_->beginTransaction(DB_SELECT::SUBSSH, LMDB::Mode::ReadWrite);
-      lmdb_->deleteValue(DB_SELECT::SUBSSH, StoredDBInfo::getDBKey(sdbiKey_));
-   }
-
-   //TXFILTERS
-   {
-      auto tx = lmdb_->beginTransaction(
-         DB_SELECT::TXFILTERS, LMDB::Mode::ReadWrite);
-      lmdb_->deleteValue(
-         DB_SELECT::TXFILTERS, DBUtils::getMissingHashesKey(sdbiKey_));
-   }
+   auto tx = lmdb_->beginTransaction(DB_SELECT::SCRADDR, LMDB::Mode::ReadWrite);
+   lmdb_->deleteValue(DB_SELECT::SCRADDR, StoredDBInfo::getDBKey(sdbiKey_));
 }
 
 ////////

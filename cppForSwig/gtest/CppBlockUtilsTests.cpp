@@ -60,7 +60,7 @@ namespace {
 
          auto txInIter = txInData.find(txOutPair.first);
          if (txInIter != txInData.end()) {
-            uint32_t txInBlockID = ntohl(uint32_t(txInIter->second >> 32));
+            uint32_t txInBlockID = DBUtils::getBlockIDFromTxKey(txInIter->second);
             header = bc->getHeaderById(txInBlockID);
             if (header->isMainBranch()) {
                continue;

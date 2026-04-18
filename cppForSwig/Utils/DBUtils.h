@@ -75,13 +75,21 @@ namespace Armory
       BLKDATA_TYPE readBlkDataKeyNoPrefix(BinaryRefReader&, uint32_t&, uint8_t&,
          uint16_t&, uint16_t&);
 
+      ////////
       std::string getPrefixName(DbPrefix);
       bool checkPrefixByte(BinaryRefReader&, DbPrefix, bool=false);
       bool checkPrefixByteWError(BinaryRefReader&, DbPrefix, bool=false);
 
+      ////////
       BinaryData getFilterPoolKey(uint32_t);
       BinaryData getMissingHashesKey(uint32_t);
       BinaryDataRef getDataRefForPacket(const BinaryDataRef&);
+
+      uint64_t constructTxKey(uint32_t, uint16_t);
+      uint64_t constructTxIOKey(uint32_t, uint16_t, uint16_t);
+      uint64_t constructTxIOKeyFromTxKey(uint64_t, uint16_t);
+      uint32_t getBlockIDFromScrAddrKey(uint64_t);
+      uint32_t getBlockIDFromTxKey(uint64_t);
    }
 
    namespace FileUtils
