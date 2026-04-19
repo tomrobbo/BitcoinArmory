@@ -118,7 +118,7 @@ BlockDataManager::BlockDataManager(std::function<bool(void)> shutdownLbd) :
 
       scrAddrData_ = std::make_shared<BDM_ScrAddrFilter>(this);
    } catch (const std::exception& e) {
-      std::cout << "dp open error: " << e.what() << std::endl;
+      std::cout << "db open error: " << e.what() << std::endl;
    } catch (...) {
       exceptPtr_ = std::current_exception();
    }

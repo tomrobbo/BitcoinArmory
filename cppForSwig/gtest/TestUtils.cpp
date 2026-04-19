@@ -166,8 +166,7 @@ namespace TestUtils
    /////////////////////////////////////////////////////////////////////////////
    uint32_t getTopBlockHeightInDB(BlockDataManager* bdm, DB_SELECT db)
    {
-      StoredDBInfo sdbi;
-      bdm->getIFace()->getStoredDBInfo(db, 0);
+      auto sdbi = bdm->getIFace()->getStoredDBInfo(db, 0xFFFF);
       auto header = bdm->blockchain()->getHeaderByHash(sdbi.topScannedBlkHash);
       return header->getBlockHeight();
    }
@@ -310,7 +309,7 @@ namespace DBTestUtils
    /////////////////////////////////////////////////////////////////////////////
    Hash32 getTopBlockHash(LMDBBlockDatabase* db, DB_SELECT dbSelect)
    {
-      auto sdbi = db->getStoredDBInfo(dbSelect, 0);
+      auto sdbi = db->getStoredDBInfo(dbSelect, 0xFFFF);
       return sdbi.topScannedBlkHash;
    }
 

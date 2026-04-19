@@ -205,6 +205,7 @@ std::set<BinaryDataRef> ScrAddrFilter::mergeAddresses(ScrAddrFilter::AddrMap add
       result.emplace(aaPair.second->scrAddr.getRef());
    }
 
+   bool wasEmpty = scanFilterAddrMap_->empty();
    scanFilterAddrMap_->update(std::move(addrMap));
    if (!updateMerkleRoot) {
       /* edge case:
@@ -212,9 +213,9 @@ std::set<BinaryDataRef> ScrAddrFilter::mergeAddresses(ScrAddrFilter::AddrMap add
          has to be treated as fresh
       */
       if (merkleRoot_.valid()) {
-         merkleRoot_  = Hash32{};
+         merkleRoot_ = Hash32{};
       }
-   } else if (merkleRoot_.valid()) {
+   } else if (merkleRoot_.valid() || wasEmpty) {
       merkleRoot_ = computeMerkleRoot();
       updateAddressMerkle();
    }
@@ -235,20 +236,20 @@ Hash32 ScrAddrFilter::scanFrom() const
 Hash32 ScrAddrFilter::computeMerkleRoot() const
 {
    std::vector<BinaryData> addrVec;
-   addrVec.reserve(scanFilterAddrMap_->size());
-
    auto scraddrmap = scanFilterAddrMap_->get();
+   if (scraddrmap->empty()) {
+      return Hash32{};
+   }
+   addrVec.reserve(scraddrmap->size());
+
    for (const auto& addr : *scraddrmap) {
       addrVec.emplace_back(addr.second->getHash());
    }
 
-   if (!addrVec.empty()) {
-      Hash32 result;
-      auto merkle = BtcUtils::calculateMerkleRoot(addrVec);
-      std::memcpy(result.data, merkle.getPtr(), 32);
-      return result;
-   }
-   return Hash32{};
+   Hash32 result;
+   auto merkle = BtcUtils::calculateMerkleRoot(addrVec);
+   std::memcpy(result.data, merkle.getPtr(), 32);
+   return result;
 }
 
 void ScrAddrFilter::updateAddressMerkle()
@@ -269,8 +270,11 @@ void ScrAddrFilter::updateScannedHash(const Hash32& hash)
 {
    auto tx = lmdb_->beginTransaction(DB_SELECT::SCRADDR, LMDB::Mode::ReadWrite);
    auto sdbi = getSDBI();
+   if (sdbi.metaHash != merkleRoot_) {
+      merkleRoot_ = computeMerkleRoot();
+      sdbi.metaHash = merkleRoot_;
+   }
    sdbi.topScannedBlkHash = hash;
-   sdbi.metaHash = merkleRoot_;
    lmdb_->putStoredDBInfo(DB_SELECT::SCRADDR, sdbi, sdbiKey_);
 }
 
