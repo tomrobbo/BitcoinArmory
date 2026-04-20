@@ -113,21 +113,11 @@ std::shared_ptr<BlockData> BlockData::deserialize(
 
       case CheckHashes::MerkleOnly:
       case CheckHashes::TxFilters:
-      {
-         allHashes.reserve(result->txns_.size());
-         for (auto& txn : result->txns_) {
-            auto txhash = txn->moveHash();
-            allHashes.emplace_back(std::move(txhash));
-         }
-         break;
-      }
-
       case CheckHashes::FullHints:
       {
          allHashes.reserve(result->txns_.size());
-         for (const auto& txn : result->txns_) {
-            const auto& txhash = txn->getHash();
-            allHashes.emplace_back(txhash);
+         for (auto& txn : result->txns_) {
+            allHashes.emplace_back(txn->moveHash());
          }
          break;
       }
@@ -146,6 +136,8 @@ std::shared_ptr<BlockData> BlockData::deserialize(
 
    if (mode == CheckHashes::TxFilters) {
       result->computeTxFilter(allHashes);
+   } else if (mode == CheckHashes::FullHints) {
+      result->serializeTxHints(allHashes);
    }
    return result;
 }
@@ -163,6 +155,36 @@ void BlockData::computeTxFilter(const std::vector<BinaryData>& allHashes)
 std::shared_ptr<BlockHashVector> BlockData::getTxFilter() const
 {
    return txFilter_;
+}
+
+void BlockData::serializeTxHints(const std::vector<BinaryData>& txHashes)
+{
+   //sanity check
+   if (!serializedTxHints_.empty()) {
+      throw std::runtime_error("already computed hints for this block!");
+   }
+
+   uint64_t blockID = (uint64_t)headerPtr_->getUniqueID() << 32;
+   uint64_t mask = 0x00000000FFFFFFFF;
+   for (uint16_t i = 0; i < txHashes.size(); i++) {
+      //create txhint key
+      const auto& txHash = txHashes[i];
+      uint64_t thisHintKey;
+      std::memcpy(&thisHintKey, txHash.getPtr(), 8);
+      thisHintKey = thisHintKey & mask | blockID;
+
+      //add to map
+      auto emplaceResult = serializedTxHints_.emplace(
+         thisHintKey, BinaryWriter{2});
+
+      //set txId
+      emplaceResult.first->second.put_uint16_t(i);
+   }
+}
+
+const std::unordered_map<uint64_t, BinaryWriter>& BlockData::getTxHints() const
+{
+   return serializedTxHints_;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

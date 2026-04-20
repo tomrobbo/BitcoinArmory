@@ -12,6 +12,7 @@
 #include <vector>
 #include <set>
 #include <map>
+#include <unordered_map>
 
 #include <Utils/BinaryData.h>
 
@@ -44,6 +45,7 @@ private:
 
    std::vector<std::shared_ptr<BCTX>> txns_;
    std::shared_ptr<BlockHashVector> txFilter_;
+   std::unordered_map<uint64_t, BinaryWriter> serializedTxHints_;
 
 public:
    enum class CheckHashes : int
@@ -56,6 +58,7 @@ public:
 
 private:
    BlockData(const std::shared_ptr<Armory::BlockHeader>, const uint8_t*, size_t);
+   void serializeTxHints(const std::vector<BinaryData>&);
 
 public:
    static std::shared_ptr<BlockData> deserialize(
@@ -71,6 +74,7 @@ public:
    const std::vector<std::shared_ptr<BCTX>>& getTxns(void) const;
    void computeTxFilter(const std::vector<BinaryData>&);
    std::shared_ptr<BlockHashVector> getTxFilter(void) const;
+   const std::unordered_map<uint64_t, BinaryWriter>& getTxHints(void) const;
 };
 
 /////////////////////////////////////////////////////////////////////////////

@@ -416,6 +416,8 @@ void Blockchain::putNewHeaders(LMDBBlockDatabase *db)
    for (const auto& header : newlyParsedHeaders_) {
       StoredHeader sbh;
       sbh.createFromBlockHeader(*header);
+      //assume the header is valid for now
+      sbh.merkleValid = true;
       db->putBareHeader(sbh);
    }
 
@@ -528,9 +530,6 @@ uint32_t Blockchain::stageNewHeaders(
       if (newHeader->getUniqueID() == UINT32_MAX) {
          newHeader->setUniqueID(getNewUniqueID());
       }
-      //assume the block is valid for now
-      newHeader->setMerkleValid(true);
-
       headerSet_.emplace(newHeader);
       headersById_[newHeader->getUniqueID()] = newHeader;
       newlyParsedHeaders_.emplace_back(newHeader);

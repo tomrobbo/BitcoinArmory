@@ -407,7 +407,7 @@ void BlockchainScanner::processOutputs()
       //start processing threads
       std::vector<std::thread> thr_vec;
       thr_vec.reserve(totalThreadCount_);
-      for (unsigned i = 0; i < 1/*totalThreadCount_*/; i++) {
+      for (unsigned i = 0; i < totalThreadCount_; i++) {
          thr_vec.emplace_back(std::thread(process_thread, batch.get()));
       }
 
@@ -485,7 +485,7 @@ void BlockchainScanner::processInputs()
 
       //start processing threads
       std::vector<std::thread> thr_vec;
-      for (unsigned i = 1; i < 1/*totalThreadCount_*/; i++) {
+      for (unsigned i = 1; i < totalThreadCount_; i++) {
          thr_vec.emplace_back(std::thread(process_thread, batch.get()));
       }
       process_thread(batch.get());
@@ -709,9 +709,9 @@ void BlockchainScanner::processInputsThread(ParserBatch* batch)
 ////////
 void BlockchainScanner::commitBatches()
 {
-   auto getGlobalOffsetForBlock = [&](unsigned height)->size_t
+   auto getGlobalOffsetForBlock = [bc=blockchain_](unsigned height)->size_t
    {
-      auto header = blockchain_->getHeaderByHeight(height);
+      auto header = bc->getHeaderByHeight(height);
       size_t val = header->getBlockFileNum();
       val *= 128 * 1024 * 1024;
       val += header->getOffset();
@@ -722,10 +722,11 @@ void BlockchainScanner::commitBatches()
       blockchain_->top()->getBlockHeight()));
    auto initVal = getGlobalOffsetForBlock(startAt_);
    calc.init(initVal);
-   if (reportProgress_)
+   if (reportProgress_) {
       progress_(BDMPhase_Rescan,
       calc.fractionCompleted(), UINT32_MAX,
       initVal);
+   }
 
    TIMER_RESET("write");
 
@@ -907,8 +908,6 @@ void BlockchainScanner::processAndCommitTxHints(ParserBatch* batch)
          spentstxo.parentHash = stxo.spenderHash;
          spentstxo.blockHeight =
             DBUtils::hgtxToHeight(stxo.spentByTxInKey.getSliceRef(0, 4));
-         /*spentstxo.duplicateID =
-            DBUtils::hgtxToDupID(stxo.spentByTxInKey.getSliceRef(0, 4));*/
 
          spentstxo.txIndex =
             READ_UINT16_BE(stxo.spentByTxInKey.getSliceRef(4, 2));
@@ -949,385 +948,6 @@ void BlockchainScanner::processAndCommitTxHints(ParserBatch* batch)
             cah.second.getDataRef());
       }
    }
-}
-
-////////
-void BlockchainScanner::updateSSH(bool force, int32_t startHeight)
-{
-   //loop over all subssh entries in SUBSSH db,
-   //compile balance, txio count and summary map for each address
-   //now also resolves unhinted tx hashes
-
-   if (force) {
-      startHeight = 0;
-   }
-
-   if (startHeight > (int32_t)blockchain_->top()->getBlockHeight()) {
-      return;
-   }
-
-   if (reportProgress_) {
-      progress_(BDMPhase_Balance, 0, 0, 0);
-   }
-
-   StoredDBInfo sdbi = scrAddrFilter_->getSshSDBI();
-   {
-      std::shared_ptr<BlockHeader> sdbiblock;
-      try {
-         sdbiblock = blockchain_->getHeaderByHash(sdbi.topScannedBlkHash);
-      } catch (...) {
-         sdbiblock = blockchain_->getGenesisBlock();
-      }
-
-      if (sdbiblock->isMainBranch()) {
-         if (sdbi.topBlkHgt != 0 &&
-            sdbi.topBlkHgt >= blockchain_->top()->getBlockHeight()) {
-            if (!force) {
-               LOGINFO << "no SSH to scan";
-               return;
-            }
-         }
-      }
-   }
-
-   bool resolveHashes =
-      Config::DBSettings::getDbType() == ARMORY_DB_TYPE::Full ?
-      true : false;
-
-   //process ssh, list missing hashes for hash resolver
-   std::set<BinaryData> txnsToResolve;
-   std::map<BinaryData, StoredScriptHistory> sshMap;
-   auto scrAddrMap = scrAddrFilter_->getScanFilterAddrMap();
-
-   {
-      auto sshTx = db_->beginTransaction(DB_SELECT::SUBSSH, LMDB::Mode::ReadOnly);
-      auto sshIter = db_->getIterator(DB_SELECT::SUBSSH);
-      sshIter->seekToStartsWith(DbPrefix::SCRIPT);
-
-      auto scrAddrMapPtr = scrAddrFilter_->getScanFilterAddrMap();
-      auto subsshparser_result = parseSubSsh(
-         std::move(sshIter), startHeight, resolveHashes,
-         scrAddrMapPtr);
-
-      //update SSH
-      auto historyTx = db_->beginTransaction(DB_SELECT::SSH, LMDB::Mode::ReadOnly);
-      for (auto& ssh : subsshparser_result.second) {
-         auto& db_ssh = sshMap[ssh.first];
-         db_->getStoredScriptHistorySummary(db_ssh, ssh.first);
-         if (db_ssh.isInitialized()) {
-            db_ssh.totalUnspent += ssh.second.totalUnspent;
-            db_ssh.totalTxioCount += ssh.second.totalTxioCount;
-            db_ssh.subsshSummary.insert(
-               ssh.second.subsshSummary.begin(),
-               ssh.second.subsshSummary.end());
-         } else {
-            db_ssh = std::move(ssh.second);
-         }
-      }
-      txnsToResolve = std::move(subsshparser_result.first);
-   }
-
-   //build txHash refs from listed txins
-   if (resolveHashes && !txnsToResolve.empty()) {
-      std::set<BinaryData> allMissingTxHashes;
-      try {
-         allMissingTxHashes = move(scrAddrFilter_->getMissingHashes());
-      } catch (const std::runtime_error&) {
-         //no missing hashes entry yet, move on
-      }
-
-      for (const auto& txid : txnsToResolve) {
-         try {
-            //breakdown txkey
-            unsigned height;
-            uint8_t dup;
-            uint16_t txIndex;
-
-            BinaryRefReader brr(txid);
-            DBUtils::readBlkDataKeyNoPrefix(brr, height, dup, txIndex);
-            auto header = blockchain_->getHeaderById(height);
-
-            //grab the tx
-            auto tx = db_->getFullTxCopy(txIndex, header);
-            auto dataPtr = tx.getPtr();
-
-            //build list of all referred hashes in txins
-            auto txinCount = tx.getNumTxIn();
-            for (size_t i = 0; i < txinCount; i++) {
-               auto offset = tx.getTxInOffset(i);
-               BinaryDataRef bdr{dataPtr + offset, 32};
-
-               //skip coinbase txns
-               if (bdr == BtcUtils::EmptyHash) {
-                  continue;
-               }
-               allMissingTxHashes.emplace(bdr);
-            }
-         } catch (const std::exception&) {
-            LOGERR << "failed to grab tx by key";
-            continue;
-         }
-      }
-      scrAddrFilter_->putMissingHashes(allMissingTxHashes);
-   }
-
-   //write ssh data
-   std::shared_ptr<BlockHeader> topheader;
-   try {
-      topheader = blockchain_->getHeaderByHash(topScannedBlockHash_);
-   } catch (const std::exception &e) {
-      LOGERR << e.what();
-      throw e;
-   }
-
-   auto topheight = topheader->getBlockHeight();
-   auto putsshtx = db_->beginTransaction(DB_SELECT::SSH, LMDB::Mode::ReadWrite);
-
-   for (auto& scrAddr : *scrAddrMap) {
-      auto& ssh = sshMap[scrAddr.second->scrAddr_];
-      if (!ssh.isInitialized()) {
-         ssh.uniqueKey = scrAddr.first;
-      }
-
-      BinaryData sshKey = ssh.getDBKey();
-      ssh.scanHeight = topheight;
-      ssh.tallyHeight = topheight;
-
-      BinaryWriter bw;
-      ssh.serializeDBValue(bw, ARMORY_DB_TYPE::Bare);
-      db_->putValue(DB_SELECT::SSH, sshKey.getRef(), bw.getDataRef());
-   }
-}
-
-////////
-void BlockchainScanner::undo(ReorganizationState& reorgState)
-{
-   //dont undo subssh, these are skipped by dupID when loading history
-   throw std::runtime_error("undo should not be used anymore");
-   #if 0
-   auto headerPtr = reorgState.prevTop;
-   std::map<uint32_t, std::shared_ptr<FileUtils::FileMap>> fileMaps;
-
-   std::map<DB_SELECT, std::set<BinaryData>> keysToDelete;
-   std::map<BinaryData, StoredScriptHistory> sshMap;
-   std::set<BinaryData> undoSpentness; //TODO: add spentness DB
-
-   //TODO: sanity checks on header ptrs from reorgState
-   if (reorgState.prevTop->getBlockHeight() <=
-      reorgState.reorgBranchPoint->getBlockHeight()) {
-      throw std::runtime_error("invalid reorg state");
-   }
-
-   auto scrAddrMap = scrAddrFilter_->getScanFilterAddrMap();
-   while (headerPtr->getThisHash() != reorgState.reorgBranchPoint->getThisHash()) {
-      int currentHeight = headerPtr->getBlockHeight();
-
-      //create tx to pull subssh data
-      auto sshTx = db_->beginTransaction(DB_SELECT::SUBSSH, LMDB::Mode::ReadOnly);
-
-      //grab blocks from previous top until branch point
-      if (headerPtr == nullptr) {
-         throw std::runtime_error("reorg failed while tracing back to "
-         "branch point");
-      }
-
-      auto filenum = headerPtr->getBlockFileNum();
-      auto fileIter = fileMaps.find(filenum);
-      if (fileIter == fileMaps.end()) {
-         auto filePath = blockFiles_->getFilePathForID(filenum);
-         fileIter = fileMaps.emplace(filenum,
-            std::make_shared<FileUtils::FileMap>(filePath)).first;
-      }
-
-      auto filemap = fileIter->second;
-      auto bdata = BlockData::deserialize(
-         filemap->ptr() + headerPtr->getOffset(),
-         headerPtr->getBlockSize(), headerPtr,
-         BlockData::CheckHashes::NoChecks);
-
-      const auto& txns = bdata->getTxns();
-      for (unsigned i = 0; i < txns.size(); i++) {
-         const auto& txn = txns[i];
-
-         //undo tx outs added by this block
-         for (unsigned y = 0; y < txn->txouts_.size(); y++) {
-            auto& txout = txn->txouts_[y];
-
-            BinaryRefReader brr(
-               txn->data_ + txout.first, txout.second);
-            brr.advance(8);
-            unsigned scriptSize = (unsigned)brr.get_var_int();
-            auto scrAddr = BtcUtils::getTxOutScrAddr(
-               brr.get_BinaryDataRef(scriptSize));
-
-            auto saIter = scrAddrMap->find(scrAddr);
-            if (saIter == scrAddrMap->end()) {
-               continue;
-            }
-
-            //update ssh value and txio count
-            auto& ssh = sshMap[scrAddr];
-            if (!ssh.isInitialized()) {
-               db_->getStoredScriptHistorySummary(ssh, scrAddr);
-            }
-            if (ssh.scanHeight < currentHeight) {
-               continue;
-            }
-            brr.resetPosition();
-            uint64_t value = brr.get_uint64_t();
-            ssh.totalUnspent -= value;
-            ssh.totalTxioCount--;
-
-            //mark stxo key for deletion
-            auto txoutKey = DBUtils::getBlkDataKey(
-               currentHeight, 0, i, y);
-            keysToDelete[DB_SELECT::STXO].insert(txoutKey);
-
-            //decrement summary count at height, remove entry if necessary
-            auto& sum = ssh.subsshSummary[currentHeight];
-            sum--;
-            if (sum <= 0) {
-               ssh.subsshSummary.erase(currentHeight);
-            }
-         }
-
-         //undo spends from this block
-         for (unsigned y = 0; y < txn->txins_.size(); y++) {
-            auto& txin = txn->txins_[y];
-            BinaryDataRef outHash(txn->data_ + txin.first, 32);
-
-            auto txKey = db_->getDBKeyForHash(outHash);
-            if (txKey.getSize() != 6) {
-               continue;
-            }
-            uint16_t txOutId = (uint16_t)READ_UINT32_LE(
-               txn->data_ + txin.first + 32);
-            txKey.append(WRITE_UINT16_BE(txOutId));
-
-            StoredTxOut stxo;
-            if (!db_->getStoredTxOut(stxo, txKey)) {
-               continue;
-            }
-
-            //update ssh value and txio count
-            auto& scrAddr = stxo.getScrAddress();
-            auto& ssh = sshMap[scrAddr];
-            if (!ssh.isInitialized()) {
-               db_->getStoredScriptHistorySummary(ssh, scrAddr);
-            }
-            if (ssh.scanHeight < currentHeight) {
-               continue;
-            }
-
-            ssh.totalUnspent += stxo.getValue();
-            ssh.totalTxioCount--;
-
-            //mark txout key for undoing spentness
-            undoSpentness.insert(txKey);
-
-            //decrement summary count at height, remove entry if necessary
-            auto& sum = ssh.subsshSummary[currentHeight];
-            sum--;
-            if (sum <= 0) {
-               ssh.subsshSummary.erase(currentHeight);
-            }
-         }
-      }
-
-      //set headerPtr to prev block
-      try {
-         headerPtr = blockchain_->getHeaderByHash(headerPtr->getPrevHash());
-      } catch (const std::exception &e) {
-         LOGERR << e.what();
-         throw e;
-      }
-   }
-
-   //at this point we have a map of updated ssh, as well as a 
-   //set of keys to delete from the DB and spentness to undo by stxo key
-
-   //stxo
-   {
-      auto tx = db_->beginTransaction(DB_SELECT::STXO, LMDB::Mode::ReadWrite);
-
-      //grab stxos and revert spentness
-      map<BinaryData, StoredTxOut> stxos;
-      for (auto& stxoKey : undoSpentness) {
-         auto& stxo = stxos[stxoKey];
-         if (!db_->getStoredTxOut(stxo, stxoKey)) {
-            continue;
-         }
-
-         stxo.spentByTxInKey.clear();
-         stxo.spentness = TXOUT_UNSPENT;
-      }
-
-      //put updated stxos
-      for (auto& stxo : stxos) {
-         if (stxo.second.isInitialized()) {
-            db_->putStoredTxOut(stxo.second);
-         }
-      }
-
-      //delete invalidated stxos
-      auto& stxoKeysToDelete = keysToDelete[DB_SELECT::STXO];
-      for (auto& key : stxoKeysToDelete) {
-         db_->deleteValue(DB_SELECT::STXO, key);
-      }
-   }
-
-   int branchPointHeight =
-      reorgState.reorgBranchPoint->getBlockHeight();
-
-   //ssh
-   {
-      auto tx = db_->beginTransaction(DB_SELECT::SSH, LMDB::Mode::ReadWrite);
-
-      //go thourgh all ssh in scrAddrFilter
-      for (auto& scrAddr : *scrAddrMap) {
-         auto& ssh = sshMap[scrAddr.second->scrAddr_];
-         
-         //if the ssh isn't in our map, pull it from DB
-         if (!ssh.isInitialized()) {
-            db_->getStoredScriptHistorySummary(ssh, scrAddr.first);
-            if (ssh.uniqueKey.empty()) {
-               sshMap.erase(scrAddr.second->scrAddr_);
-               continue;
-            }
-         }
-
-         //update alreadyScannedUpToBlk_ to branch point height
-         if (ssh.scanHeight > branchPointHeight) {
-            ssh.scanHeight = branchPointHeight;
-         }
-
-         if (ssh.tallyHeight > branchPointHeight) {
-            ssh.tallyHeight = branchPointHeight;
-         }
-      }
-
-      //write it all up
-      for (const auto& ssh : sshMap) {
-         auto saIter = scrAddrMap->find(ssh.second.uniqueKey);
-         if (saIter == scrAddrMap->end()) {
-            LOGWARN << "invalid scrAddr during undo";
-            continue;
-         }
-
-         BinaryWriter bw;
-         ssh.second.serializeDBValue(bw, ARMORY_DB_TYPE::Bare);
-         db_->putValue(DB_SELECT::SSH,
-            ssh.second.getDBKey().getRef(),
-            bw.getDataRef());
-      }
-
-      //update SSH sdbi
-      StoredDBInfo sdbi = scrAddrFilter_->getSshSDBI();
-      sdbi.topScannedBlkHash = reorgState.reorgBranchPoint->getThisHash().toBinaryData();
-      sdbi.topBlkHgt = branchPointHeight;
-      scrAddrFilter_->putSshSDBI(sdbi);
-   }
-   #endif
 }
 #endif
 

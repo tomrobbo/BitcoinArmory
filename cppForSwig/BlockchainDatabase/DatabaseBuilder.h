@@ -58,9 +58,7 @@ namespace Armory
 
          Hash32 initTransactionHistory(const ReorganizationState&);
          Hash32 scanHistory(const ReorganizationState&, bool, bool);
-         void undoHistory(ReorganizationState&);
 
-         void resetHistory(void);
          void verifyTransactions(void);
          void commitAllTxHints(const std::vector<std::shared_ptr<BlockData>>&);
          void cycleDatabases(void);

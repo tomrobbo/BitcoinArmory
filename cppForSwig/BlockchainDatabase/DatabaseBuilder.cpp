@@ -6,6 +6,8 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
+#include <cstring>
+
 #include "DatabaseBuilder.h"
 #include <Utils/BtcUtils.h>
 #include <Utils/varint.h>
@@ -238,8 +240,6 @@ bool Builder::init()
 void Builder::loadBlockHeadersFromDB(
    const ProgressCallback& progress)
 {
-   //TODO: preload the headers db file to speed process up
-
    // every ten minutes we get a block, how many blocks exist?
    const time_t btcEpoch = 1230963300; // genesis block ts
    const time_t now = time(nullptr);
@@ -261,7 +261,6 @@ void Builder::loadBlockHeadersFromDB(
       );
    };
    blockchain_->loadHeadersFromDB(db_, callback);
-   
 }
 
 ////////
@@ -358,7 +357,6 @@ BlockOffset Builder::parseForNewHeaders(const ProgressCallback& progress)
 void Builder::parseForNewBlocks(const BlockOffset& startBO,
    const ProgressCallback& progress)
 {
-   //this is a helper to load block data files in memory
    if (!startBO.isValid()) {
       return;
    }
@@ -450,8 +448,8 @@ std::set<uint32_t> Builder::addBlocksToDB(
 {
    /*
    Expect headers to already exist in blockchain objects.
-   This checks blocks body, computes all tx hashes and merkle root and
-   checks it vs root in header.
+   This call checks blocks body, computes all tx hashes and merkle root
+   and checks it vs root in header.
    Finally, it uses tx hashes to build + commits tx hints/filters to db.
    */
 
@@ -459,7 +457,7 @@ std::set<uint32_t> Builder::addBlocksToDB(
    std::set<uint32_t> invalidBlockIds;
    blocksVec.reserve(200);
 
-   bool fullHints = Config::DBSettings::getDbType() == ARMORY_DB_TYPE::Super;
+   bool fullHints = Config::DBSettings::getDbType() != ARMORY_DB_TYPE::Bare;
    auto tallyBlocks =
    [&blocksVec, &invalidBlockIds, fullHints, bc=blockchain_, fileID=bdc.fileID]
    (const uint8_t* data, size_t size, size_t)->bool
@@ -563,6 +561,8 @@ void Builder::parseBlockFile(
 
    //parse the file
    size_t progress = 0;
+   uint32_t thisBlkSize = 0;
+
    while (progress + magicBytesSize < fileSize) {
       size_t localProgress = magicBytesSize;
       BinaryDataRef magic(dataPtr, magicBytesSize);
@@ -590,9 +590,8 @@ void Builder::parseBlockFile(
          return;
       }
 
-      BinaryDataRef blockSize(dataPtr + localProgress, 4);
+      std::memcpy(&thisBlkSize, dataPtr + localProgress, 4);
       localProgress += 4;
-      size_t thisBlkSize = READ_UINT32_LE(blockSize.getPtr());
       if (progress + localProgress + thisBlkSize > fileSize) {
          return;
       }
@@ -739,30 +738,21 @@ ReorganizationState Builder::update()
 }
 
 /////////////////////////////////////////////////////////////////////////////
-#if 0
-void Builder::undoHistory(ReorganizationState& reorgState)
+void Builder::commitAllTxHints(
+   const std::vector<std::shared_ptr<BlockData>>& blocks)
 {
-   if (Config::DBSettings::getDbType() != ARMORY_DB_TYPE::Super) {
-      BlockchainScanner bcs(blockchain_, db_, scrAddrFilter_.get(),
-         blockFiles_,
-         Config::DBSettings::threadCount(), Config::DBSettings::ramUsage(),
-         progress_, false);
-      bcs.undo(reorgState);
-   } else {
-      BlockchainScanner_Super bcs(blockchain_, db_,
-         blockFiles_, false,
-         Config::DBSettings::threadCount(), Config::DBSettings::ramUsage(),
-         progress_, false);
-      bcs.undo(reorgState);
+   //txhints are blind write ahead
+   auto hintdbtx = db_->beginTransaction(DB_SELECT::TXHINTS, LMDB::Mode::ReadWrite);
+   for (const auto& block : blocks) {
+      const auto& txHints = block->getTxHints();
+      for (const auto& hintPair : txHints) {
+         BinaryDataRef keyRef{(const uint8_t*)&hintPair.first, sizeof(uint64_t)};
+         db_->putValue(DB_SELECT::TXHINTS,
+            keyRef,
+            hintPair.second.getDataRef()
+         );
+      }
    }
-}
-#endif
-
-void Builder::resetHistory()
-{
-   //nuke SSH, SUBSSH, TXHINT and STXO DBs
-   LOGINFO << "reseting history in DB";
-   db_->resetHistoryDatabases();
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -799,72 +789,7 @@ void Builder::verifyChain()
    //verifyTransactions();
 }
 
-/////////////////////////////////////////////////////////////////////////////
-void Builder::commitAllTxHints(
-   const std::vector<std::shared_ptr<BlockData>>& blocks)
-{
-   auto addHint = [](StoredTxHints& stxh, const BinaryData& txkey)->void
-   {
-      //make sure key isn't already in there
-      for (const auto& key : stxh.dbKeyList) {
-         if (key == txkey) {
-            return;
-         }
-      }
-      stxh.dbKeyList.emplace_back(txkey);
-   };
-
-   //The readwrite db transactions makes sure only one thread is batching
-   //txhints at a time. This is relevant, as hints are first pulled from
-   //disk then updated. In case 2 different blocks commit to the same
-   //hint, one will likely overwrite the other.
-   auto hintdbtx = db_->beginTransaction(DB_SELECT::TXHINTS, LMDB::Mode::ReadWrite);
-   std::map<BinaryData, StoredTxHints> txHints;
-   {
-      auto addTxHintMap = [&txHints, addHint, db=db_]
-      (const std::shared_ptr<BCTX>& txn, const BinaryData& txkey)
-      {
-         auto txHashPrefix = txn->getHash().getSliceCopy(0, 4);
-         auto& stxh = txHints[txHashPrefix];
-
-         //pull txHint from memory first, don't want to overwrite
-         //existing hints
-         if (!stxh.isInitialized()) {
-            db->getStoredTxHints(stxh, txHashPrefix);
-         }
-         addHint(stxh, txkey);
-         stxh.preferredDBKey = stxh.dbKeyList.front();
-      };
-
-      for (const auto& block : blocks) {
-         auto blockId = block->uniqueID();
-         const auto& txns = block->getTxns();
-         for (unsigned i=0; i < txns.size(); i++) {
-            const auto& txn = txns[i];
-            auto txkey = DBUtils::getBlkDataKeyNoPrefix(blockId, 0xFF, i);
-            addTxHintMap(txn, txkey);
-         }
-      }
-   }
-
-   std::map<BinaryData, BinaryWriter> serializedHints;
-
-   //serialize
-   for (const auto& txhint : txHints) {
-      auto& bw = serializedHints[txhint.second.getDBKey()];
-      txhint.second.serializeDBValue(bw);
-   }
-
-   //write
-   for (const auto& txhint : serializedHints) {
-      db_->putValue(DB_SELECT::TXHINTS,
-         txhint.first.getRef(),
-         txhint.second.getDataRef());
-   }
-}
-
 #if 0
-/////////////////////////////////////////////////////////////////////////////
 void Builder::verifyTransactions()
 {
    struct ParserState
@@ -1202,7 +1127,6 @@ void Builder::verifyTxFilters()
    repairTxFilters(damagedFilters);
 }
 
-/////////////////////////////////////////////////////////////////////////////
 void Builder::repairTxFilters(const set<unsigned>& badFilters)
 {
    {
@@ -1249,7 +1173,6 @@ void Builder::repairTxFilters(const set<unsigned>& badFilters)
          thr.join();
 }
 
-/////////////////////////////////////////////////////////////////////////////
 void Builder::reprocessTxFilter(
    shared_ptr<BlockDataFileMap> blockfilemappointer, unsigned fileID)
 {
