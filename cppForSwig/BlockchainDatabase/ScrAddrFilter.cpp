@@ -44,7 +44,7 @@ ScrAddrFilter::ScrAddrFilter(LMDBBlockDatabase* lmdb, uint16_t sdbiKey)
    try {
       getSDBI();
    } catch (const LmdbWrapperException&) {
-      updateAddressMerkle();
+      resetSDBI();
    }
 }
 
@@ -222,14 +222,18 @@ std::set<BinaryDataRef> ScrAddrFilter::mergeAddresses(ScrAddrFilter::AddrMap add
    return result;
 }
 
-Hash32 ScrAddrFilter::scanFrom() const
+Hash32 ScrAddrFilter::headerHashToScanFrom()
 {
    auto sdbi = getSDBI();
-   if (merkleRoot_ == sdbi.metaHash) {
+   if (!merkleRoot_.valid()) {
+      merkleRoot_ = computeMerkleRoot();
+      sdbi.metaHash = merkleRoot_;
+      auto tx = lmdb_->beginTransaction(DB_SELECT::SCRADDR, LMDB::Mode::ReadWrite);
+      lmdb_->putStoredDBInfo(DB_SELECT::SCRADDR, sdbi, sdbiKey_);
+   } else if (merkleRoot_ == sdbi.metaHash) {
       return sdbi.topScannedBlkHash;
-   } else {
-      return Hash32{};
    }
+   return Hash32{};
 }
 
 ////////
@@ -255,13 +259,7 @@ Hash32 ScrAddrFilter::computeMerkleRoot() const
 void ScrAddrFilter::updateAddressMerkle()
 {
    auto tx = lmdb_->beginTransaction(DB_SELECT::SCRADDR, LMDB::Mode::ReadWrite);
-   StoredDBInfo sdbi;
-   try {
-      sdbi = std::move(lmdb_->getStoredDBInfo(DB_SELECT::SCRADDR, sdbiKey_));
-   } catch (const LmdbWrapperException&) {
-      sdbi.magicBytes = Config::BitcoinSettings::getMagicBytes();
-      sdbi.armoryType = Config::DBSettings::getDbType();
-   }
+   auto sdbi = lmdb_->getStoredDBInfo(DB_SELECT::SCRADDR, sdbiKey_);
    sdbi.metaHash = merkleRoot_;
    lmdb_->putStoredDBInfo(DB_SELECT::SCRADDR, sdbi, sdbiKey_);
 }
@@ -270,11 +268,22 @@ void ScrAddrFilter::updateScannedHash(const Hash32& hash)
 {
    auto tx = lmdb_->beginTransaction(DB_SELECT::SCRADDR, LMDB::Mode::ReadWrite);
    auto sdbi = getSDBI();
-   if (sdbi.metaHash != merkleRoot_) {
-      merkleRoot_ = computeMerkleRoot();
-      sdbi.metaHash = merkleRoot_;
-   }
    sdbi.topScannedBlkHash = hash;
+   lmdb_->putStoredDBInfo(DB_SELECT::SCRADDR, sdbi, sdbiKey_);
+}
+
+void ScrAddrFilter::resetSDBI()
+{
+   auto tx = lmdb_->beginTransaction(DB_SELECT::SCRADDR, LMDB::Mode::ReadWrite);
+   StoredDBInfo sdbi;
+   try {
+      sdbi = std::move(lmdb_->getStoredDBInfo(DB_SELECT::SCRADDR, sdbiKey_));
+   } catch (const LmdbWrapperException&) {
+      sdbi.magicBytes = Config::BitcoinSettings::getMagicBytes();
+      sdbi.armoryType = Config::DBSettings::getDbType();
+   }
+   sdbi.metaHash = Hash32{};
+   sdbi.topScannedBlkHash = Hash32{};
    lmdb_->putStoredDBInfo(DB_SELECT::SCRADDR, sdbi, sdbiKey_);
 }
 
@@ -338,32 +347,61 @@ void ScrAddrFilter::run(std::shared_future<bool> bdmReadyFut)
             /* BDM is initialized and maintenance thread is running, scan the batch */
             LOGINFO << "Starting address registration process";
 
-            //scan the batch
+            //prepare for side scan
             std::vector<std::string> walletIDs;
             if (!batchPtr->walletID.empty()) {
                walletIDs.emplace_back(batchPtr->walletID);
             }
             auto saf = getNew(SIDESCAN_ID);
             saf->mergeAddresses(newScrAddrMap, false);
-            auto topHeader = blockchain()->top();
-            auto topBlockHeight = topHeader->getBlockHeight();
-            auto scanResult = saf->applyBlockRangeToDB(0, walletIDs, true);
+            auto scanFromHeader = blockchain()->getGenesisHeader();
+            Hash32 scannedHash;
+            std::set<BinaryDataRef> scaSet;
 
-            //merge with main address filter
-            auto scaSet = mergeAddresses(std::move(newScrAddrMap), true);
+            while (true) {
+               //run the side scan
+               scannedHash = saf->applyBlockRangeToDB(
+                  scanFromHeader->getBlockHeight(), walletIDs, true);
+               if (!scannedHash.valid()) {
+                  break;
+               }
+
+               //lock the merge mutex and check the side scan top hash matches
+               //main scrAddr set top hash
+               std::unique_lock<std::mutex> lock(mergeLock_);
+               auto sdbi = getSDBI();
+               if (!sdbi.topScannedBlkHash.valid() && !sdbi.metaHash.valid()) {
+                  //edge case: main scrAddr db is viring, set top hash to
+                  //side scan one and proceed with address merge
+                  sdbi.topScannedBlkHash = scannedHash;
+                  auto tx = lmdb_->beginTransaction(DB_SELECT::SCRADDR, LMDB::Mode::ReadWrite);
+                  lmdb_->putStoredDBInfo(DB_SELECT::SCRADDR, sdbi, sdbiKey_);
+               }
+               if (sdbi.topScannedBlkHash == scannedHash) {
+                  scaSet = mergeAddresses(std::move(newScrAddrMap), true);
+                  break;
+               } else {
+                  //main scrAddr set is scanned up to a different block,
+                  //let's try and catch up
+                  scanFromHeader = blockchain()->getHeaderByHash(scannedHash);
+                  if (!scanFromHeader->isMainBranch()) {
+                     //TODO: deal with this edge case
+                     LOGERR << "there was a reorg during a side scan, "
+                        << "idk how to deal with this yet";
+                     throw std::runtime_error("reorg during side scan, implement me!");
+                  }
+               }
+            }
 
             //cleanup side scan context
             saf->cleanUpSdbis();
 
             //was the scan successful?
-            if (scanResult == false) {
+            if (!scannedHash.valid()) {
                //no, fire callback and exit thread
                batchPtr->callback({}, false);
                return;
             }
-
-            //final scan to sync all addresses to same height
-            applyBlockRangeToDB(topBlockHeight + 1, walletIDs, false);
 
             //notify
             for (const auto& wID : walletIDs) {

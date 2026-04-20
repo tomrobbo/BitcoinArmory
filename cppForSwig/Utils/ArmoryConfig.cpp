@@ -70,8 +70,6 @@ void Armory::Config::printHelp(void)
 --rescan                   delete all processed history data and rescan
                            blockchain from the first block
 --rebuild                  delete all DB data and build and scan from scratch
---rescanSSH                delete balance and txcount data and rescan it.
-                           Much faster than rescan or rebuild.
 --checkchain               builds db (no scanning) with full txhints, then
                            verifies all tx (consensus and sigs).
 --datadir                  path to the operation folder
@@ -561,12 +559,7 @@ uint64_t DBSettings::getXorKey()
 void DBSettings::processArgs(const std::map<std::string, std::string>& args)
 {
    //db init options
-   auto iter = args.find("rescanSSH");
-   if (iter != args.end()) {
-      initMode_ = BdmInitMode::SSH;
-   }
-
-   iter = args.find("rescan");
+   auto iter = args.find("rescan");
    if (iter != args.end()) {
       initMode_ = BdmInitMode::RESCAN;
    }

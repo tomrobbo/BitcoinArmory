@@ -172,21 +172,6 @@ namespace TestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   uint64_t getDBBalanceForHash160(
-      BlockDataManager &bdm,
-      BinaryDataRef addr160
-      )
-   {
-      StoredScriptHistory ssh;
-
-      bdm.getIFace()->getStoredScriptHistory(ssh, HASH160PREFIX + addr160);
-      if (!ssh.isInitialized())
-         return 0;
-
-      return ssh.getScriptBalance();
-   }
-
-   /////////////////////////////////////////////////////////////////////////////
    int char2int(char input)
    {
       if (input >= '0' && input <= '9')

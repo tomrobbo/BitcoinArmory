@@ -47,6 +47,7 @@ namespace Armory
    {
       class Builder;
    }
+   struct Hash32;
 }
 
 namespace CoreRPC
@@ -111,8 +112,8 @@ public:
    std::shared_ptr<Armory::ZeroConf::ZeroConfContainer> zeroConfCont_;
 
 private:
-   bool loadDiskState(const ProgressCallback&, bool=false);
-   void pollNodeStatus() const;
+   bool loadDiskState(const ProgressCallback&);
+   void pollNodeStatus(void) const;
 
 public:
    BlockDataManager(std::function<bool(void)>);
@@ -129,8 +130,9 @@ public:
    std::exception_ptr getException(void) const;
 
    Armory::ReorganizationState readBlkFileUpdate(void);
-   bool applyBlockRangeToDB(ProgressCallback,
+   Armory::Hash32 applyBlockRangeToDB(ProgressCallback,
       uint32_t, ScrAddrFilter&);
+   std::pair<Armory::Hash32, Armory::Hash32> getLastScannedRange(void) const;
 
    void enableZeroConf(bool=false);
    void registerZcCallbacks(

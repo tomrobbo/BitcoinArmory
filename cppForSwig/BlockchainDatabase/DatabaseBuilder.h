@@ -8,6 +8,7 @@
 
 #include <deque>
 
+#include "BlockObj.h"
 #include "BlockDataMap.h"
 #include "bdmenums.h"
 #include "Progress.h"
@@ -24,7 +25,6 @@ namespace Armory
 {
    class Blockchain;
    class ReorganizationState;
-   class BlockHeader;
 
    namespace Database
    {
@@ -38,9 +38,11 @@ namespace Armory
          std::unique_ptr<ScannerContext> scannerCtx_;
 
          const ProgressCallback progress_;
-
          unsigned checkedTransactions_ = 0;
-         const bool forceRescanSSH_;
+
+      public:
+         //for test coverage purposes
+         std::pair<Hash32, Hash32> lastScanRange;
 
       private:
          void loadBlockHeadersFromDB(const ProgressCallback&);
@@ -64,8 +66,7 @@ namespace Armory
          void cycleDatabases(void);
 
       public:
-         Builder(BlockDataManager&,
-            const ProgressCallback&, bool);
+         Builder(BlockDataManager&, const ProgressCallback&);
 
          bool init(void);
          ReorganizationState update(void);

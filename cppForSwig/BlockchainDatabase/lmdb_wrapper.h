@@ -490,7 +490,6 @@ public:
 
    void closeDB(DB_SELECT);
    void openDB(DB_SELECT);
-   void resetSSHdb(void);
    void resetSSHdb_Super(void);
 
    ////
@@ -519,13 +518,9 @@ public:
 private:
    bool     dbIsOpen_;
    uint32_t ldbBlockSize_;
-   uint32_t lowestScannedUpTo_;
 
    // In this case, a address is any TxOut script, which is usually
    // just a 25-byte script.  But this generically captures all types
    // of addresses including pubkey-only, P2SH
-   std::map<BinaryData, StoredScriptHistory> registeredSSHs_;
-   const static std::set<DB_SELECT> supernodeDBs_;
-
    Armory::Threading::TransactionalMap<unsigned, unsigned> heightToBatchId_;
 };

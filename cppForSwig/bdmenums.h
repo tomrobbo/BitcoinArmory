@@ -76,7 +76,6 @@ enum class BdmInitMode : int
    RESUME,
    RESCAN,
    REBUILD,
-   SSH
 };
 
 enum class SocketType : int

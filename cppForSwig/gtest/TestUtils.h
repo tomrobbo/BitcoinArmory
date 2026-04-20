@@ -81,8 +81,6 @@ namespace TestUtils
 
    bool searchFile(const std::filesystem::path&, BinaryData&);
    uint32_t getTopBlockHeightInDB(BlockDataManager*, DB_SELECT);
-   uint64_t getDBBalanceForHash160(
-      BlockDataManager&, BinaryDataRef);
 
    void concatFile(const std::vector<std::filesystem::path>&,
       const std::filesystem::path&);

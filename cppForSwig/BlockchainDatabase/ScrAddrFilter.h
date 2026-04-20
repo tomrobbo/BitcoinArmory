@@ -162,28 +162,29 @@ private:
 
    Armory::Hash32 computeMerkleRoot(void) const;
    void updateAddressMerkle(void);
+   StoredDBInfo getSDBI(void) const;
+   void cleanUpSdbis(void);
 
 public:
    ScrAddrFilter(LMDBBlockDatabase*, uint16_t);
    virtual ~ScrAddrFilter(void);
 
+   ////
    void start(std::shared_future<bool>);
    void shutdown(void);
+   bool empty(void) const;
+   void resetSDBI(void);
 
    ////
    std::shared_ptr<const AddrMap> getScanFilterAddrMap(void) const;
-   bool empty(void) const;
    std::shared_ptr<Armory::Threading::TransactionalMap<
       BinaryData, std::shared_ptr<AddrAndHash>>> getZcFilterMapPtr(void) const;
 
    ////
    ScrAddrIdMap getScrAddrIds(void) const;
-   Armory::Hash32 scanFrom(void) const;
    void pushAddressBatch(std::shared_ptr<AddressBatch>);
-
-   StoredDBInfo getSDBI(void) const;
    void updateScannedHash(const Armory::Hash32&);
-   void cleanUpSdbis(void);
+   Armory::Hash32 headerHashToScanFrom(void);
 
    std::set<BinaryData> getMissingHashes(void) const;
    void putMissingHashes(const std::set<BinaryData>&);
@@ -196,7 +197,7 @@ public:
 //virtuals
 protected:
    virtual std::shared_ptr<ScrAddrFilter> getNew(unsigned) = 0;
-   virtual bool applyBlockRangeToDB(uint32_t,
+   virtual Armory::Hash32 applyBlockRangeToDB(uint32_t,
       const std::vector<std::string>&, bool) = 0;
    virtual std::shared_ptr<Armory::Blockchain> blockchain(void) const = 0;
    virtual bool bdmIsRunning(void) const = 0;

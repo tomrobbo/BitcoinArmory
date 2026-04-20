@@ -71,11 +71,10 @@ namespace {
 
 /////////////////////////////////////////////////////////////////////////////
 // Builder
-Builder::Builder(BlockDataManager& bdm,
-   const ProgressCallback &progress, bool forceRescanSSH)
+Builder::Builder(BlockDataManager& bdm, const ProgressCallback &progress)
    : blockFiles_(bdm.blockFiles()), blockchain_(bdm.blockchain()),
    db_(bdm.getIFace()), scrAddrFilter_(bdm.getScrAddrFilter()),
-   progress_(progress), forceRescanSSH_(forceRescanSSH)
+   progress_(progress)
 {
    scannerCtx_ = std::make_unique<ScannerContext>();
 }
@@ -625,7 +624,13 @@ Hash32 Builder::initTransactionHistory(
 Hash32 Builder::scanHistory(const ReorganizationState& reorgState,
    bool reportprogress, bool init)
 {
-   auto scanFrom = scrAddrFilter_->scanFrom();
+   /*
+   Hold the main SAF merge lock. This is used to synchronize address
+   maps from side scans with the primary one
+   */
+   std::unique_lock<std::mutex> lock(scrAddrFilter_->mergeLock_);
+
+   auto scanFrom = scrAddrFilter_->headerHashToScanFrom();
    HeaderPtr startHeader = nullptr;
    if (scanFrom.valid()) {
       startHeader = blockchain_->getHeaderByHash(scanFrom);
@@ -644,6 +649,17 @@ Hash32 Builder::scanHistory(const ReorganizationState& reorgState,
 
    if (startHeader == nullptr) {
       startHeader = blockchain_->getGenesisHeader();
+   } else if (startHeader->getNextHash() == nullptr) {
+      if (startHeader->getThisHash() == blockchain_->top()->getThisHash()) {
+         //nothing left to scan
+         lastScanRange = std::make_pair(
+            startHeader->getThisHash(),
+            startHeader->getThisHash()
+         );
+         return startHeader->getThisHash();
+      } else {
+         throw std::runtime_error("mangled next hash");
+      }
    } else {
       startHeader = blockchain_->getHeaderByHash(*startHeader->getNextHash());
    }
@@ -673,6 +689,10 @@ Hash32 Builder::scanHistory(const ReorganizationState& reorgState,
       }
 
       scrAddrFilter_->updateScannedHash(bcs.getTopScannedBlockHash());
+      lastScanRange = std::make_pair(
+         startHeader->getThisHash(),
+         bcs.getTopScannedBlockHash()
+      );
       return bcs.getTopScannedBlockHash();
    } else {
       BlockchainScanner_Super bcs(
@@ -683,7 +703,11 @@ Hash32 Builder::scanHistory(const ReorganizationState& reorgState,
 
       bcs.scan();
       bcs.scanSpentness();
-      bcs.updateSSH(forceRescanSSH_ & init);
+      bcs.updateSSH(init);
+      lastScanRange = std::make_pair(
+         startHeader->getThisHash(),
+         bcs.getTopScannedBlockHash()
+      );
       return bcs.getTopScannedBlockHash();
    }
 }
@@ -691,8 +715,6 @@ Hash32 Builder::scanHistory(const ReorganizationState& reorgState,
 /////////////////////////////////////////////////////////////////////////////
 ReorganizationState Builder::update()
 {
-   std::unique_lock<std::mutex> lock(scrAddrFilter_->mergeLock_);
-
    //list new files in block data folder
    blockFiles_->detectNewBlockFiles();
 

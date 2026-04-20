@@ -39,7 +39,6 @@ enum class DB_SELECT : int
    KNOWNHASHES,
    SPENTNESS,
    ZERO_CONF,
-   COUNT
 };
 
 enum class TX_SERIALIZE_TYPE : int

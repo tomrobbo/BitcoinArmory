@@ -37,9 +37,23 @@
 
 using namespace Armory;
 
-const std::set<DB_SELECT> LMDBBlockDatabase::supernodeDBs_({
+extern const std::vector<DB_SELECT> SUPERNODEDBS({
+   DB_SELECT::HEADERS, DB_SELECT::SCRADDR,
    DB_SELECT::SSH, DB_SELECT::SUBSSH, DB_SELECT::SUBSSH_META,
-   DB_SELECT::SPENTNESS
+   DB_SELECT::SPENTNESS,
+   DB_SELECT::ZERO_CONF
+});
+extern const std::vector<DB_SELECT> FULLNODEDBS({
+   DB_SELECT::HEADERS, DB_SELECT::SCRADDR,
+   DB_SELECT::TXOUTS, DB_SELECT::TXINS,
+   DB_SELECT::KNOWNHASHES, DB_SELECT::TXHINTS,
+   DB_SELECT::ZERO_CONF
+});
+extern const std::vector<DB_SELECT> BARENODEDBS({
+   DB_SELECT::HEADERS, DB_SELECT::SCRADDR,
+   DB_SELECT::TXOUTS, DB_SELECT::TXINS,
+   DB_SELECT::KNOWNHASHES, DB_SELECT::TXHINTS, DB_SELECT::TXFILTERS,
+   DB_SELECT::ZERO_CONF
 });
 
 const std::map<std::string, size_t> LMDBBlockDatabase::mapSizes_ = {
@@ -442,20 +456,27 @@ void LMDBBlockDatabase::openDatabases(const std::filesystem::path& basedir)
    // Just in case this isn't the first time we tried to open it.
    closeDatabases();
 
-   for (int i = 0; i < (int)DB_SELECT::COUNT; i++) {
-      DB_SELECT CURRDB = DB_SELECT(i);
-      auto iter = dbMap_.find(CURRDB);
-      if (iter == dbMap_.end()) {
-         if (getDbType() != ARMORY_DB_TYPE::Super) {
-            if (supernodeDBs_.find(CURRDB) != supernodeDBs_.end()) {
-               continue;
-            }
-         }
-         dbMap_.emplace(CURRDB,
-            std::make_shared<DatabaseContainer_Single>(CURRDB));
-      }
+   dbMap_.clear();
+   std::vector<DB_SELECT> dbSet;
+   switch (getDbType())
+   {
+      case ARMORY_DB_TYPE::Bare:
+         dbSet = BARENODEDBS;
+         break;
 
-      openDB(CURRDB);
+      case ARMORY_DB_TYPE::Full:
+         dbSet = FULLNODEDBS;
+         break;
+
+      case ARMORY_DB_TYPE::Super:
+         dbSet = SUPERNODEDBS;
+         break;
+   }
+
+   for (const auto& currDb : dbSet) {
+      dbMap_.emplace(currDb,
+         std::make_shared<DatabaseContainer_Single>(currDb));
+      openDB(currDb);
    }
 
    //check/seed headers SDBI
@@ -530,16 +551,16 @@ void LMDBBlockDatabase::cycleDatabase(DB_SELECT db)
 void LMDBBlockDatabase::resetHistoryDatabases()
 {
    if (getDbType() != ARMORY_DB_TYPE::Super) {
-      resetSSHdb();
-
-      auto db_subssh = getDbPtr(DB_SELECT::SUBSSH);
-      auto db_hints = getDbPtr(DB_SELECT::TXHINTS);
-      auto db_spentness = getDbPtr(DB_SELECT::SPENTNESS);
+      auto dbTxouts = getDbPtr(DB_SELECT::TXOUTS);
+      auto dbTxins = getDbPtr(DB_SELECT::TXINS);
+      auto dbHints = getDbPtr(DB_SELECT::TXHINTS);
+      auto dbHashes = getDbPtr(DB_SELECT::KNOWNHASHES);
       closeDatabases();
 
-      db_subssh->eraseOnDisk();
-      db_hints->eraseOnDisk();
-      db_spentness->eraseOnDisk();
+      dbTxouts->eraseOnDisk();
+      dbTxins->eraseOnDisk();
+      dbHints->eraseOnDisk();
+      dbHashes->eraseOnDisk();
    } else {
       auto db_subssh = getDbPtr(DB_SELECT::SUBSSH);
       auto db_subssh_meta = getDbPtr(DB_SELECT::SUBSSH_META);
@@ -566,7 +587,7 @@ void LMDBBlockDatabase::destroyAndResetDatabases()
          dbPair.second->eraseOnDisk();
       }
    }
-   
+
    // Reopen the databases with the exact same parameters as before
    // The close & destroy operations shouldn't have changed any of that.
    openDatabases(DatabaseContainer::baseDir_);
@@ -1557,44 +1578,6 @@ void LMDBBlockDatabase::resetHistoryForAddressVector(
          addrWithPrefix.append(addr);
       }
       deleteValue(DB_SELECT::SSH, addrWithPrefix.getRef());
-   }
-}
-
-/////////////////////////////////////////////////////////////////////////////
-void LMDBBlockDatabase::resetSSHdb()
-{
-   if (getDbType() == ARMORY_DB_TYPE::Super) {
-      resetSSHdb_Super();
-      return;
-   }
-
-   std::map<BinaryData, int> sshKeys;
-   {
-      //gather keys
-      auto tx = beginTransaction(DB_SELECT::SSH, LMDB::Mode::ReadOnly);
-      auto dbIter = getIterator(DB_SELECT::SSH);
-
-      while (dbIter->advanceAndRead(DbPrefix::SCRIPT)) {
-         StoredScriptHistory ssh;
-         ssh.unserializeDBValue(dbIter->getValueRef());
-         sshKeys[dbIter->getKeyRef()] = ssh.scanHeight;
-      }
-   }
-
-   {
-      //reset them
-      auto tx = beginTransaction(DB_SELECT::SSH, LMDB::Mode::ReadWrite);
-      for (auto& sshkey : sshKeys) {
-         StoredScriptHistory ssh;
-         BinaryWriter bw;
-         ssh.scanHeight = sshkey.second;
-         ssh.serializeDBValue(bw, ARMORY_DB_TYPE::Full);
-         putValue(DB_SELECT::SSH, sshkey.first.getRef(), bw.getDataRef());
-      }
-
-      auto sdbi = getStoredDBInfo(DB_SELECT::SSH, 0);
-      sdbi.topScannedBlkHash = Hash32{};
-      putStoredDBInfo(DB_SELECT::SSH, sdbi, 0);
    }
 }
 

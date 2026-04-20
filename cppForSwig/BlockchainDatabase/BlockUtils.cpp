@@ -51,7 +51,7 @@ protected:
       return bdm_->isRunning();
    }
 
-   bool applyBlockRangeToDB(
+   Hash32 applyBlockRangeToDB(
       uint32_t startBlock, const std::vector<std::string>& wltIDs,
       bool reportProgress) override
    {
@@ -66,7 +66,7 @@ protected:
          bdm_->notificationStack_.push_back(std::move(notifPtr));
       };
       auto result = bdm_->applyBlockRangeToDB(progress, startBlock, *this);
-      if (result == false) {
+      if (!result.valid()) {
          LOGERR << "ArmoryDB encountered a fatal error while scanning the chain";
          LOGERR << "It will now terminate. Restart it to auto-repair";
 
@@ -188,55 +188,30 @@ void BlockDataManager::openDatabase()
    }
 }
 
-////////
-bool BlockDataManager::applyBlockRangeToDB(
-   ProgressCallback prog, uint32_t blk0, ScrAddrFilter& scrAddrData)
-{
-   // Start scanning and timer
-   BlockchainScanner bcs(blockchain_, iface_, &scrAddrData,
-      blockFiles_,
-      Config::DBSettings::threadCount(), Config::DBSettings::ramUsage(),
-      prog, Config::DBSettings::reportProgress());
-
-   //no need to setup a context for a side scan, it assumes
-   //address history is fresh
-   ScannerContext ctx;
-   auto result = bcs.scan(ctx, blk0);
-
-   //need to merge hashmap with main context now
-   dbBuilder_->mergeContext(ctx);
-   return result;
-}
-
-////////
 void BlockDataManager::resetDatabases(BdmInitMode mode)
 {
    if (mode == BdmInitMode::RESUME) {
       return;
    }
 
-   if (mode == BdmInitMode::SSH) {
-      iface_->resetSSHdb();
-      return;
-   }
-
    switch (mode)
    {
       case BdmInitMode::RESCAN:
+      {
          iface_->resetHistoryDatabases();
+         scrAddrData_->updateScannedHash(Hash32{});
          break;
+      }
 
       case BdmInitMode::REBUILD:
+      {
          iface_->destroyAndResetDatabases();
+         scrAddrData_->resetSDBI();
          break;
-      
+      }
+
       default:
          break;
-   }
-
-   if (Config::DBSettings::getDbType() != ARMORY_DB_TYPE::Super) {
-      //reset top scanned block hash
-      scrAddrData_->updateScannedHash(Hash32{});
    }
 }
 
@@ -246,18 +221,16 @@ bool BlockDataManager::doInitialSyncOnLoad(BdmInitMode mode,
 {
    LOGINFO << "Executing: doInitialSyncOnLoad";
    resetDatabases(mode);
-   return loadDiskState(progress, mode == BdmInitMode::SSH);
+   return loadDiskState(progress);
 }
 
-bool BlockDataManager::loadDiskState(const ProgressCallback &progress,
-   bool forceRescanSSH)
+bool BlockDataManager::loadDiskState(const ProgressCallback &progress)
 {
    std::promise<bool> readyProm;
    scrAddrData_->start(readyProm.get_future());
 
    BDMstate_ = BDMState::Initializing;
-   dbBuilder_ = std::make_shared<Database::Builder>(
-      *this, progress, forceRescanSSH);
+   dbBuilder_ = std::make_shared<Database::Builder>(*this, progress);
    if (!dbBuilder_->init()) {
       //fatal error in db startup, terminate bdm
       readyProm.set_value(false);
@@ -277,6 +250,32 @@ bool BlockDataManager::loadDiskState(const ProgressCallback &progress,
 ReorganizationState BlockDataManager::readBlkFileUpdate()
 {
    return dbBuilder_->update();
+}
+
+Hash32 BlockDataManager::applyBlockRangeToDB(
+   ProgressCallback prog, uint32_t blk0, ScrAddrFilter& scrAddrData)
+{
+   // Start scanning and timer
+   BlockchainScanner bcs(blockchain_, iface_, &scrAddrData,
+      blockFiles_,
+      Config::DBSettings::threadCount(), Config::DBSettings::ramUsage(),
+      prog, Config::DBSettings::reportProgress());
+
+   //no need to setup a context for a side scan, it assumes
+   //address history is fresh
+   ScannerContext ctx;
+   if (!bcs.scan(ctx, blk0)) {
+      return Hash32{};
+   }
+
+   //need to merge hashmap with main context now
+   dbBuilder_->mergeContext(ctx);
+   return bcs.getTopScannedBlockHash();
+}
+
+std::pair<Hash32, Hash32> BlockDataManager::getLastScannedRange() const
+{
+   return dbBuilder_->lastScanRange;
 }
 
 ////////
