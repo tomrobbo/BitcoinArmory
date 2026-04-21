@@ -200,35 +200,32 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 class DbTransaction
 {
-public:
-   DbTransaction(void);
-   virtual ~DbTransaction(void) = 0;
-};
-
-////////
-class DbTransaction_Single : public DbTransaction
-{
 private:
    LMDBEnv::Transaction dbtx_;
 
 public:
-   DbTransaction_Single(LMDBEnv::Transaction&&);
+   DbTransaction(LMDBEnv::Transaction&&);
+   ~DbTransaction(void);
+   void insert(const CharacterArrayRef&, const CharacterArrayRef&);
+   void erase(const CharacterArrayRef&);
+   CharacterArrayRef get(const CharacterArrayRef&) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 class DatabaseContainer
 {
-protected:
+private:
    const DB_SELECT dbSelect_;
+   mutable DBPair db_;
 
 public:
-   static std::filesystem::path baseDir_;
-   static BinaryData magicBytes_;
+   static std::filesystem::path baseDir;
+   static BinaryData magicBytes;
 
 public:
    //tor
    DatabaseContainer(DB_SELECT);
-   virtual ~DatabaseContainer(void) = 0;
+   ~DatabaseContainer(void);
 
    //static
    static std::filesystem::path getDbPath(DB_SELECT);
@@ -236,45 +233,15 @@ public:
    static std::string getDbName(DB_SELECT);
 
    //virtual
-   virtual void open(void) = 0;
-   virtual void close(void) = 0;
-   virtual void eraseOnDisk(void) = 0;
+   void open(void);
+   void close(void);
+   void eraseOnDisk(void);
 
-   virtual std::unique_ptr<DbTransaction> beginTransaction(LMDB::Mode) const = 0;
-   virtual std::unique_ptr<LDBIter> getIterator(void) = 0;
+   std::unique_ptr<DbTransaction> beginTransaction(LMDB::Mode) const;
+   std::unique_ptr<LDBIter> getIterator(void);
 
-   virtual BinaryDataRef getValue(BinaryDataRef) const = 0;
-   virtual void putValue(BinaryDataRef, BinaryDataRef) = 0;
-   virtual void deleteValue(BinaryDataRef) = 0;
-
-   virtual StoredDBInfo getStoredDBInfo(uint16_t) = 0;
-   virtual void putStoredDBInfo(const StoredDBInfo&, uint16_t) = 0;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-class DatabaseContainer_Single : public DatabaseContainer
-{
-private:
-   mutable DBPair db_;
-
-public:
-   DatabaseContainer_Single(DB_SELECT);
-   ~DatabaseContainer_Single(void) override;
-
-   //virtuals
-   void open(void) override;
-   void close(void) override;
-   void eraseOnDisk(void) override;
-
-   std::unique_ptr<DbTransaction> beginTransaction(LMDB::Mode) const override;
-   std::unique_ptr<LDBIter> getIterator(void) override;
-
-   BinaryDataRef getValue(BinaryDataRef) const override;
-   void putValue(BinaryDataRef, BinaryDataRef) override;
-   void deleteValue(BinaryDataRef) override;
-
-   StoredDBInfo getStoredDBInfo(uint16_t) override;
-   void putStoredDBInfo(const StoredDBInfo&, uint16_t) override;
+   StoredDBInfo getStoredDBInfo(uint16_t);
+   void putStoredDBInfo(const StoredDBInfo&, uint16_t);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -355,42 +322,14 @@ public:
    /////////////////////////////////////////////////////////////////////////////
    std::unique_ptr<LDBIter> getIterator(DB_SELECT) const;
 
-   /////////////////////////////////////////////////////////////////////////////
-   // Get value using BinaryData object.  If you have a string, you can use
-   // BinaryData key(string(theStr));
-   BinaryDataRef getValueNoCopy(DB_SELECT, BinaryDataRef) const;
 
    /////////////////////////////////////////////////////////////////////////////
-   // Get value using BinaryDataRef object.  The data from the get* call is 
-   // actually stored in a member variable, and thus the refs are valid only 
-   // until the next get* call.
-   BinaryDataRef getValueRef(DB_SELECT, DbPrefix, BinaryDataRef) const;
-
-   /////////////////////////////////////////////////////////////////////////////
-   // Same as the getValueRef, in that they are only valid until the next get*
-   // call.  These are convenience methods which basically just save us 
-   BinaryRefReader getValueReader(DB_SELECT, BinaryDataRef) const;
-   BinaryRefReader getValueReader(DB_SELECT, DbPrefix, BinaryDataRef) const;
-
    BinaryData getDBKeyForHash(BinaryDataRef, uint8_t = UINT8_MAX) const;
-
-   /////////////////////////////////////////////////////////////////////////////
-   // Put value based on BinaryDataRefs key and value
-   void putValue(DB_SELECT, BinaryDataRef, BinaryDataRef);
-   void putValue(DB_SELECT, DbPrefix, BinaryDataRef, BinaryDataRef);
-
-   /////////////////////////////////////////////////////////////////////////////
-   // Put value based on BinaryData key. If batch writing, pass in the batch
-   void deleteValue(DB_SELECT, BinaryDataRef);
-   void deleteValue(DB_SELECT, DbPrefix, BinaryDataRef);
-
-   /////////////////////////////////////////////////////////////////////////////
    void readAllHeaders(
       const std::function<void(std::shared_ptr<Armory::BlockHeader>)>&
    );
 
    std::map<uint32_t, uint32_t> getSSHSummary(BinaryDataRef);
-   void resetHistoryForAddressVector(const std::vector<BinaryData>&);
 
 public:
    /////////////////////////////////////////////////////////////////////////////
@@ -400,11 +339,8 @@ public:
    void putStoredDBInfo(DB_SELECT, StoredDBInfo const&, uint16_t);
 
    /////////////////////////////////////////////////////////////////////////////
-   // BareHeaders are those int the HEADERS DB with no blockdta associated
+   // BareHeaders are those in the HEADERS DB with no blockdta associated
    void putBareHeader(const StoredHeader&);
-
-   /////////////////////////////////////////////////////////////////////////////
-   // still using the old name even though no block data is stored anymore
    bool getStoredHeader(StoredHeader&,
       std::shared_ptr<Armory::BlockHeader>, bool=true) const;
 
@@ -438,8 +374,6 @@ public:
 
    /////////////////////////////////////////////////////////////////////////////
    // StoredScriptHistory Accessors
-   void putStoredScriptHistorySummary(StoredScriptHistory&);
-
    bool getStoredScriptHistory(StoredScriptHistory&,
       BinaryDataRef,
       uint32_t = 0,
@@ -463,9 +397,7 @@ public:
 
    /////////////////////////////////////////////////////////////////////////////
    // tx hints
-   bool putStoredTxHints(const StoredTxHints&);
    bool getStoredTxHints(StoredTxHints&, BinaryDataRef) const;
-   void updatePreferredTxHint(BinaryDataRef, BinaryData);
 
    /////////////////////////////////////////////////////////////////////////////
    // Tx stuff

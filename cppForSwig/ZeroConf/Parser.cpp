@@ -939,7 +939,10 @@ void ZeroConfContainer::updateZCinDB()
 
       for (const auto& txhash : batch.txHashes) {
          //if the key is not to be found in the txMap_, this is a ZC txhash
-         db_->putValue(DB_SELECT::ZERO_CONF, txhash, {});
+         tx->insert(
+            CharacterArrayRef{txhash.getSize(), txhash.getPtr()},
+            CharacterArrayRef{0, (const char*)nullptr}
+         );
       }
 
       for (auto& key : batch.keysToDelete) {
@@ -969,13 +972,15 @@ void ZeroConfContainer::updateZCinDB()
             ktd.emplace_back(thisKey);
          } while (dbIter->advanceAndRead(DbPrefix::ZCDATA));
 
-         for (auto _key : ktd) {
-            db_->deleteValue(DB_SELECT::ZERO_CONF, _key);
+         for (const auto& _key : ktd) {
+            tx->erase(CharacterArrayRef{
+               _key.getSize(), _key.getPtr()});
          }
       }
 
-      for (auto& key : batch.txHashesToDelete) {
-         db_->deleteValue(DB_SELECT::ZERO_CONF, key);
+      for (const auto& _hash : batch.txHashesToDelete) {
+         tx->erase(CharacterArrayRef{
+            _hash.getSize(), _hash.getPtr()});
       }
       batch.setCompleted(true);
    }

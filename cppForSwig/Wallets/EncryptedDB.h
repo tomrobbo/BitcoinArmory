@@ -232,11 +232,9 @@ namespace Armory
                LMDB* dbPtr, bool write) :
                DBIfaceTransaction(), dbPtr_(dbPtr)
             {
-               auto type = LMDB::Mode::ReadOnly;
-               if (write)
-                  type = LMDB::Mode::ReadWrite;
-
-               txPtr_ = std::make_unique<LMDBEnv::Transaction>(dbEnv, type);
+               txPtr_ = std::make_unique<LMDBEnv::Transaction>(
+                  dbEnv, write ?
+                  LMDB::Mode::ReadWrite : LMDB::Mode::ReadOnly);
             }
 
             ~RawIfaceTransaction(void) noexcept(false)

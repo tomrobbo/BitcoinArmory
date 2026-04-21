@@ -132,7 +132,7 @@ protected:
          "--dbdir=./ldbtestdir",
          "--satoshi-datadir=./blkfiletest",
          "--public",
-         "--db-type=DB_FULL",
+         "--db-type=DB_BARE",
          "--thread-count=3",
          "--rewind-blocks=0",
          "--public"};
@@ -555,10 +555,10 @@ TEST_F(BlockDir, DISABLED_FixBlockDataOffsets)
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-class BlockUtilsFull : public ::testing::Test
+class BlockUtilsBare : public ::testing::Test
 {
 protected:
-   void initBDM(void)
+   void initBDM()
    {
       Config::reset();
       Config::DBSettings::setServiceType(SERVICE_UNITTEST);
@@ -566,7 +566,7 @@ protected:
          "--datadir=./fakehomedir",
          "--dbdir=./ldbtestdir",
          "--satoshi-datadir=./blkfiletest",
-         "--db-type=DB_FULL",
+         "--db-type=DB_BARE",
          "--thread-count=3",
          "--public"},
          Config::ProcessType::DB);
@@ -586,8 +586,6 @@ protected:
    /////////////////////////////////////////////////////////////////////////////
    virtual void SetUp()
    {
-      zeros_ = READHEX("00000000");
-
       FileUtils::removeDirectory(blkdir_);
       FileUtils::removeDirectory(homedir_);
       FileUtils::removeDirectory(ldbdir_);
@@ -631,7 +629,6 @@ protected:
    BlockDataManagerThread *theBDMt_;
    Clients* clients_;
    LMDBBlockDatabase* iface_;
-   BinaryData zeros_;
 
    std::filesystem::path blkdir_{"./blkfiletest"sv};
    std::filesystem::path homedir_{"./fakehomedir"sv};
@@ -645,7 +642,7 @@ protected:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(BlockUtilsFull, Load5Blocks)
+TEST_F(BlockUtilsBare, Load5Blocks)
 {
    clients_->init();
    auto bdvID = DBTestUtils::registerBDV(
@@ -709,7 +706,7 @@ TEST_F(BlockUtilsFull, Load5Blocks)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(BlockUtilsFull, Load5Blocks_DamagedBlkFile)
+TEST_F(BlockUtilsBare, Load5Blocks_DamagedBlkFile)
 {
    // this test should be reworked to be in terms of createTestChain.py
    std::filesystem::path path(TestUtils::dataDir / "botched_block.dat");
@@ -745,7 +742,7 @@ TEST_F(BlockUtilsFull, Load5Blocks_DamagedBlkFile)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(BlockUtilsFull, Load4Blocks_Plus2)
+TEST_F(BlockUtilsBare, Load4Blocks_Plus2)
 {
    TestUtils::setBlocks({ "0", "1", "2", "3" }, blk0dat_);
 
@@ -841,7 +838,7 @@ TEST_F(BlockUtilsFull, Load4Blocks_Plus2)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(BlockUtilsFull, Load5Blocks_FullReorg)
+TEST_F(BlockUtilsBare, Load5Blocks_FullReorg)
 {
    clients_->init();
    auto bdvID = DBTestUtils::registerBDV(clients_, Config::BitcoinSettings::getMagicBytes());
@@ -936,7 +933,7 @@ TEST_F(BlockUtilsFull, Load5Blocks_FullReorg)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(BlockUtilsFull, Load5Blocks_DoubleReorg)
+TEST_F(BlockUtilsBare, Load5Blocks_DoubleReorg)
 {
    TestUtils::setBlocks({ "0", "1", "2", "3", "4A" }, blk0dat_);
 
@@ -1029,7 +1026,7 @@ TEST_F(BlockUtilsFull, Load5Blocks_DoubleReorg)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(BlockUtilsFull, Load5Blocks_ReloadBDM_Reorg)
+TEST_F(BlockUtilsBare, Load5Blocks_ReloadBDM_Reorg)
 {
    clients_->init();
    auto bdvID = DBTestUtils::registerBDV(clients_, Config::BitcoinSettings::getMagicBytes());
@@ -1147,7 +1144,7 @@ TEST_F(BlockUtilsFull, Load5Blocks_ReloadBDM_Reorg)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(BlockUtilsFull, DISABLED_CorruptedBlock)
+TEST_F(BlockUtilsBare, DISABLED_CorruptedBlock)
 {
    TestUtils::setBlocks({ "0", "1", "2", "3", "4" }, blk0dat_);
 
@@ -1213,7 +1210,7 @@ TEST_F(BlockUtilsFull, DISABLED_CorruptedBlock)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(BlockUtilsFull, Load5Blocks_RescanOps)
+TEST_F(BlockUtilsBare, Load5Blocks_RescanOps)
 {
    auto startbdm = [this](BdmInitMode init)->void
    {
@@ -1322,7 +1319,7 @@ TEST_F(BlockUtilsFull, Load5Blocks_RescanOps)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(BlockUtilsFull, Load5Blocks_RescanEmptyDB)
+TEST_F(BlockUtilsBare, Load5Blocks_RescanEmptyDB)
 {
    auto startbdm = [this](BdmInitMode init)->void
    {
@@ -1393,7 +1390,7 @@ TEST_F(BlockUtilsFull, Load5Blocks_RescanEmptyDB)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(BlockUtilsFull, Load5Blocks_RebuildEmptyDB)
+TEST_F(BlockUtilsBare, Load5Blocks_RebuildEmptyDB)
 {
    auto startbdm = [this](BdmInitMode init)->void
    {
@@ -1462,7 +1459,7 @@ TEST_F(BlockUtilsFull, Load5Blocks_RebuildEmptyDB)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(BlockUtilsFull, Load5Blocks_SideScan)
+TEST_F(BlockUtilsBare, Load5Blocks_SideScan)
 {
    clients_->init();
    auto bdvID = DBTestUtils::registerBDV(clients_, Config::BitcoinSettings::getMagicBytes());
@@ -1528,7 +1525,7 @@ TEST_F(BlockUtilsFull, Load5Blocks_SideScan)
    EXPECT_EQ(getBal(TestChain::lb2ScrAddrP2SH), 0 * COIN);
 }
 
-TEST_F(BlockUtilsFull, BlockXor)
+TEST_F(BlockUtilsBare, BlockXor)
 {
    //generate a random xor key
    auto rando = Cryptography::PRNG::fortuna.generateRandom(8);
@@ -1624,77 +1621,8 @@ TEST_F(BlockUtilsFull, BlockXor)
    bdvPtr.reset();
 }
 
-TEST_F(BlockUtilsFull, TxHints)
-{
-   clients_->init();
-   auto bdvID = DBTestUtils::registerBDV(
-      clients_, Config::BitcoinSettings::getMagicBytes());
-   auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
-
-   //wait on signals
-   DBTestUtils::goOnline(clients_, bdvID);
-   theBDMt_->start(Config::DBSettings::initMode());
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
-
-   auto bdm = theBDMt_->bdm();
-   auto db = bdm->getIFace();
-
-   //in fullnode, we should have txhints for every tx in the test chain
-
-   //block 0
-   auto keyPair = getTxKeyForHash(TestChain::hash00, db);
-   EXPECT_EQ(keyPair.first, 0); EXPECT_EQ(keyPair.second, 0);
-
-   //block 1
-   keyPair = getTxKeyForHash(TestChain::hash10, db);
-   EXPECT_EQ(keyPair.first, 1); EXPECT_EQ(keyPair.second, 0);
-
-   //block 2
-   keyPair = getTxKeyForHash(TestChain::hash20, db);
-   EXPECT_EQ(keyPair.first, 2); EXPECT_EQ(keyPair.second, 0);
-   keyPair = getTxKeyForHash(TestChain::hash21, db);
-   EXPECT_EQ(keyPair.first, 2); EXPECT_EQ(keyPair.second, 1);
-   keyPair = getTxKeyForHash(TestChain::hash22, db);
-   EXPECT_EQ(keyPair.first, 2); EXPECT_EQ(keyPair.second, 2);
-
-   //block 3
-   keyPair = getTxKeyForHash(TestChain::hash30, db);
-   EXPECT_EQ(keyPair.first, 3); EXPECT_EQ(keyPair.second, 0);
-   keyPair = getTxKeyForHash(TestChain::hash31, db);
-   EXPECT_EQ(keyPair.first, 3); EXPECT_EQ(keyPair.second, 1);
-   keyPair = getTxKeyForHash(TestChain::hash32, db);
-   EXPECT_EQ(keyPair.first, 3); EXPECT_EQ(keyPair.second, 2);
-   keyPair = getTxKeyForHash(TestChain::hash33, db);
-   EXPECT_EQ(keyPair.first, 3); EXPECT_EQ(keyPair.second, 3);
-   keyPair = getTxKeyForHash(TestChain::hash34, db);
-   EXPECT_EQ(keyPair.first, 3); EXPECT_EQ(keyPair.second, 4);
-   keyPair = getTxKeyForHash(TestChain::hash35, db);
-   EXPECT_EQ(keyPair.first, 3); EXPECT_EQ(keyPair.second, 5);
-
-   //block 4
-   keyPair = getTxKeyForHash(TestChain::hash40, db);
-   EXPECT_EQ(keyPair.first, 4); EXPECT_EQ(keyPair.second, 0);
-   keyPair = getTxKeyForHash(TestChain::hash41, db);
-   EXPECT_EQ(keyPair.first, 4); EXPECT_EQ(keyPair.second, 1);
-   keyPair = getTxKeyForHash(TestChain::hash42, db);
-   EXPECT_EQ(keyPair.first, 4); EXPECT_EQ(keyPair.second, 2);
-   keyPair = getTxKeyForHash(TestChain::hash43, db);
-   EXPECT_EQ(keyPair.first, 4); EXPECT_EQ(keyPair.second, 3);
-
-   //block 5
-   keyPair = getTxKeyForHash(TestChain::hash50, db);
-   EXPECT_EQ(keyPair.first, 5); EXPECT_EQ(keyPair.second, 0);
-   keyPair = getTxKeyForHash(TestChain::hash51, db);
-   EXPECT_EQ(keyPair.first, 5); EXPECT_EQ(keyPair.second, 1);
-   keyPair = getTxKeyForHash(TestChain::hash52, db);
-   EXPECT_EQ(keyPair.first, 5); EXPECT_EQ(keyPair.second, 2);
-
-   //cleanup
-   bdvPtr.reset();
-}
-
 /* this is meant to spit out test chain data for debug purposes */
-TEST_F(BlockUtilsFull, DISABLED_PPrintTestChain)
+TEST_F(BlockUtilsBare, DISABLED_PPrintTestChain)
 {
    TestUtils::setBlocks({ "0", "1", "2", "3", "4", "4A", "5", "5A" }, blk0dat_);
    std::vector<std::pair<uint32_t, uint8_t>> blockIds {
@@ -1809,6 +1737,154 @@ TEST_F(BlockUtilsFull, DISABLED_PPrintTestChain)
 
       std::cout << std::endl;
    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+class BlockUtilsFull : public ::testing::Test
+{
+protected:
+   void initBDM()
+   {
+      Config::reset();
+      Config::DBSettings::setServiceType(SERVICE_UNITTEST);
+      Config::parseArgs({
+         "--datadir=./fakehomedir",
+         "--dbdir=./ldbtestdir",
+         "--satoshi-datadir=./blkfiletest",
+         "--db-type=DB_FULL",
+         "--thread-count=3",
+         "--public"},
+         Config::ProcessType::DB);
+
+      DBTestUtils::init();
+      theBDMt_ = new BlockDataManagerThread();
+      iface_ = theBDMt_->bdm()->getIFace();
+
+      auto nodePtr = std::dynamic_pointer_cast<NodeUnitTest>(
+         Config::NetworkSettings::bitcoinNodes().first);
+      nodePtr->setBlockchain(theBDMt_->bdm()->blockchain());
+      nodePtr->setBlockFiles(theBDMt_->bdm()->blockFiles());
+      nodePtr->setIface(iface_);
+      clients_ = new Clients(theBDMt_->bdm());
+   }
+
+   /////////////////////////////////////////////////////////////////////////////
+   virtual void SetUp()
+   {
+      FileUtils::removeDirectory(blkdir_);
+      FileUtils::removeDirectory(homedir_);
+      FileUtils::removeDirectory(ldbdir_);
+
+      FileUtils::createDirectory(blkdir_ / "blocks");
+      FileUtils::createDirectory(homedir_);
+      FileUtils::createDirectory(ldbdir_);
+
+      // Put the first 5 blocks into the blkdir
+      blk0dat_ = FileUtils::getBlkFilename(blkdir_ / "blocks", 0);
+      TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
+
+      initBDM();
+   }
+
+   /////////////////////////////////////////////////////////////////////////////
+   virtual void TearDown(void)
+   {
+      if (clients_ != nullptr) {
+         clients_->shutdown();
+      }
+      theBDMt_->shutdown();
+
+      delete clients_;
+      delete theBDMt_;
+      clients_ = nullptr;
+      theBDMt_ = nullptr;
+
+      FileUtils::removeDirectory(blkdir_);
+      FileUtils::removeDirectory(homedir_);
+      FileUtils::removeDirectory(ldbdir_);
+      Config::reset();
+      CLEANUP_ALL_TIMERS();
+   }
+
+   BlockDataManagerThread *theBDMt_;
+   Clients* clients_;
+   LMDBBlockDatabase* iface_;
+
+   std::filesystem::path blkdir_{"./blkfiletest"sv};
+   std::filesystem::path homedir_{"./fakehomedir"sv};
+   std::filesystem::path ldbdir_{"./ldbtestdir"sv};
+   std::filesystem::path blk0dat_;
+};
+
+TEST_F(BlockUtilsFull, TxHints)
+{
+   clients_->init();
+   auto bdvID = DBTestUtils::registerBDV(
+      clients_, Config::BitcoinSettings::getMagicBytes());
+   auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
+
+   //wait on signals
+   DBTestUtils::goOnline(clients_, bdvID);
+   theBDMt_->start(Config::DBSettings::initMode());
+   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+
+   auto bdm = theBDMt_->bdm();
+   auto db = bdm->getIFace();
+
+   //in fullnode, we should have txhints for every tx in the test chain
+
+   //block 0
+   auto keyPair = getTxKeyForHash(TestChain::hash00, db);
+   EXPECT_EQ(keyPair.first, 0); EXPECT_EQ(keyPair.second, 0);
+
+   //block 1
+   keyPair = getTxKeyForHash(TestChain::hash10, db);
+   EXPECT_EQ(keyPair.first, 1); EXPECT_EQ(keyPair.second, 0);
+
+   //block 2
+   keyPair = getTxKeyForHash(TestChain::hash20, db);
+   EXPECT_EQ(keyPair.first, 2); EXPECT_EQ(keyPair.second, 0);
+   keyPair = getTxKeyForHash(TestChain::hash21, db);
+   EXPECT_EQ(keyPair.first, 2); EXPECT_EQ(keyPair.second, 1);
+   keyPair = getTxKeyForHash(TestChain::hash22, db);
+   EXPECT_EQ(keyPair.first, 2); EXPECT_EQ(keyPair.second, 2);
+
+   //block 3
+   keyPair = getTxKeyForHash(TestChain::hash30, db);
+   EXPECT_EQ(keyPair.first, 3); EXPECT_EQ(keyPair.second, 0);
+   keyPair = getTxKeyForHash(TestChain::hash31, db);
+   EXPECT_EQ(keyPair.first, 3); EXPECT_EQ(keyPair.second, 1);
+   keyPair = getTxKeyForHash(TestChain::hash32, db);
+   EXPECT_EQ(keyPair.first, 3); EXPECT_EQ(keyPair.second, 2);
+   keyPair = getTxKeyForHash(TestChain::hash33, db);
+   EXPECT_EQ(keyPair.first, 3); EXPECT_EQ(keyPair.second, 3);
+   keyPair = getTxKeyForHash(TestChain::hash34, db);
+   EXPECT_EQ(keyPair.first, 3); EXPECT_EQ(keyPair.second, 4);
+   keyPair = getTxKeyForHash(TestChain::hash35, db);
+   EXPECT_EQ(keyPair.first, 3); EXPECT_EQ(keyPair.second, 5);
+
+   //block 4
+   keyPair = getTxKeyForHash(TestChain::hash40, db);
+   EXPECT_EQ(keyPair.first, 4); EXPECT_EQ(keyPair.second, 0);
+   keyPair = getTxKeyForHash(TestChain::hash41, db);
+   EXPECT_EQ(keyPair.first, 4); EXPECT_EQ(keyPair.second, 1);
+   keyPair = getTxKeyForHash(TestChain::hash42, db);
+   EXPECT_EQ(keyPair.first, 4); EXPECT_EQ(keyPair.second, 2);
+   keyPair = getTxKeyForHash(TestChain::hash43, db);
+   EXPECT_EQ(keyPair.first, 4); EXPECT_EQ(keyPair.second, 3);
+
+   //block 5
+   keyPair = getTxKeyForHash(TestChain::hash50, db);
+   EXPECT_EQ(keyPair.first, 5); EXPECT_EQ(keyPair.second, 0);
+   keyPair = getTxKeyForHash(TestChain::hash51, db);
+   EXPECT_EQ(keyPair.first, 5); EXPECT_EQ(keyPair.second, 1);
+   keyPair = getTxKeyForHash(TestChain::hash52, db);
+   EXPECT_EQ(keyPair.first, 5); EXPECT_EQ(keyPair.second, 2);
+
+   //cleanup
+   bdvPtr.reset();
 }
 
 /*

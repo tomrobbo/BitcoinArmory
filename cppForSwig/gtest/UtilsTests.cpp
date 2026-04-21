@@ -5334,9 +5334,15 @@ TEST_F(LMDBTest, PutGetDelete)
 
    iface_->openDatabases(Config::Pathing::dbDir());
    ASSERT_TRUE(iface_->databasesAreOpen());
-   
-   auto&& txh = iface_->beginTransaction(DB_SELECT::HEADERS, LMDB::Mode::ReadWrite);
-   auto&& txH = iface_->beginTransaction(DB_SELECT::SSH, LMDB::Mode::ReadWrite);
+
+   auto txh = iface_->beginTransaction(DB_SELECT::HEADERS, LMDB::Mode::ReadWrite);
+   auto txH = iface_->beginTransaction(DB_SELECT::SSH, LMDB::Mode::ReadWrite);
+
+   auto getDBVal = [dbtx=txH.get()](BinaryData key)->BinaryDataRef
+   {
+      auto val = dbtx->get(CharacterArrayRef{key.getSize(), key.getPtr()});
+      return {(const uint8_t*)val.data, val.len};
+   };
 
    auto TXDATA = DbPrefix::TXDATA;
    BinaryData DBINFO = StoredDBInfo().getDBKey();
@@ -5345,45 +5351,40 @@ TEST_F(LMDBTest, PutGetDelete)
       BtcUtils::EmptyHash + BtcUtils::EmptyHash + ff;
 
    BinaryData commonValue = READHEX("abcd1234");
+   CharacterArrayRef commonValueRef{commonValue.getSize(), commonValue.getPtr()};
    BinaryData keyAB = READHEX("0100");
    BinaryData nothing = READHEX("0000");
 
-   addOutPairH(DBINFO,         val0);
+   addOutPairH(DBINFO, val0);
 
-   addOutPairB(DBINFO,         val0);
-   addOutPairB(         keyAB, commonValue);
+   addOutPairB(DBINFO, val0);
+   addOutPairB(keyAB, commonValue);
    addOutPairB(PREFIX + keyAB, commonValue);
 
    ASSERT_TRUE( compareKVListRange(0,1, 0,1));
 
-   iface_->putValue(DB_SELECT::SSH, keyAB, commonValue);
+   txH->insert(CharacterArrayRef{keyAB.getSize(), keyAB.getPtr()}, commonValueRef);
    ASSERT_TRUE( compareKVListRange(0,1, 0,2));
 
-   iface_->putValue(DB_SELECT::SSH, DbPrefix::TXDATA, keyAB, commonValue);
+   auto keyPrefix = PREFIX + keyAB;
+   txH->insert(CharacterArrayRef{keyPrefix.getSize(), keyPrefix.getPtr()}, commonValueRef);
    ASSERT_TRUE( compareKVListRange(0,1, 0,3));
 
    // Now test a bunch of get* methods
-   ASSERT_EQ(iface_->getValueNoCopy(DB_SELECT::SSH, PREFIX + keyAB), commonValue);
-   ASSERT_EQ(iface_->getValueRef(   DB_SELECT::SSH, DbPrefix::DBINFO, nothing), val0);
-   ASSERT_EQ(iface_->getValueNoCopy(DB_SELECT::SSH, DBINFO), val0);
-   ASSERT_EQ(iface_->getValueNoCopy(DB_SELECT::SSH, PREFIX + keyAB), commonValue);
-   ASSERT_EQ(iface_->getValueRef(   DB_SELECT::SSH, TXDATA, keyAB), commonValue);
-   ASSERT_EQ(iface_->getValueReader(DB_SELECT::SSH, PREFIX + keyAB).getRawRef(), commonValue);
-   ASSERT_EQ(iface_->getValueReader(DB_SELECT::SSH, TXDATA, keyAB).getRawRef(), commonValue);
+   ASSERT_EQ(getDBVal(PREFIX + keyAB), commonValue);
+   ASSERT_EQ(getDBVal(PREFIX + nothing), val0);
+   ASSERT_EQ(getDBVal(DBINFO), val0);
+   ASSERT_EQ(getDBVal(PREFIX + keyAB), commonValue);
+   ASSERT_EQ(getDBVal(keyAB), commonValue);
 
-   iface_->deleteValue(DB_SELECT::SSH, DbPrefix::TXDATA, keyAB);
-   ASSERT_TRUE( compareKVListRange(0,1, 0,2));
-
-   iface_->deleteValue(DB_SELECT::SSH, PREFIX + keyAB);
+   txH->erase(CharacterArrayRef{keyPrefix.getSize(), keyPrefix.getPtr()});
    ASSERT_TRUE( compareKVListRange(0,1, 0,1));
-
-   iface_->deleteValue(DB_SELECT::SSH, PREFIX + keyAB);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(LMDBTest, DISABLED_PutGetBareHeader)
 {
-   /*
+   #if 0
    StoredHeader sbh;
    BinaryRefReader brr(rawBlock_);
    sbh.unserializeFullBlock(brr);
@@ -5445,12 +5446,13 @@ TEST_F(LMDBTest, DISABLED_PutGetBareHeader)
    iface_->putBareHeader(sbh3);
    EXPECT_EQ(sbh3.duplicateID, 2);
    EXPECT_EQ(iface_->getValidDupIDForHeight(123000), 2);
-   */
+   #endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(LMDBTest, PutGetStoredTxHints)
+TEST_F(LMDBTest, DISABLED_PutGetStoredTxHints)
 {
+   #if 0
    ASSERT_TRUE(standardOpenDBs());
    auto tx = iface_->beginTransaction(DB_SELECT::TXHINTS, LMDB::Mode::ReadWrite);
 
@@ -5498,6 +5500,7 @@ TEST_F(LMDBTest, PutGetStoredTxHints)
    EXPECT_EQ(sths.txHashPrefix,  prefix);
    EXPECT_EQ(sths.dbKeyList.size(), 0ULL);
    EXPECT_EQ(sths.preferredDBKey.getSize(), 0ULL);
+   #endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////

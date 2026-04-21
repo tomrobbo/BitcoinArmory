@@ -1,12 +1,17 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2011-2025, Armory Technologies, Inc.                        //
+//  Copyright (C) 2011-2015, Armory Technologies, Inc.                        //
 //  Distributed under the GNU Affero General Public License (AGPL v3)         //
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
+//                                                                            //
+//  Copyright (C) 2016-2026, goatpig                                          //
+//  Distributed under the MIT license                                         //
+//  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
+//                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
-#ifndef LMDBPP_H
-#define LMDBPP_H
+
+#pragma once
 
 #include <string>
 #include <stdexcept>
@@ -160,6 +165,7 @@ public:
    bool isOpen(void) const;
    void close(void);
    void drop(void);
+   unsigned dbi(void) const;
 
    // insert a value into the database, replacing
    // the one with a matching key if it is already there
@@ -242,21 +248,22 @@ public:
       LMDBEnv *env=nullptr;
       bool began=false;
       LMDB::Mode mode_;
+      MDB_txn *txn_=nullptr;
+      unsigned dbi_ = UINT32_MAX;
 
       std::thread::id tid_;
 
    public:
-      Transaction(void);
-      // begin a transaction
-      Transaction(LMDBEnv*, LMDB::Mode mode = LMDB::Mode::ReadWrite);
-      // commit a transaction if it exists
+      Transaction(LMDBEnv*,
+         LMDB::Mode = LMDB::Mode::ReadWrite,
+         unsigned = UINT32_MAX);
       ~Transaction(void);
 
       Transaction(Transaction&&);
       Transaction& operator=(Transaction&&);
 
       // commit the current transaction, create a new one, and begin it
-      void open(LMDBEnv*, LMDB::Mode mode = LMDB::Mode::ReadWrite);
+      void open(LMDBEnv*, LMDB::Mode = LMDB::Mode::ReadWrite);
 
       // commit a transaction, if it exists, doing nothing otherwise.
       // after this function completes, no transaction exists
@@ -267,6 +274,11 @@ public:
       void rollback(void);
       // start a new transaction. If one already exists, do nothing
       void begin(void);
+
+      // straight into tx db operations
+      void insert(const CharacterArrayRef&, const CharacterArrayRef&);
+      void erase(const CharacterArrayRef&);
+      CharacterArrayRef get(const CharacterArrayRef&) const;
 
    private:
       Transaction(const Transaction&); // no copies
@@ -290,8 +302,3 @@ public:
 private:
    LMDBEnv(const LMDBEnv&); // disallow copy
 };
-
-
-#endif
-// kate: indent-width 3; replace-tabs on;
-

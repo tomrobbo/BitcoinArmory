@@ -588,7 +588,6 @@ void DBSettings::processArgs(const std::map<std::string, std::string>& args)
    iter = args.find("db-type");
    if (iter != args.end()) {
       if (iter->second == "DB_BARE") {
-         throw std::runtime_error("deprecated");
          armoryDbType_ = ARMORY_DB_TYPE::Bare;
       } else if (iter->second == "DB_FULL") {
          armoryDbType_ = ARMORY_DB_TYPE::Full;

@@ -1,10 +1,16 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2011-2025, Armory Technologies, Inc.                        //
+//  Copyright (C) 2011-2015, Armory Technologies, Inc.                        //
 //  Distributed under the GNU Affero General Public License (AGPL v3)         //
 //  See LICENSE-ATI or http://www.gnu.org/licenses/agpl.html                  //
 //                                                                            //
+//                                                                            //
+//  Copyright (C) 2016-2026, goatpig                                          //
+//  Distributed under the MIT license                                         //
+//  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
+//                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
+
 #include "lmdbpp.h"
 #include "lmdb.h"
 
@@ -82,7 +88,7 @@ LMDB::Iterator::Iterator(Iterator &&move)
    operator=(std::move(move));
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 inline void LMDB::Iterator::checkHasDb() const
 {
    if (!db_) {
@@ -124,7 +130,7 @@ bool LMDB::Iterator::isEOF() const
    return !isValid();
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 LMDB::Iterator& LMDB::Iterator::operator=(Iterator&& move)
 {
    reset();
@@ -205,7 +211,7 @@ LMDB::Iterator& LMDB::Iterator::operator--()
    return *this;
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 void LMDB::Iterator::openCursor()
 {
    auto tID = std::this_thread::get_id();
@@ -387,7 +393,7 @@ void LMDB::Iterator::seek(const CharacterArrayRef &key, SeekBy e)
    }
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 const MDB_val& LMDB::Iterator::key() const
 {
    return key_;
@@ -485,12 +491,13 @@ const std::filesystem::path& LMDBEnv::getFilename() const
 
 ////////////////////////////////////////////////////////////////////////////////
 // LMDBEnv::Transaction
-LMDBEnv::Transaction::Transaction()
-{}
-
-LMDBEnv::Transaction::Transaction(LMDBEnv *_env, LMDB::Mode mode)
-   : env(_env), mode_(mode)
+LMDBEnv::Transaction::Transaction(LMDBEnv *_env, LMDB::Mode mode, unsigned dbi)
+   : env(_env), mode_(mode), dbi_(dbi)
 {
+   /* NOTE:
+   pass a valid dbi if you want to use direct access via tx,
+   otherwise that member is ignored
+   */
    if (env == nullptr) {
       throw LMDBException("null LMDBEnv");
    }
@@ -508,6 +515,8 @@ LMDBEnv::Transaction::Transaction(Transaction&& mv)
    env = mv.env;
    began = mv.began;
    mode_ = mv.mode_;
+   txn_ = mv.txn_;
+   dbi_ = mv.dbi_;
    mv.began = false;
 }
 
@@ -516,7 +525,7 @@ LMDBEnv::Transaction::~Transaction()
    commit();
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 LMDBEnv::Transaction& LMDBEnv::Transaction::operator=(Transaction&& mv)
 {
    if (this == &mv) {
@@ -531,12 +540,13 @@ LMDBEnv::Transaction& LMDBEnv::Transaction::operator=(Transaction&& mv)
    this->env = mv.env;
    this->mode_ = mv.mode_;
    this->began = mv.began;
+   this->txn_ = mv.txn_;
+   this->dbi_ = mv.dbi_;
    mv.began = false;
 
    return *this;
 }
 
-////////////////////////////////////////////////////////////////////////////////
 void LMDBEnv::Transaction::begin()
 {
    if (began) {
@@ -555,6 +565,7 @@ void LMDBEnv::Transaction::begin()
    }
 
    if (thTx.transactionLevel++ != 0) {
+      txn_ = thTx.txn;
       return;
    }
    if (!env->dbenv) {
@@ -568,6 +579,7 @@ void LMDBEnv::Transaction::begin()
       thTx.mode = LMDB::Mode::ReadWrite;
    }
 
+   txn_ = nullptr;
    int rc = mdb_txn_begin(env->dbenv, nullptr, modef, &thTx.txn);
    if (rc != MDB_SUCCESS) {
       lock.lock();
@@ -577,6 +589,7 @@ void LMDBEnv::Transaction::begin()
       began = false;
       throw LMDBException("Failed to create transaction (" + errorString(rc) +")");
    }
+   txn_ = thTx.txn;
 }
 
 void LMDBEnv::Transaction::open(LMDBEnv *_env, LMDB::Mode mode)
@@ -628,6 +641,51 @@ void LMDBEnv::Transaction::rollback()
    throw std::runtime_error("unimplemented");
 }
 
+////////
+void LMDBEnv::Transaction::insert(
+   const CharacterArrayRef& key,
+   const CharacterArrayRef& value)
+{
+   MDB_val mkey{ key.len, const_cast<char*>(key.data) };
+   MDB_val mval{ value.len, const_cast<char*>(value.data) };
+   int rc = mdb_put(txn_, dbi_, &mkey, &mval, 0);
+   if (rc == MDB_SUCCESS) {
+      return;
+   }
+
+   std::cout << "failed to insert data, returned following error string: " <<
+      errorString(rc) << std::endl;
+   throw LMDBException("Failed to insert (" + errorString(rc) + ")");
+}
+
+void LMDBEnv::Transaction::erase(
+   const CharacterArrayRef& key)
+{
+   MDB_val mkey = { key.len, const_cast<char*>(key.data) };
+   int rc = mdb_del(txn_, dbi_, &mkey, 0);
+   if (rc != MDB_SUCCESS && rc != MDB_NOTFOUND) {
+      std::cout << "failed to erase data, returned following error string: "
+         << errorString(rc) << std::endl;
+      throw LMDBException("Failed to erase (" + errorString(rc) + ")");
+   }
+}
+
+CharacterArrayRef LMDBEnv::Transaction::get(const CharacterArrayRef& key) const
+{
+   MDB_val mkey{ key.len, const_cast<char*>(key.data) };
+   MDB_val mdata{ 0, 0 };
+
+   int rc = mdb_get(txn_, dbi_, &mkey, &mdata);
+   if (rc == MDB_NOTFOUND) {
+      return CharacterArrayRef{0, (uint8_t*)nullptr};
+   }
+   CharacterArrayRef ref(
+      mdata.mv_size,
+      static_cast<uint8_t*>(mdata.mv_data)
+   );
+   return ref;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // LMDB
 LMDB::LMDB()
@@ -647,7 +705,7 @@ LMDB::~LMDB()
    }
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 void LMDB::close()
 {
    if (dbi_ != 0) {
@@ -690,11 +748,10 @@ void LMDB::open(LMDBEnv *_env, const std::string_view &name)
    }
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 void LMDB::insert(
    const CharacterArrayRef& key,
-   const CharacterArrayRef& value
-)
+   const CharacterArrayRef& value)
 {
    MDB_val mkey{ key.len, const_cast<char*>(key.data) };
    MDB_val mval{ value.len, const_cast<char*>(value.data) };
@@ -822,7 +879,7 @@ void LMDB::drop()
    }
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 LMDB::Iterator LMDB::begin() const
 {
    Iterator c(const_cast<LMDB*>(this));
@@ -839,4 +896,10 @@ LMDB::Iterator LMDB::end() const
 LMDB::Iterator LMDB::cursor() const
 {
    return end();
+}
+
+////////
+unsigned LMDB::dbi() const
+{
+   return dbi_;
 }

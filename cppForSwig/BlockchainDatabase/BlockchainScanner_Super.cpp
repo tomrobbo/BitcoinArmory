@@ -663,20 +663,23 @@ void BlockchainScanner_Super::writeSubSsh(ParserBatch_Ssh* batch)
       BinaryWriter meta_key(8), meta_data(8);
       meta_key.put_uint32_t(ctr, BE);
       meta_key.put_uint32_t(0);
+      auto keyBdr = meta_key.getDataRef();
+      CharacterArrayRef keyRef{keyBdr.getSize(), keyBdr.getPtr()};
 
       meta_data.put_uint32_t(batch->bdb_->start_);
       meta_data.put_uint32_t(batch->spent_offset_);
+      auto valBdr = meta_data.getDataRef();
+      CharacterArrayRef valRef{valBdr.getSize(), valBdr.getPtr()};
 
-      db_->putValue(
-         DB_SELECT::SUBSSH_META,
-         meta_key.getDataRef(), meta_data.getDataRef());
+      tx->insert(keyRef, valRef);
    }
 
-   for (auto& ssh_pair : batch->serializedSubSsh_)
-   {
-      db_->putValue(DB_SELECT::SUBSSH,
-         ssh_pair.second.first.getDataRef(),
-         ssh_pair.second.second.getDataRef());
+   for (auto& ssh_pair : batch->serializedSubSsh_) {
+      auto keyBdr = ssh_pair.second.first.getDataRef();
+      CharacterArrayRef keyRef{keyBdr.getSize(), keyBdr.getPtr()};
+      auto valBdr = ssh_pair.second.second.getDataRef();
+      CharacterArrayRef valRef{valBdr.getSize(), valBdr.getPtr()};
+      tx->insert(keyRef, valRef);
    }
 
    //sdbi
@@ -1023,21 +1026,19 @@ void BlockchainScanner_Super::writeSpentness()
 {
    map<BinaryData, BinaryData> spentnessLeftOver;
 
-   auto dbPtr = db_;
-   auto commit = [dbPtr](
+   auto commit = [](DbTransaction* tx,
       map<BinaryData, BinaryData>::iterator begin,
       map<BinaryData, BinaryData>::iterator end)
    {
-      while (begin != end)
-      {
-         dbPtr->putValue(DB_SELECT::SPENTNESS,
-            begin->first, begin->second);
+      while (begin != end) {
+         CharacterArrayRef keyRef{begin->first.getSize(), begin->first.getPtr()};
+         CharacterArrayRef valRef{begin->second.getSize(), begin->second.getPtr()};
+         tx->insert(keyRef, valRef);
          ++begin;
       }
    };
 
-   while (true)
-   {
+   while (true) {
       unique_ptr<ParserBatch_Spentness> batch;
       try {
          batch = move(spentnessQueue_.pop_front());
@@ -1050,11 +1051,11 @@ void BlockchainScanner_Super::writeSpentness()
          UINT32_MAX - batch->bdb_->end_, 0, 0, 0);
 
       auto dbtx = db_->beginTransaction(DB_SELECT::SPENTNESS, LMDB::Mode::ReadWrite);
-      commit(batch->keysToCommit_.begin(), batch->keysToCommit_.end());
+      commit(dbtx.get(), batch->keysToCommit_.begin(), batch->keysToCommit_.end());
 
       //tally leftover size, commit if it breaches threshold
       if (spentnessLeftOver.size() > LEFTOVER_THRESHOLD) {
-         commit(spentnessLeftOver.begin(), spentnessLeftOver.end());
+         commit(dbtx.get(), spentnessLeftOver.begin(), spentnessLeftOver.end());
          spentnessLeftOver.clear();
       }
 
@@ -1062,7 +1063,7 @@ void BlockchainScanner_Super::writeSpentness()
       auto eligible_spentness = spentnessLeftOver.lower_bound(bw_cutoff);
       if (eligible_spentness != spentnessLeftOver.begin()) {
          //grab valid range, remove from leftovers
-         commit(spentnessLeftOver.begin(), eligible_spentness);
+         commit(dbtx.get(), spentnessLeftOver.begin(), eligible_spentness);
          spentnessLeftOver.erase(spentnessLeftOver.begin(), eligible_spentness);
       }
 
@@ -1080,7 +1081,7 @@ void BlockchainScanner_Super::writeSpentness()
    //commit leftovers
    if (spentnessLeftOver.size()) {
       auto dbtx = db_->beginTransaction(DB_SELECT::SPENTNESS, LMDB::Mode::ReadWrite);
-      commit(spentnessLeftOver.begin(), spentnessLeftOver.end());
+      commit(dbtx.get(), spentnessLeftOver.begin(), spentnessLeftOver.end());
    }
 }
 
@@ -1216,7 +1217,8 @@ void BlockchainScanner_Super::undo(ReorganizationState& reorgState)
       //spentness
       auto spentness_tx = db_->beginTransaction(DB_SELECT::SPENTNESS, LMDB::Mode::ReadWrite);
       for (const auto& spentness_key : undoSpentness) {
-         db_->deleteValue(DB_SELECT::SPENTNESS, spentness_key);
+         CharacterArrayRef keyRef{spentness_key.getSize(), spentness_key.getPtr()};
+         spentness_tx->erase(keyRef);
       }
 
       auto sdbi = move(db_->getStoredDBInfo(DB_SELECT::SPENTNESS, UINT16_MAX));

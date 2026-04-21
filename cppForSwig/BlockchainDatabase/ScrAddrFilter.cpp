@@ -188,10 +188,9 @@ ScrAddrFilter::AddrMap ScrAddrFilter::assignScrAddrKeys(
    //commit fresh <db, addr> pairs to db
    auto tx = lmdb_->beginTransaction(DB_SELECT::SCRADDR, LMDB::Mode::ReadWrite);
    for (const auto& aaPair : result) {
-      BinaryDataRef keyRef{(const uint8_t*)&aaPair.second->id, sizeof(uint32_t)};
-      lmdb_->putValue(DB_SELECT::SCRADDR,
-         keyRef,
-         aaPair.first.getRef()
+      CharacterArrayRef keyRef{sizeof(uint32_t), (const char*)&aaPair.second->id};
+      tx->insert(keyRef,
+         CharacterArrayRef{aaPair.first.getSize(), aaPair.first.getPtr()}
       );
    }
    return result;
@@ -452,8 +451,9 @@ ScrAddrIdMap ScrAddrFilter::getScrAddrIds() const
 ////////
 void ScrAddrFilter::cleanUpSdbis()
 {
+   auto key = StoredDBInfo::getDBKey(sdbiKey_);
    auto tx = lmdb_->beginTransaction(DB_SELECT::SCRADDR, LMDB::Mode::ReadWrite);
-   lmdb_->deleteValue(DB_SELECT::SCRADDR, StoredDBInfo::getDBKey(sdbiKey_));
+   tx->erase(CharacterArrayRef{key.getSize(), key.getPtr()});
 }
 
 ////////
@@ -464,7 +464,6 @@ void ScrAddrFilter::unregisterAddresses(
    /*
    Remove addresses from the ScrAddrFilter zcFilter map
    */
-
    auto batch = std::make_shared<UnregistrationBatch>();
    batch->scrAddrSet.insert(scrAddrSet.begin(), scrAddrSet.end());
    batch->callback = callback;

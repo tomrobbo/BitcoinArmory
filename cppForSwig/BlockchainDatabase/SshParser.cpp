@@ -205,6 +205,8 @@ void ShardedSshParser::undo()
 ////////////////////////////////////////////////////////////////////////////////
 void ShardedSshParser::putSSH()
 {
+   throw std::runtime_error("[ShardedSshParser::putSSH] deprecated");
+   #if 0
    auto len = boundsVector_.size();
    auto increment = len / 100;
 
@@ -235,6 +237,7 @@ void ShardedSshParser::putSSH()
          LOGINFO << "ssh scan progress: " << progress * 100.0f << "%";
       }
    }
+   #endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -451,6 +454,8 @@ SshBounds* ShardedSshParser::getNext()
 ////////////////////////////////////////////////////////////////////////////////
 void ShardedSshParser::parseSshThread()
 {
+   throw std::runtime_error("[ShardedSshParser::parseSshThread] deprecated");
+   #if 0
    //get top batch id
    auto subssh_sdbi = db_->getStoredDBInfo(DB_SELECT::SUBSSH, 0);
    auto id_max = subssh_sdbi.metaInt;
@@ -702,6 +707,7 @@ void ShardedSshParser::parseSshThread()
       //flag as completed
       bounds->completed_->set_value(true);
    }
+   #endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////

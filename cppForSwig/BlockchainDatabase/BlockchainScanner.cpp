@@ -793,10 +793,10 @@ void BlockchainScanner::commitBatches()
       {
          auto tx = db_->beginTransaction(DB_SELECT::TXOUTS, LMDB::Mode::ReadWrite);
          for (const auto& txoPair : serializedTxOuts) {
-            BinaryDataRef keyRef{(const uint8_t*)&txoPair.first, sizeof(uint64_t)};
-            db_->putValue(DB_SELECT::TXOUTS,
-               keyRef,
-               txoPair.second.getDataRef());
+            CharacterArrayRef keyRef{sizeof(uint64_t), (const uint8_t*)&txoPair.first};
+            auto valBdr = txoPair.second.getDataRef();
+            CharacterArrayRef valRef{valBdr.getSize(), valBdr.getPtr()};
+            tx->insert(keyRef, valRef);
          }
       }
 
@@ -804,12 +804,9 @@ void BlockchainScanner::commitBatches()
       {
          auto tx = db_->beginTransaction(DB_SELECT::TXINS, LMDB::Mode::ReadWrite);
          for (const auto& txiPair : serializedTxIns) {
-            BinaryDataRef keyRef{(const uint8_t*)&txiPair.first, sizeof(uint64_t)};
-            BinaryDataRef valRef{(const uint8_t*)&txiPair.second, sizeof(uint64_t)};
-            db_->putValue(
-               DB_SELECT::TXINS,
-               keyRef,
-               valRef);
+            CharacterArrayRef keyRef{sizeof(uint64_t), (const uint8_t*)&txiPair.first};
+            CharacterArrayRef valRef{sizeof(uint64_t), (const uint8_t*)&txiPair.second};
+            tx->insert(keyRef, valRef);
          }
       }
 
@@ -817,10 +814,10 @@ void BlockchainScanner::commitBatches()
       {
          auto tx = db_->beginTransaction(DB_SELECT::KNOWNHASHES, LMDB::Mode::ReadWrite);
          for (const auto& khPair : serializedHashes) {
-            db_->putValue(
-               DB_SELECT::KNOWNHASHES,
-               khPair.first.getRef(),
-               khPair.second.getDataRef());
+            CharacterArrayRef keyRef{32, (const uint8_t*)khPair.first.data};
+            auto valBdr = khPair.second.getDataRef();
+            CharacterArrayRef valRef{valBdr.getSize(), valBdr.getPtr()};
+            tx->insert(keyRef, valRef);
          }
       }
 
@@ -1073,6 +1070,8 @@ void BlockchainScanner::processFilterHitsThread(
 ////////
 bool BlockchainScanner::resolveTxHashes()
 {
+   throw std::runtime_error("[BlockchainScanner::resolveTxHashes] not in use currently");
+   #if 0
    /***
    the missing hashes entry will always be empty if the db is not set
    to ARMORY_DB_FULL, no need to check dbType here
@@ -1287,6 +1286,7 @@ bool BlockchainScanner::resolveTxHashes()
       return false;
    }
    return true;
+   #endif
 }
 
 const Hash32& BlockchainScanner::getTopScannedBlockHash() const
