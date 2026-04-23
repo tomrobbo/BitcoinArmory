@@ -288,7 +288,7 @@ Bridge::spawnDb(const std::filesystem::path& satoshiPath,
    //get full path to armorydb
    const std::filesystem::path armoryDbPath{
       Config::Pathing::runningDir() / "ArmoryDB" };
-   if (!FileUtils::fileExists(armoryDbPath, 0)) {
+   if (!FileUtils::pathExists(armoryDbPath, 0)) {
       throw std::runtime_error("invalid db binary path: " + armoryDbPath.string());
    }
 

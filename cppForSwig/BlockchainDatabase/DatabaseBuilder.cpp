@@ -7,6 +7,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <cstring>
+#include <forward_list>
 
 #include "DatabaseBuilder.h"
 #include <Utils/BtcUtils.h>
@@ -30,6 +31,7 @@
 
 #define REWIND_COUNT 100
 
+using namespace std::chrono_literals;
 using namespace Armory;
 using namespace Armory::Database;
 
@@ -69,9 +71,171 @@ namespace {
       auto bh = bcPtr->getHeaderById(blockId);
       dumpBlock(db, bh);
    }
+
+   /////////////////////////////////////////////////////////////////////////////
+   struct TxHint
+   {
+      uint64_t key;
+      std::vector<uint16_t> value;
+   };
+   using HintsVec = std::vector<TxHint>;
+   using HintsMap = std::map<uint64_t, std::vector<uint16_t>>;
+   using TxHashBdMap = std::map<uint32_t, std::vector<BinaryData>>;
+
+   struct TableEntry
+   {
+      size_t totalHints = 0;
+      std::forward_list<std::vector<TxHint>> hintList;
+   };
+
+   std::vector<TableEntry> TxHintsHashTable{256};
+   const size_t writeThreshold = 12500;
+   const uint64_t blockIDMask = 0x00000000FFFFFFFF;
+   std::atomic<size_t> totalHintsInMemory{0};
+   std::set<uint8_t> writePending;
+   size_t totalHints = 0;
+   size_t totalWriteCount = 0;
+   uint8_t tableCrawler = 0;
+   std::mutex mergeHintsMutex;
+
+   std::map<uint8_t, HintsMap> serializeTxHints(const TxHashBdMap& blockHashes)
+   {
+      uint64_t txHintKey;
+      std::map<uint8_t, HintsMap> result;
+      for (const auto& blockPair : blockHashes) {
+         const auto& hashes = blockPair.second;
+         uint64_t blockID = (uint64_t)blockPair.first << 32;
+
+         for (uint16_t i = 0; i < hashes.size(); i++) {
+            //hash table distribution: use the first byte of second dword
+            const uint8_t* hashData = hashes[i].getPtr();
+
+            uint8_t tableIndex = hashData[8];
+            auto tableIter = result.find(tableIndex);
+            if (tableIter == result.end()) {
+               tableIter = result.emplace(
+                  tableIndex, HintsMap{}).first;
+            }
+
+            //create txKey
+            std::memcpy(&txHintKey, hashData, 8);
+            txHintKey = txHintKey & blockIDMask | blockID;
+
+            //add to map
+            auto emplaceResult = tableIter->second.emplace(
+               txHintKey, std::vector<uint16_t>{});
+            if (emplaceResult.second) {
+               emplaceResult.first->second.reserve(1);
+            }
+
+            //set txId
+            emplaceResult.first->second.emplace_back(i);
+         }
+      }
+      return result;
+   }
+
+   void mergeTxHints(const TxHashBdMap& blockHashes)
+   {
+      auto hintsHashTable = serializeTxHints(blockHashes);
+
+      //convert maps to TxHints vectors
+      std::map<uint8_t, HintsVec> localTable;
+      for (auto& hintHTPair : hintsHashTable) {
+         HintsVec hintsVec;
+         hintsVec.reserve(hintHTPair.second.size());
+         for (auto& hintPair : hintHTPair.second) {
+            hintsVec.emplace_back(TxHint{
+               hintPair.first, std::move(hintPair.second)});
+         }
+         localTable.emplace(hintHTPair.first, std::move(hintsVec));
+      }
+
+      //merge into shared hash table
+      std::unique_lock<std::mutex> lock(mergeHintsMutex);
+      for (auto& tablePair : localTable) {
+         auto& sharedTable = TxHintsHashTable[tablePair.first];
+         auto nHints = tablePair.second.size();
+         sharedTable.totalHints += nHints;
+         totalHintsInMemory.fetch_add(nHints, std::memory_order_relaxed);
+         totalHints += nHints;
+         sharedTable.hintList.emplace_front(std::move(tablePair.second));
+      }
+   }
+
+   bool commitTxHints(LMDBBlockDatabase* db, bool force)
+   {
+      if (!force && totalHintsInMemory.load(std::memory_order_relaxed) < writeThreshold * 256 / 4) {
+         return false;
+      }
+
+      std::unique_lock<std::mutex> lock(mergeHintsMutex);
+      std::map<uint8_t, TableEntry> tablesToWrite;
+      size_t threshold = force ? 1 : writeThreshold / 5;
+      size_t maxEntries = force ? 256 : 5;
+      unsigned maxIter = force ? 256 : 20;
+
+      //crawl through table entries, pick 5 that are above the threshold
+      for (unsigned i = 0; i < maxIter; i++) {
+         auto thisTableIndex = tableCrawler++;
+         auto& tableEntry = TxHintsHashTable[thisTableIndex];
+         if (tableEntry.totalHints >= threshold) {
+            if (!force && writePending.contains(thisTableIndex)) {
+               std::cout << "laped a writer: " << (unsigned)thisTableIndex << std::endl;
+               continue;
+            }
+            auto emplaceResult = tablesToWrite.emplace(thisTableIndex, TableEntry{});
+            std::swap(tableEntry, emplaceResult.first->second);
+            writePending.emplace(thisTableIndex);
+         }
+         if (tablesToWrite.size() >= maxEntries) {
+            break;
+         }
+      }
+      if (tablesToWrite.empty()) {
+         std::this_thread::sleep_for(1s);
+         return totalHintsInMemory.load(std::memory_order_relaxed) > (256 * writeThreshold / 2);
+      }
+      lock.unlock();
+
+      auto now = std::chrono::system_clock::now();
+      size_t localWriteCount = 0;
+      for (auto& tableEntry : tablesToWrite) {
+         auto tx = db->beginHashTableTx(DB_SELECT::TXHINTS,
+            tableEntry.first, LMDB::Mode::ReadWrite);
+         for (auto& hintList : tableEntry.second.hintList) {
+            auto localList = std::move(hintList);
+            for (const auto& hint : localList) {
+               tx->insert(
+                  LMDB::DataRef{
+                     sizeof(uint64_t),
+                     (const char*)&hint.key},
+                  LMDB::DataRef{
+                     sizeof(uint16_t) * hint.value.size(),
+                     (const char*)&hint.value[0]}
+               );
+            }
+            localWriteCount += localList.size();
+            totalHintsInMemory.fetch_sub(localList.size(), std::memory_order_relaxed);
+         }
+      }
+      auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+         std::chrono::system_clock::now() - now);
+
+      lock.lock();
+      for (const auto& tableEntry : tablesToWrite) {
+         writePending.erase(tableEntry.first);
+      }
+      totalWriteCount += localWriteCount;
+      auto hintsInMem = totalHintsInMemory.load(std::memory_order_relaxed);
+      std::cout << "wrote " << localWriteCount << " hints in " <<
+         elapsed << " - total: " << totalWriteCount <<
+         "/" << totalHints << ", in mem: " << hintsInMem << std::endl;
+      return hintsInMem > (256 * writeThreshold / 2);
+   }
 }
 
-/////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 // Builder
 Builder::Builder(BlockDataManager& bdm, const ProgressCallback &progress)
    : blockFiles_(bdm.blockFiles()), blockchain_(bdm.blockchain()),
@@ -361,22 +525,8 @@ void Builder::parseForNewBlocks(const BlockOffset& startBO,
       return;
    }
 
-   std::shared_ptr<BlockDataLoader> bdl;
-   try {
-      bdl = std::make_shared<BlockDataLoader>(blockFiles_, startBO);
-   } catch (const BlockDataExhausted&) {
-      //no more fresh block data available
-      return;
-   }
-
-   //do not run more threads than there are block files to read
-   unsigned threadcount = std::min(
-      (size_t)Config::DBSettings::threadCount(),
-      bdl->size()
-   );
-
    std::mutex progressMutex;
-   unsigned lastParsedFileID = bdl->getFirstFileID();
+   unsigned lastParsedFileID = startBO.fileID();
    if (lastParsedFileID == UINT16_MAX) {
       lastParsedFileID = 0;
    }
@@ -394,57 +544,90 @@ void Builder::parseForNewBlocks(const BlockOffset& startBO,
 
    //parser threads will start with block fileID + 1
    std::set<uint32_t> invalidatedBlockIDs;
-   auto addBlocks = [&](void)->void
+   auto addBlocks = [&](std::shared_ptr<BlockDataLoader> bdl)
    {
       while (true) {
+         /*
+         We use the hintsMutex to synchronize the txHints/filter writer
+         with the block readers.
+
+         This is so that readers (of which there are many) do not eat RAM
+         for data that cannot be committed yet anyways, while the writer
+         which is a single thread at a time, needs it to prepare the (often
+         large) LMDB transaction.
+         */
+         if (commitTxHints(db_, false)) {
+            //keep writing hints if there are too many pending
+            continue;
+         }
          auto fileCopy = bdl->getNextCopy();
          if (!fileCopy.isValid()) {
             break;
          }
          auto invalids = addBlocksToDB(fileCopy);
 
-         std::unique_lock<std::mutex> lock(progressMutex, std::defer_lock);
+         std::unique_lock<std::mutex> progressLock(progressMutex);
          invalidatedBlockIDs.insert(invalids.begin(), invalids.end());
 
          //report to progress callback every ~100 block files
          if (progress && fileCopy.fileID >= lastParsedFileID + 100) {
-            if (lock.try_lock()) {
-               LOGINFO << "parsed block file #" << fileCopy.fileID;
-               calc.advance(fileCopy.fileID);
-               progress(BDMPhase_BlockData,
-                  calc.fractionCompleted(), calc.remainingSeconds(),
-                  fileCopy.fileID);
+            LOGINFO << "parsed block file #" << fileCopy.fileID;
+            calc.advance(fileCopy.fileID);
+            progress(BDMPhase_BlockData,
+               calc.fractionCompleted(), calc.remainingSeconds(),
+               fileCopy.fileID);
 
-               //bump last seen file, this doesn't need to be accurate
-               lastParsedFileID = fileCopy.fileID;
-            }
+            //bump last seen file, this doesn't need to be accurate
+            lastParsedFileID = fileCopy.fileID;
          }
       }
    };
 
-   std::vector<std::thread> tIDs;
-   for (unsigned i = 1; i < threadcount; i++) {
-      tIDs.push_back(std::thread(addBlocks));
-   }
-
-   //run one parser in current thread too
-   addBlocks();
-
-   //wait on parser threads to complete
-   for (auto& tID : tIDs) {
-      if (tID.joinable()) {
-         tID.join();
+   auto bo = startBO;
+   while (true) {
+      std::shared_ptr<BlockDataLoader> bdl;
+      try {
+         bdl = std::make_shared<BlockDataLoader>(blockFiles_, bo, 200);
+         bo = BlockOffset{bo.fileID() + 200u, 0};
+      } catch (const BlockDataExhausted&) {
+         //no more fresh block data available
+         break;
       }
+
+      //do not run more threads than there are block files to read
+      unsigned threadcount = std::min(
+         (size_t)Config::DBSettings::threadCount(),
+         bdl->size()
+      );
+
+      std::vector<std::thread> tIDs;
+      for (unsigned i = 1; i < threadcount; i++) {
+         tIDs.push_back(std::thread(addBlocks, bdl));
+      }
+      addBlocks(bdl);
+
+      //wait on parser threads to complete
+      for (auto& tID : tIDs) {
+         if (tID.joinable()) {
+            tID.join();
+         }
+      }
+      db_->closeDatabases();
+      db_->openDatabases();
    }
+
+   //write whatever is left of the txhints
+   std::cout << "final tx hint commit" << std::endl;
+   commitTxHints(db_, true);
 
    if (!invalidatedBlockIDs.empty()) {
       blockchain_->flagInvalidBlocks(db_, invalidatedBlockIDs);
    }
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 std::set<uint32_t> Builder::addBlocksToDB(
-   const BlockDataLoader::BlockDataCopy& bdc)
+   BlockDataLoader::BlockDataCopy bdc)
 {
    /*
    Expect headers to already exist in blockchain objects.
@@ -477,7 +660,7 @@ std::set<uint32_t> Builder::addBlocksToDB(
          auto bd = BlockData::deserialize(
             data, size, knownHeader,
             fullHints ? BlockData::CheckHashes::FullHints :
-               BlockData::CheckHashes::TxFilters
+               BlockData::CheckHashes::MerkleOnly
          );
          blocksVec.emplace_back(bd);
          if (!knownHeader->isMerkleValid()) {
@@ -512,6 +695,8 @@ std::set<uint32_t> Builder::addBlocksToDB(
    }
 
    //blocksVec only carries unchecked blocks
+   #if 0
+   //tx filters are disabled in DB_BARE for now
    if (!fullHints) {
       //process filters
       if (Config::DBSettings::getDbType() == ARMORY_DB_TYPE::Super) {
@@ -542,15 +727,24 @@ std::set<uint32_t> Builder::addBlocksToDB(
          //update db entry
          db_->putFilterPoolForFileNum(bdc.fileID, pool);
       }
-   } else {
-      commitAllTxHints(blocksVec);
+   }
+   #endif
+   if (fullHints) {
+      bdc.data->clear();
+      TxHashBdMap hMap;
+      for (auto& block : blocksVec) {
+         hMap.emplace(
+            block->getHeaderPtr()->getUniqueID(),
+            std::move(block->allTxHashes)
+         );
+      }
+      mergeTxHints(hMap);
    }
    return invalidBlockIds;
 }
 
-/////////////////////////////////////////////////////////////////////////////
 void Builder::parseBlockFile(
-   const BlockDataLoader::BlockDataCopy& bdc,
+   BlockDataLoader::BlockDataCopy bdc,
    const std::function<bool(const uint8_t* data, size_t size, size_t offset)>& callback)
 {
    //check magic bytes at start of data
@@ -679,13 +873,14 @@ Hash32 Builder::scanHistory(const ReorganizationState& reorgState,
       }
 
       unsigned count = 0;
+      /*
       while (!bcs.resolveTxHashes()) {
          ++count;
          if (count > 5) {
             LOGERR << "failed to fix filters after 5 attempts";
             break;
          }
-      }
+      }*/
 
       scrAddrFilter_->updateScannedHash(bcs.getTopScannedBlockHash());
       lastScanRange = std::make_pair(
@@ -711,7 +906,7 @@ Hash32 Builder::scanHistory(const ReorganizationState& reorgState,
    }
 }
 
-/////////////////////////////////////////////////////////////////////////////
+////////
 ReorganizationState Builder::update()
 {
    //list new files in block data folder
@@ -735,24 +930,6 @@ ReorganizationState Builder::update()
 
    //TODO: gracefully shutdown on failed scan
    return reorgState;
-}
-
-/////////////////////////////////////////////////////////////////////////////
-void Builder::commitAllTxHints(
-   const std::vector<std::shared_ptr<BlockData>>& blocks)
-{
-   //txhints are blind write ahead
-   auto hintdbtx = db_->beginTransaction(DB_SELECT::TXHINTS, LMDB::Mode::ReadWrite);
-   for (const auto& block : blocks) {
-      const auto& txHints = block->getTxHints();
-      for (const auto& hintPair : txHints) {
-         BinaryDataRef keyRef{(const uint8_t*)&hintPair.first, sizeof(uint64_t)};
-         db_->putValue(DB_SELECT::TXHINTS,
-            keyRef,
-            hintPair.second.getDataRef()
-         );
-      }
-   }
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -1253,12 +1430,14 @@ void Builder::reprocessTxFilter(
 void Builder::cycleDatabases()
 {
    db_->closeDatabases();
-   db_->openDatabases(Config::Pathing::dbDir());
+   db_->openDatabases();
 }
 
 /////////////////////////////////////////////////////////////////////////////
 void Builder::checkTxHintsIntegrity()
 {
+   throw std::runtime_error("[Builder::checkTxHintsIntegrity] unused atm");
+   #if 0
    BlockDataLoader bdl(blockFiles_, BlockOffset{0, 0});
    unsigned threadcount = std::min(
       size_t(Config::DBSettings::threadCount()),
@@ -1358,6 +1537,7 @@ void Builder::checkTxHintsIntegrity()
       }
    }
    LOGINFO << "done checking txhints";
+   #endif
 }
 
 unsigned Builder::getCheckedTxCount() const

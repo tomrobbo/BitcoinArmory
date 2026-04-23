@@ -313,7 +313,7 @@ FileUtils::FileMap::FileMap(const fs::path& path, bool write, size_t offset)
    : offset_(offset)
 {
    int fd = 0;
-   if (!fileExists(path, 2)) {
+   if (!pathExists(path, 2)) {
       //false positive warning, we often ask for block files that do not
       //exists as way to check for exhaustion
       return;
@@ -523,6 +523,11 @@ FileUtils::FileCopy::FileCopy(const fs::path& path, size_t offset)
    }
 }
 
+void FileUtils::FileCopy::clear()
+{
+   data_.clear();
+}
+
 ////
 bool FileUtils::FileCopy::isValid() const
 {
@@ -555,7 +560,7 @@ void FileUtils::FileCopy::xorMe(uint64_t xorKey)
 
 /////////////////////////////////////////////////////////////////////////////
 // FileUtils
-bool FileUtils::fileExists(const fs::path& path, int mode)
+bool FileUtils::pathExists(const fs::path& path, int mode)
 {
    try {
       auto result = fs::status(path);
@@ -573,7 +578,6 @@ bool FileUtils::fileExists(const fs::path& path, int mode)
       if ((mode & 4) && (filePerms & fs::perms::owner_write) == fs::perms::none) {
          return false;
       }
-
       return true;
    } catch (const fs::filesystem_error&) {
       //throw, invalid path/file doesnt exist
@@ -693,7 +697,7 @@ bool FileUtils::copy(const fs::path& src, const fs::path& dst, size_t nbytes)
 ////
 bool FileUtils::append(const fs::path& src, const fs::path& dst)
 {
-   if (!fileExists(dst, 2)) {
+   if (!pathExists(dst, 2)) {
       return false;
    }
 

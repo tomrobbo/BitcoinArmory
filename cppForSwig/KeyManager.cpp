@@ -135,7 +135,7 @@ int processArgs(std::map<std::string, std::string> args)
       noPass = true;
    }
 
-   if (FileUtils::fileExists(fullpath, 6)) {
+   if (FileUtils::pathExists(fullpath, 6)) {
       std::cout << "Loading peers db from " << fullpath << std::endl;
    } else {
       std::cout << "Missing peers db, creating a fresh one now." << std::endl;

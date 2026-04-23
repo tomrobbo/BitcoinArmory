@@ -76,17 +76,19 @@ namespace {
    std::pair<uint32_t, uint16_t> getTxKeyForHash(const BinaryData& txHash,
       LMDBBlockDatabase* db)
    {
-      auto tx = db->beginTransaction(DB_SELECT::TXHINTS, LMDB::Mode::ReadOnly);
-      auto ldbIter = db->getIterator(DB_SELECT::TXHINTS);
-      if (!ldbIter->seekToStartsWith(txHash.getSliceRef(0, 4))) {
+      uint8_t hashTableIndex = txHash.getPtr()[8];
+      auto tx = db->beginHashTableTx(
+         DB_SELECT::TXHINTS, hashTableIndex, LMDB::Mode::ReadOnly);
+      auto ldbIter = tx->getIterator();
+      if (!ldbIter.seekToStartsWith(txHash.getSliceRef(0, 4))) {
          return { UINT32_MAX, UINT16_MAX };
       }
-      auto keyRef = ldbIter->getKeyRef();
+      auto keyRef = ldbIter.getKeyRef();
       uint64_t txHintKey;
       std::memcpy(&txHintKey, keyRef.getPtr(), 8);
       uint32_t blockID = txHintKey >> 32;
 
-      auto valueReader = ldbIter->getValueReader();
+      auto valueReader = ldbIter.getValueReader();
       if (valueReader.getSizeRemaining() > 2) {
          return { UINT32_MAX, UINT16_MAX };
       }

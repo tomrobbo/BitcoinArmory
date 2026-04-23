@@ -81,10 +81,10 @@ void BlockchainScanner_Super::scan()
       lastKey.put_uint32_t(0xFFFFFFFF);
       lastKey.put_uint32_t(0);
 
-      auto dbIter = db_->getIterator(DB_SELECT::SUBSSH_META);
-      if (dbIter->seekToBefore(lastKey.getDataRef()) != false &&
-         dbIter->getKeyRef().getSize() == 8) {
-         auto&& keyReader = dbIter->getKeyReader();
+      auto dbIter = meta_tx->getIterator();
+      if (dbIter.seekToBefore(lastKey.getDataRef()) != false &&
+         dbIter.getKeyRef().getSize() == 8) {
+         auto&& keyReader = dbIter.getKeyReader();
          batch_counter_ = keyReader.get_uint32_t(BE) + 1;
       }
    }
@@ -655,8 +655,7 @@ void BlockchainScanner_Super::writeSubSsh(ParserBatch_Ssh* batch)
 {
    batch->writeSshStart_ = chrono::system_clock::now();
    auto ctr = batch->batch_id_;
-   auto&& tx = db_->beginTransaction(DB_SELECT::SUBSSH, LMDB::Mode::ReadWrite);
-   auto&& meta_tx = db_->beginTransaction(DB_SELECT::SUBSSH_META, LMDB::Mode::ReadWrite);
+   auto tx = db_->beginTransaction(DB_SELECT::SUBSSH, LMDB::Mode::ReadWrite);
 
    {
       //put height offset
@@ -664,21 +663,21 @@ void BlockchainScanner_Super::writeSubSsh(ParserBatch_Ssh* batch)
       meta_key.put_uint32_t(ctr, BE);
       meta_key.put_uint32_t(0);
       auto keyBdr = meta_key.getDataRef();
-      CharacterArrayRef keyRef{keyBdr.getSize(), keyBdr.getPtr()};
+      LMDB::DataRef keyRef{keyBdr.getSize(), keyBdr.getPtr()};
 
       meta_data.put_uint32_t(batch->bdb_->start_);
       meta_data.put_uint32_t(batch->spent_offset_);
       auto valBdr = meta_data.getDataRef();
-      CharacterArrayRef valRef{valBdr.getSize(), valBdr.getPtr()};
+      LMDB::DataRef valRef{valBdr.getSize(), valBdr.getPtr()};
 
       tx->insert(keyRef, valRef);
    }
 
    for (auto& ssh_pair : batch->serializedSubSsh_) {
       auto keyBdr = ssh_pair.second.first.getDataRef();
-      CharacterArrayRef keyRef{keyBdr.getSize(), keyBdr.getPtr()};
+      LMDB::DataRef keyRef{keyBdr.getSize(), keyBdr.getPtr()};
       auto valBdr = ssh_pair.second.second.getDataRef();
-      CharacterArrayRef valRef{valBdr.getSize(), valBdr.getPtr()};
+      LMDB::DataRef valRef{valBdr.getSize(), valBdr.getPtr()};
       tx->insert(keyRef, valRef);
    }
 
@@ -1026,13 +1025,13 @@ void BlockchainScanner_Super::writeSpentness()
 {
    map<BinaryData, BinaryData> spentnessLeftOver;
 
-   auto commit = [](DbTransaction* tx,
+   auto commit = [](DBTransaction* tx,
       map<BinaryData, BinaryData>::iterator begin,
       map<BinaryData, BinaryData>::iterator end)
    {
       while (begin != end) {
-         CharacterArrayRef keyRef{begin->first.getSize(), begin->first.getPtr()};
-         CharacterArrayRef valRef{begin->second.getSize(), begin->second.getPtr()};
+         LMDB::DataRef keyRef{begin->first.getSize(), begin->first.getPtr()};
+         LMDB::DataRef valRef{begin->second.getSize(), begin->second.getPtr()};
          tx->insert(keyRef, valRef);
          ++begin;
       }
@@ -1217,7 +1216,7 @@ void BlockchainScanner_Super::undo(ReorganizationState& reorgState)
       //spentness
       auto spentness_tx = db_->beginTransaction(DB_SELECT::SPENTNESS, LMDB::Mode::ReadWrite);
       for (const auto& spentness_key : undoSpentness) {
-         CharacterArrayRef keyRef{spentness_key.getSize(), spentness_key.getPtr()};
+         LMDB::DataRef keyRef{spentness_key.getSize(), spentness_key.getPtr()};
          spentness_tx->erase(keyRef);
       }
 

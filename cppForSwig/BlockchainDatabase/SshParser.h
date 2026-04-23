@@ -119,7 +119,7 @@ using SubSshParserResult = std::pair<
 using AddrAndHashMap = std::map<BinaryData, std::shared_ptr<AddrAndHash>>;
 
 SubSshParserResult parseSubSsh(
-   std::unique_ptr<LDBIter>, int32_t scanFrom, bool,
+   std::unique_ptr<DBIterator>, int32_t, bool,
    std::shared_ptr<const AddrAndHashMap>
 );
 

@@ -125,6 +125,7 @@ namespace Armory
          const uint8_t* ptr(void) const;
          bool isValid(void) const;
          void xorMe(uint64_t);
+         void clear(void);
       };
 
       class BlockDataFileMap
@@ -142,7 +143,7 @@ namespace Armory
       };
 
       ////
-      bool fileExists(const std::filesystem::path&, int);
+      bool pathExists(const std::filesystem::path&, int);
       bool isFile(const std::filesystem::path&);
       bool isDir(const std::filesystem::path&);
       size_t getFileSize(const std::filesystem::path&);

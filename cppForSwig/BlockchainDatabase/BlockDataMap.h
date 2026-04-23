@@ -45,7 +45,6 @@ private:
 
    std::vector<std::shared_ptr<BCTX>> txns_;
    std::shared_ptr<BlockHashVector> txFilter_;
-   std::unordered_map<uint64_t, BinaryWriter> serializedTxHints_;
 
 public:
    enum class CheckHashes : int
@@ -55,6 +54,7 @@ public:
       TxFilters,
       FullHints
    };
+   std::vector<BinaryData> allTxHashes;
 
 private:
    BlockData(const std::shared_ptr<Armory::BlockHeader>, const uint8_t*, size_t);
@@ -74,7 +74,6 @@ public:
    const std::vector<std::shared_ptr<BCTX>>& getTxns(void) const;
    void computeTxFilter(const std::vector<BinaryData>&);
    std::shared_ptr<BlockHashVector> getTxFilter(void) const;
-   const std::unordered_map<uint64_t, BinaryWriter>& getTxHints(void) const;
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -124,6 +123,7 @@ public:
 
       BlockDataCopy(void);
       BlockDataCopy(const PathAndOffset&);
+      BlockDataCopy(const BlockDataCopy&);
       bool isValid(void) const;
    };
 
@@ -135,7 +135,8 @@ private:
    BlockDataLoader(const BlockDataLoader&) = delete; //no copies
 
 public:
-   BlockDataLoader(std::shared_ptr<BlockFiles>, const Armory::BlockOffset&);
+   BlockDataLoader(std::shared_ptr<BlockFiles>,
+      const Armory::BlockOffset&, size_t = SIZE_MAX);
    BlockDataLoader(std::shared_ptr<BlockFiles>, const std::set<uint16_t>&);
 
    std::shared_ptr<Armory::FileUtils::FileMap> getNextMap(void);

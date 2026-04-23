@@ -1909,13 +1909,14 @@ protected:
 
    /////////////////////////////////////////////////////////////////////////////
    std::map<BinaryData, BinaryData> getAllEntries(
-      std::shared_ptr<LMDBEnv> dbEnv, LMDB& db)
+      std::shared_ptr<LMDB::Env> dbEnv, LMDB::DB& db)
    {
       std::map<BinaryData, BinaryData> keyValMap;
 
-      auto tx = LMDBEnv::Transaction(dbEnv.get(), LMDB::Mode::ReadOnly);
-      auto iter = db.begin();
-      while(iter.isValid()) {
+      auto tx = LMDB::Transaction(dbEnv.get(), db.dbi(), LMDB::Mode::ReadOnly);
+      auto iter = tx.getIterator();
+      iter.toFirst();
+      while (iter.isValid()) {
          auto keyData = iter.key();
          auto valData = iter.value();
 
@@ -2091,7 +2092,7 @@ TEST_F(WalletInterfaceTest, WalletIfaceTransaction_Test)
    };
 
    //setup db env
-   auto dbEnv = std::make_shared<LMDBEnv>();
+   auto dbEnv = std::make_shared<LMDB::Env>();
    dbEnv->open(dbPath_, 0);
    auto filename = dbEnv->getFilename();
    ASSERT_EQ(filename, dbPath_);
@@ -2224,7 +2225,7 @@ TEST_F(WalletInterfaceTest, WalletIfaceTransaction_Test)
 TEST_F(WalletInterfaceTest, WalletIfaceTransaction_Concurrency_Test)
 {
    //setup env
-   auto dbEnv = std::make_shared<LMDBEnv>(3);
+   auto dbEnv = std::make_shared<LMDB::Env>(3);
    dbEnv->open(dbPath_, 0);
    auto filename = dbEnv->getFilename();
    ASSERT_EQ(filename, dbPath_);
@@ -2392,7 +2393,7 @@ TEST_F(WalletInterfaceTest, WalletIfaceTransaction_Concurrency_Test)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(WalletInterfaceTest, EncryptionTest)
 {
-   auto dbEnv = std::make_shared<LMDBEnv>();
+   auto dbEnv = std::make_shared<LMDB::Env>();
    dbEnv->open(dbPath_, 0);
    auto filename = dbEnv->getFilename();
    ASSERT_EQ(filename, dbPath_);
@@ -2469,11 +2470,8 @@ TEST_F(WalletInterfaceTest, EncryptionTest)
    dbIface.reset();
 
    //open LMDB object
-   LMDB dbObj;
-   {
-      auto tx = LMDBEnv::Transaction(dbEnv.get(), LMDB::Mode::ReadWrite);
-      dbObj.open(dbEnv.get(), dbName);
-   }
+   LMDB::DB dbObj;
+   dbObj.open(dbEnv.get(), dbName);
 
    //grab all entries in db
    auto keyValMap = getAllEntries(dbEnv, dbObj);
@@ -2490,7 +2488,7 @@ TEST_F(WalletInterfaceTest, EncryptionTest)
    }
 
    //check cryptographic material
-   for (unsigned i=0; i<packets.size(); i++) {
+   for (unsigned i = 0; i < packets.size(); i++) {
       auto& packet = packets[i];
 
       ASSERT_TRUE(Cryptography::ECDSA::verifyPublicKeyValid(packet.pubKey_));
@@ -2574,7 +2572,7 @@ TEST_F(WalletInterfaceTest, EncryptionTest)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(WalletInterfaceTest, EncryptionTest_AmendValues)
 {
-   auto dbEnv = std::make_shared<LMDBEnv>();
+   auto dbEnv = std::make_shared<LMDB::Env>();
    dbEnv->open(dbPath_, 0);
    auto filename = dbEnv->getFilename();
    ASSERT_EQ(filename, dbPath_);
@@ -2679,11 +2677,8 @@ TEST_F(WalletInterfaceTest, EncryptionTest_AmendValues)
    dbIface.reset();
 
    //open LMDB object
-   LMDB dbObj;
-   {
-      auto tx = LMDBEnv::Transaction(dbEnv.get(), LMDB::Mode::ReadWrite);
-      dbObj.open(dbEnv.get(), dbName);
-   }
+   LMDB::DB dbObj;
+   dbObj.open(dbEnv.get(), dbName);
 
    //grab all entries in db
    auto keyValMap = getAllEntries(dbEnv, dbObj);
@@ -2797,7 +2792,7 @@ TEST_F(WalletInterfaceTest, EncryptionTest_AmendValues)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(WalletInterfaceTest, EncryptionTest_OpenCloseAmend)
 {
-   auto dbEnv = std::make_shared<LMDBEnv>();
+   auto dbEnv = std::make_shared<LMDB::Env>();
    dbEnv->open(dbPath_, 0);
    auto filename = dbEnv->getFilename();
    ASSERT_EQ(filename, dbPath_);
@@ -2902,11 +2897,8 @@ TEST_F(WalletInterfaceTest, EncryptionTest_OpenCloseAmend)
    dbIface.reset();
 
    //open LMDB object
-   LMDB dbObj;
-   {
-      auto tx = LMDBEnv::Transaction(dbEnv.get(), LMDB::Mode::ReadWrite);
-      dbObj.open(dbEnv.get(), dbName);
-   }
+   LMDB::DB dbObj;
+   dbObj.open(dbEnv.get(), dbName);
 
    //grab all entries in db
    auto keyValMap = getAllEntries(dbEnv, dbObj);
@@ -2919,7 +2911,7 @@ TEST_F(WalletInterfaceTest, EncryptionTest_OpenCloseAmend)
 
       auto gapsIter = gaps.begin();
       EXPECT_EQ(*gapsIter, 2U);
-      
+
       ++gapsIter;
       EXPECT_EQ(*gapsIter, 3U);
 
@@ -3077,11 +3069,8 @@ TEST_F(WalletInterfaceTest, EncryptionTest_OpenCloseAmend)
    dbIface.reset();
 
    //open LMDB object
-   LMDB dbObj2;
-   {
-      auto tx = LMDBEnv::Transaction(dbEnv.get(), LMDB::Mode::ReadWrite);
-      dbObj2.open(dbEnv.get(), dbName);
-   }
+   LMDB::DB dbObj2;
+   dbObj2.open(dbEnv.get(), dbName);
 
    //grab all entries in db
    keyValMap = getAllEntries(dbEnv, dbObj2);
@@ -3507,15 +3496,15 @@ TEST_F(WalletInterfaceTest, DbCount_Test)
    try {
       auto tx = dbIface.beginReadTransaction(CONTROL_DB_NAME.data());
       ASSERT_TRUE(false);
-   } catch (const LMDBException& e) {
-      EXPECT_EQ(e.what(), std::string("null LMDBEnv"));
+   } catch (const IO::WalletInterfaceException& e) {
+      EXPECT_EQ(e.what(), std::string("null env"));
    }
 
    try {
       auto tx = dbIface.beginReadTransaction("db1");
       ASSERT_TRUE(false);
    } catch (const IO::WalletInterfaceException& e) {
-      EXPECT_EQ(e.what(), std::string("invalid db name"));
+      EXPECT_EQ(e.what(), std::string("null env"));
    }
 
    try {
@@ -3674,7 +3663,7 @@ TEST_F(WalletInterfaceTest, WipeEntries_Test)
    }
 
    //open raw db
-   auto dbEnv = std::make_shared<LMDBEnv>(3);
+   auto dbEnv = std::make_shared<LMDB::Env>(3);
    dbEnv->open(dbPath_, 0);
    auto filename = dbEnv->getFilename();
    ASSERT_EQ(filename, dbPath_);
@@ -3684,18 +3673,18 @@ TEST_F(WalletInterfaceTest, WipeEntries_Test)
    SecureBinaryData controlSalt;
    {
       //open control db
-      LMDB dbCtrl;
-      auto tx = LMDBEnv::Transaction(dbEnv.get(), LMDB::Mode::ReadWrite);
+      LMDB::DB dbCtrl;
       dbCtrl.open(dbEnv.get(), CONTROL_DB_NAME.data());
 
       //grab control header
       std::shared_ptr<IO::WalletHeader_Control> controlHeader;
       {
+         auto tx = LMDB::Transaction(dbEnv.get(), dbCtrl.dbi(), LMDB::Mode::ReadOnly);
          BinaryWriter bw;
          bw.put_uint8_t(WALLETHEADER_PREFIX);
          bw.put_BinaryData(BinaryData::fromString(CONTROL_DB_NAME));
-         CharacterArrayRef carKey(bw.getSize(), bw.getData().getPtr());
-         auto rawVal = dbCtrl.get_NoCopy(carKey);
+         LMDB::DataRef carKey(bw.getSize(), bw.getData().getPtr());
+         auto rawVal = tx.get(carKey);
 
          BinaryDataRef refVal((const uint8_t*)rawVal.data, rawVal.len);
          BinaryRefReader brrVal(refVal);
@@ -3714,17 +3703,18 @@ TEST_F(WalletInterfaceTest, WipeEntries_Test)
          controlHeader->defaultKdfId_, controlHeader->masterEncryptionKeyId_);
       {
          auto txInner = std::make_shared<IO::RawIfaceTransaction>(
-            dbEnv.get(), &dbCtrl, true);
+            *dbEnv, dbCtrl, true);
          decryptedData->readFromDisk(txInner);
       }
 
       //grab seed
       std::unique_ptr<Seeds::EncryptedSeed> controlSeed;
       {
+         auto tx = LMDB::Transaction(dbEnv.get(), dbCtrl.dbi(), LMDB::Mode::ReadOnly);
          BinaryWriter bw;
          bw.put_uint32_t(WALLET_SEED_KEY);
-         CharacterArrayRef carKey(bw.getSize(), bw.getData().getPtr());
-         auto rawVal = dbCtrl.get_NoCopy(carKey);
+         LMDB::DataRef carKey(bw.getSize(), bw.getData().getPtr());
+         auto rawVal = tx.get(carKey);
 
          BinaryDataRef refVal((const uint8_t*)rawVal.data, rawVal.len);
          BinaryRefReader brrVal(refVal);
@@ -3753,15 +3743,12 @@ TEST_F(WalletInterfaceTest, WipeEntries_Test)
    //grab db salt
    SecureBinaryData dbSalt;
    {
-      LMDB headerDb;
-      {
-         auto tx = LMDBEnv::Transaction(dbEnv.get(), LMDB::Mode::ReadWrite);
-         headerDb.open(dbEnv.get(), std::string{WALLETHEADER_DBNAME});
-      }
+      LMDB::DB headerDb;
+      headerDb.open(dbEnv.get(), std::string{WALLETHEADER_DBNAME});
       auto keyValMap = getAllEntries(dbEnv, headerDb);
 
       std::vector<IESPacket> packets;
-      for(auto& keyVal : keyValMap) {
+      for (auto& keyVal : keyValMap) {
          auto iesPacket = getIESData(keyVal);
          packets.push_back(iesPacket);
       }
@@ -3800,15 +3787,12 @@ TEST_F(WalletInterfaceTest, WipeEntries_Test)
    //grab the entries
    std::map<BinaryData, IESPacket> dataKeyToCipherText;
    {
-      LMDB headerDb;
-      {
-         auto tx = LMDBEnv::Transaction(dbEnv.get(), LMDB::Mode::ReadWrite);
-         headerDb.open(dbEnv.get(), dbName);
-      }
+      LMDB::DB headerDb;
+      headerDb.open(dbEnv.get(), dbName);
       auto keyValMap = getAllEntries(dbEnv, headerDb);
 
       std::vector<IESPacket> packets;
-      for(auto& keyVal : keyValMap) {
+      for (auto& keyVal : keyValMap) {
          auto iesPacket = getIESData(keyVal);
          packets.push_back(iesPacket);
       }
@@ -4183,7 +4167,7 @@ TEST_F(WalletsTest, RejectCreationAtPassphrase)
    auto passFunc = [&fileExists, filename]()->std::unique_ptr<Passphrase::Params>
    {
       //check the file exists
-      if (FileUtils::fileExists(filename, 0)) {
+      if (FileUtils::pathExists(filename, 0)) {
          fileExists = true;
       }
       return std::make_unique<Passphrase::Params>();
@@ -4208,7 +4192,7 @@ TEST_F(WalletsTest, RejectCreationAtPassphrase)
 
    //check file is deleted
    EXPECT_TRUE(fileExists);
-   EXPECT_FALSE(FileUtils::fileExists(filename, 0));
+   EXPECT_FALSE(FileUtils::pathExists(filename, 0));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

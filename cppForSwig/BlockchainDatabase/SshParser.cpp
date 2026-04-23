@@ -14,7 +14,7 @@
 using namespace Armory;
 
 SubSshParserResult parseSubSsh(
-   std::unique_ptr<LDBIter> sshIter, int32_t scanFrom, bool resolveHashes,
+   std::unique_ptr<DBIterator> sshIter, int32_t scanFrom, bool resolveHashes,
    std::shared_ptr<const AddrAndHashMap> scrAddrMapPtr)
 {
    std::map<BinaryData, StoredScriptHistory> sshMap;
@@ -375,20 +375,20 @@ void ShardedSshParser::mapSubSshDBThread(unsigned index)
    auto current_id = mapCount_.fetch_add(1, std::memory_order_relaxed);
 
    while (current_id <= top_id) {
-      auto dbIter = db_->getIterator(DB_SELECT::SUBSSH);
+      auto dbIter = tx->getIterator();
 
       {
          //seek to id
          BinaryWriter firstShardKey(4);
          firstShardKey.put_uint32_t(current_id, BE);
 
-         if (!dbIter->seekTo(firstShardKey.getDataRef()) ||
-            dbIter->getKeyRef().getSize() < 4) {
+         if (!dbIter.seekTo(firstShardKey.getDataRef()) ||
+            dbIter.getKeyRef().getSize() < 4) {
             current_id = mapCount_.fetch_add(1, std::memory_order_relaxed);
             continue;
          }
 
-         auto keyReader = dbIter->getKeyReader();
+         auto keyReader = dbIter.getKeyReader();
          auto keyId = keyReader.get_uint32_t(BE);
          if (keyId != current_id) {
             current_id = mapCount_.fetch_add(1, std::memory_order_relaxed);
@@ -397,7 +397,7 @@ void ShardedSshParser::mapSubSshDBThread(unsigned index)
       }
 
       do {
-         auto keyReader = dbIter->getKeyReader();
+         auto keyReader = dbIter.getKeyReader();
          if (keyReader.getSize() < 5) {
             continue;
          }
@@ -426,7 +426,7 @@ void ShardedSshParser::mapSubSshDBThread(unsigned index)
          auto third_byte = *(ptr + 2);
          auto mappingPtr3 = mappingPtr2->getMappingForKey(third_byte);
          ++mappingPtr3->count_;
-      } while (dbIter->advanceAndRead());
+      } while (dbIter.advanceAndRead());
       current_id = mapCount_.fetch_add(1, std::memory_order_relaxed);
    }
 }

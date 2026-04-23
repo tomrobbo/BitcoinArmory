@@ -185,8 +185,7 @@ void WalletDBInterface::openControlDb()
    if (controlDb_ != nullptr) {
       throw WalletInterfaceException("controlDb is not null");
    }
-   controlDb_ = std::make_unique<LMDB>();
-   auto tx = LMDBEnv::Transaction(dbEnv_.get(), LMDB::Mode::ReadWrite);
+   controlDb_ = std::make_unique<LMDB::DB>();
    controlDb_->open(dbEnv_.get(), CONTROL_DB_NAME.data());
 }
 
@@ -257,7 +256,7 @@ std::unique_ptr<DBIfaceTransaction> WalletDBInterface::beginWriteTransaction(
    if (iter == dbMap_.end()) {
       if (dbName == CONTROL_DB_NAME) {
          return std::make_unique<RawIfaceTransaction>(
-            dbEnv_.get(), controlDb_.get(), true);
+            *dbEnv_, *controlDb_, true);
       }
       throw WalletInterfaceException("invalid db name");
    }
@@ -269,15 +268,23 @@ std::unique_ptr<DBIfaceTransaction> WalletDBInterface::beginWriteTransaction(
 std::unique_ptr<DBIfaceTransaction> WalletDBInterface::beginReadTransaction(
    const std::string_view& dbName)
 {
+   if (dbEnv_ == nullptr) {
+      throw WalletInterfaceException("null env");
+   }
+
    auto iter = dbMap_.find(dbName);
    if (iter == dbMap_.end()) {
       if (dbName == CONTROL_DB_NAME) {
+         if (controlDb_ == nullptr) {
+            throw WalletInterfaceException("null control db");
+         }
          return std::make_unique<RawIfaceTransaction>(
-            dbEnv_.get(), controlDb_.get(), false);
+            *dbEnv_, *controlDb_, false);
       }
       throw WalletInterfaceException("invalid db name");
    }
-   return std::make_unique<WalletIfaceTransaction>(this, iter->second.get(), false);
+   return std::make_unique<WalletIfaceTransaction>(
+      this, iter->second.get(), false);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -611,7 +618,7 @@ void WalletDBInterface::setDbCount(unsigned count)
 ////////////////////////////////////////////////////////////////////////////////
 void WalletDBInterface::openDbEnv(bool fileExists)
 {
-   if (FileUtils::fileExists(path_, 0) != fileExists) {
+   if (FileUtils::pathExists(path_, 0) != fileExists) {
       if (!fileExists) {
          throw WalletInterfaceException(
             "[openEnv] trying to create a file that already exists: " +
@@ -625,7 +632,7 @@ void WalletDBInterface::openDbEnv(bool fileExists)
    if (dbEnv_ != nullptr) {
       throw WalletInterfaceException("[openEnv] dbEnv already instantiated");
    }
-   dbEnv_ = std::make_unique<LMDBEnv>(dbCount_);
+   dbEnv_ = std::make_unique<LMDB::Env>(dbCount_);
    dbEnv_->open(path_, MDB_NOTLS);
    dbEnv_->setMapSize(100*1024*1024ULL);
 }
@@ -800,7 +807,7 @@ void WalletDBInterface::compactFile()
    auto fullDbPath = getFilename();
    auto swapFolder = std::filesystem::path(fullDbPath).replace_filename(
       COMPACT_FILE_FOLDER);
-   if (!FileUtils::fileExists(swapFolder, 0)) {
+   if (!FileUtils::pathExists(swapFolder, 0)) {
       if (!std::filesystem::create_directory(swapFolder)) {
          throw WalletInterfaceException("could not create wallet swap folder");
       }
@@ -812,7 +819,7 @@ void WalletDBInterface::compactFile()
       ss << COMPACT_FILE_COPY_NAME << "-" <<
          fortuna.generateRandom(16).toHexStr();
       auto fullpath = swapFolder / std::filesystem::path(ss.str());
-      if (!FileUtils::fileExists(fullpath, 0)) {
+      if (!FileUtils::pathExists(fullpath, 0)) {
          copyName = fullpath;
          break;
       }
@@ -831,7 +838,7 @@ void WalletDBInterface::compactFile()
       ss << COMPACT_FILE_SWAP_NAME << "-" <<
          fortuna.generateRandom(16).toHexStr();
       auto fullpath = swapFolder / std::filesystem::path(ss.str());
-      if (FileUtils::fileExists(fullpath, 0)) {
+      if (FileUtils::pathExists(fullpath, 0)) {
          continue;
       }
       swapPath = fullpath;
@@ -958,7 +965,7 @@ const std::string& WalletIfaceTransaction::getDbName() const
 ////////////////////////////////////////////////////////////////////////////////
 void WalletIfaceTransaction::closeTx()
 {
-   std::unique_ptr<LMDBEnv::Transaction> tx;
+   std::unique_ptr<LMDB::Transaction> tx;
    std::unique_ptr<std::unique_lock<std::recursive_mutex>> writeTxLock = nullptr;
 
    {
@@ -967,7 +974,8 @@ void WalletIfaceTransaction::closeTx()
       if (writeTxLock == nullptr || !commit_) {
          return;
       }
-      tx = std::make_unique<LMDBEnv::Transaction>(dbPtr_->dbEnv_, LMDB::Mode::ReadWrite);
+      tx = std::make_unique<LMDB::Transaction>(
+         dbPtr_->dbEnv_, dbPtr_->db_.dbi(), LMDB::Mode::ReadWrite);
    }
 
    auto dataMapCopy = std::make_shared<IfaceDataMap>(*dataMapPtr_);
@@ -993,8 +1001,8 @@ void WalletIfaceTransaction::closeTx()
       auto keyExists = dataMapCopy->resolveDataKey(dataPtr->key_, dbKey);
       if (keyExists) {
          //erase the key
-         CharacterArrayRef carKey(dbKey.getSize(), dbKey.getPtr());
-         dbPtr_->db_.erase(carKey);
+         LMDB::DataRef carKey(dbKey.getSize(), dbKey.getPtr());
+         tx->erase(carKey);
          needsWiped = true;
 
          //create erasure place holder packet
@@ -1011,9 +1019,9 @@ void WalletIfaceTransaction::closeTx()
             dbKey, BinaryData(), erasedBw.getData(),
             dbPtr_->encrPubKey_, dbPtr_->macKey_, dbPtr_->encrVersion_);
 
-         CharacterArrayRef carData(dbVal.getSize(), dbVal.getPtr());
-         CharacterArrayRef carKey2(dbKey.getSize(), dbKey.getPtr());
-         dbPtr_->db_.insert(carKey2, carData);
+         LMDB::DataRef carData(dbVal.getSize(), dbVal.getPtr());
+         LMDB::DataRef carKey2(dbKey.getSize(), dbKey.getPtr());
+         tx->insert(carKey2, carData);
 
          //move on to next piece of data if there is nothing to write
          if (!dataPtr->write_) {
@@ -1036,12 +1044,12 @@ void WalletIfaceTransaction::closeTx()
 
       //bundle key and val together, key by dbkey
       auto dbVal = DBInterface::createDataPacket(
-         dbKey, dataPtr->key_, dataPtr->value_, 
+         dbKey, dataPtr->key_, dataPtr->value_,
          dbPtr_->encrPubKey_, dbPtr_->macKey_, dbPtr_->encrVersion_);
-      CharacterArrayRef carKey(dbKey.getSize(), dbKey.getPtr());
-      CharacterArrayRef carVal(dbVal.getSize(), dbVal.getPtr());
 
-      dbPtr_->db_.insert(carKey, carVal);
+      LMDB::DataRef carKey(dbKey.getSize(), dbKey.getPtr());
+      LMDB::DataRef carVal(dbVal.getSize(), dbVal.getPtr());
+      tx->insert(carKey, carVal);
    }
 
    //update db data map
@@ -1283,9 +1291,9 @@ const BinaryDataRef WalletIfaceTransaction::getDataRef(
       */
 
       try {
-         auto& dataPtr = getInsertDataForKey(key);
+         const auto& dataPtr = getInsertDataForKey(key);
          if (!dataPtr->write_) {
-            return BinaryDataRef();
+            return {};
          }
          return dataPtr->value_.getRef();
       } catch (const NoDataInDB&) {
@@ -1298,7 +1306,7 @@ const BinaryDataRef WalletIfaceTransaction::getDataRef(
 
    auto iter = dataMapPtr_->dataMap_.find(key);
    if (iter == dataMapPtr_->dataMap_.end()) {
-      return BinaryDataRef();
+      return {};
    }
    return iter->second.getRef();
 }

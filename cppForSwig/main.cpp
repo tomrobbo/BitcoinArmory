@@ -100,7 +100,7 @@ int main(int argc, char* argv[])
       //setup remote peers db, this will block the init process until
       //peers db is unlocked
       auto serverPeersFile = Config::getDataDir() / SERVER_AUTH_PEER_FILENAME;
-      if (!FileUtils::fileExists(serverPeersFile, 0) &&
+      if (!FileUtils::pathExists(serverPeersFile, 0) &&
          !Config::NetworkSettings::ephemeralPeers()) {
          LOGINFO << "no server peers store found, creating one...";
          auto passWrapper = []()->std::unique_ptr<Passphrase::Params>

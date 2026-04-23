@@ -89,20 +89,22 @@ namespace Armory
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-class LDBIter
+class DBIterator
 {
-public:
-   LDBIter(void);
-   virtual ~LDBIter(void) = 0;
+private:
+   LMDB::Iterator iter_;
 
-   virtual bool isNull(void) const = 0;
-   virtual bool isValid(void) const = 0;
+public:
+   DBIterator(LMDB::Iterator&&);
+   ~DBIterator(void);
+
+   bool isNull(void) const;
+   bool isValid(void) const;
    bool isValid(DbPrefix);
 
-   virtual bool readIterData(void) = 0;
-   virtual bool retreat(void) = 0;
-   virtual bool advance(void) = 0;
+   bool readIterData(void);
+   bool retreat(void);
+   bool advance(void);
 
    bool advance(DbPrefix);
    bool advanceAndRead(void);
@@ -117,18 +119,18 @@ public:
 
    // All the seekTo* methods do the exact same thing, the variant simply 
    // determines the meaning of the return true/false value.
-   virtual bool seekTo(BinaryDataRef) = 0;
+   bool seekTo(BinaryDataRef);
    bool seekTo(DbPrefix, BinaryDataRef);
-   virtual bool seekToExact(BinaryDataRef) = 0;
+   bool seekToExact(BinaryDataRef);
    bool seekToExact(DbPrefix, BinaryDataRef);
    bool seekToStartsWith(BinaryDataRef);
    bool seekToStartsWith(DbPrefix);
    bool seekToStartsWith(DbPrefix, BinaryDataRef);
-   virtual bool seekToBefore(BinaryDataRef) = 0;
+   bool seekToBefore(BinaryDataRef);
    bool seekToBefore(DbPrefix);
    bool seekToBefore(DbPrefix, BinaryDataRef);
-   virtual bool seekToFirst(void) = 0;
-   virtual bool seekToLast(void) = 0;
+   bool seekToFirst(void);
+   bool seekToLast(void) ;
 
    // Return true if the iterator is currently on valid data, with key match
    bool checkKeyExact(BinaryDataRef);
@@ -149,87 +151,52 @@ protected:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-class LDBIter_Single : public LDBIter
+class DBTransaction
 {
 private:
-   LMDB::Iterator iter_;
+   LMDB::Transaction dbtx_;
 
 public:
-   LDBIter_Single(LMDB::Iterator&&);
+   DBTransaction(LMDB::Transaction&&);
+   ~DBTransaction(void);
 
-   //virutals
-   bool isNull(void) const override;
-   bool isValid(void) const override;
-
-   bool seekTo(BinaryDataRef) override;
-   bool seekToExact(BinaryDataRef) override;
-   bool seekToBefore(BinaryDataRef) override;
-   bool seekToFirst(void) override;
-   bool seekToLast(void) override;
-
-   bool advance(void) override;
-   bool retreat(void) override;
-   bool readIterData(void) override;
+   void insert(const LMDB::DataRef&, const LMDB::DataRef&);
+   void erase(const LMDB::DataRef&);
+   LMDB::DataRef get(const LMDB::DataRef&) const;
+   DBIterator getIterator(void) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 class DBPair
 {
 private:
-   LMDBEnv env_;
-   LMDB db_;
-   const unsigned id_;
+   LMDB::Env env_;
+   LMDB::DB db_;
+   size_t mapSize_;
 
 public:
-   DBPair(unsigned);
+   DBPair(size_t);
 
-   LMDBEnv::Transaction beginTransaction(LMDB::Mode);
+   LMDB::Transaction beginTransaction(LMDB::Mode);
    void open(const std::filesystem::path&, const std::string&);
    void close(void);
-
-   BinaryDataRef getValue(BinaryDataRef) const;
-   void putValue(BinaryDataRef, BinaryDataRef);
-   void deleteValue(BinaryDataRef);
-   
-   std::unique_ptr<LDBIter_Single> getIterator(void);
-   unsigned getId(void) const;
    bool isOpen(void) const;
-   LMDBEnv* getEnv(void);
-};
-
-////////////////////////////////////////////////////////////////////////////////
-class DbTransaction
-{
-private:
-   LMDBEnv::Transaction dbtx_;
-
-public:
-   DbTransaction(LMDBEnv::Transaction&&);
-   ~DbTransaction(void);
-   void insert(const CharacterArrayRef&, const CharacterArrayRef&);
-   void erase(const CharacterArrayRef&);
-   CharacterArrayRef get(const CharacterArrayRef&) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 class DatabaseContainer
 {
 private:
-   const DB_SELECT dbSelect_;
+   const std::filesystem::path baseDir_;
+   const std::string name_;
    mutable DBPair db_;
 
 public:
-   static std::filesystem::path baseDir;
-   static BinaryData magicBytes;
-
-public:
    //tor
-   DatabaseContainer(DB_SELECT);
+   DatabaseContainer(const std::filesystem::path&, const std::string&, size_t);
    ~DatabaseContainer(void);
 
    //static
-   static std::filesystem::path getDbPath(DB_SELECT);
-   static std::filesystem::path getDbPath(const std::string&);
    static std::string getDbName(DB_SELECT);
 
    //virtual
@@ -237,8 +204,7 @@ public:
    void close(void);
    void eraseOnDisk(void);
 
-   std::unique_ptr<DbTransaction> beginTransaction(LMDB::Mode) const;
-   std::unique_ptr<LDBIter> getIterator(void);
+   std::unique_ptr<DBTransaction> beginTransaction(LMDB::Mode) const;
 
    StoredDBInfo getStoredDBInfo(uint16_t);
    void putStoredDBInfo(const StoredDBInfo&, uint16_t);
@@ -295,43 +261,35 @@ class LMDBBlockDatabase
    friend class BlockchainScanner_Super;
 
 private:
+   const std::filesystem::path dbDir_;
+
    std::shared_ptr<DatabaseContainer> getDbPtr(DB_SELECT) const;
+   std::shared_ptr<DatabaseContainer> getHashTablePtr(DB_SELECT, uint8_t) const;
 
 public:
-   LMDBBlockDatabase(void);
+   LMDBBlockDatabase(const std::filesystem::path&);
    ~LMDBBlockDatabase(void);
 
    /////////////////////////////////////////////////////////////////////////////
-   void openDatabases(const std::filesystem::path&);
-
-   /////////////////////////////////////////////////////////////////////////////
-   void closeDatabases();
-   void replaceDatabases(DB_SELECT, const std::string&);
-   void cycleDatabase(DB_SELECT);
-
-   /////////////////////////////////////////////////////////////////////////////
-   std::unique_ptr<DbTransaction> beginTransaction(DB_SELECT, LMDB::Mode) const;
-   ARMORY_DB_TYPE getDbType(void) const;
-
-   /////////////////////////////////////////////////////////////////////////////
-   // Sometimes, we just need to nuke everything and start over
-   void destroyAndResetDatabases(void);
-   void resetHistoryDatabases(void);
+   void openDatabases(void);
    bool databasesAreOpen(void) const;
 
-   /////////////////////////////////////////////////////////////////////////////
-   std::unique_ptr<LDBIter> getIterator(DB_SELECT) const;
+   void closeDatabases(void);
+   void cycleDatabase(DB_SELECT);
+   void destroyAndResetDatabases(void);
+   void resetHistoryDatabases(void);
 
+   /////////////////////////////////////////////////////////////////////////////
+   std::unique_ptr<DBTransaction> beginTransaction(
+      DB_SELECT, LMDB::Mode) const;
+   std::unique_ptr<DBTransaction> beginHashTableTx(
+      DB_SELECT, uint8_t, LMDB::Mode) const;
 
    /////////////////////////////////////////////////////////////////////////////
    BinaryData getDBKeyForHash(BinaryDataRef, uint8_t = UINT8_MAX) const;
    void readAllHeaders(
-      const std::function<void(std::shared_ptr<Armory::BlockHeader>)>&
-   );
+      const std::function<void(std::shared_ptr<Armory::BlockHeader>)>&);
 
-   std::map<uint32_t, uint32_t> getSSHSummary(BinaryDataRef);
-
-public:
    /////////////////////////////////////////////////////////////////////////////
    // Interface to translate Stored* objects to/from persistent DB storage
    /////////////////////////////////////////////////////////////////////////////
@@ -374,6 +332,7 @@ public:
 
    /////////////////////////////////////////////////////////////////////////////
    // StoredScriptHistory Accessors
+   std::map<uint32_t, uint32_t> getSSHSummary(BinaryDataRef);
    bool getStoredScriptHistory(StoredScriptHistory&,
       BinaryDataRef,
       uint32_t = 0,
@@ -381,13 +340,10 @@ public:
 
    bool getStoredSubHistoryAtHgtX(StoredSubHistory&,
       const BinaryDataRef, const BinaryData&) const;
-   
    bool getStoredSubHistoryAtHgtX(StoredSubHistory&,
       const BinaryData&) const;
-
    bool getStoredScriptHistorySummary(StoredScriptHistory&,
       BinaryDataRef) const;
-
    void getStoredScriptHistoryByRawScript(
       StoredScriptHistory&,
       BinaryDataRef) const;
@@ -445,7 +401,7 @@ public:
 
 public:
    std::map<DB_SELECT, std::shared_ptr<DatabaseContainer>> dbMap_;
-   const static std::map<std::string, size_t> mapSizes_;
+   std::map<DB_SELECT, std::vector<std::shared_ptr<DatabaseContainer>>> dbHashTables_;
 
 private:
    bool     dbIsOpen_;

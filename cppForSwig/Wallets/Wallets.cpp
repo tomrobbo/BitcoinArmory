@@ -2361,7 +2361,7 @@ std::filesystem::path AssetWallet_Single::forkWatchingOnly(
    auto newPath = wpd.path.parent_path() / newname;
 
    //check file does not exist
-   if (FileUtils::fileExists(newPath, 0)) {
+   if (FileUtils::pathExists(newPath, 0)) {
       throw WalletException("WO wallet filename already exists");
    }
 

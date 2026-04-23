@@ -719,7 +719,9 @@ std::map<BinaryData, std::vector<Output>> BlockDataViewer::getAddressOutpoints(
    std::map<BinaryData, BinaryData> hashMap;
 
    //confirmed outputs, skip if heightCutoff is UINT32_MAX
-   auto isSuper = db_->getDbType() == ARMORY_DB_TYPE::Super ? true : false;
+   auto isSuper = Config::DBSettings::getDbType() == ARMORY_DB_TYPE::Super ?
+      true : false;
+
    if (heightCutoff != UINT32_MAX) {
       for (const auto& scrAddr : scrAddrSet) {
          StoredScriptHistory ssh;

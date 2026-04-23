@@ -187,7 +187,7 @@ void Armory::Config::parseArgs(
 
       //get config file
       auto configPath = fs::path(Armory::Config::getDataDir()) / "armorydb.conf";
-      if (FileUtils::fileExists(configPath, 2)) {
+      if (FileUtils::pathExists(configPath, 2)) {
          Config::File cf(configPath);
          auto mapIter = cf.keyvalMap_.find("datadir");
          if (mapIter != cf.keyvalMap_.end()) {
@@ -1027,7 +1027,7 @@ void Pathing::processArgs(const std::map<std::string, std::string>& args,
    //test all paths
    auto testPath = [](const fs::path& path, int mode)->bool
    {
-      return FileUtils::fileExists(path, mode);
+      return FileUtils::pathExists(path, mode);
    };
 
    if (!testPath(Armory::Config::getDataDir(), 6)) {

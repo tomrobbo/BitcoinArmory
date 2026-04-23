@@ -588,14 +588,14 @@ void Blockchain::flagInvalidBlocks(LMDBBlockDatabase* db,
       }
 
       //grab header from db, we need the raw data
-      auto ldbIter = db->getIterator(DB_SELECT::HEADERS);
+      auto ldbIter = tx->getIterator();
       BinaryWriter bwKey(4);
       bwKey.put_uint32_t(blockID, BE);
-      if (!ldbIter->seekToExact(bwKey.getDataRef())) {
+      if (!ldbIter.seekToExact(bwKey.getDataRef())) {
          throw std::runtime_error("no db entry for this header");
       }
       header->setRawData(
-         ldbIter->getValueReader().get_BinaryData(HEADER_SIZE));
+         ldbIter.getValueReader().get_BinaryData(HEADER_SIZE));
 
       StoredHeader sbh;
       sbh.createFromBlockHeader(*header);

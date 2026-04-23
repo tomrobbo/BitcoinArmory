@@ -940,8 +940,8 @@ void ZeroConfContainer::updateZCinDB()
       for (const auto& txhash : batch.txHashes) {
          //if the key is not to be found in the txMap_, this is a ZC txhash
          tx->insert(
-            CharacterArrayRef{txhash.getSize(), txhash.getPtr()},
-            CharacterArrayRef{0, (const char*)nullptr}
+            LMDB::DataRef{txhash.getSize(), txhash.getPtr()},
+            LMDB::DataRef{0, (const char*)nullptr}
          );
       }
 
@@ -956,8 +956,8 @@ void ZeroConfContainer::updateZCinDB()
             keyWithPrefix = key;
          }
 
-         auto dbIter = db_->getIterator(DB_SELECT::ZERO_CONF);
-         if (!dbIter->seekTo(keyWithPrefix)) {
+         auto dbIter = tx->getIterator();
+         if (!dbIter.seekTo(keyWithPrefix)) {
             continue;
          }
 
@@ -965,22 +965,20 @@ void ZeroConfContainer::updateZCinDB()
          ktd.emplace_back(keyWithPrefix);
 
          do {
-            BinaryDataRef thisKey = dbIter->getKeyRef();
+            BinaryDataRef thisKey = dbIter.getKeyRef();
             if (!thisKey.startsWith(keyWithPrefix)) {
                break;
             }
             ktd.emplace_back(thisKey);
-         } while (dbIter->advanceAndRead(DbPrefix::ZCDATA));
+         } while (dbIter.advanceAndRead(DbPrefix::ZCDATA));
 
          for (const auto& _key : ktd) {
-            tx->erase(CharacterArrayRef{
-               _key.getSize(), _key.getPtr()});
+            tx->erase(LMDB::DataRef{_key.getSize(), _key.getPtr()});
          }
       }
 
       for (const auto& _hash : batch.txHashesToDelete) {
-         tx->erase(CharacterArrayRef{
-            _hash.getSize(), _hash.getPtr()});
+         tx->erase(LMDB::DataRef{_hash.getSize(), _hash.getPtr()});
       }
       batch.setCompleted(true);
    }
@@ -994,13 +992,13 @@ unsigned ZeroConfContainer::loadZeroConfMempool(bool clearMempool)
    {
       auto tx = db_->beginTransaction(
          DB_SELECT::ZERO_CONF, LMDB::Mode::ReadOnly);
-      auto dbIter = db_->getIterator(DB_SELECT::ZERO_CONF);
-      if (!dbIter->seekToStartsWith(DbPrefix::ZCDATA)) {
+      auto dbIter = tx->getIterator();
+      if (!dbIter.seekToStartsWith(DbPrefix::ZCDATA)) {
          return topId;
       }
 
       do {
-         BinaryDataRef zcKey = dbIter->getKeyRef();
+         BinaryDataRef zcKey = dbIter.getKeyRef();
 
          if (zcKey.getSize() == 7) {
             //Tx, grab it from DB
@@ -1023,7 +1021,7 @@ unsigned ZeroConfContainer::loadZeroConfMempool(bool clearMempool)
             LOGERR << "Unknown key found in ZC mempool";
             break;
          }
-      } while (dbIter->advanceAndRead(DbPrefix::ZCDATA));
+      } while (dbIter.advanceAndRead(DbPrefix::ZCDATA));
    }
 
    if (clearMempool == true) {

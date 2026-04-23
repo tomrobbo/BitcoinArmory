@@ -4932,7 +4932,7 @@ protected:
          Config::ProcessType::DB);
 
       magic_ = Config::BitcoinSettings::getMagicBytes();
-      iface_ = new LMDBBlockDatabase({});
+      iface_ = new LMDBBlockDatabase(Config::Pathing::dbDir());
 
       rawHead_ = READHEX(
          "01000000"
@@ -5227,7 +5227,7 @@ protected:
    /////
    bool standardOpenDBs(void)
    {
-      iface_->openDatabases(Config::Pathing::dbDir());
+      iface_->openDatabases();
       auto tx = iface_->beginTransaction(DB_SELECT::HEADERS, LMDB::Mode::ReadWrite);
 
       BinaryData DBINFO = StoredDBInfo().getDBKey();
@@ -5264,7 +5264,7 @@ protected:
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(LMDBTest, OpenClose)
 {
-   iface_->openDatabases(Config::Pathing::dbDir());
+   iface_->openDatabases();
    ASSERT_TRUE(iface_->databasesAreOpen());
 
    auto topHash = DBTestUtils::getTopBlockHash(iface_, DB_SELECT::HEADERS);
@@ -5300,9 +5300,9 @@ TEST_F(LMDBTest, OpenCloseOpenNominal)
    BinaryData flags = READHEX("97011000");
    BinaryData ff = READHEX("ffffffffffffffff");
 
-   iface_->openDatabases(Config::Pathing::dbDir());
+   iface_->openDatabases();
    iface_->closeDatabases();
-   iface_->openDatabases(Config::Pathing::dbDir());
+   iface_->openDatabases();
 
    ASSERT_TRUE(iface_->databasesAreOpen());
 
@@ -5332,7 +5332,7 @@ TEST_F(LMDBTest, PutGetDelete)
    BinaryData flags = READHEX("97011000");
    BinaryData ff = READHEX("ffffffffffffffff");
 
-   iface_->openDatabases(Config::Pathing::dbDir());
+   iface_->openDatabases();
    ASSERT_TRUE(iface_->databasesAreOpen());
 
    auto txh = iface_->beginTransaction(DB_SELECT::HEADERS, LMDB::Mode::ReadWrite);
@@ -5340,7 +5340,7 @@ TEST_F(LMDBTest, PutGetDelete)
 
    auto getDBVal = [dbtx=txH.get()](BinaryData key)->BinaryDataRef
    {
-      auto val = dbtx->get(CharacterArrayRef{key.getSize(), key.getPtr()});
+      auto val = dbtx->get(LMDB::DataRef{key.getSize(), key.getPtr()});
       return {(const uint8_t*)val.data, val.len};
    };
 
@@ -5351,7 +5351,7 @@ TEST_F(LMDBTest, PutGetDelete)
       BtcUtils::EmptyHash + BtcUtils::EmptyHash + ff;
 
    BinaryData commonValue = READHEX("abcd1234");
-   CharacterArrayRef commonValueRef{commonValue.getSize(), commonValue.getPtr()};
+   LMDB::DataRef commonValueRef{commonValue.getSize(), commonValue.getPtr()};
    BinaryData keyAB = READHEX("0100");
    BinaryData nothing = READHEX("0000");
 
@@ -5363,11 +5363,11 @@ TEST_F(LMDBTest, PutGetDelete)
 
    ASSERT_TRUE( compareKVListRange(0,1, 0,1));
 
-   txH->insert(CharacterArrayRef{keyAB.getSize(), keyAB.getPtr()}, commonValueRef);
+   txH->insert(LMDB::DataRef{keyAB.getSize(), keyAB.getPtr()}, commonValueRef);
    ASSERT_TRUE( compareKVListRange(0,1, 0,2));
 
    auto keyPrefix = PREFIX + keyAB;
-   txH->insert(CharacterArrayRef{keyPrefix.getSize(), keyPrefix.getPtr()}, commonValueRef);
+   txH->insert(LMDB::DataRef{keyPrefix.getSize(), keyPrefix.getPtr()}, commonValueRef);
    ASSERT_TRUE( compareKVListRange(0,1, 0,3));
 
    // Now test a bunch of get* methods
@@ -5377,7 +5377,7 @@ TEST_F(LMDBTest, PutGetDelete)
    ASSERT_EQ(getDBVal(PREFIX + keyAB), commonValue);
    ASSERT_EQ(getDBVal(keyAB), commonValue);
 
-   txH->erase(CharacterArrayRef{keyPrefix.getSize(), keyPrefix.getPtr()});
+   txH->erase(LMDB::DataRef{keyPrefix.getSize(), keyPrefix.getPtr()});
    ASSERT_TRUE( compareKVListRange(0,1, 0,1));
 }
 
@@ -5672,7 +5672,7 @@ protected:
 
    bool standardOpenDBs(void)
    {
-      iface_->openDatabases(Config::Pathing::dbDir());
+      iface_->openDatabases();
       return iface_->databasesAreOpen();
    }
 

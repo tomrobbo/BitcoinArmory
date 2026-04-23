@@ -86,7 +86,7 @@ AuthorizedPeers::AuthorizedPeers(SecureBinaryData& privateKey)
 ////////
 void AuthorizedPeers::loadWallet(const IO::ReadOnlyFileParams& params)
 {
-   if (!FileUtils::fileExists(params.filePath, 6)) {
+   if (!FileUtils::pathExists(params.filePath, 6)) {
       throw PeerFileMissing();
    }
    wallet_ = AssetWallet::loadMainWalletFromFile(params);

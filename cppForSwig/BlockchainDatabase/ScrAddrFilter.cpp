@@ -66,14 +66,14 @@ void ScrAddrFilter::start(std::shared_future<bool> bdmReadyFut)
    {
       auto tx = lmdb_->beginTransaction(
          DB_SELECT::SCRADDR, LMDB::Mode::ReadOnly);
-      auto dbIter = lmdb_->getIterator(DB_SELECT::SCRADDR);
-      dbIter->seekToFirst();
+      auto dbIter = tx->getIterator();
+      dbIter.seekToFirst();
       std::map<BinaryData, std::shared_ptr<AddrAndHash>> scrAddrMap;
 
       //iterate over scraddr DB
       topScrAddrID_ = 0;
       do {
-         auto keyRef = dbIter->getKeyRef();
+         auto keyRef = dbIter.getKeyRef();
          if (keyRef.getSize() != sizeof(uint32_t)) {
             continue;
          }
@@ -83,12 +83,12 @@ void ScrAddrFilter::start(std::shared_future<bool> bdmReadyFut)
             //sdbi entry, ignore
             continue;
          }
-         auto scrAddrRef = dbIter->getValueRef();
+         auto scrAddrRef = dbIter.getValueRef();
 
          auto aah = std::make_shared<AddrAndHash>(scrAddrRef, scrAddrId);
          scrAddrMap.emplace(aah->scrAddr, aah);
          topScrAddrID_ = std::max(topScrAddrID_, scrAddrId);
-      } while (dbIter->advanceAndRead());
+      } while (dbIter.advanceAndRead());
 
       //update members
       scanFilterAddrMap_->update(scrAddrMap);
@@ -188,9 +188,9 @@ ScrAddrFilter::AddrMap ScrAddrFilter::assignScrAddrKeys(
    //commit fresh <db, addr> pairs to db
    auto tx = lmdb_->beginTransaction(DB_SELECT::SCRADDR, LMDB::Mode::ReadWrite);
    for (const auto& aaPair : result) {
-      CharacterArrayRef keyRef{sizeof(uint32_t), (const char*)&aaPair.second->id};
+      LMDB::DataRef keyRef{sizeof(uint32_t), (const char*)&aaPair.second->id};
       tx->insert(keyRef,
-         CharacterArrayRef{aaPair.first.getSize(), aaPair.first.getPtr()}
+         LMDB::DataRef{aaPair.first.getSize(), aaPair.first.getPtr()}
       );
    }
    return result;
@@ -453,7 +453,7 @@ void ScrAddrFilter::cleanUpSdbis()
 {
    auto key = StoredDBInfo::getDBKey(sdbiKey_);
    auto tx = lmdb_->beginTransaction(DB_SELECT::SCRADDR, LMDB::Mode::ReadWrite);
-   tx->erase(CharacterArrayRef{key.getSize(), key.getPtr()});
+   tx->erase(LMDB::DataRef{key.getSize(), key.getPtr()});
 }
 
 ////////

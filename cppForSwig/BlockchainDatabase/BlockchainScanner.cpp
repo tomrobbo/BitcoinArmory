@@ -38,18 +38,18 @@ void ScannerContext::init(LMDBBlockDatabase* db)
    if (!hashMap_.empty()) {
       throw std::runtime_error("hashmap isn't empty");
    }
-
    auto tx = db->beginTransaction(
       DB_SELECT::KNOWNHASHES, LMDB::Mode::ReadOnly);
-   auto ldbIter = db->getIterator(DB_SELECT::KNOWNHASHES);
-   for (ldbIter->seekToFirst(); ldbIter->isValid(); ldbIter->advanceAndRead()) {
-      auto keyRef = ldbIter->getKeyRef();
+
+   auto ldbIter = tx->getIterator();
+   for (ldbIter.seekToFirst(); ldbIter.isValid(); ldbIter.advanceAndRead()) {
+      auto keyRef = ldbIter.getKeyRef();
       if (keyRef.getSize() != 32) {
          //not a hash entry
          continue;
       }
 
-      auto dataReader = ldbIter->getValueReader();
+      auto dataReader = ldbIter.getValueReader();
       std::set<uint64_t> vals;
       for (unsigned i = 0; i < dataReader.getSize() / 8; i++) {
          vals.emplace(dataReader.get_uint64_t());
@@ -791,32 +791,35 @@ void BlockchainScanner::commitBatches()
 
       //txouts
       {
-         auto tx = db_->beginTransaction(DB_SELECT::TXOUTS, LMDB::Mode::ReadWrite);
+         auto tx = db_->beginTransaction(
+            DB_SELECT::TXOUTS, LMDB::Mode::ReadWrite);
          for (const auto& txoPair : serializedTxOuts) {
-            CharacterArrayRef keyRef{sizeof(uint64_t), (const uint8_t*)&txoPair.first};
+            LMDB::DataRef keyRef{sizeof(uint64_t), (const uint8_t*)&txoPair.first};
             auto valBdr = txoPair.second.getDataRef();
-            CharacterArrayRef valRef{valBdr.getSize(), valBdr.getPtr()};
+            LMDB::DataRef valRef{valBdr.getSize(), valBdr.getPtr()};
             tx->insert(keyRef, valRef);
          }
       }
 
       //txins
       {
-         auto tx = db_->beginTransaction(DB_SELECT::TXINS, LMDB::Mode::ReadWrite);
+         auto tx = db_->beginTransaction(
+            DB_SELECT::TXINS, LMDB::Mode::ReadWrite);
          for (const auto& txiPair : serializedTxIns) {
-            CharacterArrayRef keyRef{sizeof(uint64_t), (const uint8_t*)&txiPair.first};
-            CharacterArrayRef valRef{sizeof(uint64_t), (const uint8_t*)&txiPair.second};
+            LMDB::DataRef keyRef{sizeof(uint64_t), (const uint8_t*)&txiPair.first};
+            LMDB::DataRef valRef{sizeof(uint64_t), (const uint8_t*)&txiPair.second};
             tx->insert(keyRef, valRef);
          }
       }
 
       //known hashes
       {
-         auto tx = db_->beginTransaction(DB_SELECT::KNOWNHASHES, LMDB::Mode::ReadWrite);
+         auto tx = db_->beginTransaction(
+            DB_SELECT::KNOWNHASHES, LMDB::Mode::ReadWrite);
          for (const auto& khPair : serializedHashes) {
-            CharacterArrayRef keyRef{32, (const uint8_t*)khPair.first.data};
+            LMDB::DataRef keyRef{32, (const uint8_t*)khPair.first.data};
             auto valBdr = khPair.second.getDataRef();
-            CharacterArrayRef valRef{valBdr.getSize(), valBdr.getPtr()};
+            LMDB::DataRef valRef{valBdr.getSize(), valBdr.getPtr()};
             tx->insert(keyRef, valRef);
          }
       }

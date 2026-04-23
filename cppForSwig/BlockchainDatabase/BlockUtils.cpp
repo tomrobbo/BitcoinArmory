@@ -98,7 +98,7 @@ BlockDataManager::BlockDataManager(std::function<bool(void)> shutdownLbd) :
    blockchain_ = std::make_shared<Blockchain>(
       Config::BitcoinSettings::getGenesisBlockHash());
    blockFiles_ = std::make_shared<BlockFiles>(Config::Pathing::blkFilePath());
-   iface_ = new LMDBBlockDatabase();
+   iface_ = new LMDBBlockDatabase(Config::Pathing::dbDir());
    nodeStatusPollMutex_ = std::make_shared<std::mutex>();
 
    try {
@@ -180,7 +180,7 @@ void BlockDataManager::openDatabase()
    }
 
    try {
-      iface_->openDatabases(Config::Pathing::dbDir());
+      iface_->openDatabases();
    } catch (const std::runtime_error &e) {
       std::stringstream ss;
       ss << "DB failed to open, reporting the following error: " << e.what();

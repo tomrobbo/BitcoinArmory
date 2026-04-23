@@ -432,9 +432,9 @@ namespace {
                      }
 
                      auto fullPath = std::filesystem::path{"./fakehomedir"} / path;
-                     if (!FileUtils::fileExists(fullPath, 0)) {
+                     if (!FileUtils::pathExists(fullPath, 0)) {
                         fullPath = std::filesystem::path{"./fakehomedir/temp"} / path;
-                        if (!FileUtils::fileExists(fullPath, 0)) {
+                        if (!FileUtils::pathExists(fullPath, 0)) {
                            throw std::runtime_error("wallet path is invalid!");
                         }
                      }
@@ -3365,7 +3365,7 @@ TEST_F(WalletManagerTests, ListWO)
          {1ms, 0, SecureBinaryData::fromString("woPass")}
       );
       ASSERT_FALSE(woWltPath.empty());
-      ASSERT_TRUE(FileUtils::fileExists(woWltPath, 0));
+      ASSERT_TRUE(FileUtils::pathExists(woWltPath, 0));
       ASSERT_NE(woWltPath, wltPaths[0]);
       wltPaths.emplace_back(woWltPath);
    }
@@ -4340,7 +4340,7 @@ TEST_F(BridgeWalletTests, ListWO)
          {1ms, 0, SecureBinaryData::fromString("woPass")}
       );
       ASSERT_FALSE(woWltPath.empty());
-      ASSERT_TRUE(FileUtils::fileExists(woWltPath, 0));
+      ASSERT_TRUE(FileUtils::pathExists(woWltPath, 0));
       ASSERT_NE(woWltPath, fullWltPath);
       wltPaths.emplace_back(std::make_pair(
          woWltPath, walletId));
@@ -4651,7 +4651,7 @@ TEST_F(BridgeWalletTests, DeleteWallet)
 
    //check wallet path
    auto fullWltPath = homedir / path;
-   ASSERT_TRUE(FileUtils::fileExists(fullWltPath, 0));
+   ASSERT_TRUE(FileUtils::pathExists(fullWltPath, 0));
 
    //delete said wallet
    {
@@ -4674,7 +4674,7 @@ TEST_F(BridgeWalletTests, DeleteWallet)
       auto reply = fromBridge.getReply();
       ASSERT_TRUE(reply.getSuccess());
       ASSERT_EQ(reply.getReferenceId(), refId);
-      ASSERT_FALSE(FileUtils::fileExists(fullWltPath, 0));
+      ASSERT_FALSE(FileUtils::pathExists(fullWltPath, 0));
    }
 }
 
@@ -4707,7 +4707,7 @@ TEST_F(BridgeWalletTests, CreateWallet_Reject)
       ASSERT_FALSE(walletData.path.empty());
 
       //check file is cleaned up
-      EXPECT_FALSE(FileUtils::fileExists(
+      EXPECT_FALSE(FileUtils::pathExists(
          std::filesystem::path{"./fakehomedir"} / walletData.path, 0));
    } catch (const std::exception& e) {
       ASSERT_TRUE(false) << e.what();
@@ -6081,7 +6081,7 @@ TEST_F(BridgeWalletsWithDBTests, DeleteWallet)
       }
    }
    ASSERT_FALSE(wltPath.empty());
-   ASSERT_TRUE(FileUtils::fileExists(wltPath, 0));
+   ASSERT_TRUE(FileUtils::pathExists(wltPath, 0));
 
    //delete said wallet
    auto refId = rand();
@@ -6122,7 +6122,7 @@ TEST_F(BridgeWalletsWithDBTests, DeleteWallet)
          }
       }
    }
-   ASSERT_FALSE(FileUtils::fileExists(wltPath, 0));
+   ASSERT_FALSE(FileUtils::pathExists(wltPath, 0));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -11369,8 +11369,8 @@ TEST_F(BridgeChainDataTests, RestoreSynchronize)
    /* delete the 2 news wallets */
 
    //check wallet path
-   ASSERT_TRUE(FileUtils::fileExists(wltBip32Path, 0));
-   ASSERT_TRUE(FileUtils::fileExists(wltLegacyPath, 0));
+   ASSERT_TRUE(FileUtils::pathExists(wltBip32Path, 0));
+   ASSERT_TRUE(FileUtils::pathExists(wltLegacyPath, 0));
 
    //delete bip32 wlt
    {
@@ -11397,7 +11397,7 @@ TEST_F(BridgeChainDataTests, RestoreSynchronize)
          auto reply = fromBridge.getReply();
          ASSERT_TRUE(reply.getSuccess());
          ASSERT_EQ(reply.getReferenceId(), refId);
-         ASSERT_FALSE(FileUtils::fileExists(wltBip32Path, 0));
+         ASSERT_FALSE(FileUtils::pathExists(wltBip32Path, 0));
          break;
       }
    }
@@ -11427,7 +11427,7 @@ TEST_F(BridgeChainDataTests, RestoreSynchronize)
          auto reply = fromBridge.getReply();
          ASSERT_TRUE(reply.getSuccess());
          ASSERT_EQ(reply.getReferenceId(), refId);
-         ASSERT_FALSE(FileUtils::fileExists(wltLegacyPath, 0));
+         ASSERT_FALSE(FileUtils::pathExists(wltLegacyPath, 0));
          break;
       }
    }

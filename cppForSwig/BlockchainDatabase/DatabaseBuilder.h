@@ -46,10 +46,8 @@ namespace Armory
 
       private:
          void loadBlockHeadersFromDB(const ProgressCallback&);
-         std::set<uint32_t> addBlocksToDB(
-            const BlockDataLoader::BlockDataCopy&);
-         void parseBlockFile(
-            const BlockDataLoader::BlockDataCopy&,
+         std::set<uint32_t> addBlocksToDB(BlockDataLoader::BlockDataCopy);
+         void parseBlockFile(BlockDataLoader::BlockDataCopy,
             const std::function<bool(const uint8_t*, size_t, size_t)>&
          );
 
@@ -60,7 +58,6 @@ namespace Armory
          Hash32 scanHistory(const ReorganizationState&, bool, bool);
 
          void verifyTransactions(void);
-         void commitAllTxHints(const std::vector<std::shared_ptr<BlockData>>&);
          void cycleDatabases(void);
 
       public:

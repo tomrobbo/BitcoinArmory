@@ -137,7 +137,7 @@ std::shared_ptr<BlockData> BlockData::deserialize(
    if (mode == CheckHashes::TxFilters) {
       result->computeTxFilter(allHashes);
    } else if (mode == CheckHashes::FullHints) {
-      result->serializeTxHints(allHashes);
+      result->allTxHashes = std::move(allHashes);
    }
    return result;
 }
@@ -155,36 +155,6 @@ void BlockData::computeTxFilter(const std::vector<BinaryData>& allHashes)
 std::shared_ptr<BlockHashVector> BlockData::getTxFilter() const
 {
    return txFilter_;
-}
-
-void BlockData::serializeTxHints(const std::vector<BinaryData>& txHashes)
-{
-   //sanity check
-   if (!serializedTxHints_.empty()) {
-      throw std::runtime_error("already computed hints for this block!");
-   }
-
-   uint64_t blockID = (uint64_t)headerPtr_->getUniqueID() << 32;
-   uint64_t mask = 0x00000000FFFFFFFF;
-   for (uint16_t i = 0; i < txHashes.size(); i++) {
-      //create txhint key
-      const auto& txHash = txHashes[i];
-      uint64_t thisHintKey;
-      std::memcpy(&thisHintKey, txHash.getPtr(), 8);
-      thisHintKey = thisHintKey & mask | blockID;
-
-      //add to map
-      auto emplaceResult = serializedTxHints_.emplace(
-         thisHintKey, BinaryWriter{2});
-
-      //set txId
-      emplaceResult.first->second.put_uint16_t(i);
-   }
-}
-
-const std::unordered_map<uint64_t, BinaryWriter>& BlockData::getTxHints() const
-{
-   return serializedTxHints_;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -299,7 +269,7 @@ const std::filesystem::path& BlockFiles::getFilePathForID(
 // BlockDataLoader
 BlockDataLoader::BlockDataLoader(
    std::shared_ptr<BlockFiles> files,
-   const BlockOffset& startBO)
+   const BlockOffset& startBO, size_t maxCount)
 {
    counter_.store(0, std::memory_order_relaxed);
    auto startOffset = startBO.offset();
@@ -316,10 +286,9 @@ BlockDataLoader::BlockDataLoader(
       startOffset = 0;
    }
 
-
    paf_.emplace_back(PathAndOffset{iter->second.path,
       iter->first, startOffset});
-   while (++iter != files->paths_.end()) {
+   while (++iter != files->paths_.end() && paf_.size() < maxCount) {
       paf_.emplace_back(PathAndOffset{iter->second.path, iter->first, 0});
    }
 }
@@ -392,6 +361,10 @@ BlockDataLoader::BlockDataCopy::BlockDataCopy(const PathAndOffset& path) :
       data->xorMe(Config::DBSettings::getXorKey());
    }
 }
+
+BlockDataLoader::BlockDataCopy::BlockDataCopy(const BlockDataCopy& bdc) :
+   fileID(bdc.fileID), offset(bdc.offset), data(bdc.data)
+{}
 
 bool BlockDataLoader::BlockDataCopy::isValid() const
 {

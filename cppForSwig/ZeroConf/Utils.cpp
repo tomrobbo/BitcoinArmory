@@ -208,7 +208,9 @@ void ZeroConf::preprocessTx(ParsedTx& tx, LMDBBlockDatabase* db,
       tx.outputs.resize(nTxOut);
    }
 
-   auto isSuper = db->getDbType() == ARMORY_DB_TYPE::Super ? true : false;
+   auto isSuper = Config::DBSettings::getDbType() == ARMORY_DB_TYPE::Super ?
+      true : false;
+
    for (uint32_t iin = 0; iin < nTxIn; iin++) {
       auto& txIn = tx.inputs[iin];
       if (txIn.isResolved()) {
