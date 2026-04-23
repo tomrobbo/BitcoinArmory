@@ -555,6 +555,45 @@ TEST_F(BlockDir, DISABLED_FixBlockDataOffsets)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+TEST_F(BlockDir, StartAtBlkFile1)
+{
+   const std::vector<BinaryData> scraddrs{
+      TestChain::scrAddrA,
+      TestChain::scrAddrB,
+      TestChain::scrAddrC
+   };
+
+   // Put the first 5 blocks out of order
+   auto blk1dat = FileUtils::getBlkFilename(blkdir_ / "blocks", 1);
+   TestUtils::setBlocks({ "0", "1", "2", "4", "3", "5" }, blk1dat);
+
+   BlockDataManagerThread* BDMt = new BlockDataManagerThread();
+   auto clients = new Clients(BDMt->bdm());
+   clients->init();
+
+   auto bdvID = DBTestUtils::registerBDV(clients, Config::BitcoinSettings::getMagicBytes());
+   auto bdvPtr = DBTestUtils::getBDV(clients, bdvID);
+   DBTestUtils::registerWallet(clients, bdvID, scraddrs, "wallet1",
+      false, false);
+
+   BDMt->start(BdmInitMode::RESUME);
+   DBTestUtils::goOnline(clients, bdvID);
+   DBTestUtils::waitOnBDMReady(clients, bdvID);
+
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrA, BDMt->bdm()), 50 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrB, BDMt->bdm()), 70 * COIN);
+   EXPECT_EQ(getScrAddrBalance(TestChain::scrAddrC, BDMt->bdm()), 20 * COIN);
+
+   //cleanup
+   bdvPtr.reset();
+   clients->shutdown();
+   BDMt->shutdown();
+
+   delete clients;
+   delete BDMt;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 class BlockUtilsBare : public ::testing::Test

@@ -265,6 +265,14 @@ const std::filesystem::path& BlockFiles::getFilePathForID(
    return iter->second.path;
 }
 
+uint16_t BlockFiles::getFirstID() const
+{
+   if (paths_.empty()) {
+      throw std::range_error("empty paths");
+   }
+   return paths_.begin()->first;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // BlockDataLoader
 BlockDataLoader::BlockDataLoader(

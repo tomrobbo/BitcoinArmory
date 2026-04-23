@@ -98,6 +98,7 @@ public:
 
    void detectAllBlockFiles(void);
    void detectNewBlockFiles(void);
+   uint16_t getFirstID(void) const;
    const std::filesystem::path& folderPath(void) const;
    unsigned fileCount(void) const;
    const std::filesystem::path& getLastFilePath(void) const;

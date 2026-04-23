@@ -165,6 +165,10 @@ namespace {
 
    bool commitTxHints(LMDBBlockDatabase* db, bool force)
    {
+      if (Config::DBSettings::getDbType() == ARMORY_DB_TYPE::Bare) {
+         return false;
+      }
+
       if (!force && totalHintsInMemory.load(std::memory_order_relaxed) < writeThreshold * 256 / 4) {
          return false;
       }
@@ -433,6 +437,9 @@ BlockOffset Builder::parseForNewHeaders(const ProgressCallback& progress)
    std::shared_ptr<BlockDataLoader> bdl;
    auto topBlockOffset = blockchain_->getTopBlockOffset();
    try {
+      if (topBlockOffset.fileID() == 0 && topBlockOffset.offset() == 0) {
+         topBlockOffset = BlockOffset{blockFiles_->getFirstID(), 0};
+      }
       bdl = std::make_shared<BlockDataLoader>(blockFiles_, topBlockOffset);
       LOGINFO << "looking for new headers starting file " <<
          topBlockOffset.fileID() << ", offset " << topBlockOffset.offset();
@@ -583,43 +590,36 @@ void Builder::parseForNewBlocks(const BlockOffset& startBO,
       }
    };
 
-   auto bo = startBO;
-   while (true) {
-      std::shared_ptr<BlockDataLoader> bdl;
-      try {
-         bdl = std::make_shared<BlockDataLoader>(blockFiles_, bo, 200);
-         bo = BlockOffset{bo.fileID() + 200u, 0};
-      } catch (const BlockDataExhausted&) {
-         //no more fresh block data available
-         break;
-      }
+   std::shared_ptr<BlockDataLoader> bdl;
+   try {
+      bdl = std::make_shared<BlockDataLoader>(
+         blockFiles_, startBO, UINT32_MAX);
+   } catch (const BlockDataExhausted&) {
+      //no more fresh block data available
+      return;
+   }
 
-      //do not run more threads than there are block files to read
-      unsigned threadcount = std::min(
-         (size_t)Config::DBSettings::threadCount(),
-         bdl->size()
-      );
+   //do not run more threads than there are block files to read
+   unsigned threadcount = std::min(
+      (size_t)Config::DBSettings::threadCount(),
+      bdl->size()
+   );
 
-      std::vector<std::thread> tIDs;
-      for (unsigned i = 1; i < threadcount; i++) {
-         tIDs.push_back(std::thread(addBlocks, bdl));
-      }
-      addBlocks(bdl);
+   std::vector<std::thread> tIDs;
+   for (unsigned i = 1; i < threadcount; i++) {
+      tIDs.push_back(std::thread(addBlocks, bdl));
+   }
+   addBlocks(bdl);
 
-      //wait on parser threads to complete
-      for (auto& tID : tIDs) {
-         if (tID.joinable()) {
-            tID.join();
-         }
+   //wait on parser threads to complete
+   for (auto& tID : tIDs) {
+      if (tID.joinable()) {
+         tID.join();
       }
-      db_->closeDatabases();
-      db_->openDatabases();
    }
 
    //write whatever is left of the txhints
-   std::cout << "final tx hint commit" << std::endl;
    commitTxHints(db_, true);
-
    if (!invalidatedBlockIDs.empty()) {
       blockchain_->flagInvalidBlocks(db_, invalidatedBlockIDs);
    }
