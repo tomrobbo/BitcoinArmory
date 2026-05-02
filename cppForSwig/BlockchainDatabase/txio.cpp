@@ -364,3 +364,139 @@ void TxIOPair::pprint() const
    }
    std::cout << "  amount: " << amount_ << std::endl;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// TxIOPairUint
+TxIOPairUint::TxIOPairUint(const Types::ScrAddr& scrAddr,
+   Types::TxKey keyOfOutput, Types::TxId idOfOutput, Types::Amount amount) :
+   scrAddr_{scrAddr},
+   txIOKeyOfOutput_{Types::constructTxIOKeyFromTxKey(keyOfOutput, idOfOutput)},
+   amount_{amount}
+{}
+
+TxIOPairUint::TxIOPairUint(const Types::ScrAddr& scrAddr,
+   Types::TxIOKey txOutKey, uint64_t amount) :
+   scrAddr_{scrAddr}, txIOKeyOfOutput_(txOutKey), amount_{amount}
+{}
+
+////////
+Types::Amount TxIOPairUint::getAmount() const
+{
+   return amount_;
+}
+
+uint32_t TxIOPairUint::getTxTime() const
+{
+   return txTime_;
+}
+
+const Types::ScrAddr& TxIOPairUint::getScrAddr() const
+{
+   return scrAddr_;
+}
+
+////////
+bool TxIOPairUint::hasTxIn() const
+{
+   return Types::isTxKeyValid(txIOKeyOfInput_);
+}
+
+bool TxIOPairUint::hasTxOutZC() const
+{
+   return Types::isThisAZCKey(txIOKeyOfOutput_);
+}
+
+bool TxIOPairUint::hasTxInZC() const
+{
+   if (!hasTxIn()) {
+      return false;
+   }
+   return Types::isThisAZCKey(txIOKeyOfInput_);
+}
+
+////////
+Types::TxKey TxIOPairUint::getTxKeyOfOutput() const
+{
+   return Types::getTxKeyFromTxIOKey(txIOKeyOfOutput_);
+}
+
+Types::TxKey TxIOPairUint::getTxKeyOfInput() const
+{
+   if (!hasTxIn()) {
+      return Types::INVALID_TX_KEY;
+   }
+   return Types::getTxKeyFromTxIOKey(txIOKeyOfInput_);
+}
+
+////////
+Types::TxIOKey TxIOPairUint::getTxIOKeyOfOutput() const
+{
+   return txIOKeyOfOutput_;
+}
+
+Types::TxIOKey TxIOPairUint::getTxIOKeyOfInput() const
+{
+   return txIOKeyOfInput_;
+}
+
+Types::TxIOId TxIOPairUint::getIndexOfOutput() const
+{
+   return Types::getTxIOIndexFromTxIOKey(txIOKeyOfOutput_);
+}
+
+Types::TxIOId TxIOPairUint::getIndexOfInput() const
+{
+   if (!hasTxIn()) {
+      return UINT16_MAX;
+   }
+   return Types::getTxIOIndexFromTxIOKey(txIOKeyOfInput_);
+}
+
+////////
+void TxIOPairUint::setTxIn(
+   Types::TxKey keyOfInput, Types::TxId indexOfInput)
+{
+   txIOKeyOfInput_ = Types::constructTxIOKeyFromTxKey(
+      keyOfInput, indexOfInput);
+}
+
+void TxIOPairUint::setTxIn(Types::TxIOKey txInKey)
+{
+   txIOKeyOfInput_ = txInKey;
+}
+
+////////
+void TxIOPairUint::setTxTime(uint32_t txtime)
+{
+   txTime_ = txtime;
+}
+
+void TxIOPairUint::setRBF(bool rbf)
+{
+   isRBF_ = rbf;
+}
+
+void TxIOPairUint::setChained(bool chained)
+{
+   isZCChained_ = chained;
+}
+
+bool TxIOPairUint::isRBF() const
+{
+   return isRBF_;
+}
+
+bool TxIOPairUint::isChained() const
+{
+   return isZCChained_;
+}
+
+////////
+void TxIOPairUint::merge(const TxIOPairUint& rhs)
+{
+   setTxIn(rhs.txIOKeyOfInput_);
+
+   isRBF_         = rhs.isRBF_;
+   isZCChained_   = rhs.isZCChained_;
+   txTime_        = rhs.txTime_;
+}
