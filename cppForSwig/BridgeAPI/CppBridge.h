@@ -15,6 +15,8 @@
 #include <functional>
 #include <filesystem>
 
+#include <Utils/Types.h>
+
 class BinaryData;
 class BinaryDataRef;
 class SecureBinaryData;
@@ -214,9 +216,11 @@ namespace Armory
             const std::string&, const std::string&);
          void setWalletLabels(const Wallets::WalletId&,
             const std::string&, const std::string&);
+         void updateWalletsLedgerFilter(const std::map<Wallets::WalletId,
+            std::set<Wallets::AddressAccountId>>&);
 
          //tx stuff
-         void getTxsByHash(const std::set<BinaryData>&, MessageId);
+         void getTxsByHash(const std::set<Types::TxHash>&, MessageId);
          void getUTXOs(const Wallets::WalletId&,
             const Wallets::AddressAccountId&,
             uint64_t, bool, bool, MessageId);

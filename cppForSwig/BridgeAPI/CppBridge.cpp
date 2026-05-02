@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2019-2025, goatpig                                          //
+//  Copyright (C) 2019-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -9,6 +9,7 @@
 #include "CppBridge.h"
 #include "BridgeSocket.h"
 #include "./Wallets/Manager.h"
+#include "./Wallets/TxIOCache.h"
 #include "./Wallets/Notifications.h"
 
 #include <Utils/ArmoryConfig.h>
@@ -17,6 +18,7 @@
 #include <Signer/Signer.h>
 #include <Signer/ResolverFeed_Wallets.h>
 #include <Ledgers/LedgerEntry.h>
+#include <Ledgers/Context.h>
 #include <BlockchainDatabase/txio.h>
 
 #include <Wallets/Seeds/Backups.h>
@@ -273,7 +275,6 @@ namespace
       capnLedger.setIsSTS(ledger.isSentToSelf());
       capnLedger.setIsOptInRBF(ledger.isOptInRBF());
       capnLedger.setIsChainedZC(ledger.isChainedZC());
-      capnLedger.setIsWitness(ledger.isWitness());
 
       auto txHash = ledger.getTxHash();
       capnLedger.setTxHash(capnp::Data::Builder(
@@ -339,7 +340,7 @@ namespace
 
          //output body
          auto capnOutput = capnUtxo.initOutput();
-         capnOutput.setValue(utxo.getValue());
+         capnOutput.setValue(utxo.getAmount());
          capnOutput.setTxHeight(utxo.getHeight());
          capnOutput.setTxIndex(utxo.getTxIndex());
          capnOutput.setTxOutIndex(utxo.getTxOutIndex());
@@ -1929,6 +1930,14 @@ const std::string& CppBridge::getLedgerDelegateIdForScrAddr(
    return wltManager_->getDelegateIdForScrAddr(wltId, accId, addrHash);
 }
 
+void CppBridge::updateWalletsLedgerFilter(
+   const std::map<Wallets::WalletId, std::set<Wallets::AddressAccountId>>& idMap)
+{
+   wltManager_->updateMainLedgerFilter(idMap);
+   //TODO: send updated filter notif to client
+   throw std::runtime_error("this needs to push a notif");
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 void CppBridge::getHistoryPageForDelegate(const std::string& id,
    unsigned from, unsigned to, MessageId msgId)
@@ -1966,7 +1975,6 @@ void CppBridge::getHistoryPageForDelegate(const std::string& id,
             capnLedger.setIsSTS(ledger.isSentToSelf());
             capnLedger.setIsOptInRBF(ledger.isOptInRBF());
             capnLedger.setIsChainedZC(ledger.isChainedZC());
-            capnLedger.setIsWitness(ledger.usesWitness());
 
             auto txHash = ledger.getTxHash();
             capnLedger.setTxHash(capnp::Data::Builder(
@@ -2067,7 +2075,7 @@ BinaryData CppBridge::getBalanceAndCount(const Wallets::WalletId& wltId,
       bnc.setFull(wltContainer->getFullBalance());
       bnc.setSpendable(wltContainer->getSpendableBalance());
       bnc.setUnconfirmed(wltContainer->getUnconfirmedBalance());
-      bnc.setTxnCount(wltContainer->getTxIOCount());
+      bnc.setTxnCount(wltContainer->getTxCount());
       reply.setSuccess(true);
    } catch (const std::exception& e) {
       reply.setError(e.what());
@@ -2099,10 +2107,10 @@ BinaryData CppBridge::getAddrCombinedList(const Wallets::WalletId& wltId,
       ));
 
       auto bnc = addrReply.initBalances();
-      bnc.setFull(addrPair.second[0]);
-      bnc.setSpendable(addrPair.second[1]);
-      bnc.setUnconfirmed(addrPair.second[2]);
-      bnc.setTxnCount(addrPair.second[3]);
+      bnc.setFull(addrPair.second.fullBalance);
+      bnc.setSpendable(addrPair.second.spendableBalance);
+      bnc.setUnconfirmed(addrPair.second.unconfirmedBalance);
+      bnc.setTxnCount(addrPair.second.txCount);
    }
 
    auto updatedMap = wltContainer->getUpdatedAddressMap();
@@ -2380,7 +2388,7 @@ void CppBridge::getTxsByHash(const std::set<BinaryData>& hashes, MessageId msgId
 
             capnTx.setRbf(tx.second->isRBF());
             capnTx.setChainedZc(tx.second->isChained());
-            capnTx.setHeight(tx.second->getTxHeight());
+            //capnTx.setBlockId(tx.second->getBlockId());
             capnTx.setTxIndex(tx.second->getTxIndex());
          }
          reply.setSuccess(true);
@@ -2767,33 +2775,25 @@ void CppBridge::broadcastTxs(const std::vector<BinaryData>& rawTxVec, bool isRPC
 ////////////////////////////////////////////////////////////////////////////////
 void CppBridge::getBlockTimeByHeight(uint32_t height, MessageId msgId) const
 {
-   auto callback = [this, msgId, height](
-      ReturnMessage<std::vector<DBClientClasses::BlockHeader>> result)->void
-   {
-      capnp::MallocMessageBuilder message;
-      auto fromBridge = message.initRoot<FromBridge>();
-      auto reply = fromBridge.initReply();
-      reply.setReferenceId(msgId);
-      try {
-         auto headers = std::move(result.get());
-         if (headers.size() != 1) {
-            throw ClientMessageError("unexpected header count in reply", -1);
-         }
-         auto service = reply.initService();
-         service.setGetBlockTimeByHeight(headers[0].timestamp);
-         reply.setSuccess(true);
+   auto dbCache = wltManager_->getDbCache();
+   auto header = dbCache->getHeaderForHeight(height);
 
-      } catch (const ClientMessageError& e) {
-         reply.setSuccess(false);
-         reply.setError(e.what());
-      }
+   capnp::MallocMessageBuilder message;
+   auto fromBridge = message.initRoot<FromBridge>();
+   auto reply = fromBridge.initReply();
+   reply.setReferenceId(msgId);
 
-      auto serialized = serializeCapnp(message);
-      this->writeToClient(serialized);
-   };
+   if (header != nullptr) {
+      auto service = reply.initService();
+      service.setGetBlockTimeByHeight(header->timestamp);
+      reply.setSuccess(true);
+   } else {
+      reply.setSuccess(false);
+      reply.setError(std::format("could not find header for height {}", height));
+   }
 
-   auto bc = bdvPtr_->blockchain();
-   bc.getHeadersByHeight({height}, callback);
+   auto serialized = serializeCapnp(message);
+   this->writeToClient(serialized);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

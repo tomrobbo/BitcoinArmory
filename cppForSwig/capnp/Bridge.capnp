@@ -108,6 +108,11 @@ struct Peer {
    label       @2 : Text; #human readable label for the key
 }
 
+struct WalletIdentifier {
+   walletId @0    : Types.WalletId;
+   accountId @1   : Types.AccountId;
+}
+
 ################################################################################
 ## Notifications
 struct Notification {
@@ -293,9 +298,6 @@ struct BlockchainServiceRequest {
       getTxsByHash                  @5 : List(Types.Hash);
       getBlockTimeByHeight          @6 : UInt32;
       getFeeSchedule                @7 : Text;
-
-      getLedgerDelegateId           @8 : Void;
-      updateWalletsLedgerFilter     @9 : List(Types.WalletId);
    }
 }
 
@@ -317,7 +319,6 @@ struct BlockchainServiceReply {
       getTxsByHash                  @2 : List(TxData);
       getBlockTimeByHeight          @3 : UInt32;
       getFeeSchedule                @4 : List(Types.FeeSchedule);
-      getLedgerDelegateId           @5 : Types.DelegateId;
    }
 }
 
@@ -360,6 +361,9 @@ struct WalletManagerRequest {
 
       unloadWallet            @6 : Types.WalletId;
       deleteWallet            @7 : Types.WalletId;
+
+      getMainLedgerDelegateId @8 : Void;
+      updateMainLedgerFilter  @9 : List(WalletIdentifier);
    }
 }
 
@@ -390,10 +394,11 @@ struct WalletManagerReply {
    }
 
    union {
-      unset          @0 : Void;
-      listWallets    @1 : List(WalletFileData);
-      migrateWallet  @2 : Types.WalletId;
-      loadWallets    @3 : List(WalletData);
+      unset                   @0 : Void;
+      listWallets             @1 : List(WalletFileData);
+      migrateWallet           @2 : Types.WalletId;
+      loadWallets             @3 : List(WalletData);
+      getMainLedgerDelegateId @4 : Types.DelegateId;
    }
 }
 

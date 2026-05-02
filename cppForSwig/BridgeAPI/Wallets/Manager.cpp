@@ -44,10 +44,11 @@ namespace
    {
       ReentrantLock lock(mgr);
 
-      std::vector<std::map<BinaryData, Ledgers::Entry>> walletLedgers;
+      std::vector<std::map<Types::TxKey, Ledgers::Entry>> walletLedgers;
       unsigned totalSize = 0;
-      walletLedgers.reserve(mgr->getWalletContainerMap().size());
-      for (const auto& wltCont : mgr->getWalletContainerMap()) {
+      auto filteredMap = mgr->getFilteredContainerMap();
+      walletLedgers.reserve(filteredMap.size());
+      for (const auto& wltCont : filteredMap) {
          const auto txioMap = wltCont.second->getTxioMap();
          auto context = Ledgers::prepareContext(txioMap, mgr->getDbCache(), {});
          walletLedgers.emplace_back(std::move(Ledgers::computeLedgerMap(
@@ -70,12 +71,13 @@ namespace
    {
       //this is only used to generate ledgers for ZC notifs
       auto txioCache = mgr->txioCache();
-      std::vector<std::map<BinaryData, Ledgers::Entry>> walletLedgers;
+      std::vector<std::map<Types::TxKey, Ledgers::Entry>> walletLedgers;
       unsigned totalSize = 0;
-      walletLedgers.reserve(mgr->getWalletContainerMap().size());
-      for (const auto& wltCont : mgr->getWalletContainerMap()) {
+      auto filteredMap = mgr->getFilteredContainerMap();
+      walletLedgers.reserve(filteredMap.size());
+      for (const auto& wltCont : filteredMap) {
          const auto& txioMap = txioCache->getZcTxios(
-            [wltPtr=wltCont.second](const BinaryData& addr)->bool
+            [wltPtr=wltCont.second](const Types::ScrAddr& addr)->bool
             { return wltPtr->hasScrAddr(addr); }
          );
          auto context = Ledgers::prepareContext(txioMap, mgr->getDbCache(), {});
@@ -146,6 +148,30 @@ const std::map<std::string, std::shared_ptr<WalletContainer>>&
 WalletManager::getWalletContainerMap() const
 {
    return walletsByDbId_;
+}
+
+std::map<std::string, std::shared_ptr<WalletContainer>>
+WalletManager::getFilteredContainerMap() const
+{
+   std::map<std::string, std::shared_ptr<WalletContainer>> result;
+   for (const auto& wltPair : walletsByDbId_) {
+      auto wltIter = mainLedgerFilter_.find(wltPair.second->getWalletId());
+      if (wltIter == mainLedgerFilter_.end()) {
+         continue;
+      }
+      auto accIter = wltIter->second.find(wltPair.second->getAccountId());
+      if (accIter == wltIter->second.end()) {
+         continue;
+      }
+      result.emplace(wltPair);
+   }
+   return result;
+}
+
+void WalletManager::updateMainLedgerFilter(
+   const std::map<Wallets::WalletId, AAIdSet>& idMap)
+{
+   mainLedgerFilter_ = idMap;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -763,7 +789,7 @@ void WalletManager::updateStateFromDB(std::shared_ptr<NotifStruct> notif)
 
             //feed them to callback
             auto zcPtr = std::dynamic_pointer_cast<NotifStruct_ZC>(notif);
-            zcPtr->callback(ledgers, zcPtr->invalidatedZCs);
+            zcPtr->callback(ledgers, zcPtr->invalidatedZCHashes);
             break;
          }
 

@@ -21,7 +21,47 @@ using namespace Armory::Bridge;
 
 namespace
 {
-   const BinaryData firstZCKey = READHEX("FFFF00000000");
+   constexpr Types::TxKey firstZCKey = 0xFFFF000000000000;
+
+   uint32_t getConfCount(Types::TxKey txKey, uint32_t top,
+      std::shared_ptr<Ledgers::DBCache> cache)
+   {
+      if (Types::isThisAZCKey(txKey)) {
+         return 0;
+      }
+
+      auto blockId = Types::getBlockIDFromTxKey(txKey);
+
+      auto header = cache->headers.at(blockId);
+      return top - header->blockHeight + 1;
+   }
+
+   bool isSpendable(Types::TxKey txKey, uint32_t top,
+      std::shared_ptr<Ledgers::DBCache> cache)
+   {
+      // spendable TxOuts are ones with at least 1 confirmation
+      auto txId = Types::getTxIndexFromTxKey(txKey);
+      auto nConf = getConfCount(txKey, top, cache);
+      if (txId == 0 && nConf < COINBASE_MATURITY) {
+         return false;
+      } else if (nConf > 0) {
+         return true;
+      } else {
+         return false;
+      }
+   }
+
+   bool isUnconfirmed(Types::TxKey txKey, uint32_t top,
+      std::shared_ptr<Ledgers::DBCache> cache)
+   {
+      auto txId = Types::getTxIndexFromTxKey(txKey);
+      auto nConf = getConfCount(txKey, top, cache);
+      if (txId == 0) {
+         return nConf < COINBASE_MATURITY;
+      } else {
+         return nConf < MIN_CONFIRMATIONS;
+      }
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -42,7 +82,7 @@ void TxIOCache::purge()
    spentTxios_.clear();
    zcTxios_.clear();
    dbCache_->txMap.clear();
-   dbCache_->blocks.clear();
+   dbCache_->headers.clear();
 }
 
 ////////
@@ -50,9 +90,9 @@ CacheResolveResult TxIOCache::resolve(
    const AddressFilter& filter, uint32_t fromHeight) const
 {
    //run through unspent txios first
-   CacheResolveResult result{lastKnownBlock_, false};
+   CacheResolveResult result{lastKnownBlock_, false, dbCache_};
    for (const auto& txio : unspentTxios_) {
-      const auto& txKey = txio.second.getTxRefOfOutput().getDBKey();
+      const auto& txKey = txio.second.getTxKeyOfOutput();
 
       //skip txios that are not on the main chain
       if (!txKeyIsValid(txKey)) {
@@ -60,8 +100,7 @@ CacheResolveResult TxIOCache::resolve(
       }
 
       //does this txout trigger our filter
-      const auto& tx = dbCache_->txMap.at(txKey);
-      auto scrAddr = tx.getScrAddrForTxOut(txio.second.getIndexOfOutput());
+      const auto& scrAddr = txio.second.getScrAddr();
       if (filter(scrAddr)) {
          result.addTxio(txio.first, txio.second, scrAddr);
       }
@@ -70,19 +109,19 @@ CacheResolveResult TxIOCache::resolve(
    //check spent txios now
    for (const auto& txio : spentTxios_) {
       //is output on mainchain?
-      const auto& txKeyOutput = txio.second.getTxRefOfOutput().getDBKey();
+      const auto& txKeyOutput = txio.second.getTxKeyOfOutput();
       if (!txKeyIsValid(txKeyOutput)) {
          continue;
       }
 
       //is input on mainchain?
-      const auto& txKeyInput = txio.second.getTxRefOfInput().getDBKey();
+      const auto& txKeyInput = txio.second.getTxKeyOfInput();
       if (!txKeyIsValid(txKeyInput)) {
          continue;
       }
 
       //do we have an unspent txio in the result map?
-      auto txioKey = txio.second.getDBKeyOfOutput();
+      auto txioKey = txio.second.getTxIOKeyOfOutput();
       auto iter = result.txioMap.find(txioKey);
       if (iter != result.txioMap.end()) {
          //we do, merge in the txin
@@ -91,8 +130,7 @@ CacheResolveResult TxIOCache::resolve(
       }
 
       //we don't, is the txout relevant then?
-      const auto& tx = dbCache_->txMap.at(txKeyOutput);
-      auto scrAddr = tx.getScrAddrForTxOut(txio.second.getIndexOfOutput());
+      const auto& scrAddr = txio.second.getScrAddr();
       if (filter(scrAddr)) {
          result.addTxio(txioKey, txio.second, scrAddr);
       }
@@ -102,10 +140,10 @@ CacheResolveResult TxIOCache::resolve(
 
 CacheResolveResult TxIOCache::resolveZC(const AddressFilter& filter) const
 {
-   CacheResolveResult result{lastKnownBlock_, true};
+   CacheResolveResult result{lastKnownBlock_, true, dbCache_};
    for (const auto& txio : zcTxios_) {
       //do we have an unspent txio in the result map?
-      auto txioKey = txio.second.getDBKeyOfOutput();
+      auto txioKey = txio.second.getTxIOKeyOfOutput();
       auto iter = result.txioMap.find(txioKey);
       if (iter != result.txioMap.end()) {
          //we do, merge in the txin
@@ -114,9 +152,7 @@ CacheResolveResult TxIOCache::resolveZC(const AddressFilter& filter) const
       }
 
       //we don't, is the txout relevant then?
-      const auto& txKeyOutput = txio.second.getTxRefOfOutput().getDBKey();
-      const auto& tx = dbCache_->txMap.at(txKeyOutput);
-      auto scrAddr = tx.getScrAddrForTxOut(txio.second.getIndexOfOutput());
+      const auto& scrAddr = txio.second.getScrAddr();
       if (filter(scrAddr)) {
          result.addTxio(txioKey, txio.second, scrAddr);
       }
@@ -124,11 +160,14 @@ CacheResolveResult TxIOCache::resolveZC(const AddressFilter& filter) const
    return result;
 }
 
-bool TxIOCache::txKeyIsValid(const BinaryData& txKey) const
+bool TxIOCache::txKeyIsValid(const Types::TxKey& txKey) const
 {
-   auto height = DBUtils::hgtxToHeight(txKey.getSliceRef(0, 4));
-   auto dupId = DBUtils::hgtxToDupID(txKey.getSliceRef(0, 4));
-   return dbCache_->isHeightValid(height, dupId);
+   auto blockId = Types::getBlockIDFromTxKey(txKey);
+   auto iter = dbCache_->headers.find(blockId);
+   if (iter == dbCache_->headers.end()) {
+      return false;
+   }
+   return iter->second->isMainBranch;
 }
 
 ////////
@@ -138,7 +177,7 @@ uint32_t TxIOCache::update(
 {
    if (notif->type == NotifType::ZC) {
       auto zcPtr = std::dynamic_pointer_cast<NotifStruct_ZC>(notif);
-      updateZC(bdvPtr, zcPtr->txios, zcPtr->invalidatedZCs, true);
+      updateZC(bdvPtr, zcPtr->txios, zcPtr->invalidatedZCHashes, true);
       return UINT32_MAX;
    }
 
@@ -156,11 +195,11 @@ uint32_t TxIOCache::update(
    }
 
    //1. txios
-   auto promTxios = std::make_shared<std::promise<std::vector<TxIOPair>>>();
+   auto promTxios = std::make_shared<std::promise<std::vector<TxIOPairUint>>>();
    auto futTxios = promTxios->get_future();
 
    bdvPtr->getTxios(fromHeight, [prom = promTxios]
-      (ReturnMessage<std::vector<TxIOPair>> result) {
+      (ReturnMessage<std::vector<TxIOPairUint>> result) {
          prom->set_value(result.get());
    });
    auto txios = std::move(futTxios.get());
@@ -186,24 +225,24 @@ uint32_t TxIOCache::update(
          prom->set_value(result.get());
    });
 
-   //3. missing blocks
-   auto promBlocks = std::make_shared<
-      std::promise<std::vector<DBClientClasses::BlockHeader>>>();
-   auto futBlocks = promBlocks->get_future();
+   //3. missing headers
+   auto promHeader = std::make_shared<
+      std::promise<std::vector<std::shared_ptr<DBClientClasses::BlockHeader>>>>();
+   auto futHeaders = promHeader->get_future();
    AsyncClient::Blockchain bc{*bdvPtr};
-   bc.getHeadersByHeight(missingHeights, [prom = promBlocks]
-      (ReturnMessage<std::vector<DBClientClasses::BlockHeader>> result) {
+   bc.getHeadersByHeight(missingHeights, [prom = promHeader]
+      (ReturnMessage<std::vector<std::shared_ptr<DBClientClasses::BlockHeader>>> result) {
          prom->set_value(result.get());
       }
    );
 
    //4. commit it all to the cache
    auto txs = std::move(futTxs.get());
-   auto blocks = std::move(futBlocks.get());
+   auto headers = std::move(futHeaders.get());
    ReentrantLock lock(this);
 
    //5. prune mined tx from dbCache
-   std::map<BinaryData, TxIOKey> zcHashes;
+   std::map<Types::TxHash, Types::TxKey> zcHashes;
    {
       auto txIter = dbCache_->txMap.lower_bound(firstZCKey);
       while (txIter != dbCache_->txMap.end()) {
@@ -222,13 +261,13 @@ uint32_t TxIOCache::update(
       //add fresh tx
       dbCache_->txMap.emplace(tx.getDBKey(), std::move(tx));
    }
-   dbCache_->addBlocks(blocks);
+   dbCache_->addHeaders(headers);
    return fromHeight;
 }
 
-std::set<BinaryData> TxIOCache::updateZC(
+std::set<Types::TxKey> TxIOCache::updateZC(
    std::shared_ptr<AsyncClient::BlockDataViewer> bdvPtr,
-   const std::vector<TxIOPair>& zcTxios,
+   const std::vector<TxIOPairUint>& zcTxios,
    const std::set<BinaryData>& invalidatedZC, bool append)
 {
    ReentrantLock lock(this);
@@ -240,13 +279,13 @@ std::set<BinaryData> TxIOCache::updateZC(
    }
    if (!invalidatedZC.empty()) {
       //we have invalidated zc txs, let's purge them
-      std::set<BinaryData> invalidatedKeys;
+      std::set<Types::TxKey> invalidatedKeys;
       auto txIter = txMap.lower_bound(firstZCKey);
       while (txIter != txMap.end()) {
          auto& tx = txIter->second;
          if (invalidatedZC.find(tx.getThisHash()) != invalidatedZC.end()) {
             //also gather the invalidated keys
-            invalidatedKeys.emplace(tx.getDBKey());
+            invalidatedKeys.emplace(txIter->first);
             txMap.erase(txIter++);
          } else {
             ++txIter;
@@ -257,7 +296,7 @@ std::set<BinaryData> TxIOCache::updateZC(
       auto txioIter = zcTxios_.begin();
       while (txioIter != zcTxios_.end()) {
          auto& zcTxio = txioIter->second;
-         const auto& outKey = zcTxio.getTxRefOfOutput().getDBKey();
+         const auto& outKey = zcTxio.getTxKeyOfOutput();
          if (invalidatedKeys.find(outKey) != invalidatedKeys.end()) {
             //output is invalidated, get rid of the txio
             zcTxios_.erase(txioIter++);
@@ -265,7 +304,7 @@ std::set<BinaryData> TxIOCache::updateZC(
          }
 
          if (zcTxio.hasTxIn()) {
-            const auto& inKey = zcTxio.getTxRefOfInput().getDBKey();
+            const auto& inKey = zcTxio.getTxKeyOfInput();
             if (invalidatedKeys.find(inKey) != invalidatedKeys.end()) {
                //input is invalidated, reset it
                zcTxio.setTxIn({});
@@ -275,21 +314,21 @@ std::set<BinaryData> TxIOCache::updateZC(
       }
    }
 
-   std::set<BinaryData> missingTxKeys;
+   std::set<Types::TxKey> missingTxKeys;
    for (const auto& zcTxio : zcTxios) {
-      auto zcOutKey = zcTxio.getTxRefOfOutput().getDBKey();
+      auto zcOutKey = zcTxio.getTxKeyOfOutput();
       if (txMap.find(zcOutKey) == txMap.end()) {
          missingTxKeys.emplace(zcOutKey);
       }
 
       if (zcTxio.hasTxIn()) {
-         auto zcInKey = zcTxio.getTxRefOfInput().getDBKey();
+         auto zcInKey = zcTxio.getTxKeyOfInput();
          if (txMap.find(zcInKey) == txMap.end()) {
             missingTxKeys.emplace(zcInKey);
          }
       }
 
-      auto insertResult = zcTxios_.emplace(zcTxio.getDBKeyOfOutput(), zcTxio);
+      auto insertResult = zcTxios_.emplace(zcTxio.getTxIOKeyOfOutput(), zcTxio);
       if (!insertResult.second) {
          insertResult.first->second.merge(zcTxio);
       }
@@ -317,29 +356,30 @@ std::set<BinaryData> TxIOCache::updateZC(
 }
 
 ////////
-std::pair<std::set<BinaryData>, std::set<uint32_t>> TxIOCache::addTxios(
-   std::vector<TxIOPair>& txios, uint32_t fetchedHeight)
+std::pair<std::set<Types::TxKey>, std::set<Types::BlockId>>
+TxIOCache::addTxios(
+   std::vector<TxIOPairUint>& txios, uint32_t fetchedHeight)
 {
-   std::set<BinaryData> missingTxKeys;
-   std::set<uint32_t> missingHeights;
+   std::set<Types::TxKey> missingTxKeys;
+   std::set<Types::BlockId> missingBlocks;
 
-   auto addKey = [&missingTxKeys, &missingHeights, this](const BinaryData& key)
+   auto addKey = [&missingTxKeys, &missingBlocks, this](Types::TxKey key)
    {
-      auto height = DBUtils::hgtxToHeight(key.getSliceRef(0, 4));
-      if (dbCache_->blocks.find(height) == dbCache_->blocks.end()) {
-         missingHeights.emplace(height);
+      auto blockId = Types::getBlockIDFromTxKey(key);
+      if (dbCache_->headers.find(blockId) == dbCache_->headers.end()) {
+         missingBlocks.emplace(blockId);
       }
       if (dbCache_->txMap.find(key) == dbCache_->txMap.end()) {
          missingTxKeys.emplace(key);
       }
    };
 
-   std::vector<TxIOPair> zcTxios;
+   std::vector<TxIOPairUint> zcTxios;
    zcTxios.reserve(5);
    ReentrantLock lock(this);
    for (auto& txio : txios) {
       if (!txio.hasTxOutZC()) {
-         addKey(txio.getTxRefOfOutput().getDBKey());
+         addKey(txio.getTxKeyOfOutput());
       } else {
          zcTxios.emplace_back(txio);
       }
@@ -349,10 +389,10 @@ std::pair<std::set<BinaryData>, std::set<uint32_t>> TxIOCache::addTxios(
             zcTxios.emplace_back(txio);
             continue;
          }
-         addKey(txio.getTxRefOfInput().getDBKey());
-         spentTxios_.emplace(txio.getDBKeyOfInput(), std::move(txio));
+         addKey(txio.getTxKeyOfInput());
+         spentTxios_.emplace(txio.getTxIOKeyOfOutput(), std::move(txio));
       } else if (!txio.hasTxOutZC()) {
-         unspentTxios_.emplace(txio.getDBKeyOfOutput(), std::move(txio));
+         unspentTxios_.emplace(txio.getTxIOKeyOfOutput(), std::move(txio));
       }
    }
 
@@ -362,16 +402,16 @@ std::pair<std::set<BinaryData>, std::set<uint32_t>> TxIOCache::addTxios(
    if (fetchedHeight != UINT32_MAX) {
       lastKnownBlock_ = fetchedHeight;
    }
-   return {std::move(missingTxKeys), std::move(missingHeights)};
+   return {std::move(missingTxKeys), std::move(missingBlocks)};
 }
 
 ////////
-std::map<BinaryData, std::set<BinaryData>> TxIOCache::getAddressBook(
+std::map<Types::ScrAddr, std::set<Types::TxHash>> TxIOCache::getAddressBook(
    const AddressFilter& filter) const
 {
-   std::map<BinaryData, std::set<BinaryData>> result;
+   std::map<Types::ScrAddr, std::set<Types::TxHash>> result;
    for (const auto& txio : unspentTxios_) {
-      const auto& txKey = txio.second.getTxRefOfOutput().getDBKey();
+      const auto& txKey = txio.second.getTxKeyOfOutput();
 
       //skip txios that are not on the main chain
       if (!txKeyIsValid(txKey)) {
@@ -379,38 +419,38 @@ std::map<BinaryData, std::set<BinaryData>> TxIOCache::getAddressBook(
       }
 
       //track this <addr, hash>
-      const auto& tx = dbCache_->txMap.at(txKey);
-      auto scrAddr = tx.getScrAddrForTxOut(txio.second.getIndexOfOutput());
+      const auto& scrAddr = txio.second.getScrAddr();
       if (filter(scrAddr)) {
          auto iter = result.find(scrAddr);
          if (iter == result.end()) {
-            iter = result.emplace(scrAddr, std::set<BinaryData>{}).first;
+            iter = result.emplace(scrAddr, std::set<Types::TxHash>{}).first;
          }
+         const auto& tx = dbCache_->txMap.at(txKey);
          iter->second.emplace(tx.getThisHash());
       }
    }
 
    for (const auto& txio : spentTxios_) {
       //is output on mainchain?
-      const auto& txKeyOutput = txio.second.getTxRefOfOutput().getDBKey();
+      const auto& txKeyOutput = txio.second.getTxKeyOfOutput();
       if (!txKeyIsValid(txKeyOutput)) {
          continue;
       }
 
       //is input on mainchain?
-      const auto& txKeyInput = txio.second.getTxRefOfInput().getDBKey();
+      const auto& txKeyInput = txio.second.getTxKeyOfInput();
       if (!txKeyIsValid(txKeyInput)) {
          continue;
       }
 
       //track this <addr, hash>
-      const auto& tx = dbCache_->txMap.at(txKeyOutput);
-      auto scrAddr = tx.getScrAddrForTxOut(txio.second.getIndexOfOutput());
+      const auto& scrAddr = txio.second.getScrAddr();
       if (filter(scrAddr)) {
          auto iter = result.find(scrAddr);
          if (iter == result.end()) {
-            iter = result.emplace(scrAddr, std::set<BinaryData>{}).first;
+            iter = result.emplace(scrAddr, std::set<Types::TxHash>{}).first;
          }
+         const auto& tx = dbCache_->txMap.at(txKeyOutput);
          iter->second.emplace(tx.getThisHash());
       }
    }
@@ -421,22 +461,23 @@ std::vector<UTXO> TxIOCache::getZcUTXOs(bool rbf,
    const AddressFilter& filter) const
 {
    std::vector<UTXO> result;
-   auto addTxio = [&result, filter](const TxIOPair& txio, const Tx& tx)
+   auto addTxio = [this, &result, filter](const TxIOPairUint& txio, const Tx& tx)
    {
-      auto scrAddr = tx.getScrAddrForTxOut(txio.getIndexOfOutput());
+      const auto& scrAddr = txio.getScrAddr();
       if (!filter(scrAddr)) {
          return;
       }
 
       auto txOut = tx.getTxOutCopy(txio.getIndexOfOutput());
-      result.emplace_back(UTXO{txio.getValue(),
-         tx.getTxHeight(), tx.getTxIndex(), txio.getIndexOfOutput(),
+      auto header = dbCache_->headers.at(tx.getBlockId());
+      result.emplace_back(UTXO{txio.getAmount(),
+         header->blockHeight, tx.getTxIndex(), txio.getIndexOfOutput(),
          tx.getThisHash(), txOut.getScript()
       });
    };
 
    for (const auto& txio : zcTxios_) {
-      const auto& txKey = txio.second.getTxRefOfOutput().getDBKey();
+      const auto& txKey = txio.second.getTxKeyOfOutput();
 
       if (rbf) {
          //for rbf outputs, we consider all outputs that are RBF flagged
@@ -472,9 +513,9 @@ std::vector<UTXO> TxIOCache::getUTXOs(
    }
 
    uint64_t total = 0;
-   std::set<BinaryData> spentKeys;
+   std::set<Types::TxKey> spentKeys;
    for (const auto& txio : spentTxios_) {
-      auto outputKey = txio.second.getDBKeyOfOutput();
+      auto outputKey = txio.second.getTxIOKeyOfOutput();
       if (!txKeyIsValid(outputKey)) {
          continue;
       }
@@ -489,26 +530,26 @@ std::vector<UTXO> TxIOCache::getUTXOs(
          continue;
       }
 
-      const auto& txKey = txio.second.getTxRefOfOutput().getDBKey();
+      const auto& txKey = txio.second.getTxKeyOfOutput();
       if (!txKeyIsValid(txKey)) {
          continue;
       }
       const auto& tx = dbCache_->txMap.at(txKey);
+      auto header = dbCache_->headers.at(tx.getBlockId());
       if (tx.getTxIndex() == 0 &&
-         tx.getTxHeight() + COINBASE_MATURITY > lastKnownBlock_) {
+         header->blockHeight + COINBASE_MATURITY > lastKnownBlock_) {
          continue;
       }
-      auto scrAddr = tx.getScrAddrForTxOut(txio.second.getIndexOfOutput());
-      if (!filter(scrAddr)) {
+      if (!filter(txio.second.getScrAddr())) {
          continue;
       }
 
       auto txOut = tx.getTxOutCopy(txio.second.getIndexOfOutput());
-      result.emplace_back(UTXO{txio.second.getValue(),
-         tx.getTxHeight(), tx.getTxIndex(), txio.second.getIndexOfOutput(),
+      result.emplace_back(UTXO{txio.second.getAmount(),
+         header->blockHeight, tx.getTxIndex(), txio.second.getIndexOfOutput(),
          tx.getThisHash(), txOut.getScript()
       });
-      total += txio.second.getValue();
+      total += txio.second.getAmount();
       if (total >= value) {
          break;
       }
@@ -517,18 +558,15 @@ std::vector<UTXO> TxIOCache::getUTXOs(
 }
 
 ////////
-std::map<TxIOKey, TxIOPair> TxIOCache::getZcTxios(
+std::map<Types::TxIOKey, TxIOPairUint> TxIOCache::getZcTxios(
    const AddressFilter& filter) const
 {
    ReentrantLock lock(this);
-   std::map<TxIOKey, TxIOPair> result;
+   std::map<Types::TxIOKey, TxIOPairUint> result;
    for (const auto& txioPair : zcTxios_) {
       const auto& txio = txioPair.second;
-      const auto& txOutKey = txio.getTxRefOfOutput().getDBKey();
-      const auto& outTx = dbCache_->txMap.at(txOutKey);
-      auto scrAddrOut = outTx.getScrAddrForTxOut(txio.getIndexOfOutput());
-      if (filter(scrAddrOut)) {
-         result.emplace(txio.getDBKeyOfOutput(), txio);
+      if (filter(txio.getScrAddr())) {
+         result.emplace(txio.getTxIOKeyOfOutput(), txio);
       }
    }
    return result;
@@ -536,12 +574,14 @@ std::map<TxIOKey, TxIOPair> TxIOCache::getZcTxios(
 
 ////////////////////////////////////////////////////////////////////////////////
 // CacheResolveResult
-CacheResolveResult::CacheResolveResult(uint32_t height, bool iszc) :
-   topBlock(height), isZC(iszc)
+CacheResolveResult::CacheResolveResult(uint32_t height, bool iszc,
+   std::shared_ptr<Ledgers::DBCache> cache) :
+   topBlock(height), isZC(iszc), dbCache(cache)
 {}
 
-void CacheResolveResult::addTxio(const TxIOKey& key, const TxIOPair& txio,
-   const ScrAddr& addr)
+void CacheResolveResult::addTxio(const Types::TxIOKey& key,
+   const TxIOPairUint& txio,
+   const Types::ScrAddr& addr)
 {
    auto emplaceResult = txioMap.emplace(key, txio);
    if (!emplaceResult.second) {
@@ -550,7 +590,8 @@ void CacheResolveResult::addTxio(const TxIOKey& key, const TxIOPair& txio,
    }
    auto addrIter = addrTxioMap.find(addr);
    if (addrIter == addrTxioMap.end()) {
-      addrIter = addrTxioMap.emplace(addr, std::vector<TxIOPair*>{}).first;
+      addrIter = addrTxioMap.emplace(
+         addr, std::vector<TxIOPairUint*>{}).first;
    }
    addrIter->second.emplace_back(&emplaceResult.first->second);
 }
@@ -560,24 +601,26 @@ void CacheResolveResult::addTxio(const TxIOKey& key, const TxIOPair& txio,
 ChainData::ChainData(CacheResolveResult& data) :
    txioMap(std::move(data.txioMap))
 {
-   std::set<BinaryDataRef> allTxKeys;
+   std::set<Types::TxKey> allTxKeys;
    for (const auto& addr : data.addrTxioMap) {
-      //tally address balance and count
-      int64_t total = 0;
-      int64_t spendable = 0;
-      int64_t unconfirmed = 0;
-      std::set<BinaryDataRef> addrTxKeys;
+      //tally address balance
+      Types::Value total = 0;
+      Types::Value spendable = 0;
+      Types::Value unconfirmed = 0;
+      std::set<Types::TxKey> addrTxKeys;
+
       for (const auto& txio : addr.second) {
-         int64_t val = static_cast<int64_t>(txio->getValue());
+         Types::Value val = static_cast<Types::Value>(txio->getAmount());
+         auto txKeyOfOutput = txio->getTxKeyOfOutput();
          if (!data.isZC || txio->hasTxOutZC()) {
-            addrTxKeys.emplace(txio->getTxRefOfOutput().getDBKey());
+            addrTxKeys.emplace(txKeyOfOutput);
          }
          if (txio->hasTxIn()) {
-            addrTxKeys.emplace(txio->getTxRefOfInput().getDBKey());
+            addrTxKeys.emplace(txio->getTxKeyOfInput());
             if (txio->hasTxInZC() && !txio->hasTxOutZC()) {
                total -= val;
                spendable -= val;
-               if (txio->isUnconfirmed(data.topBlock, MIN_CONFIRMATIONS)) {
+               if (isUnconfirmed(txKeyOfOutput, data.topBlock, data.dbCache)) {
                   unconfirmed -= val;
                }
             }
@@ -588,26 +631,30 @@ ChainData::ChainData(CacheResolveResult& data) :
          total += val;
 
          //spendable only tracks mature outputs (cf mining reward maturity)
-         if (!data.isZC && txio->isSpendable(data.topBlock)) {
+         if (!data.isZC &&
+            isSpendable(txKeyOfOutput, data.topBlock, data.dbCache)) {
             spendable += val;
          }
 
          //unconfirmed adds up immature and unconfirmed outputs
-         if (txio->isUnconfirmed(data.topBlock, MIN_CONFIRMATIONS)) {
+         if (isUnconfirmed(txKeyOfOutput, data.topBlock, data.dbCache)) {
             unconfirmed += val;
          }
       }
 
       //set address data
-      balanceMap.emplace(addr.first,
-         std::vector<int64_t>{total, spendable, unconfirmed});
-      countMap.emplace(addr.first, addrTxKeys.size());
+      amountMap.emplace(addr.first, Amounts{
+         static_cast<Types::Amount>(total),
+         static_cast<Types::Amount>(spendable),
+         static_cast<Types::Amount>(unconfirmed),
+         addrTxKeys.size()
+      });
 
       //update wallet aggregate
-      totalBalance        += total;
-      spendableBalance    += spendable;
-      unconfirmedBalance  += unconfirmed;
+      totalBalance        += static_cast<Types::Amount>(total);
+      spendableBalance    += static_cast<Types::Amount>(spendable);
+      unconfirmedBalance  += static_cast<Types::Amount>(unconfirmed);
       allTxKeys.insert(addrTxKeys.begin(), addrTxKeys.end());
    }
-   txioCount = allTxKeys.size();
+   txCount = allTxKeys.size();
 }

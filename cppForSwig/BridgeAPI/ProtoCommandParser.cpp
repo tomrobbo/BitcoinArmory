@@ -58,7 +58,7 @@ namespace
 
          //output body
          auto capnOutput = capnUtxo.initOutput();
-         capnOutput.setValue(utxo.getValue());
+         capnOutput.setValue(utxo.getAmount());
          capnOutput.setTxHeight(utxo.getHeight());
          capnOutput.setTxIndex(utxo.getTxIndex());
          capnOutput.setTxOutIndex(utxo.getTxOutIndex());
@@ -236,34 +236,6 @@ namespace
             break;
          }
 
-         case BlockchainServiceRequest::GET_LEDGER_DELEGATE_ID:
-         {
-            const auto& delegateId = bridge->getLedgerDelegateId();
-            capnp::MallocMessageBuilder message;
-            auto fromBridge = message.initRoot<FromBridge>();
-            auto reply = fromBridge.initReply();
-            auto service = reply.initService();
-
-            service.setGetLedgerDelegateId(delegateId);
-            reply.setSuccess(true);
-            reply.setReferenceId(referenceId);
-
-            response = serializeCapnp(message);
-            break;
-         }
-
-         case BlockchainServiceRequest::UPDATE_WALLETS_LEDGER_FILTER:
-         {
-            auto walletsId = request.getUpdateWalletsLedgerFilter();
-            std::vector<std::string> idVec;
-            idVec.reserve(walletsId.size());
-            for (const auto& walletId : walletsId) {
-               idVec.emplace_back(walletId);
-            }
-            bridge->bdvPtr()->updateWalletsLedgerFilter(idVec);
-            break;
-         }
-
          case BlockchainServiceRequest::GET_NODE_STATUS:
          {
             response = bridge->getNodeStatus(referenceId);
@@ -272,10 +244,10 @@ namespace
 
          case BlockchainServiceRequest::GET_TXS_BY_HASH:
          {
-            std::set<BinaryData> hashes;
+            std::set<Types::TxHash> hashes;
             auto capnHashes = request.getGetTxsByHash();
             for (auto hash : capnHashes) {
-               hashes.emplace(BinaryData(hash.begin(), hash.end()));
+               hashes.emplace(BinaryData{hash.begin(), hash.end()});
             }
             bridge->getTxsByHash(hashes, referenceId);
             break;
@@ -399,6 +371,37 @@ namespace
             reply.setReferenceId(referenceId);
 
             response = serializeCapnp(message);
+            break;
+         }
+
+         case WalletManagerRequest::GET_MAIN_LEDGER_DELEGATE_ID:
+         {
+            const auto& delegateId = bridge->getLedgerDelegateId();
+            capnp::MallocMessageBuilder message;
+            auto fromBridge = message.initRoot<FromBridge>();
+            auto reply = fromBridge.initReply();
+            auto managerReply = reply.initWalletManager();
+
+            managerReply.setGetMainLedgerDelegateId(delegateId);
+            reply.setSuccess(true);
+            reply.setReferenceId(referenceId);
+
+            response = serializeCapnp(message);
+            break;
+         }
+
+         case WalletManagerRequest::UPDATE_MAIN_LEDGER_FILTER:
+         {
+            using AAIdSet = std::set<Wallets::AddressAccountId>;
+            auto wIds = request.getUpdateMainLedgerFilter();
+            std::map<Wallets::WalletId, AAIdSet> idMap;
+            for (const auto& wId : wIds) {
+               auto result = idMap.emplace(wId.getWalletId(), AAIdSet{});
+               auto accIdCapn = wId.getAccountId();
+               result.first->second.emplace(
+                  Wallets::AddressAccountId::fromHex(accIdCapn));
+            }
+            bridge->updateWalletsLedgerFilter(idMap);
             break;
          }
 
@@ -1004,7 +1007,7 @@ namespace
             auto capnScript = args.getScript();
             BinaryDataRef scriptRef(capnScript.begin(), capnScript.end());
 
-            ::UTXO utxo(args.getValue(), UINT32_MAX, UINT32_MAX,
+            ::UTXO utxo(args.getValue(), UINT32_MAX, UINT16_MAX,
                args.getTxOutId(), hashRef, scriptRef);
             signer->signer->populateUtxo(utxo);
 
