@@ -51,7 +51,7 @@ void Blockchain::clear()
    genesisBlock->setUniqueID(1);
    auto emplaceIter = headerSet_.emplace(genesisBlock);
 
-   //block ids start at 1
+   //block ids start at 1, genesis block is assigned id 1
    highestBlockID_.store(2, std::memory_order_relaxed);
 }
 
@@ -73,7 +73,7 @@ HeaderPtr Blockchain::getGenesisHeader() const
 }
 
 ////////
-const HeaderPtr Blockchain::getHeaderByHeight(unsigned index) const
+const HeaderPtr Blockchain::getHeaderByHeight(unsigned height) const
 {
    /*
    Returns header for height.
@@ -82,26 +82,15 @@ const HeaderPtr Blockchain::getHeaderByHeight(unsigned index) const
    */
 
    std::unique_lock<std::mutex> lock(mu_);
-   if (index >= headersByHeight_.size()) {
+   if (height >= headersByHeight_.size()) {
       throw std::range_error(
-         "Cannot get block at height " + std::to_string(index)
+         "Cannot get block at height " + std::to_string(height)
       );
    }
-   return headersByHeight_[index];
+   return headersByHeight_[height];
 }
 
 HeaderPtr Blockchain::getHeaderByHash(const BinaryData& blkHash) const
-{
-   std::unique_lock<std::mutex> lock(mu_);
-   auto iter = headerSet_.find(blkHash);
-   if (iter == headerSet_.end()) {
-      throw std::range_error(
-         "cannot find header with hash " + blkHash.toHexStr(true));
-   }
-   return *iter;
-}
-
-HeaderPtr Blockchain::getHeaderByHash(BinaryDataRef blkHash) const
 {
    std::unique_lock<std::mutex> lock(mu_);
    auto iter = headerSet_.find(blkHash);
@@ -123,7 +112,7 @@ HeaderPtr Blockchain::getHeaderByHash(const Hash32& blkHash) const
    return *iter;
 }
 
-HeaderPtr Blockchain::getHeaderById(uint32_t id) const
+HeaderPtr Blockchain::getHeaderById(Types::BlockId id) const
 {
    std::unique_lock<std::mutex> lock(mu_);
    if (id > highestBlockID_.load(std::memory_order_relaxed)) {
@@ -136,20 +125,6 @@ HeaderPtr Blockchain::getHeaderById(uint32_t id) const
       throw std::range_error("Cannot find block by id");
    }
    return header;
-}
-
-HeaderPtr Blockchain::getHeaderForTxKey(
-   const BinaryData& txKey) const
-{
-   unsigned blockId;
-   uint8_t dup;
-   BinaryRefReader brrKey(txKey);
-   DBUtils::readBlkDataKeyNoPrefix(brrKey, blockId, dup);
-   if (dup == 0x7F) {
-      return getHeaderById(blockId);
-   } else {
-      return getHeaderByHeight(blockId);
-   }
 }
 
 ////////
@@ -439,7 +414,7 @@ void Blockchain::putNewHeaders(LMDBBlockDatabase *db)
    newlyParsedHeaders_.clear();
 }
 
-uint32_t Blockchain::getNewUniqueID()
+Types::BlockId Blockchain::getNewUniqueID()
 {
    return highestBlockID_.fetch_add(1, std::memory_order_relaxed);
 }
@@ -453,7 +428,7 @@ void Blockchain::loadHeadersFromDB(
       throw std::runtime_error("blockchain object is already initialized");
    }
 
-   uint32_t highestBlockID = 1;
+   Types::BlockId highestBlockID = 1;
    size_t count;
    auto callback = [this, &prog, &highestBlockID, &count](HeaderPtr hPtr)
    {
@@ -527,14 +502,16 @@ uint32_t Blockchain::stageNewHeaders(
       }
 
       //assign uniqueID if necessary
-      if (newHeader->getUniqueID() == UINT32_MAX) {
+      if (!Types::isBlockIdValid(newHeader->getUniqueID())) {
          newHeader->setUniqueID(getNewUniqueID());
       }
       headerSet_.emplace(newHeader);
       headersById_[newHeader->getUniqueID()] = newHeader;
       newlyParsedHeaders_.emplace_back(newHeader);
 
-      BlockOffset bo{newHeader->getBlockFileNum(), newHeader->getOffset() + newHeader->getBlockSize()};
+      BlockOffset bo{
+         newHeader->getBlockFileNum(),
+         newHeader->getOffset() + newHeader->getBlockSize()};
       topBlockOffset_ = std::max(topBlockOffset_, bo);
       ++count;
    }
@@ -542,10 +519,10 @@ uint32_t Blockchain::stageNewHeaders(
 }
 
 ////////
-std::map<unsigned, std::set<unsigned>> Blockchain::mapIDsPerBlockFile() const
+std::map<Types::FileId, std::set<Types::BlockId>> Blockchain::mapIDsPerBlockFile() const
 {
    std::unique_lock<std::mutex> lock(mu_);
-   std::map<unsigned, std::set<unsigned>> resultMap;
+   std::map<Types::FileId, std::set<Types::BlockId>> resultMap;
    for (const auto& header : headersById_) {
       if (header == nullptr) {
          continue;
@@ -567,7 +544,7 @@ void Blockchain::flagBlockHeader(std::shared_ptr<BlockHeader> header,
 }
 
 void Blockchain::flagInvalidBlocks(LMDBBlockDatabase* db,
-   const std::set<uint32_t>& invalidIDs)
+   const std::set<Types::BlockId>& invalidIDs)
 {
    if (invalidIDs.empty()) {
       return;

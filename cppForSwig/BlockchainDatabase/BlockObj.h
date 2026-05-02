@@ -13,8 +13,13 @@
 
 #pragma once
 
+#include <vector>
 #include <string>
-#include <Utils/BinaryData.h>
+#include <memory>
+#include <Utils/Types.h>
+
+class BinaryData;
+class BinaryDataRef;
 
 namespace Armory
 {
@@ -83,7 +88,7 @@ namespace Armory
 
    private:
       BlockHeader(Hash32&, Hash32&, Hash32&, double, uint32_t, uint32_t);
-      static BlockHeader unserialize(const uint8_t*, size_t, BinaryData={});
+      static BlockHeader unserialize(const uint8_t*, size_t);
 
    public:
       struct Hasher
@@ -117,7 +122,6 @@ namespace Armory
    public:
       explicit BlockHeader(const uint8_t*, size_t);
       explicit BlockHeader(BinaryDataRef);
-      BlockHeader(const uint8_t*, size_t, const BinaryData&);
 
       //native header data getters
       uint32_t getVersion(void) const;
@@ -136,19 +140,19 @@ namespace Armory
       uint32_t getBlockHeight(void) const;
       uint32_t getNumTx(void) const;
       size_t getOffset(void) const;
-      uint16_t getBlockFileNum(void) const;
+      Types::FileId getBlockFileNum(void) const;
       uint32_t getBlockSize(void) const;
-      const BinaryData& getRawData(void) const;
-      uint32_t getUniqueID(void) const;
+      BinaryDataRef getRawData(void) const;
+      Types::BlockId getUniqueID(void) const;
 
       //setters for optional data
       void setBlockHeight(unsigned);
       void setBlockSize(uint32_t);
       void setNumTx(uint32_t);
-      void setBlockFileNum(uint16_t);
+      void setBlockFileNum(Types::FileId);
       void setBlockFileOffset(size_t);
       void setRawData(BinaryData);
-      void setUniqueID(uint32_t);
+      void setUniqueID(Types::BlockId);
 
       //merkle checks
       void checkMerkleRoot(const BinaryData&);
@@ -156,7 +160,7 @@ namespace Armory
       bool parsedBlockData(void) const;
       bool isMerkleValid(void) const;
 
-      void pprintAlot(std::ostream& = std::cout);
+      void pprintAlot(std::ostream&);
 
    private:
       const Hash32      thisHash_;
@@ -167,24 +171,24 @@ namespace Armory
       const uint32_t    version_;
 
       // Specific to the DB storage
-      double         difficultySum_ = -1.0;
-      size_t         blkFileOffset_ = SIZE_MAX;
-      uint32_t       blockHeight_ = UINT32_MAX;
-      uint32_t       uniqueID_ = UINT32_MAX;
-      uint32_t       numTx_ = UINT32_MAX;
-      uint32_t       numBlockBytes_; // includes header + nTx + sum(Tx)
-      uint16_t       blkFileNum_ = UINT16_MAX;
-      MerkleState    checkState_ = MerkleState::Unchecked;
+      double            difficultySum_ = -1.0;
+      size_t            blkFileOffset_ = SIZE_MAX;
+      uint32_t          blockHeight_ = UINT32_MAX;
+      Types::BlockId uniqueID_ = Types::INVALID_BLOCK_ID;
+      uint32_t          numTx_ = UINT32_MAX;
+      uint32_t          numBlockBytes_; // includes header + nTx + sum(Tx)
+      Types::FileId  blkFileNum_ = Types::INVALID_FILE_ID;
+      MerkleState       checkState_ = MerkleState::Unchecked;
 
       //only useful to write header on disk the one time
-      BinaryData     rawData_;
+      std::vector<uint8_t> rawData_;
 
       // Need to compute these later
-      const Hash32*  nextHash_ = nullptr;
+      const Hash32*     nextHash_ = nullptr;
       std::shared_ptr<BlockHeader> nextPtr_ = nullptr;
 
-      bool           isMainBranch_ = false;
-      bool           isOrphan_ = true;
-      bool           isFinishedCalc_ = false;
+      bool              isMainBranch_ = false;
+      bool              isOrphan_ = true;
+      bool              isFinishedCalc_ = false;
    };
 }

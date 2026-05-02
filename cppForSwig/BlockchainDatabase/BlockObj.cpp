@@ -212,14 +212,9 @@ BlockHeader::BlockHeader(BinaryDataRef str) :
    BlockHeader{unserialize(str.getPtr(), str.getSize())}
 {}
 
-BlockHeader::BlockHeader(
-   const uint8_t* ptr, size_t size, const BinaryData& hash) :
-   BlockHeader{unserialize(ptr, size, hash)}
-{}
-
 ////////
 BlockHeader BlockHeader::unserialize(
-   const uint8_t* ptr, size_t size, BinaryData hash)
+   const uint8_t* ptr, size_t size)
 {
    if (size < HEADER_SIZE) {
       throw BtcUtils::BlockDeserializingException();
@@ -228,10 +223,8 @@ BlockHeader BlockHeader::unserialize(
    //header hash
    BinaryDataRef data{ptr, HEADER_SIZE};
    Hash32 thisHash;
-   if (hash.getSize() != 32) {
+   if (true) {
       Cryptography::Hash::getHash256(data, (uint8_t*)&thisHash.data);
-   } else {
-      std::memcpy(thisHash.data, hash.getPtr(), 32);
    }
 
    //version
@@ -259,12 +252,12 @@ void BlockHeader::setRawData(BinaryData data)
    if (data.getSize() != HEADER_SIZE) {
       throw std::runtime_error("invalid header raw data size");
    }
-   rawData_ = std::move(data);
+   rawData_ = std::move(data.release());
 }
 
-const BinaryData& BlockHeader::getRawData() const
+BinaryDataRef BlockHeader::getRawData() const
 {
-   return rawData_;
+   return BinaryDataRef{&rawData_[0], rawData_.size()};
 }
 
 ////////
@@ -338,12 +331,12 @@ size_t BlockHeader::getOffset() const
    return blkFileOffset_;
 }
 
-uint16_t BlockHeader::getBlockFileNum() const
+Types::FileId BlockHeader::getBlockFileNum() const
 {
    return blkFileNum_;
 }
 
-void BlockHeader::setBlockFileNum(uint16_t fnum)
+void BlockHeader::setBlockFileNum(Types::FileId fnum)
 {
    blkFileNum_ = fnum;
 }
@@ -375,12 +368,12 @@ uint32_t BlockHeader::getNumTx() const
 }
 
 ////////
-unsigned int BlockHeader::getUniqueID() const
+Types::BlockId BlockHeader::getUniqueID() const
 {
    return uniqueID_;
 }
 
-void BlockHeader::setUniqueID(unsigned int ID)
+void BlockHeader::setUniqueID(Types::BlockId ID)
 {
    uniqueID_ = ID;
 }

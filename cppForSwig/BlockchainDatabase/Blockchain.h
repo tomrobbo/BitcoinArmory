@@ -50,7 +50,7 @@ namespace Armory
       // difficulties and difficultySum values.  Return the difficultySum of 
       // this block.
       double traceChainDown(std::shared_ptr<BlockHeader>);
-      uint32_t getNewUniqueID(void);
+      Types::BlockId getNewUniqueID(void);
 
    public:
       Blockchain(const BinaryData&);
@@ -61,7 +61,7 @@ namespace Armory
       void loadHeadersFromDB(LMDBBlockDatabase*, const std::function<void(size_t)>&);
       uint32_t stageNewHeaders(const std::vector<std::shared_ptr<BlockHeader>>&);
       void putNewHeaders(LMDBBlockDatabase*);
-      void flagInvalidBlocks(LMDBBlockDatabase*, const std::set<uint32_t>&);
+      void flagInvalidBlocks(LMDBBlockDatabase*, const std::set<Types::BlockId>&);
 
       /**
       * organize/reorganize chain
@@ -75,25 +75,24 @@ namespace Armory
       HeaderPtr getHeaderByHash(const BinaryData&) const;
       HeaderPtr getHeaderByHash(BinaryDataRef) const;
       HeaderPtr getHeaderByHash(const Hash32&) const;
-      HeaderPtr getHeaderById(uint32_t) const;
-      HeaderPtr getHeaderForTxKey(const BinaryData&) const;
+      HeaderPtr getHeaderById(Types::BlockId) const;
       BlockOffset getTopBlockOffset(void) const;
 
-      std::map<unsigned, std::set<unsigned>> mapIDsPerBlockFile(void) const;
+      std::map<Types::FileId, std::set<Types::BlockId>> mapIDsPerBlockFile(void) const;
       void flagBlockHeader(std::shared_ptr<BlockHeader>, LMDBBlockDatabase*);
       const std::vector<HeaderPtr>& headersById(void) const;
 
    private:
-      const BinaryData genesisHash_;
+      const Hash32 genesisHash_;
       std::unordered_set<HeaderPtr, BlockHeader::Hasher, BlockHeader::IsEqual> headerSet_;
       std::vector<HeaderPtr> headersById_;
       std::vector<HeaderPtr> headersByHeight_;
 
       std::vector<HeaderPtr> newlyParsedHeaders_;
       std::atomic<HeaderPtr> topBlockPtr_;
-      uint32_t idOfTopBlock_ = 0;
+      Types::BlockId idOfTopBlock_ = 0;
 
-      std::atomic<uint32_t> highestBlockID_;
+      std::atomic<Types::BlockId> highestBlockID_;
       BlockOffset topBlockOffset_;
 
       mutable std::mutex mu_;
