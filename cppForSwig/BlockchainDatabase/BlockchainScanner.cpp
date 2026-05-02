@@ -8,7 +8,6 @@
 
 #include <cstring>
 #include <unordered_map>
-#include <arpa/inet.h>
 
 #include "BlockchainScanner.h"
 #include <Utils/log.h>
@@ -23,7 +22,6 @@
 
 #include "BlockDataMap.h"
 #include "TxHashFilters.h"
-#include "txio.h"
 #include "StoredBlockObj.h"
 #include "lmdb_wrapper.h"
 #include "Blockchain.h"
@@ -151,7 +149,7 @@ const ScrAddrIdMap& ScannerContext::getScrAddrIdMap() const
 ////////////////////////////////////////////////////////////////////////////////
 // ParserBatch
 ParserBatch::ParserBatch(unsigned start, unsigned end,
-   unsigned startID, unsigned endID, ScannerContext& ctx) :
+   Types::FileId startID, Types::FileId endID, ScannerContext& ctx) :
    start(start), end(end),
    startBlockFileID(startID), targetBlockFileID(endID),
    context(ctx)
@@ -364,7 +362,7 @@ void BlockchainScanner::processOutputs()
       this->processOutputsThread(batch);
    };
 
-   std::map<unsigned, std::shared_ptr<FileUtils::FileCopy>> localFileCopies;
+   std::map<Types::FileId, std::shared_ptr<FileUtils::FileCopy>> localFileCopies;
    auto preloadBlockDataFiles = [&](ParserBatch* batch)->void
    {
       if (batch == nullptr) {
@@ -589,7 +587,7 @@ void BlockchainScanner::processOutputsThread(ParserBatch* batch)
             /* if we got this far, this txout is ours */
 
             //track known hash and its txkey
-            auto txKey = DBUtils::constructTxKey(header->getUniqueID(), i);
+            auto txKey = Types::constructTxKey(header->getUniqueID(), i);
             const auto& txHash = txn.getHash();
             result.hashMap.emplace(txHash, std::set<uint64_t>{txKey});
 
@@ -598,7 +596,7 @@ void BlockchainScanner::processOutputsThread(ParserBatch* batch)
             auto txOutIter = result.txOutMap.find(scrAddrUniqueId);
             if (txOutIter == result.txOutMap.end()) {
                txOutIter = result.txOutMap.emplace(scrAddrUniqueId,
-                  std::map<uint32_t, std::deque<TxOutData>>{}).first;
+                  std::map<Types::BlockId, std::deque<TxOutData>>{}).first;
             }
 
             //get tx out value from script
@@ -679,7 +677,7 @@ void BlockchainScanner::processInputsThread(ParserBatch* batch)
                //multiple blocks carry this hash, grab the valid one
                txKey = UINT64_MAX;
                for (const auto& key : hashIter->second) {
-                  auto blockID = DBUtils::getBlockIDFromScrAddrKey(key);
+                  auto blockID = Types::getBlockIDFromScrAddrKey(key);
                   if (batch->context.isBlockIDValid(blockID)) {
                      txKey = key;
                      break;
@@ -695,8 +693,8 @@ void BlockchainScanner::processInputsThread(ParserBatch* batch)
             //create keys, add to result map
             uint32_t outpointId;
             memcpy(&outpointId, txn.data_ + txin.first + 32, 4);
-            uint64_t txOutKey = DBUtils::constructTxIOKeyFromTxKey(txKey, (uint16_t)outpointId);
-            uint64_t txInKey = DBUtils::constructTxIOKey(header->getUniqueID(), i, y);
+            uint64_t txOutKey = Types::constructTxIOKeyFromTxKey(txKey, (uint16_t)outpointId);
+            uint64_t txInKey = Types::constructTxIOKey(header->getUniqueID(), i, y);
             result.txInMap.emplace(txOutKey, txInKey);
          }
       }
@@ -757,10 +755,8 @@ void BlockchainScanner::commitBatches()
       //txouts
       std::map<uint64_t, BinaryWriter> serializedTxOuts;
       for (const auto& txoutPair : outData.txOutMap) {
-         uint64_t scrAddrKey64 = (uint64_t)txoutPair.first;
-
          for (const auto& blockIdPair : txoutPair.second) {
-            auto saKey = scrAddrKey64 | (uint64_t)htonl(blockIdPair.first) << 32;
+            auto saKey = Types::constructScrAddrKey(txoutPair.first, blockIdPair.first);
             auto emplaceIter = serializedTxOuts.emplace(
                saKey, BinaryWriter{12 * blockIdPair.second.size()}).first;
             auto& bw = emplaceIter->second;
@@ -1105,8 +1101,8 @@ bool BlockchainScanner::resolveTxHashes()
 
    auto hashIter = missingHashes.begin();
    while (hashIter != missingHashes.end()) {
-      auto&& dbkey = db_->getDBKeyForHash(*hashIter);
-      if (dbkey.empty()) {
+      auto dbkey = db_->getDBKeyForHash(*hashIter);
+      if (!Types::isTxKeyValid(dbKey)) {
          ++hashIter;
          continue;
       }

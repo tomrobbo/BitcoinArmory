@@ -21,6 +21,7 @@
 #include <memory>
 
 #include <Utils/ThreadSafeClasses.h>
+#include <Utils/Types.h>
 #include <Utils/BinaryData.h>
 #include "BlockObj.h"
 
@@ -35,6 +36,7 @@ namespace Armory
 }
 class LMDBBlockDatabase;
 struct StoredDBInfo;
+class AddrAndHash;
 
 ////////////////////////////////////////////////////////////////////////////////
 enum class AddressBatchType : int
@@ -54,19 +56,20 @@ struct AddressBatch
 ////
 struct RegistrationBatch : public AddressBatch
 {
-   using Callback = std::function<void(std::set<BinaryDataRef>, bool)>;
+   using Callback = std::function<void(
+      const std::vector<std::shared_ptr<AddrAndHash>>&, bool)>;
    const Callback callback;
    const bool isNew;
-   const std::set<BinaryData> scrAddrSet;
+   const std::set<Armory::Types::ScrAddr> scrAddrSet;
    std::string walletID;
 
-   RegistrationBatch(std::set<BinaryData>, bool, const Callback&);
+   RegistrationBatch(std::set<Armory::Types::ScrAddr>, bool, const Callback&);
 };
 
 ////
 struct UnregistrationBatch : public AddressBatch
 {
-   std::set<BinaryData> scrAddrSet;
+   std::set<Armory::Types::ScrAddr> scrAddrSet;
    std::function<void(void)> callback;
 
    UnregistrationBatch(void);
@@ -79,19 +82,20 @@ private:
    mutable BinaryData addrHash_;
 
 public:
-   const BinaryData scrAddr;
-   const uint32_t id;
+   const Armory::Types::ScrAddr scrAddr;
+   const Armory::Types::ScrAddrId id;
    unsigned scannedHeight = 0;
 
 public:
-   AddrAndHash(BinaryDataRef, uint32_t);
+   AddrAndHash(const Armory::Types::ScrAddr&, Armory::Types::ScrAddrId);
 
    const BinaryData& getHash(void) const;
    bool operator<(const AddrAndHash&) const;
    bool operator<(const BinaryDataRef&) const;
 };
 
-using ScrAddrIdMap = std::unordered_map<BinaryData, uint32_t,
+using ScrAddrIdMap = std::unordered_map<
+   Armory::Types::ScrAddr, Armory::Types::ScrAddrId,
    BinaryData::Hasher, BinaryData::IsEqual>;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -135,20 +139,20 @@ class ScrAddrFilter
    ***/
 
 public:
-   using AddrMap = std::map<BinaryData, std::shared_ptr<AddrAndHash>>;
+   using AddrMap = std::map<Armory::Types::ScrAddr, std::shared_ptr<AddrAndHash>>;
 
 private:
    const uint16_t sdbiKey_;
    LMDBBlockDatabase *const lmdb_;
 
    std::shared_ptr<Armory::Threading::TransactionalMap<
-      BinaryData, std::shared_ptr<AddrAndHash>>> scanFilterAddrMap_;
+      Armory::Types::ScrAddr, std::shared_ptr<AddrAndHash>>> scanFilterAddrMap_;
 
    Armory::Threading::BlockingQueue<
       std::shared_ptr<AddressBatch>> registrationStack_;
 
    std::thread thr_;
-   uint32_t topScrAddrID_ = 0;
+   Armory::Types::ScrAddrId topScrAddrID_ = 0;
    Armory::Hash32 merkleRoot_;
 
 public:
@@ -157,8 +161,8 @@ public:
 private:
    void run(std::shared_future<bool>);
    AddrMap prepareRegistrationBatch(std::shared_ptr<RegistrationBatch>);
-   std::set<BinaryDataRef> mergeAddresses(AddrMap, bool);
-   AddrMap assignScrAddrKeys(const std::set<BinaryData>&);
+   std::vector<std::shared_ptr<AddrAndHash>> mergeAddresses(AddrMap, bool);
+   AddrMap assignScrAddrKeys(const std::set<Armory::Types::ScrAddr>&);
 
    Armory::Hash32 computeMerkleRoot(void) const;
    void updateAddressMerkle(void);
@@ -191,7 +195,7 @@ public:
 
    ////
    void unregisterAddresses(
-      const std::set<BinaryDataRef>&,
+      const std::set<Armory::Types::ScrAddr>&,
       const std::function<void(void)>&);
 
 //virtuals

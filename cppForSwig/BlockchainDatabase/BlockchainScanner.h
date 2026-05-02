@@ -55,7 +55,9 @@
 #include <exception>
 #include <unordered_map>
 
+#include <Utils/Types.h>
 #include <Utils/ThreadSafeClasses.h>
+#include <Utils/BinaryData.h>
 #include "Progress.h"
 #include "bdmenums.h"
 #include "BlockObj.h"
@@ -84,11 +86,15 @@ namespace Armory
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-using HashMap = std::unordered_map<Armory::Hash32, std::set<uint64_t>,
-   Armory::Hash32::Hasher, Armory::Hash32::IsEqual>;
+using HashMap = std::unordered_map<
+   Armory::Hash32, std::set<Armory::Types::TxKey>,
+   Armory::Hash32::Hasher, Armory::Hash32::IsEqual
+>;
 
-using ScrAddrIdMap = std::unordered_map<BinaryData, uint32_t,
-   BinaryData::Hasher, BinaryData::IsEqual>;
+using ScrAddrIdMap = std::unordered_map<
+   Armory::Types::ScrAddr, uint32_t,
+   BinaryData::Hasher, BinaryData::IsEqual
+>;
 
 class ScannerContext
 {
@@ -113,21 +119,25 @@ public:
 
    const HashMap& getHashMap(void) const;
    const ScrAddrIdMap& getScrAddrIdMap(void) const;
-   bool isBlockIDValid(uint32_t) const;
+   bool isBlockIDValid(Armory::Types::BlockId) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 struct TxOutParsingResult
 {
    HashMap hashMap;
-   std::map<uint32_t, std::map<uint32_t, std::deque<TxOutData>>> txOutMap;
-   std::map<uint32_t, std::shared_ptr<BlockData>> blockMap;
+   std::map<
+      Armory::Types::ScrAddrId,
+      std::map<Armory::Types::BlockId, std::deque<TxOutData>>>
+   txOutMap;
+
+   std::map<Armory::Types::BlockId, std::shared_ptr<BlockData>> blockMap;
 };
 
 struct TxInParsingResult
 {
    HashMap diff;
-   std::unordered_map<uint64_t, uint64_t> txInMap;
+   std::unordered_map<Armory::Types::TxIOKey, Armory::Types::TxIOKey> txInMap;
 };
 
 ////////
@@ -136,11 +146,11 @@ struct ParserBatch
 public:
    const unsigned start;
    const unsigned end;
-   const unsigned startBlockFileID;
-   const unsigned targetBlockFileID;
+   const Armory::Types::FileId startBlockFileID;
+   const Armory::Types::FileId targetBlockFileID;
    ScannerContext& context;
 
-   std::map<unsigned, std::shared_ptr<Armory::FileUtils::FileCopy>> fileCopies;
+   std::map<Armory::Types::FileId, std::shared_ptr<Armory::FileUtils::FileCopy>> fileCopies;
    std::atomic<unsigned> blockCounter;
    std::mutex mergeMutex;
 
@@ -151,7 +161,9 @@ public:
    unsigned count;
 
 public:
-   ParserBatch(unsigned, unsigned, unsigned, unsigned, ScannerContext&);
+   ParserBatch(unsigned, unsigned,
+      Armory::Types::FileId, Armory::Types::FileId,
+      ScannerContext&);
    void mergeResult(TxOutParsingResult&);
    void mergeResult(TxInParsingResult&);
 };

@@ -16,16 +16,13 @@
 
 #include "ScrAddrFilter.h"
 #include <Utils/BtcUtils.h>
-#include <Utils/TxOutScrRef.h>
 #include <Utils/DBUtils.h>
 #include <Utils/ArmoryConfig.h>
 #include <Utils/BitcoinSettings.h>
 
 #include "lmdb_wrapper.h"
 #include "Blockchain.h"
-#include "BlockUtils.h"
 #include "StoredBlockObj.h"
-#include "txio.h"
 
 using namespace Armory;
 namespace {
@@ -68,24 +65,22 @@ void ScrAddrFilter::start(std::shared_future<bool> bdmReadyFut)
          DB_SELECT::SCRADDR, LMDB::Mode::ReadOnly);
       auto dbIter = tx->getIterator();
       dbIter.seekToFirst();
-      std::map<BinaryData, std::shared_ptr<AddrAndHash>> scrAddrMap;
+      std::map<Types::ScrAddr, std::shared_ptr<AddrAndHash>> scrAddrMap;
 
       //iterate over scraddr DB
       topScrAddrID_ = 0;
       do {
          auto keyRef = dbIter.getKeyRef();
-         if (keyRef.getSize() != sizeof(uint32_t)) {
+         if (keyRef.getSize() != sizeof(Types::ScrAddrId)) {
             continue;
          }
-         uint32_t scrAddrId;
-         std::memcpy(&scrAddrId, keyRef.getPtr(), sizeof(uint32_t));
+         Types::ScrAddrId scrAddrId;
+         std::memcpy(&scrAddrId, keyRef.getPtr(), sizeof(Types::ScrAddrId));
          if (scrAddrId >= 0xFFFF0000) {
             //sdbi entry, ignore
             continue;
          }
-         auto scrAddrRef = dbIter.getValueRef();
-
-         auto aah = std::make_shared<AddrAndHash>(scrAddrRef, scrAddrId);
+         auto aah = std::make_shared<AddrAndHash>(dbIter.getValue(), scrAddrId);
          scrAddrMap.emplace(aah->scrAddr, aah);
          topScrAddrID_ = std::max(topScrAddrID_, scrAddrId);
       } while (dbIter.advanceAndRead());
@@ -170,7 +165,7 @@ ScrAddrFilter::getScanFilterAddrMap() const
 
 ////////
 ScrAddrFilter::AddrMap ScrAddrFilter::assignScrAddrKeys(
-   const std::set<BinaryData>& addrSet)
+   const std::set<Types::ScrAddr>& addrSet)
 {
    AddrMap result;
    auto scraddrmap = scanFilterAddrMap_->get();
@@ -188,20 +183,26 @@ ScrAddrFilter::AddrMap ScrAddrFilter::assignScrAddrKeys(
    //commit fresh <db, addr> pairs to db
    auto tx = lmdb_->beginTransaction(DB_SELECT::SCRADDR, LMDB::Mode::ReadWrite);
    for (const auto& aaPair : result) {
-      LMDB::DataRef keyRef{sizeof(uint32_t), (const char*)&aaPair.second->id};
-      tx->insert(keyRef,
-         LMDB::DataRef{aaPair.first.getSize(), aaPair.first.getPtr()}
+      LMDB::DataRef keyRef{
+         sizeof(Types::ScrAddrId),
+         (const char*)&aaPair.second->id
+      };
+      tx->insert(
+         LMDB::DataRef{
+            sizeof(Types::ScrAddrId), (const char*)&aaPair.second->id},
+         LMDB::DataRef{
+            aaPair.first.getSize(), aaPair.first.getPtr()}
       );
    }
    return result;
 }
 
-std::set<BinaryDataRef> ScrAddrFilter::mergeAddresses(ScrAddrFilter::AddrMap addrMap,
-   bool updateMerkleRoot)
+std::vector<std::shared_ptr<AddrAndHash>> ScrAddrFilter::mergeAddresses(
+   AddrMap addrMap, bool updateMerkleRoot)
 {
-   std::set<BinaryDataRef> result;
+   std::vector<std::shared_ptr<AddrAndHash>> result;
    for (const auto& aaPair : addrMap) {
-      result.emplace(aaPair.second->scrAddr.getRef());
+      result.emplace_back(aaPair.second);
    }
 
    bool wasEmpty = scanFilterAddrMap_->empty();
@@ -355,7 +356,7 @@ void ScrAddrFilter::run(std::shared_future<bool> bdmReadyFut)
             saf->mergeAddresses(newScrAddrMap, false);
             auto scanFromHeader = blockchain()->getGenesisHeader();
             Hash32 scannedHash;
-            std::set<BinaryDataRef> scaSet;
+            std::vector<std::shared_ptr<AddrAndHash>> scaVec;
 
             while (true) {
                //run the side scan
@@ -377,7 +378,7 @@ void ScrAddrFilter::run(std::shared_future<bool> bdmReadyFut)
                   lmdb_->putStoredDBInfo(DB_SELECT::SCRADDR, sdbi, sdbiKey_);
                }
                if (sdbi.topScannedBlkHash == scannedHash) {
-                  scaSet = mergeAddresses(std::move(newScrAddrMap), true);
+                  scaVec = mergeAddresses(std::move(newScrAddrMap), true);
                   break;
                } else {
                   //main scrAddr set is scanned up to a different block,
@@ -406,7 +407,7 @@ void ScrAddrFilter::run(std::shared_future<bool> bdmReadyFut)
             for (const auto& wID : walletIDs) {
                LOGINFO << "Completed scan of wallet " << wID;
             }
-            batchPtr->callback(scaSet, true);
+            batchPtr->callback(scaVec, true);
             break;
          }
 
@@ -458,7 +459,7 @@ void ScrAddrFilter::cleanUpSdbis()
 
 ////////
 void ScrAddrFilter::unregisterAddresses(
-   const std::set<BinaryDataRef>& scrAddrSet,
+   const std::set<Types::ScrAddr>& scrAddrSet,
    const std::function<void(void)>& callback)
 {
    /*
@@ -471,7 +472,7 @@ void ScrAddrFilter::unregisterAddresses(
 }
 
 std::shared_ptr<Threading::TransactionalMap<
-   BinaryData, std::shared_ptr<AddrAndHash>>>
+   Types::ScrAddr, std::shared_ptr<AddrAndHash>>>
 ScrAddrFilter::getZcFilterMapPtr() const
 {
    return scanFilterAddrMap_;
@@ -487,7 +488,7 @@ AddressBatch::~AddressBatch()
 {}
 
 ////////
-RegistrationBatch::RegistrationBatch(std::set<BinaryData> addrSet,
+RegistrationBatch::RegistrationBatch(std::set<Types::ScrAddr> addrSet,
    bool isnew, const RegistrationBatch::Callback& cb) :
    AddressBatch(AddressBatchType::Register),
    scrAddrSet{std::move(addrSet)}, isNew(isnew), callback(cb)
@@ -499,8 +500,9 @@ UnregistrationBatch::UnregistrationBatch() :
 
 ///////////////////////////////////////////////////////////////////////////////
 // AddrAndHash
-AddrAndHash::AddrAndHash(BinaryDataRef addrRef, uint32_t scrAddrId) :
-   scrAddr(addrRef), id(scrAddrId)
+AddrAndHash::AddrAndHash(const Types::ScrAddr& addr,
+   Types::ScrAddrId scrAddrId) :
+   scrAddr(addr), id(scrAddrId)
 {}
 
 const BinaryData& AddrAndHash::getHash() const
