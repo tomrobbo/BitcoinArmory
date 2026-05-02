@@ -20,9 +20,9 @@
 #include <unistd.h>
 #include <string_view>
 #include <cstring>
-#include <arpa/inet.h>
 
 #include "DBUtils.h"
+#include "BinaryData.h"
 
 namespace fs = std::filesystem;
 using namespace std::string_view_literals;
@@ -30,6 +30,7 @@ using namespace Armory;
 
 namespace {
    constexpr auto blkFilePrefix = "blk"sv;
+   constexpr auto blkFileNumTemplace = "blk{:05}.dat"sv;
 }
 
 const BinaryData DBUtils::ZCPrefix = BinaryData::CreateFromHex("FFFF");
@@ -271,40 +272,6 @@ BinaryDataRef DBUtils::getDataRefForPacket(
       throw std::runtime_error("on disk data length mismatch");
    }
    return brr.get_BinaryDataRef(brr.getSizeRemaining());
-}
-
-////////////////////////////////////////////////////////////////////////////////
-uint64_t DBUtils::constructTxKey(
-   uint32_t blockID, uint16_t txId)
-{
-   return
-      0xFFFF000000000000 |
-      (uint64_t)htonl(blockID) |
-      (uint64_t)htons(txId) << 32;
-}
-
-uint64_t DBUtils::constructTxIOKey(
-   uint32_t blockID, uint16_t txId, uint16_t txIOId)
-{
-   return
-      (uint64_t)htonl(blockID) |
-      (uint64_t)htons(txId) << 32 |
-      (uint64_t)htons(txIOId) << 48;
-}
-
-uint64_t DBUtils::constructTxIOKeyFromTxKey(uint64_t txKey, uint16_t txIOId)
-{
-   return txKey & (0x0000FFFFFFFFFFFF | (uint64_t)htons((uint16_t)txIOId) << 48);
-}
-
-uint32_t DBUtils::getBlockIDFromScrAddrKey(uint64_t key)
-{
-   return ntohl(uint32_t(key >> 32));
-}
-
-uint32_t DBUtils::getBlockIDFromTxKey(uint64_t txKey)
-{
-   return htonl((uint32_t)txKey);
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -644,9 +611,7 @@ fs::path FileUtils::getBlkFilename(const fs::path& path, uint32_t fblkNum)
    /// Update:  It's been enough time since the hardfork that just about
    //           everyone must've upgraded to 0.8+ by now... remove pre-0.8
    //           compatibility.
-   std::stringstream filename;
-   filename << "blk" << std::setw(5) << std::setfill('0') << fblkNum << ".dat";
-   return path / filename.str();
+   return path / std::format(blkFileNumTemplace, fblkNum);
 }
 
 ///

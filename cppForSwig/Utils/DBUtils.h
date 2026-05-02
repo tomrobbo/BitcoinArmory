@@ -13,9 +13,9 @@
 
 #pragma once
 
+#include <vector>
 #include <string>
 #include <filesystem>
-#include "BinaryData.h"
 
 enum class BLKDATA_TYPE : int
 {
@@ -43,6 +43,10 @@ enum class DbPrefix : uint8_t
    FLAGGED_BLOCKFILES,
    DBINFO = 0xFF,
 };
+
+class BinaryData;
+class BinaryDataRef;
+class BinaryRefReader;
 
 namespace Armory
 {
@@ -84,12 +88,6 @@ namespace Armory
       BinaryData getFilterPoolKey(uint32_t);
       BinaryData getMissingHashesKey(uint32_t);
       BinaryDataRef getDataRefForPacket(const BinaryDataRef&);
-
-      uint64_t constructTxKey(uint32_t, uint16_t);
-      uint64_t constructTxIOKey(uint32_t, uint16_t, uint16_t);
-      uint64_t constructTxIOKeyFromTxKey(uint64_t, uint16_t);
-      uint32_t getBlockIDFromScrAddrKey(uint64_t);
-      uint32_t getBlockIDFromTxKey(uint64_t);
    }
 
    namespace FileUtils
