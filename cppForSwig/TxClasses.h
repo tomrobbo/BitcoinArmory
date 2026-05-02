@@ -13,6 +13,7 @@
 #pragma once
 
 #include <Utils/BinaryData.h>
+#include <Utils/Types.h>
 
 //PayStruct flags
 #define USE_FULL_CUSTOM_LIST  1
@@ -140,13 +141,12 @@ public:
 
    const uint8_t*    getPtr(void) const;
    uint32_t          getSize(void) const;
-   uint64_t          getValue(void) const;
+   Armory::Types::Amount getAmount(void) const;
    bool              isStandard(void) const;
-   uint32_t          getIndex(void);
+   Armory::Types::TxIOId getIndex(void);
 
    ////////
-   const BinaryData& getScrAddressStr(void) const;
-   BinaryDataRef     getScrAddressRef(void) const;
+   const Armory::Types::ScrAddr& getScrAddress(void) const;
 
    ////////
    BinaryData        getScript(void) const;
@@ -164,10 +164,10 @@ private:
    const BinaryData  dataCopy_;
 
    // Derived properties - we expect these to be set after construct/copy
-   BinaryData        uniqueScrAddr_;
+   Armory::Types::ScrAddr uniqueScrAddr_;
    TxOutScriptType   scriptType_;
    uint32_t          scriptOffset_;
-   uint32_t          index_;
+   Armory::Types::TxIOId index_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -191,7 +191,7 @@ public:
    uint32_t          getVersion(void) const;
    size_t            getNumTxIn(void) const;
    size_t            getNumTxOut(void) const;
-   const BinaryData& getThisHash(void) const;
+   const Armory::Types::TxHash& getThisHash(void) const;
    bool              isCoinbase(void) const;
    uint32_t          getLockTime(void) const;
    uint64_t          getSumOfOutputs(void) const;
@@ -199,11 +199,9 @@ public:
    bool              isChained(void) const;
    bool              isSegWit(void) const;
    uint32_t          getTxTime(void) const;
-   unsigned          getZcIndex(void) const;
-   virtual uint32_t  getTxHeight(void) const;
-   uint8_t           getDupId(void) const;
-   uint32_t          getTxIndex(void) const;
-   BinaryData        getDBKey(void) const;
+   Armory::Types::BlockId getBlockId(void) const;
+   Armory::Types::TxId getTxIndex(void) const;
+   Armory::Types::TxKey getDBKey(void) const;
 
    /////////////////////////////////////////////////////////////////////////////
    size_t            getTxInOffset(uint32_t) const;
@@ -216,9 +214,8 @@ public:
    BinaryData        serializeNoWitness(void) const;
 
    /////////////////////////////////////////////////////////////////////////////
-   BinaryData        getScrAddrForTxOut(uint32_t) const;
-   TxIn              getTxInCopy(uint32_t) const;
-   TxOut             getTxOutCopy(uint32_t) const;
+   TxIn              getTxInCopy(Armory::Types::TxIOId) const;
+   TxOut             getTxOutCopy(Armory::Types::TxIOId) const;
 
    /////////////////////////////////////////////////////////////////////////////
    // returns tx weight
@@ -230,9 +227,8 @@ public:
    /////////////////////////////////////////////////////////////////////////////
    void setRBF(bool);
    void setChainedZC(bool);
-   void setTxHeight(uint32_t) const;
-   void setDupId(uint8_t) const;
-   void setTxIndex(uint32_t) const;
+   void setBlockId(Armory::Types::BlockId) const;
+   void setTxIndex(Armory::Types::TxId) const;
    void setTxTime(uint32_t);
    void pushBackOpId(uint32_t) const;
 
@@ -246,7 +242,7 @@ private:
    uint32_t txTime_{0};
 
    // Derived properties - we expect these to be set after construct/copy
-   mutable BinaryData thisHash_;
+   mutable Armory::Types::TxHash thisHash_;
 
    // Will always create TxIns and TxOuts on-the-fly; only store the offsets
    const std::vector<size_t> offsetsTxIn_;
@@ -255,33 +251,32 @@ private:
 
    bool isRBF_ = false;
    bool isChainedZc_ = false;
-   mutable uint32_t txHeight_ = UINT32_MAX;
-   mutable uint8_t dupId_ = UINT8_MAX;
-   mutable uint32_t txIndex_ = UINT32_MAX;
+   mutable Armory::Types::BlockId blockId_ = Armory::Types::INVALID_BLOCK_ID;
+   mutable Armory::Types::TxId txIndex_ = UINT16_MAX;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 struct UTXO
 {
 public:
-   uint64_t   value_ = 0;
-   uint32_t   txHeight_ = UINT32_MAX;
-   uint32_t   txIndex_ = UINT32_MAX;
-   uint32_t   txOutIndex_ = UINT32_MAX;
-   BinaryData txHash_;
-   BinaryData script_;
+   Armory::Types::Amount amount = 0;
+   uint32_t txHeight = UINT32_MAX;
+   Armory::Types::TxId txIndex = UINT16_MAX;
+   Armory::Types::TxIOId txOutIndex = UINT16_MAX;
+   Armory::Types::TxHash txHash;
+   BinaryData script;
 
-   bool       isMultisigRef_ = false;
-   unsigned   preferredSequence_ = UINT32_MAX;
+   bool       isMultisigRef = false;
+   unsigned   preferredSequence = UINT32_MAX;
 
    //for coin selection
-   bool isInputSW_ = false;
-   unsigned txinRedeemSizeBytes_ = UINT32_MAX;
-   unsigned witnessDataSizeBytes_ = UINT32_MAX;
+   bool isInputSW = false;
+   unsigned txinRedeemSizeBytes = UINT32_MAX;
+   unsigned witnessDataSizeBytes = UINT32_MAX;
 
 public:
-   UTXO(uint64_t, uint32_t, uint32_t,
-      uint32_t, BinaryData, BinaryData);
+   UTXO(Armory::Types::Amount, uint32_t, Armory::Types::TxId,
+      Armory::Types::TxIOId, Armory::Types::TxHash, BinaryData);
    UTXO(void);
 
    bool operator==(const UTXO&) const;
@@ -289,16 +284,16 @@ public:
    bool operator<(const UTXO&) const;
 
    bool isInitialized(void) const;
-   uint64_t getValue(void) const;
-   const BinaryData& getTxHash(void) const;
+   Armory::Types::Amount getAmount(void) const;
+   const Armory::Types::TxHash& getTxHash(void) const;
    std::string getTxHashStr(void) const;
    const BinaryData& getScript(void) const;
-   uint32_t getTxIndex(void) const;
-   uint32_t getTxOutIndex(void) const;
+   Armory::Types::TxId getTxIndex(void) const;
+   Armory::Types::TxIOId getTxOutIndex(void) const;
    uint32_t getNumConfirm(uint32_t) const;
    unsigned getPreferredSequence(void) const;
    uint32_t getHeight(void) const;
-   BinaryData getRecipientScrAddr(void) const;
+   Armory::Types::ScrAddr getRecipientScrAddr(void) const;
 
    //coin seletion methods
    bool isSegWit(void) const;

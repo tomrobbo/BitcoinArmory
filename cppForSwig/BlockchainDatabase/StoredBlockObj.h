@@ -149,10 +149,10 @@ public:
 
 struct TxOutData
 {
-   const uint64_t amount;
-   const uint32_t blockID;
-   const uint16_t txId;
-   const uint16_t txOutId;
+   const Armory::Types::Amount amount;
+   const Armory::Types::BlockId blockID;
+   const Armory::Types::TxId txId;
+   const Armory::Types::TxIOId txOutId;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

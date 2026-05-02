@@ -423,7 +423,7 @@ uint32_t TxOut::getSize() const
    return (uint32_t)dataCopy_.getSize();
 }
 
-uint64_t TxOut::getValue() const
+Types::Amount TxOut::getAmount() const
 {
    return READ_UINT64_LE(dataCopy_.getPtr());
 }
@@ -433,7 +433,7 @@ bool TxOut::isStandard() const
    return scriptType_ != TxOutScriptType::NONSTANDARD;
 }
 
-uint32_t TxOut::getIndex()
+Types::TxIOId TxOut::getIndex()
 {
    return index_;
 }
@@ -470,14 +470,9 @@ size_t TxOut::getScriptOffset() const
 }
 
 ////////
-const BinaryData& TxOut::getScrAddressStr() const
+const Types::ScrAddr& TxOut::getScrAddress() const
 {
    return uniqueScrAddr_;
-}
-
-BinaryDataRef TxOut::getScrAddressRef() const
-{
-   return uniqueScrAddr_.getRef();
 }
 
 ////////
@@ -542,7 +537,7 @@ void TxOut::pprint(std::ostream& os, int nIndent, bool pBigendian)
    os << indent << "   Recip:  "
       << uniqueScrAddr_.toHexStr(pBigendian).c_str()
       << (pBigendian ? " (BE)" : " (LE)") << std::endl;
-   os << indent << "   Value:  " << getValue() << std::endl;
+   os << indent << "   Amount:  " << getAmount() << std::endl;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -638,7 +633,7 @@ uint64_t Tx::getSumOfOutputs(void) const
 {
    uint64_t sumVal = 0;
    for (uint32_t i = 0; i < getNumTxOut(); i++) {
-      sumVal += getTxOutCopy(i).getValue();
+      sumVal += getTxOutCopy(i).getAmount();
    }
    return sumVal;
 }
@@ -663,17 +658,13 @@ uint32_t Tx::getTxTime() const
    return txTime_;
 }
 
-uint32_t Tx::getTxHeight() const
+Types::BlockId Tx::getBlockId() const
 {
-   return txHeight_;
+   return blockId_;
 }
 
-uint8_t Tx::getDupId() const
-{
-   return dupId_;
-}
 
-uint32_t Tx::getTxIndex() const
+Types::TxId Tx::getTxIndex() const
 {
    return txIndex_;
 }
@@ -705,17 +696,12 @@ void Tx::setChainedZC(bool isTrue)
    isChainedZc_ = isTrue;
 }
 
-void Tx::setTxHeight(uint32_t height) const
+void Tx::setBlockId(Types::BlockId blockId) const
 {
-   txHeight_ = height;
+   blockId_ = blockId;
 }
 
-void Tx::setDupId(uint8_t dupId) const
-{
-   dupId_ = dupId;
-}
-
-void Tx::setTxIndex(uint32_t index) const
+void Tx::setTxIndex(Types::TxId index) const
 {
    txIndex_ = index;
 }
@@ -747,7 +733,7 @@ BinaryData Tx::serializeNoWitness(void) const
 }
 
 ////////
-const BinaryData& Tx::getThisHash() const
+const Types::TxHash& Tx::getThisHash() const
 {
    if (thisHash_.empty()) {
       if (usesWitness_) {
@@ -760,23 +746,11 @@ const BinaryData& Tx::getThisHash() const
    return thisHash_;
 }
 
-BinaryData Tx::getScrAddrForTxOut(uint32_t txOutIndex) const
-{
-   BinaryDataRef txOutRef{
-      dataCopy_.getPtr() + offsetsTxOut_[txOutIndex],
-      offsetsTxOut_[txOutIndex + 1] - offsetsTxOut_[txOutIndex]
-   };
-   auto scriptOffset = 8 + BtcUtils::readVarIntLength(txOutRef.getPtr() + 8);
-   auto scriptRef = txOutRef.getSliceRef(
-      scriptOffset, txOutRef.getSize() - scriptOffset);
-   return BtcUtils::getTxOutScrAddr(scriptRef);
-}
-
 /////////////////////////////////////////////////////////////////////////////
 // This is not a pointer to persistent object, this method actually CREATES
 // the TxIn. But it's fast and doesn't hold a lot of post-construction
 // information, so it can probably just be computed on the fly
-TxIn Tx::getTxInCopy(uint32_t i) const
+TxIn Tx::getTxInCopy(Types::TxIOId i) const
 {
    if (offsetsTxIn_.empty() || i >= (ssize_t)offsetsTxIn_.size() - 1) {
       throw std::range_error("index out of bound");
@@ -788,7 +762,7 @@ TxIn Tx::getTxInCopy(uint32_t i) const
       txinSize, i};
 }
 
-TxOut Tx::getTxOutCopy(uint32_t i) const
+TxOut Tx::getTxOutCopy(Types::TxIOId i) const
 {
    if (offsetsTxOut_.empty() || i >= (ssize_t)offsetsTxOut_.size() - 1) {
       std::string errStr(
@@ -855,38 +829,18 @@ size_t Tx::getTxWeight() const
 }
 
 ////////
-unsigned Tx::getZcIndex() const
+Types::TxKey Tx::getDBKey() const
 {
-   if (txHeight_ != UINT32_MAX) {
-      throw std::runtime_error("tx is confirmed");
-   }
-   if (txIndex_ == UINT32_MAX) {
-      throw std::runtime_error("tx is uninitialized");
-   }
-   return txIndex_;
-}
-
-////////
-BinaryData Tx::getDBKey() const
-{
-   if (txHeight_ == UINT32_MAX && txIndex_ != UINT32_MAX) {
-      //this is a zc
-      BinaryWriter bw;
-      bw.reserve(6);
-      bw.put_uint16_t(0xFFFF);
-      bw.put_uint32_t(txIndex_, BE);
-      return bw.getData();
-   }
-   return DBUtils::getBlkDataKeyNoPrefix(txHeight_, dupId_, txIndex_);
+   return Types::constructTxKey(blockId_, txIndex_);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // UTXO methods
-UTXO::UTXO(uint64_t value, uint32_t txHeight, uint32_t txIndex,
-   uint32_t txOutIndex, BinaryData txHash, BinaryData script) :
-   txHash_(std::move(txHash)), txOutIndex_(txOutIndex),
-   txHeight_(txHeight), txIndex_(txIndex),
-   value_(value), script_(std::move(script))
+UTXO::UTXO(Types::Amount amt, uint32_t height, Types::TxId txid,
+   Types::TxIOId txoutid, Types::TxHash txHash, BinaryData script) :
+   txHash(std::move(txHash)), txOutIndex(txoutid),
+   txHeight(height), txIndex(txid),
+   amount(amt), script(std::move(script))
 {}
 
 UTXO::UTXO()
@@ -908,12 +862,12 @@ bool UTXO::operator!=(const UTXO& rhs) const
 
 bool UTXO::operator<(const UTXO& rhs) const
 {
-   if (txHash_ != rhs.txHash_) {
-      return txHash_ < rhs.txHash_;
+   if (txHash != rhs.txHash) {
+      return txHash < rhs.txHash;
    }
 
-   if (txOutIndex_ != rhs.txOutIndex_) {
-      return txOutIndex_ < rhs.txOutIndex_;
+   if (txOutIndex != rhs.txOutIndex) {
+      return txOutIndex < rhs.txOutIndex;
    }
    return false;
 }
@@ -921,82 +875,82 @@ bool UTXO::operator<(const UTXO& rhs) const
 ////////
 bool UTXO::isInitialized() const
 {
-   return !script_.empty();
+   return !script.empty();
 }
 
-uint64_t UTXO::getValue() const
+Types::Amount UTXO::getAmount() const
 {
-   return value_;
+   return amount;
 }
 
-const BinaryData& UTXO::getTxHash() const
+const Types::TxHash& UTXO::getTxHash() const
 {
-   return txHash_;
+   return txHash;
 }
 
 std::string UTXO::getTxHashStr() const
 {
-   return txHash_.toHexStr();
+   return txHash.toHexStr();
 }
 
 const BinaryData& UTXO::getScript() const
 {
-   return script_;
+   return script;
 }
 
-uint32_t UTXO::getTxIndex() const
+Types::TxId UTXO::getTxIndex() const
 {
-   return txIndex_;
+   return txIndex;
 }
 
-uint32_t UTXO::getTxOutIndex() const
+Types::TxIOId UTXO::getTxOutIndex() const
 {
-   return txOutIndex_;
+   return txOutIndex;
 }
 
 uint32_t UTXO::getNumConfirm(uint32_t height) const
 {
-   if (txHeight_ == UINT32_MAX) {
+   if (txHeight == UINT32_MAX) {
       return 0;
    }
-   return height - txHeight_ + 1;
+   return height - txHeight + 1;
 }
 
 unsigned UTXO::getPreferredSequence() const
 {
-   return preferredSequence_;
+   return preferredSequence;
 }
 
 uint32_t UTXO::getHeight() const
 {
-   return txHeight_;
+   return txHeight;
 }
 
 BinaryData UTXO::getRecipientScrAddr() const
 {
-   return BtcUtils::getTxOutScrAddr(script_);
+   return BtcUtils::getTxOutScrAddr(script);
 }
 
 ////////
 bool UTXO::isSegWit() const
 {
-   return isInputSW_;
+   return isInputSW;
 }
 
 unsigned UTXO::getInputRedeemSize() const
 {
-   if (txinRedeemSizeBytes_ == UINT32_MAX) {
+   if (txinRedeemSizeBytes == UINT32_MAX) {
       throw std::runtime_error("redeem size is no set");
    }
-   return txinRedeemSizeBytes_;
+   return txinRedeemSizeBytes;
 }
 
 unsigned UTXO::getWitnessDataSize() const
 {
-   if (!isSegWit() || witnessDataSizeBytes_ == UINT32_MAX) {
+   if (!isSegWit() || witnessDataSizeBytes == UINT32_MAX) {
       throw std::runtime_error("no witness data size available");
    }
-   return witnessDataSizeBytes_;
+   return witnessDataSizeBytes;
 }
 
 ////////
@@ -1004,28 +958,28 @@ BinaryData UTXO::serialize() const
 {
    BinaryWriter bw;
    //8 + 4 + 2 + 2 + (1 + hash) + (3 + script) + 4
-   bw.reserve(26 + txHash_.getSize() + script_.getSize());
-   bw.put_uint64_t(value_);
-   bw.put_uint32_t(txHeight_);
-   bw.put_uint16_t(txIndex_);
-   bw.put_uint16_t(txOutIndex_);
+   bw.reserve(26 + txHash.getSize() + script.getSize());
+   bw.put_uint64_t(amount);
+   bw.put_uint32_t(txHeight);
+   bw.put_uint16_t(txIndex);
+   bw.put_uint16_t(txOutIndex);
 
-   bw.put_var_int(txHash_.getSize());
-   bw.put_BinaryData(txHash_);
+   bw.put_var_int(txHash.getSize());
+   bw.put_BinaryData(txHash);
 
-   bw.put_var_int(script_.getSize());
-   bw.put_BinaryData(script_);
-   bw.put_uint32_t(preferredSequence_);
+   bw.put_var_int(script.getSize());
+   bw.put_BinaryData(script);
+   bw.put_uint32_t(preferredSequence);
    return bw.getData();
 }
 
 BinaryData UTXO::serializeTxOut() const
 {
    BinaryWriter bw;
-   bw.reserve(11 + script_.getSize());
-   bw.put_uint64_t(value_);
-   bw.put_var_int(script_.getSize());
-   bw.put_BinaryData(script_);
+   bw.reserve(11 + script.getSize());
+   bw.put_uint64_t(amount);
+   bw.put_var_int(script.getSize());
+   bw.put_BinaryData(script);
    return bw.getData();
 }
 
@@ -1038,28 +992,28 @@ void UTXO::unserialize(const BinaryData& data)
    BinaryRefReader brr(data.getRef());
 
 
-   value_ = brr.get_uint64_t();
-   txHeight_ = brr.get_uint32_t();
-   txIndex_ = brr.get_uint16_t();
-   txOutIndex_ = brr.get_uint16_t();
+   amount = brr.get_uint64_t();
+   txHeight = brr.get_uint32_t();
+   txIndex = brr.get_uint16_t();
+   txOutIndex = brr.get_uint16_t();
 
    auto hashSize = brr.get_var_int();
-   txHash_ = std::move(brr.get_BinaryData(hashSize));
+   txHash = std::move(brr.get_BinaryData(hashSize));
 
    auto scriptSize = brr.get_var_int();
    if (scriptSize == 0) {
       throw std::runtime_error("no script data in raw utxo");
    }
-   script_ = std::move(brr.get_BinaryData(scriptSize));
-   preferredSequence_ = brr.get_uint32_t();
+   script = std::move(brr.get_BinaryData(scriptSize));
+   preferredSequence = brr.get_uint32_t();
 }
 
 void UTXO::unserializeRaw(const BinaryData& data)
 {
    BinaryRefReader brr(data.getRef());
-   value_ = brr.get_uint64_t();
+   amount = brr.get_uint64_t();
    auto scriptSize = brr.get_var_int();
-   script_ = brr.get_BinaryData(scriptSize);
+   script = brr.get_BinaryData(scriptSize);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

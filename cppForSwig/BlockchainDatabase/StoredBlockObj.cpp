@@ -660,6 +660,8 @@ void StoredTx::pprintFullTx(uint32_t indent) const
 
 Tx StoredTx::getTxCopy() const
 {
+   throw std::runtime_error("[StoredTx::getTxCopy] deprecated");
+   #if 0
    if (!haveAllTxOut()) {
       throw std::runtime_error(
          "Cannot get tx copy, because don't have full StoredTx!");
@@ -667,10 +669,10 @@ Tx StoredTx::getTxCopy() const
 
    Tx returnTx{getSerializedTx()};
    returnTx.setRBF(rbfFlag);
-   returnTx.setTxHeight(blockHeight);
+   returnTx.setBlockId(blockId);
    returnTx.setTxIndex(txIndex);
-   returnTx.setDupId(duplicateID);
    return returnTx;
+   #endif
 }
 
 void StoredTx::setKeyData(uint32_t height, uint8_t dup, uint16_t txIdx)
