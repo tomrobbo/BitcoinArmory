@@ -50,28 +50,22 @@ namespace {
       }
    }
 
-   std::vector<TxIOPair> capnToTxios(
+   std::vector<TxIOPairUint> capnToTxios(
       const capnp::List<Codec::Types::TxioPair, capnp::Kind::STRUCT>::Reader& capnTxios)
    {
-      std::vector<TxIOPair> txios;
+      std::vector<TxIOPairUint> txios;
       txios.reserve(capnTxios.size());
 
       for (auto capnTxio : capnTxios) {
-         auto capnTxOut = capnTxio.getTxOut();
-         BinaryData txOutKey(capnTxOut.begin(), capnTxOut.end());
-         auto amount = capnTxio.getAmount();
-         TxIOPair txio{txOutKey, amount};
+         auto capnAddr = capnTxio.getScrAddr();
+         BinaryDataRef scrAddr{capnAddr.begin(), capnAddr.end()};
+         TxIOPairUint txio{scrAddr, capnTxio.getTxOut(), capnTxio.getAmount()};
+         txio.setTxIn(capnTxio.getTxIn());
 
-         if (capnTxio.hasTxIn()) {
-            auto capnTxIn = capnTxio.getTxIn();
-            BinaryData txInKey(capnTxIn.begin(), capnTxIn.end());
-            txio.setTxIn(txInKey);
-         }
-
-         txio.setTxOutFromSelf(capnTxio.getFromSelf());
-         txio.setFromCoinbase(capnTxio.getCoinbase());
+         //txio.setTxOutFromSelf(capnTxio.getFromSelf());
+         //txio.setFromCoinbase(capnTxio.getCoinbase());
          txio.setRBF(capnTxio.getRbf());
-         txio.setMultisig(capnTxio.getMultisig());
+         //txio.setMultisig(capnTxio.getMultisig());
          txios.emplace_back(std::move(txio));
       }
       return txios;
@@ -89,11 +83,11 @@ void initLibrary()
 ///////////////////////////////////////////////////////////////////////////////
 // BlockHeader
 BlockHeader::BlockHeader(BinaryDataRef thishash, BinaryDataRef prevhash,
-   uint32_t time, uint32_t size, uint32_t ntx,
-   uint32_t height, uint8_t dupid) :
+   Types::BlockId blockId, uint32_t height,
+   uint32_t time, uint32_t size, uint32_t ntx) :
    thisHash{thishash}, prevHash{prevhash},
-   timestamp{time}, blockSize{size}, numTxs{ntx},
-   blockHeight{height}, duplicateId{dupid}
+   blockId{blockId}, blockHeight{height},
+   timestamp{time}, blockSize{size}, numTxs{ntx}
 {}
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -101,16 +95,17 @@ BlockHeader::BlockHeader(BinaryDataRef thishash, BinaryDataRef prevhash,
 // LedgerEntry
 //
 ///////////////////////////////////////////////////////////////////////////////
-DBClientClasses::LedgerEntry::LedgerEntry(const std::string& id, int64_t value,
-   uint32_t blockHeight, BinaryData& txHash, uint32_t txOutIndex,
+DBClientClasses::LedgerEntry::LedgerEntry(const std::string& id,
+   Types::Value value,
+   uint32_t blockHeight, Types::TxHash& txHash, Types::TxIOId txOutIndex,
    uint32_t timestamp, bool isCoinbase, bool isSentToSelf, bool isChangeBack,
-   bool isOptInRBF, bool isChainedZC, bool isWitness,
-   std::vector<BinaryData>& scrAddrList) :
+   bool isOptInRBF, bool isChainedZC,
+   std::vector<Types::ScrAddr>& scrAddrList) :
    id_(std::move(id)), value_(value), blockHeight_(blockHeight),
    txHash_(std::move(txHash)), txOutIndex_(txOutIndex), timestamp_(timestamp),
    isCoinbase_(isCoinbase), isSentToSelf_(isSentToSelf),
    isChangeBack_(isChangeBack), isOptInRBF_(isOptInRBF),
-   isChainedZC_(isChainedZC), isWitness_(isWitness),
+   isChainedZC_(isChainedZC),
    scrAddrList_(std::move(scrAddrList))
 {}
 
@@ -133,13 +128,13 @@ uint32_t LedgerEntry::getBlockHeight() const
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-BinaryDataRef LedgerEntry::getTxHash() const
+const Types::TxHash& LedgerEntry::getTxHash() const
 {
-   return BinaryDataRef(txHash_);
+   return txHash_;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-uint32_t LedgerEntry::getTxOutIndex() const
+Types::TxIOId LedgerEntry::getTxOutIndex() const
 {
    return txOutIndex_;
 }
@@ -178,12 +173,6 @@ bool LedgerEntry::isOptInRBF() const
 bool LedgerEntry::isChainedZC() const
 {
    return isChainedZC_;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-bool LedgerEntry::isWitness() const
-{
-   return isWitness_;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -265,7 +254,7 @@ bool RemoteCallback::processNotifications(
 
                auto ids = peekNext.getInvalidatedZc();
                for (auto id : ids) {
-                  bdmNotif.invalidatedZc.emplace(BinaryData{
+                  bdmNotif.invalidatedZcHashes.emplace(BinaryData{
                      id.begin(), id.end()
                   });
                }
@@ -282,7 +271,7 @@ bool RemoteCallback::processNotifications(
 
             BdmNotification bdmNotif(BDMAction_InvalidatedZC);
             for (auto id : ids) {
-               bdmNotif.invalidatedZc.emplace(BinaryData{
+               bdmNotif.invalidatedZcHashes.emplace(BinaryData{
                   id.begin(), id.end()
                });
             }

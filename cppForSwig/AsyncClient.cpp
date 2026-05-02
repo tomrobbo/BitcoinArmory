@@ -1,7 +1,7 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2016-2025, goatpig.                                         //
+//  Copyright (C) 2016-2026, goatpig.                                         //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -26,7 +26,6 @@ using namespace AsyncClient;
 #define INVALID_COUNT      -2
 #define WRONG_REPLY_CLASS  -10
 #define WRONG_REPLY_TYPE   -11
-#define MISSING_LEDGER_ID  -12
 
 namespace {
    class ClientCallback : public CallbackReturn_WebSocket
@@ -177,48 +176,6 @@ namespace {
       return result;
    }
 
-   std::vector<DBClientClasses::HistoryPage> capnToHistoryPages(
-      capnp::List<Codec::Types::TxLedger, capnp::Kind::STRUCT>::Reader pages)
-   {
-      std::vector<DBClientClasses::HistoryPage> result;
-      result.reserve(pages.size());
-      for (auto page : pages) {
-         DBClientClasses::HistoryPage dbPage;
-         auto ledgers = page.getLedgers();
-         dbPage.reserve(ledgers.size());
-
-         for (const auto& ledger : ledgers) {
-            //tx hash
-            auto capnTxHash = ledger.getTxHash();
-            auto hashBytes = capnTxHash.asBytes();
-            BinaryData txHash(hashBytes.begin(), hashBytes.end());
-
-            //scrAddr list
-            auto capnScrAddrs = ledger.getScrAddrs();
-            std::vector<BinaryData> scrAddrList;
-            scrAddrList.reserve(capnScrAddrs.size());
-            for (const auto& scrAddr : capnScrAddrs) {
-               auto asBytes = scrAddr.asBytes();
-               scrAddrList.emplace_back(BinaryData(
-                  scrAddr.begin(), scrAddr.end()
-               ));
-            }
-
-            //instantiate ledger entry
-            dbPage.emplace_back(DBClientClasses::LedgerEntry(
-               ledger.getWalletId(), ledger.getBalance(), ledger.getTxHeight(),
-               txHash, ledger.getTxOutIndex(), ledger.getTxTime(),
-               ledger.getIsCoinbase(), ledger.getIsSTS(),
-               ledger.getIsChangeBack(), ledger.getIsOptInRBF(),
-               ledger.getIsChainedZC(), ledger.getIsWitness(),
-               scrAddrList
-            ));
-         }
-         result.emplace_back(std::move(dbPage));
-      }
-      return result;
-   }
-
    std::vector<uint64_t> capnToBalanceVec(
       Codec::Types::BalanceAndCount::Reader balances)
    {
@@ -316,8 +273,7 @@ namespace {
          BinaryDataRef rawTx(body.begin(), body.end());
          try {
             auto txObj = std::make_shared<Tx>(rawTx);
-            txObj->setTxHeight(capnTx.getHeight());
-            txObj->setDupId(capnTx.getDupId());
+            txObj->setBlockId(capnTx.getBlockId());
             txObj->setTxIndex(capnTx.getIndex());
             txObj->setChainedZC(capnTx.getIsChainZc());
             txObj->setRBF(capnTx.getIsRbf());
@@ -338,8 +294,7 @@ namespace {
          BinaryDataRef rawTx(body.begin(), body.end());
          try {
             auto& txObj = result.emplace_back(Tx{rawTx});
-            txObj.setTxHeight(capnTx.getHeight());
-            txObj.setDupId(capnTx.getDupId());
+            txObj.setBlockId(capnTx.getBlockId());
             txObj.setTxIndex(capnTx.getIndex());
             txObj.setChainedZC(capnTx.getIsChainZc());
             txObj.setRBF(capnTx.getIsRbf());
@@ -357,12 +312,15 @@ namespace {
       for (auto capnHeader : capnHeaders) {
          auto thisHash = capnHeader.getThisHash();
          auto prevHash = capnHeader.getPrevHash();
-         result.emplace_back(DBClientClasses::BlockHeader{
+         auto headerPtr = result.emplace_back(
+            std::make_shared<DBClientClasses::BlockHeader>(
             BinaryDataRef{thisHash.begin(), thisHash.end()},
             BinaryDataRef{prevHash.begin(), prevHash.end()},
-            capnHeader.getTimestamp(), capnHeader.getBlockSize(),
-            capnHeader.getNumTxs(),
-            capnHeader.getHeight(), capnHeader.getDupId()});
+            capnHeader.getBlockId(), capnHeader.getHeight(),
+            capnHeader.getTimestamp(),
+            capnHeader.getBlockSize(), capnHeader.getNumTxs()
+         ));
+         headerPtr->isMainBranch = capnHeader.getMainBranch();
       }
       return result;
    }
@@ -639,7 +597,7 @@ void BlockDataViewer::broadcastThroughRPC(const BinaryData& rawTx)
 
 ///////////////////////////////////////////////////////////////////////////////
 void BlockDataViewer::getTxios(uint32_t from,
-   std::function<void(ReturnMessage<std::vector<TxIOPair>>)> callback)
+   std::function<void(ReturnMessage<std::vector<TxIOPairUint>>)> callback)
 {
    //create capnp request
    capnp::MallocMessageBuilder message;
@@ -678,31 +636,24 @@ void BlockDataViewer::getTxios(uint32_t from,
 
             //convert to txio vector and fire callback
             auto capnTxios = bdvReply.getGetTxios();
-            std::vector<TxIOPair> txios;
+            std::vector<TxIOPairUint> txios;
             txios.reserve(capnTxios.size());
 
             for (auto capnTxio : capnTxios) {
-               auto capnTxOut = capnTxio.getTxOut();
-               BinaryData txOutKey(capnTxOut.begin(), capnTxOut.end());
-               auto amount = capnTxio.getAmount();
-               TxIOPair txio{txOutKey, amount};
+               auto capnAddr = capnTxio.getScrAddr();
+               BinaryDataRef scrAddr{capnAddr.begin(), capnAddr.end()};
 
-               if (capnTxio.hasTxIn()) {
-                  auto capnTxIn = capnTxio.getTxIn();
-                  BinaryData txInKey(capnTxIn.begin(), capnTxIn.end());
-                  txio.setTxIn(txInKey);
-               }
+               TxIOPairUint txio{scrAddr, capnTxio.getTxOut(), capnTxio.getAmount()};
+               txio.setTxIn(capnTxio.getTxIn());
 
-               txio.setTxOutFromSelf(capnTxio.getFromSelf());
-               txio.setFromCoinbase(capnTxio.getCoinbase());
                txio.setRBF(capnTxio.getRbf());
-               txio.setMultisig(capnTxio.getMultisig());
+               txio.setChained(capnTxio.getChained());
                txios.emplace_back(std::move(txio));
             }
-            callback(ReturnMessage<std::vector<TxIOPair>>(txios));
+            callback(ReturnMessage<std::vector<TxIOPairUint>>(txios));
          } catch (ClientMessageError& e) {
             //something went wrong, set error message and fire callback
-            callback(ReturnMessage<std::vector<TxIOPair>>(e));
+            callback(ReturnMessage<std::vector<TxIOPairUint>>(e));
          }
       });
 
@@ -768,7 +719,7 @@ void BlockDataViewer::getTxsByHash(
    sock_->pushPayload(std::move(write_payload), read_payload);
 }
 
-void BlockDataViewer::getTxsByKey(const std::set<BinaryData>& txkeys,
+void BlockDataViewer::getTxsByKey(const std::set<Types::TxKey>& txkeys,
    const std::function<void(ReturnMessage<std::vector<Tx>>)>& callback)
 {
    //create capnp request
@@ -776,12 +727,11 @@ void BlockDataViewer::getTxsByKey(const std::set<BinaryData>& txkeys,
    auto payload = message.initRoot<Codec::BDV::Request>();
 
    auto bdvRequest = payload.initBdv();
-   auto hashReq = bdvRequest.initGetTxsByKey(txkeys.size());
+   auto txsReq = bdvRequest.initGetTxsByKey(txkeys.size());
 
    unsigned i=0;
    for (auto& key : txkeys) {
-      hashReq.set(i++, capnp::Data::Builder(
-         (uint8_t*)key.getPtr(), key.getSize()));
+      txsReq.set(i++, key);
    }
 
    //serialize and add to payload
@@ -824,27 +774,6 @@ void BlockDataViewer::getTxsByKey(const std::set<BinaryData>& txkeys,
 
    //push to server
    sock_->pushPayload(std::move(write_payload), read_payload);
-}
-
-///////////////////////////////////////////////////////////////////////////////
-void BlockDataViewer::updateWalletsLedgerFilter(
-   const std::vector<std::string>& wltIdVec)
-{
-   //create capnp request
-   capnp::MallocMessageBuilder message;
-   auto payload = message.initRoot<Codec::BDV::Request>();
-
-   auto bdvRequest = payload.initBdv();
-   auto walletIds = bdvRequest.initUpdateWalletsLedgerFilter(wltIdVec.size());
-   for (unsigned i=0; i<wltIdVec.size(); i++) {
-      walletIds.set(i, wltIdVec[i]);
-   }
-
-   //serialize and add to payload
-   auto write_payload = toWritePayload(message);
-
-   //push to server
-   sock_->pushPayload(std::move(write_payload), nullptr);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1036,126 +965,6 @@ void BlockDataViewer::getOutputsForOutpoints(
 
    //push to server
    sock_->pushPayload(std::move(write_payload), read_payload);
-}
-
-///////////////////////////////////////////////////////////////////////////////
-//
-// LedgerDelegate
-//
-///////////////////////////////////////////////////////////////////////////////
-LedgerDelegate::LedgerDelegate(std::shared_ptr<SocketPrototype> sock,
-   const std::string& ldid) :
-   delegateID_(ldid), sock_(sock)
-{}
-
-///////////////////////////////////////////////////////////////////////////////
-void LedgerDelegate::getHistoryPages(uint32_t from, uint32_t to,
-   std::function<void(ReturnMessage<
-      std::vector<DBClientClasses::HistoryPage>>)> callback)
-{
-   capnp::MallocMessageBuilder message;
-   auto payload = message.initRoot<Codec::BDV::Request>();
-
-   auto ledgerRequest = payload.initLedger();
-   ledgerRequest.setLedgerId(delegateID_);
-
-   auto pageReq = ledgerRequest.initGetHistoryPages();
-   pageReq.setFirst(from);
-   if (to < from) {
-      to = from;
-   }
-   pageReq.setLast(to);
-
-   //serialize and add to payload
-   auto write_payload = toWritePayload(message);
-
-   //reply handling lambda
-   auto read_payload = std::make_shared<Socket_ReadPayload>();
-   read_payload->callbackReturn_ =
-      std::make_unique<ClientCallback>([callback](const WebSocketMessagePartial& msg){
-      try {
-         //deser capnp reply
-         auto msgReader = msg.getReader();
-         auto capnReader = msgReader->getReader();
-         auto reply = capnReader->getRoot<Codec::BDV::Reply>();
-
-         //sanity checks
-         if (!reply.getSuccess()) {
-            throw ClientMessageError(reply.getError(), -1);
-         }
-
-         if (!reply.isLedger()) {
-            throw ClientMessageError("expected ledger reply", WRONG_REPLY_CLASS);
-         }
-
-         auto ledgerReply = reply.getLedger();
-         if (!ledgerReply.isGetHistoryPages()) {
-            throw ClientMessageError(
-               "expected history pages", WRONG_REPLY_TYPE);
-         }
-
-         //convert to history page
-         auto result = capnToHistoryPages(ledgerReply.getGetHistoryPages());
-         callback(ReturnMessage<std::vector<DBClientClasses::HistoryPage>>(result));
-      } catch (ClientMessageError& e) {
-         //something went wrong, set error message and fire callback
-         callback(ReturnMessage<std::vector<DBClientClasses::HistoryPage>>(e));
-      }
-   });
-
-   //push to server
-   sock_->pushPayload(move(write_payload), read_payload);
-}
-
-///////////////////////////////////////////////////////////////////////////////
-void LedgerDelegate::getPageCount(
-   std::function<void(ReturnMessage<uint64_t>)> callback) const
-{
-   capnp::MallocMessageBuilder message;
-   auto payload = message.initRoot<Codec::BDV::Request>();
-
-   auto ledgerRequest = payload.initLedger();
-   ledgerRequest.setLedgerId(delegateID_);
-   ledgerRequest.setGetPageCount();
-
-   //serialize and add to payload
-   auto write_payload = toWritePayload(message);
-
-   //reply handling lambda
-   auto read_payload = std::make_shared<Socket_ReadPayload>();
-   read_payload->callbackReturn_ =
-      std::make_unique<ClientCallback>([callback](const WebSocketMessagePartial& msg){
-         try {
-            //deser capnp reply
-            auto msgReader = msg.getReader();
-            auto capnReader = msgReader->getReader();
-            auto reply = capnReader->getRoot<Codec::BDV::Reply>();
-
-            //sanity checks
-            if (!reply.getSuccess()) {
-               throw ClientMessageError(reply.getError(), -1);
-            }
-
-            if (!reply.isLedger()) {
-               throw ClientMessageError("expected ledger reply", WRONG_REPLY_CLASS);
-            }
-
-            auto ledgerReply = reply.getLedger();
-            if (!ledgerReply.isGetPageCount()) {
-               throw ClientMessageError(
-                  "expected page count", WRONG_REPLY_TYPE);
-            }
-
-            //convert to history page
-            callback(ReturnMessage<uint64_t>(ledgerReply.getGetPageCount()));
-         } catch (ClientMessageError& e) {
-            //something went wrong, set error message and fire callback
-            callback(ReturnMessage<uint64_t>(e));
-         }
-      });
-
-   //push to server
-   sock_->pushPayload(move(write_payload), read_payload);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1378,59 +1187,6 @@ ScrAddrObj AsyncClient::BtcWallet::getScrAddrObj(const BinaryData& scrAddr,
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-void BtcWallet::getLedgerDelegate(
-   std::function<void(ReturnMessage<LedgerDelegate>)> callback)
-{
-   //create capnp request
-   capnp::MallocMessageBuilder message;
-   auto payload = message.initRoot<Codec::BDV::Request>();
-
-   auto wltRequest = payload.initWallet();
-   wltRequest.setWalletId(walletID_);
-   wltRequest.setGetLedgerDelegate();
-
-   //serialize and add to payload
-   auto write_payload = toWritePayload(message);
-
-   //reply handling lambda
-   auto read_payload = std::make_shared<Socket_ReadPayload>();
-   read_payload->callbackReturn_ = std::make_unique<ClientCallback>(
-      [sock=sock_, callback](const WebSocketMessagePartial& msg){
-         try {
-            //deser capnp reply
-            auto msgReader = msg.getReader();
-            auto capnReader = msgReader->getReader();
-            auto reply = capnReader->getRoot<Codec::BDV::Reply>();
-
-            //sanity checks
-            if (!reply.getSuccess()) {
-               throw ClientMessageError(reply.getError(), -1);
-            }
-
-            if (!reply.isWallet()) {
-               throw ClientMessageError("expected wallet reply", WRONG_REPLY_CLASS);
-            }
-
-            auto wltReply = reply.getWallet();
-            if (!wltReply.isGetLedgerDelegate()) {
-               throw ClientMessageError(
-                  "expected getLedgerDelegate reply", WRONG_REPLY_TYPE);
-            }
-
-            //instantiate ledger delegate and pass it to callback
-            LedgerDelegate delegate{sock, wltReply.getGetLedgerDelegate()};
-            callback(ReturnMessage<LedgerDelegate>(delegate));
-         } catch (ClientMessageError& e) {
-            //something went wrong, set error message and fire callback
-            callback(ReturnMessage<LedgerDelegate>(e));
-         }
-      });
-
-   //push to server
-   sock_->pushPayload(move(write_payload), read_payload);
-}
-
-///////////////////////////////////////////////////////////////////////////////
 //
 // Lockbox
 //
@@ -1526,62 +1282,6 @@ void ScrAddrObj::getOutputs(uint64_t targetValue, bool zc, bool rbf,
          } catch (ClientMessageError& e) {
             //something went wrong, set error message and fire callback
             callback(ReturnMessage<std::vector<UTXO>>(e));
-         }
-      });
-
-   //push to server
-   sock_->pushPayload(move(write_payload), read_payload);
-}
-
-///////////////////////////////////////////////////////////////////////////////
-void ScrAddrObj::getLedgerDelegate(
-   std::function<void(ReturnMessage<LedgerDelegate>)> callback)
-{
-   //create capnp request
-   capnp::MallocMessageBuilder message;
-   auto payload = message.initRoot<Codec::BDV::Request>();
-
-   auto addrRequest = payload.initAddress();
-   auto capnAddr = addrRequest.initAddress();
-   capnAddr.setBody(capnp::Data::Builder(
-      (uint8_t*)scrAddr_.getPtr(), scrAddr_.getSize()
-   ));
-   addrRequest.setGetLedgerDelegate(walletID_);
-
-   //serialize and add to payload
-   auto write_payload = toWritePayload(message);
-
-   //reply handling lambda
-   auto read_payload = std::make_shared<Socket_ReadPayload>();
-   read_payload->callbackReturn_ = std::make_unique<ClientCallback>(
-      [sock=sock_,  callback](const WebSocketMessagePartial& msg){
-         try {
-            //deser capnp reply
-            auto msgReader = msg.getReader();
-            auto capnReader = msgReader->getReader();
-            auto reply = capnReader->getRoot<Codec::BDV::Reply>();
-
-            //sanity checks
-            if (!reply.getSuccess()) {
-               throw ClientMessageError(reply.getError(), -1);
-            }
-
-            if (!reply.isAddress()) {
-               throw ClientMessageError("expected address reply", WRONG_REPLY_CLASS);
-            }
-
-            auto addrReply = reply.getAddress();
-            if (!addrReply.isGetLedgerDelegate()) {
-               throw ClientMessageError(
-                  "expected getLedgerDelegate reply", WRONG_REPLY_TYPE);
-            }
-
-            //instantiate ledger delegate and pass it to callback
-            LedgerDelegate delegate(sock, addrReply.getGetLedgerDelegate());
-            callback(ReturnMessage<LedgerDelegate>(delegate));
-         } catch (ClientMessageError& e) {
-            //something went wrong, set error message and fire callback
-            callback(ReturnMessage<LedgerDelegate>(e));
          }
       });
 
@@ -1835,58 +1535,6 @@ void AsyncClient::BlockDataViewer::getOutputsForAddresses(
          } catch (ClientMessageError& e) {
             //something went wrong, set error message and fire callback
             callback(ReturnMessage<OutputBatch>(e));
-         }
-      });
-
-   //push to server
-   sock_->pushPayload(move(write_payload), read_payload);
-}
-
-///////////////////////////////////////////////////////////////////////////////
-void AsyncClient::BlockDataViewer::getLedgerDelegate(
-   std::function<void(ReturnMessage<LedgerDelegate>)> callback)
-{
-   //create capnp request
-   capnp::MallocMessageBuilder message;
-   auto payload = message.initRoot<Codec::BDV::Request>();
-
-   auto bdvRequest = payload.initBdv();
-   bdvRequest.setGetLedgerDelegate();
-
-   //serialize and add to payload
-   auto write_payload = toWritePayload(message);
-
-   //reply handling lambda
-   auto read_payload = std::make_shared<Socket_ReadPayload>();
-   read_payload->callbackReturn_ = std::make_unique<ClientCallback>(
-      [sock=sock_, callback](const WebSocketMessagePartial& msg){
-         try {
-            //deser capnp reply
-            auto msgReader = msg.getReader();
-            auto capnReader = msgReader->getReader();
-            auto reply = capnReader->getRoot<Codec::BDV::Reply>();
-
-            //sanity checks
-            if (!reply.getSuccess()) {
-               throw ClientMessageError(reply.getError(), -1);
-            }
-
-            if (!reply.isBdv()) {
-               throw ClientMessageError("expected bdv reply", WRONG_REPLY_CLASS);
-            }
-
-            auto bdvReply = reply.getBdv();
-            if (!bdvReply.isGetLedgerDelegate()) {
-               throw ClientMessageError(
-                  "expected getLedgerDelegate reply", WRONG_REPLY_TYPE);
-            }
-
-            //instantiate ledger delegate and pass it to callback
-            LedgerDelegate delegate{sock, bdvReply.getGetLedgerDelegate()};
-            callback(ReturnMessage<LedgerDelegate>(delegate));
-         } catch (ClientMessageError& e) {
-            //something went wrong, set error message and fire callback
-            callback(ReturnMessage<LedgerDelegate>(e));
          }
       });
 

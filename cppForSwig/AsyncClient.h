@@ -186,9 +186,6 @@ namespace AsyncClient
       LedgerDelegate(void) {}
       LedgerDelegate(std::shared_ptr<SocketPrototype>, const std::string&);
 
-      void getHistoryPages(uint32_t from, uint32_t to,
-         std::function<void(ReturnMessage<
-            std::vector<DBClientClasses::HistoryPage>>)>);
       void getPageCount(std::function<void(ReturnMessage<uint64_t>)>) const;
 
       const std::string& getID(void) const { return delegateID_; }
@@ -239,8 +236,6 @@ namespace AsyncClient
       void getOutputs(uint64_t, bool, bool,
          std::function<void(ReturnMessage<std::vector<UTXO>>)>);
       const BinaryData& getScrAddr(void) const { return scrAddr_; }
-      void getLedgerDelegate(
-         std::function<void(ReturnMessage<LedgerDelegate>)>);
 
       void setComment(const std::string& comment) { comment_ = comment; }
       const std::string& getComment(void) const { return comment_; }
@@ -305,7 +300,7 @@ namespace AsyncClient
    };
 
    /////////////////////////////////////////////////////////////////////////////
-   using HeaderVec = std::vector<DBClientClasses::BlockHeader>;
+   using HeaderVec = std::vector<std::shared_ptr<DBClientClasses::BlockHeader>>;
    class Blockchain
    {
    private:
@@ -370,10 +365,7 @@ namespace AsyncClient
 
       //ledgers
       void getTxios(uint32_t,
-         std::function<void(ReturnMessage<std::vector<TxIOPair>>)>);
-      void updateWalletsLedgerFilter(const std::vector<std::string>& wltIdVec);
-      void getLedgerDelegate(
-         std::function<void(ReturnMessage<LedgerDelegate>)>);
+         std::function<void(ReturnMessage<std::vector<TxIOPairUint>>)>);
 
       //header data
       Blockchain blockchain(void);
@@ -406,9 +398,9 @@ namespace AsyncClient
       void broadcastThroughRPC(const BinaryData& rawTx);
 
       //db cache methods
-      void getTxsByHash(const std::set<BinaryData>&,
+      void getTxsByHash(const std::set<Armory::Types::TxHash>&,
          const TxBatchCallback&);
-      void getTxsByKey(const std::set<BinaryData>&,
+      void getTxsByKey(const std::set<Armory::Types::TxKey>&,
          const std::function<void(ReturnMessage<std::vector<Tx>>)>&);
    };
 } //namespace AsyncClient

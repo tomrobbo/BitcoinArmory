@@ -14,6 +14,7 @@
 #include <functional>
 
 #include <Utils/BinaryData.h>
+#include <Utils/Types.h>
 #include <BlockchainDatabase/txio.h>
 #include "bdmenums.h"
 #include "SocketObject.h"
@@ -61,17 +62,19 @@ namespace DBClientClasses
    /////////////////////////////////////////////////////////////////////////////
    struct BlockHeader
    {
-      const BinaryData  thisHash;
-      const BinaryData  prevHash;
+      const BinaryData thisHash;
+      const BinaryData prevHash;
 
-      const uint32_t    timestamp;
-      const uint32_t    blockSize;
-      const uint32_t    numTxs;
-      const uint32_t    blockHeight;
-      const uint8_t     duplicateId;
+      const Armory::Types::BlockId blockId;
+      const uint32_t blockHeight;
+      const uint32_t timestamp;
+      const uint32_t blockSize;
+      const uint32_t numTxs;
+      bool           isMainBranch;
 
       BlockHeader(BinaryDataRef, BinaryDataRef,
-         uint32_t, uint32_t, uint32_t, uint32_t, uint8_t);
+         Armory::Types::BlockId,
+         uint32_t, uint32_t, uint32_t, uint32_t);
    };
 
    ////////////////////////////////////////////////////////////////////////////
@@ -79,41 +82,39 @@ namespace DBClientClasses
    {
    private:
       const std::string id_;
-      const int64_t     value_;
+      const Armory::Types::Value value_;
       const uint32_t    blockHeight_;
-      const BinaryData  txHash_;
-      const uint32_t    txOutIndex_;
+      const Armory::Types::TxHash txHash_;
+      const Armory::Types::TxIOId txOutIndex_;
       const uint32_t    timestamp_; //seconds
       const bool        isCoinbase_;
       const bool        isSentToSelf_;
       const bool        isChangeBack_;
       const bool        isOptInRBF_;
       const bool        isChainedZC_;
-      const bool        isWitness_;
 
-      const std::vector<BinaryData> scrAddrList_;
+      const std::vector<Armory::Types::ScrAddr> scrAddrList_;
 
    public:
-      LedgerEntry(const std::string&, int64_t value, uint32_t blockHeight,
-         BinaryData& txHash, uint32_t txOutIndex, uint32_t timestamp,
-         bool isCoinbase, bool isSentToSelf, bool isChangeBack,
-         bool isOptInRBF, bool isChainedZC, bool isWitness,
-         std::vector<BinaryData>& scrAddrList);
+      LedgerEntry(const std::string&, Armory::Types::Value,
+         uint32_t, Armory::Types::TxHash&, Armory::Types::TxIOId, uint32_t,
+         bool, bool, bool,
+         bool, bool,
+         std::vector<Armory::Types::ScrAddr>& scrAddrList);
 
       const std::string&  getID(void) const;
-      int64_t             getValue(void) const;
+      Armory::Types::Value getValue(void) const;
       uint32_t            getBlockHeight(void) const;
-      BinaryDataRef       getTxHash(void) const;
-      uint32_t            getTxOutIndex(void) const;
+      const Armory::Types::TxHash& getTxHash(void) const;
+      Armory::Types::TxIOId getTxOutIndex(void) const;
       uint32_t            getTxTime(void) const;
       bool                isCoinbase(void) const;
       bool                isSentToSelf(void) const;
       bool                isChangeBack(void) const;
       bool                isOptInRBF(void) const;
       bool                isChainedZC(void) const;
-      bool                isWitness(void) const;
 
-      const std::vector<BinaryData>& getScrAddrList(void) const;
+      const std::vector<Armory::Types::ScrAddr>& getScrAddrList(void) const;
 
       bool operator==(const LedgerEntry& rhs);
    };
@@ -193,8 +194,8 @@ struct BdmNotification
 
    NewBlockNotif newBlock{UINT32_MAX, UINT32_MAX};
 
-   std::vector<TxIOPair> txios;
-   std::set<BinaryData> invalidatedZc;
+   std::vector<TxIOPairUint> txios;
+   std::set<Armory::Types::TxHash> invalidatedZcHashes;
    std::set<std::string> ids;
 
    std::shared_ptr<DBClientClasses::NodeStatus> nodeStatus;
