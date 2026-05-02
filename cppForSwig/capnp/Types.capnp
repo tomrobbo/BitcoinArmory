@@ -5,7 +5,7 @@ $Cxx.namespace("Armory::Codec::Types");
 
 ## base types ##
 using Hash              = Data;
-using TxKey             = Data;
+using TxKey             = UInt64;
 using ScrAddr           = Data;
 
 using WalletId          = Text;
@@ -26,8 +26,9 @@ struct Header {
    timestamp   @2 : UInt32;
    blockSize   @3 : UInt32;
    numTxs      @4 : UInt32;
-   height      @5 : UInt32;
-   dupId       @6 : UInt8;
+   blockId     @5 : UInt32;
+   height      @6 : UInt32;
+   mainBranch  @7 : Bool;
 }
 
 struct NewBlockNotif {
@@ -53,11 +54,10 @@ struct Outpoint {
 
 struct Tx {
    body        @0 : Data;
-   height      @1 : UInt32;
-   dupId       @2 : UInt8;
-   index       @3 : UInt32;
-   isChainZc   @4 : Bool;
-   isRbf       @5 : Bool;
+   blockId     @1 : UInt32;
+   index       @2 : UInt16;
+   isChainZc   @3 : Bool;
+   isRbf       @4 : Bool;
 }
 
 ## bitcoin node & db status ##
@@ -133,10 +133,9 @@ struct TxLedger {
       isSTS          @7 : Bool;
       isOptInRBF     @8 : Bool;
       isChainedZC    @9 : Bool;
-      isWitness      @10: Bool;
 
-      walletId       @11: WalletId;
-      scrAddrs       @12: List(Data);
+      walletId       @10: WalletId;
+      scrAddrs       @11: List(Data);
    }
 
    ledgers           @0 : List(LedgerEntry);
@@ -144,13 +143,13 @@ struct TxLedger {
 
 struct TxioPair {
    amount   @0 : UInt64;
-   txOut    @1 : Data;
-   txIn     @2 : Data;
+   txOut    @1 : UInt64;
+   txIn     @2 : UInt64;
    txTime   @3 : UInt32;
+   scrAddr  @4 : Data;
 
-   fromSelf @4 : Bool;
-   coinbase @5 : Bool;
-   rbf      @6 : Bool;
+   rbf      @5 : Bool;
+   chained  @6 : Bool;
    multisig @7 : Bool;
 }
 

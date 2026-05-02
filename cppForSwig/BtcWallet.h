@@ -57,7 +57,7 @@ public:
 
    /////////////////////////////////////////////////////////////////////////////
    // addScrAddr when blockchain rescan req'd, addNewScrAddr for just-created
-   void removeAddressBulk(const std::vector<BinaryDataRef>&);
+   void removeAddressBulk(const std::vector<Armory::Types::ScrAddr>&);
    bool hasScrAddress(const BinaryDataRef&) const;
    std::set<BinaryDataRef> getAddrSet(void) const;
 
@@ -106,8 +106,9 @@ public:
 
    void setConfTarget(unsigned);
 
-   std::shared_ptr<const std::map<BinaryDataRef, std::shared_ptr<ScrAddrObj>>>
-      getAddrMap(void) const { return scrAddrMap_.get(); }
+   std::shared_ptr<const std::map<
+   Armory::Types::ScrAddr, std::shared_ptr<ScrAddrObj>>>
+      getAddrMap(void) const;
    void unregisterAddresses(const std::set<BinaryDataRef>&);
 
 private:
@@ -137,7 +138,8 @@ private:
    const std::map<uint32_t, uint32_t>& getSSHSummary(void) const
    { return histPages_.getSSHsummary(); }
 
-   std::map<BinaryData, TxIOPair> getTxioForRange(uint32_t, uint32_t) const;
+   std::map<Armory::Types::TxIOKey, TxIOPairUint> getTxioForRange(
+      uint32_t, uint32_t) const;
    void unregister(void) { isRegistered_ = false; }
    void resetTxOutHistory(void);
    void resetCounters(void);
@@ -145,7 +147,7 @@ private:
 private:
    BlockDataViewer* const bdvPtr_;
    Armory::Threading::TransactionalMap<
-      BinaryDataRef, std::shared_ptr<ScrAddrObj>> scrAddrMap_;
+      Armory::Types::ScrAddr, std::shared_ptr<ScrAddrObj>> scrAddrMap_;
 
    bool ignoreLastScanned_ = true;
    bool isRegistered_ = false;

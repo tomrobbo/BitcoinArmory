@@ -16,6 +16,7 @@
 #include <stdint.h>
 #include <string>
 
+#include <Utils/Types.h>
 #include <Ledgers/HistoryPager.h>
 #include "BDV_Notification.h"
 #include "bdmenums.h"
@@ -39,7 +40,7 @@ struct WalletRegistrationRequest
    const std::vector<BinaryData> addresses;
    const bool isNew;
    const WalletRegType type;
-   std::function<void(const std::set<BinaryDataRef>&)> zcCallback;
+   std::function<void(const std::set<Armory::Types::ScrAddr>&)> zcCallback;
    std::shared_future<bool> fut;
 
    WalletRegistrationRequest(const std::string& wId,
@@ -197,7 +198,8 @@ public:
    size_t getPageCount(void) const;
    std::vector<Armory::Ledgers::Entry> getHistoryPage(
       uint32_t, unsigned, bool, bool);
-   std::map<BinaryData, TxIOPair> getTxioForRange(uint32_t, uint32_t) const;
+   std::map<Armory::Types::TxIOKey, TxIOPairUint> getTxioForRange(
+      uint32_t, uint32_t) const;
 
    std::map<uint32_t, uint32_t> computeWalletsSSHSummary(bool, bool);
    bool pageHistory(bool, bool);
@@ -230,14 +232,13 @@ public:
    void scanWallets(std::shared_ptr<BDV_Notification>);
    bool hasWallet(const std::string&) const;
    Tx getTxByHash(BinaryDataRef) const;
-   Tx getTxByKey(BinaryDataRef) const;
+   Tx getTxByKey(Armory::Types::TxKey) const;
    TxOut getPrevTxOut(const TxIn&) const;
    Tx getPrevTx(const TxIn&) const;
    BinaryData getSenderScrAddr(const TxIn&) const;
    int64_t getSentValue(const TxIn&) const;
 
    LMDBBlockDatabase* getDB(void) const;
-   BinaryData getTxHashForDbKey(const BinaryData&) const;
    Armory::ZeroConf::ZeroConfContainer* zcContainer(void) const;
    const Armory::Blockchain& blockchain(void) const;
    uint32_t getTopBlockHeight(void) const;
@@ -258,17 +259,12 @@ public:
    bool isBDMRunning(void) const;
    void blockUntilBDMisReady(void) const;
 
-   bool isTxOutSpentByZC(const BinaryData&) const;
-   std::map<BinaryData, std::shared_ptr<const TxIOPair>>
-   getUnspentZCForScrAddr(const BinaryData&) const;
-   std::map<BinaryData, std::shared_ptr<const TxIOPair>>
-   getRBFTxIOsforScrAddr(const BinaryData&) const;
-   std::vector<TxOut> getZcTxOutsForKeys(const std::set<BinaryData>&) const;
-   std::vector<UTXO> getZcUTXOsForKeys(const std::set<BinaryData>&) const;
+   bool isTxOutSpentByZC(const Armory::Types::TxIOKey&) const;
+   std::map<Armory::Types::TxIOKey, std::shared_ptr<const TxIOPair>>
+   getRBFTxIOsforScrAddr(const Armory::Types::ScrAddr&) const;
+   std::vector<TxOut> getZcTxOutsForKeys(const std::set<Armory::Types::TxIOKey>&) const;
+   std::vector<UTXO> getZcUTXOsForKeys(const std::set<Armory::Types::TxIOKey>&) const;
    std::shared_ptr<ScrAddrFilter> getSAF(void) const;
-
-   void updateWalletsLedgerFilter(const std::vector<std::string>&);
-   void updateLockboxesLedgerFilter(const std::vector<std::string>&);
    uint32_t getClosestBlockHeightForTime(uint32_t);
 
    std::shared_ptr<BtcWallet> getWalletOrLockbox(const std::string&) const;
@@ -278,8 +274,6 @@ public:
    Armory::Ledgers::Delegate getLedgerDelegateForScrAddr(
       const std::string&, const BinaryData&);
 
-   TxOut getTxOutCopy(const BinaryData&, uint16_t) const;
-   TxOut getTxOutCopy(const BinaryData&) const;
    Tx getSpenderTxForTxOut(uint32_t, uint32_t, uint16_t) const;
 
    bool isZcEnabled(void) const;
@@ -288,19 +282,16 @@ public:
 
    bool isRBF(const BinaryData&) const;
    bool hasScrAddress(const BinaryDataRef&) const;
-   std::set<BinaryDataRef> getAddrSet(void) const;
+   std::set<Armory::Types::ScrAddr> getAddrSet(void) const;
    std::tuple<uint64_t, uint64_t> getAddrFullBalance(const BinaryData&);
 
    //wallet agnostic methods
-   std::vector<UTXO> getUtxosForAddress(const BinaryDataRef&, bool) const;
-   std::map<BinaryData, std::vector<Output>> getAddressOutpoints(
-      const std::set<BinaryDataRef>&, unsigned&, unsigned&) const;
    std::vector<std::pair<StoredTxOut, BinaryDataRef>> getOutputsForOutpoints(
       const std::map<BinaryDataRef, std::set<unsigned>>&, bool) const;
    CombinedBalances getCombinedBalances(void) const;
 
-   std::map<BinaryData, TxIOPair> getTxioForRange(uint32_t) const;
-   std::map<BinaryData, std::shared_ptr<const TxIOPair>> getZcTxios(void) const;
+   std::map<Armory::Types::TxIOKey, TxIOPairUint> getTxioForRange(uint32_t) const;
+   std::map<BinaryData, std::shared_ptr<const TxIOPairUint>> getZcTxios(void) const;
 
 protected:
    static void unregisterAddresses(

@@ -29,7 +29,6 @@
 #define BDM_FATAL_ERROR_CODE INT_MIN
 
 #include <cstdint>
-using BdvIdKey = uint64_t;
 
 enum BDMPhase
 {

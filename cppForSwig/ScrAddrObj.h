@@ -14,6 +14,7 @@
 #pragma once
 
 #include <Utils/BinaryData.h>
+#include <Utils/Types.h>
 #include <Ledgers/HistoryPager.h>
 
 namespace Armory
@@ -35,6 +36,7 @@ namespace Armory
 
 class LMDBBlockDatabase;
 class UnspentTxOut;
+class TxIOPairUint;
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -59,13 +61,14 @@ class UnspentTxOut;
 ////////////////////////////////////////////////////////////////////////////////
 struct ScanAddressStruct
 {
-   std::map<BinaryData, BinaryData>* invalidatedZcKeys_ = nullptr;
+   std::map<Armory::Types::TxKey, BinaryData>* invalidatedZcKeys_ = nullptr;
    std::shared_ptr<const Armory::ZeroConf::MempoolSnapshot> zcState_;
 
-   std::map<BinaryData, std::set<BinaryData>> scrAddrToTxioKeys_;
-   std::vector<TxIOPair> txios;
-   std::shared_ptr<std::map<BinaryData,
-      std::shared_ptr<std::set<BinaryDataRef>>>> newKeysAndScrAddr_;
+   std::map<Armory::Types::ScrAddr,
+      std::set<Armory::Types::TxIOKey>> scrAddrToTxioKeys_;
+   std::vector<TxIOPairUint> txios;
+   std::shared_ptr<std::map<Armory::Types::TxKey,
+      std::shared_ptr<std::set<Armory::Types::ScrAddr>>>> newKeysAndScrAddr_;
 };
 
 class ScrAddrObj
@@ -91,9 +94,9 @@ private:
       PagedUTXOs(const ScrAddrObj*);
 
       const std::map<BinaryData, TxIOPair>& getUTXOs(void) const;
-      bool fetchMoreUTXO(const std::function<bool(const BinaryData&)>&);
+      bool fetchMoreUTXO(const std::function<bool(const Armory::Types::TxIOKey&)>&);
       uint32_t fetchMoreUTXO(uint32_t, uint32_t,
-         const std::function<bool(const BinaryData&)>&);
+         const std::function<bool(const Armory::Types::TxIOKey&)>&);
       uint64_t getValue(void) const;
       uint32_t getCount(void) const;
       void reset(void);
@@ -101,12 +104,9 @@ private:
    };
 
 public:
-   ScrAddrObj(LMDBBlockDatabase*,
-      const Armory::Blockchain*,
-      Armory::ZeroConf::ZeroConfContainer*,
-      BinaryDataRef);
-
-   const BinaryDataRef& getScrAddr(void) const;
+   ScrAddrObj(const Armory::Types::ScrAddr&, Armory::Types::ScrAddrId,
+      LMDBBlockDatabase*);
+   const Armory::Types::ScrAddr& getScrAddr(void) const;
 
    // BlkNum is necessary for "unconfirmed" list, since it is dependent
    // on number of confirmations.  But for "spendable" TxOut list, it is
@@ -124,7 +124,7 @@ public:
    bool operator==(const ScrAddrObj&) const;
 
    std::map<BinaryData, TxIOPair> scanZC(
-      const ScanAddressStruct&, std::function<bool(const BinaryDataRef)>, int32_t);
+      const ScanAddressStruct&, std::function<bool(const Armory::Types::TxKey&)>, int32_t);
    bool purgeZC(const std::set<BinaryData>&, const std::set<BinaryData>&);
 
    std::map<BinaryData, Armory::Ledgers::Entry> updateLedgers(
@@ -138,16 +138,16 @@ public:
    void mapHistory(void);
 
    const std::map<uint32_t, uint32_t>& getHistSSHsummary(void) const;
-   std::map<BinaryData, TxIOPair> getTxios(
-      uint32_t, uint32_t, bool=false) const;
+   std::map<Armory::Types::TxIOKey, TxIOPairUint> getTxios(
+      Armory::Types::BlockId, Armory::Types::BlockId) const;
 
    size_t getPageCount(void) const;
    std::vector<Armory::Ledgers::Entry> getHistoryPageById(uint32_t);
 
    const std::map<BinaryData, TxIOPair>& getPreparedTxOutList(void) const;
    bool getMoreUTXOs(PagedUTXOs&,
-      std::function<bool(const BinaryData&)>) const;
-   bool getMoreUTXOs(std::function<bool(const BinaryData&)>);
+      std::function<bool(const Armory::Types::TxIOKey&)>) const;
+   bool getMoreUTXOs(std::function<bool(const Armory::Types::TxIOKey&)>);
    std::vector<UnspentTxOut> getAllUTXOs(
       std::function<bool(const BinaryData&)>) const;
 
@@ -162,14 +162,15 @@ public:
    uint32_t getTxioCountForLedgers(void);
 
 private:
+   //this includes the prefix byte!
+   const Armory::Types::ScrAddr scrAddr_;
+   const Armory::Types::ScrAddrId id_;
+
    LMDBBlockDatabase *db_;
-   const Armory::Blockchain *bc_;
-   Armory::ZeroConf::ZeroConfContainer *zc_;
-   BinaryDataRef scrAddr_; //this includes the prefix byte!
 
    // Each address will store a list of pointers to its transactions
    mutable uint64_t totalTxioCount_ = 0;
-   mutable uint32_t lastSeenBlock_ = 0;
+   //mutable uint32_t lastSeenBlock_ = 0;
 
    uint32_t txioCountForLedgers_ = UINT32_MAX;
 

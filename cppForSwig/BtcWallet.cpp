@@ -38,7 +38,7 @@ BtcWallet::BtcWallet(BlockDataViewer* bdv, const std::string ID)
 BtcWallet::~BtcWallet()
 {}
 
-void BtcWallet::removeAddressBulk(vector<BinaryDataRef> const & scrAddrBulk)
+void BtcWallet::removeAddressBulk(vector<Types::ScrAddr> const & scrAddrBulk)
 {
    scrAddrMap_.erase(scrAddrBulk);
    needsRefresh(true);
@@ -191,7 +191,7 @@ void BtcWallet::prepareTxOutHistory(uint64_t val)
       
    auto addrMap = scrAddrMap_.get();
 
-   auto spentByZC = [this](const BinaryData& dbkey)->bool
+   auto spentByZC = [this](const Types::TxIOKey& dbkey)->bool
    { return this->bdvPtr_->isTxOutSpentByZC(dbkey); };
 
    while (1)
@@ -229,7 +229,7 @@ void BtcWallet::prepareTxOutHistory(uint64_t val)
 ////////////////////////////////////////////////////////////////////////////////
 void BtcWallet::prepareFullTxOutHistory()
 {
-   auto spentByZC = [this](BinaryData dbkey)->bool
+   auto spentByZC = [this](Types::TxIOKey dbkey)->bool
    { return this->bdvPtr_->isTxOutSpentByZC(dbkey); };
 
    auto addrMap = scrAddrMap_.get();
@@ -332,6 +332,8 @@ vector<UTXO> BtcWallet::getSpendableTxOutListForValue(uint64_t val)
 ////////////////////////////////////////////////////////////////////////////////
 vector<UTXO> BtcWallet::getSpendableTxOutListZC()
 {
+   throw std::runtime_error("[BtcWallet::getSpendableTxOutListZC] deprecated");
+   #if 0
    set<BinaryData> txioKeys;
 
    {
@@ -347,11 +349,14 @@ vector<UTXO> BtcWallet::getSpendableTxOutListZC()
    }
 
    return bdvPtr_->getZcUTXOsForKeys(txioKeys);
+   #endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 vector<UTXO> BtcWallet::getRBFTxOutList()
 {
+   throw std::runtime_error("[BtcWallet::getRBFTxOutList] deprecated");
+   #if 0
    set<BinaryData> zcKeys;
    set<BinaryData> txoutKeys;
 
@@ -387,6 +392,7 @@ vector<UTXO> BtcWallet::getRBFTxOutList()
    }
 
    return utxoVec;
+   #endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -397,7 +403,7 @@ map<BinaryData, TxIOPair> BtcWallet::scanWalletZeroConf(
    Scanning ZC will update the scrAddr ledger with the ZC txio. Ledgers require
    a block height, which should be the current top block.
    ***/
-   auto isZcFromWallet = [&scanInfo, this](const BinaryDataRef zcKey)->bool
+   auto isZcFromWallet = [&scanInfo, this](const Types::TxKey zcKey)->bool
    {
       if (scanInfo.saStruct_.newKeysAndScrAddr_ == nullptr)
          return false;
@@ -614,10 +620,10 @@ bool BtcWallet::isPaged() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-map<BinaryData, TxIOPair> BtcWallet::getTxioForRange(
+map<Types::TxIOKey, TxIOPairUint> BtcWallet::getTxioForRange(
    uint32_t start, uint32_t end) const
 {
-   map<BinaryData, TxIOPair> outMap;
+   map<Types::TxIOKey, TxIOPairUint> outMap;
    auto addrMap = scrAddrMap_.get();
 
    for (const auto& scrAddrPair : *addrMap) {
@@ -632,12 +638,15 @@ std::map<BinaryData, Ledgers::Entry> BtcWallet::updateWalletLedgersFromTxio(
    const std::map<BinaryData, TxIOPair>& txioMap,
    uint32_t startBlock, uint32_t endBlock) const
 {
+   throw std::runtime_error("no more ledgers in btcwallet");
+   #if 0
    auto ledgerContext = Ledgers::prepareContext(txioMap,
       bdvPtr_->blockchain(), bdvPtr_->getDB(),
       bdvPtr_->zcContainer()->getSnapshot());
    return Ledgers::computeLedgerMap(
       txioMap, startBlock, endBlock,
       walletID_, ledgerContext);
+   #endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -674,6 +683,8 @@ ScrAddrObj& BtcWallet::getScrAddrObjRef(const BinaryData& key)
 shared_ptr<const map<BinaryData, Ledgers::Entry>> BtcWallet::getHistoryPage(
    uint32_t pageId)
 {
+   throw std::runtime_error("[BtcWallet::getHistoryPage] deprecated");
+   #if 0
    if (!bdvPtr_->isBDMRunning())
       return nullptr;
 
@@ -690,6 +701,7 @@ shared_ptr<const map<BinaryData, Ledgers::Entry>> BtcWallet::getHistoryPage(
    { return this->updateWalletLedgersFromTxio(txioMap, start, end); };
 
    return histPages_.getPageLedgerMap(getTxio, computeLedgers, pageId, updateID_);
+   #endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -754,9 +766,18 @@ void BtcWallet::setConfTarget(unsigned confTarget)
 ////////////////////////////////////////////////////////////////////////////////
 void BtcWallet::unregisterAddresses(const std::set<BinaryDataRef>& addrSet)
 {
-   vector<BinaryDataRef> bdRefVec(addrSet.size());
-   bdRefVec.insert(bdRefVec.end(), addrSet.begin(), addrSet.end());
+   vector<Types::ScrAddr> addrVec;
+   addrVec.reserve(addrSet.size());
+   for (const auto& addrRef : addrSet) {
+      addrVec.emplace_back(addrRef);
+   }
 
-   scrAddrMap_.erase(bdRefVec);
+   scrAddrMap_.erase(addrVec);
    histPages_.reset();
+}
+
+std::shared_ptr<const std::map<Types::ScrAddr, std::shared_ptr<ScrAddrObj>>>
+BtcWallet::getAddrMap() const
+{
+   return scrAddrMap_.get();
 }

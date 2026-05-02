@@ -16,7 +16,7 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 // BDV_Notification
-BDV_Notification::BDV_Notification(BdvIdKey id) :
+BDV_Notification::BDV_Notification(Armory::Types::BdvId id) :
    bdvID_(id)
 {}
 
@@ -24,7 +24,7 @@ BDV_Notification::~BDV_Notification()
 {}
 
 ////
-BdvIdKey BDV_Notification::bdvID() const
+Armory::Types::BdvId BDV_Notification::bdvID() const
 {
    return bdvID_;
 }
@@ -68,8 +68,10 @@ BDV_Action BDV_Notification_NewBlock::actionType() const
 ///////////////////////////////////////////////////////////////////////////////
 // BDV_Notification_ZC
 BDV_Notification_ZC::BDV_Notification_ZC(
-   std::shared_ptr<Armory::ZeroConf::ZcNotificationPacket> zcPacketPtr) :
-   BDV_Notification(zcPacketPtr->bdvID), packet(zcPacketPtr)
+   std::shared_ptr<Armory::ZeroConf::ZcNotificationPacket> zcPacketPtr,
+   std::vector<std::shared_ptr<const TxIOPairUint>> txioV) :
+   BDV_Notification(zcPacketPtr->bdvID),
+   packet(zcPacketPtr), txios(std::move(txioV))
 {}
 
 BDV_Action BDV_Notification_ZC::actionType() const
@@ -79,7 +81,7 @@ BDV_Action BDV_Notification_ZC::actionType() const
 
 ///////////////////////////////////////////////////////////////////////////////
 // BDV_Notification_Refresh
-BDV_Notification_Refresh::BDV_Notification_Refresh(BdvIdKey bdvID,
+BDV_Notification_Refresh::BDV_Notification_Refresh(Armory::Types::BdvId bdvID,
    BDV_refresh refresh, const std::string& refreshID) :
    BDV_Notification(bdvID), refresh(refresh), refreshID(refreshID)
 {
@@ -120,7 +122,7 @@ BDV_Action BDV_Notification_NodeStatus::actionType() const
 
 ///////////////////////////////////////////////////////////////////////////////
 // BDV_Notification_Error
-BDV_Notification_Error::BDV_Notification_Error(BdvIdKey bdvID,
+BDV_Notification_Error::BDV_Notification_Error(Armory::Types::BdvId bdvID,
    int errCode, const BinaryData& errData, const std::string& errStr) :
    BDV_Notification(bdvID)
 {

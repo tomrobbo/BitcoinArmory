@@ -30,13 +30,13 @@ using namespace Armory;
 
 ////////////////////////////////////////////////////////////////////////////////
 // ScrAddrObj Methods
-ScrAddrObj::ScrAddrObj(LMDBBlockDatabase *db, const Blockchain *bc,
-   ZeroConf::ZeroConfContainer* zc, BinaryDataRef addr) :
-   db_(db), bc_(bc), zc_(zc), scrAddr_(addr), utxos_(this)
+ScrAddrObj::ScrAddrObj(const Types::ScrAddr& addr,
+   Types::ScrAddrId id, LMDBBlockDatabase *db) :
+   scrAddr_(addr), id_(id), db_(db), utxos_(this)
 {}
 
 ////////
-const BinaryDataRef& ScrAddrObj::getScrAddr() const
+const Types::ScrAddr& ScrAddrObj::getScrAddr() const
 {
    return scrAddr_;
 }
@@ -49,6 +49,8 @@ bool ScrAddrObj::operator==(const ScrAddrObj& rhs) const
 ////////////////////////////////////////////////////////////////////////////////
 uint64_t ScrAddrObj::getSpendableBalance(uint32_t currBlk) const
 {
+   throw std::runtime_error("[ScrAddrObj::getSpendableBalance] deprecated");
+   #if 0
    //TODO: this call is way too expensive, improve it
    uint64_t balance = getFullBalance();
    auto txios = getTxios(0, UINT32_MAX);
@@ -58,12 +60,15 @@ uint64_t ScrAddrObj::getSpendableBalance(uint32_t currBlk) const
       }
    }
    return balance;
+   #endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 uint64_t ScrAddrObj::getUnconfirmedBalance(
    uint32_t currBlk, unsigned confTarget) const
 {
+   throw std::runtime_error("[ScrAddrObj::getSpendableBalance] deprecated");
+   #if 0
    //TODO: this call is way too expensive, improve it
    uint64_t balance = 0;
    auto txios = getTxios(0, UINT32_MAX);
@@ -75,6 +80,7 @@ uint64_t ScrAddrObj::getUnconfirmedBalance(
       }
    }
    return balance;
+   #endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -89,10 +95,10 @@ uint64_t ScrAddrObj::getFullBalance(unsigned updateID) const
    auto zcTxios = getTxios(UINT32_MAX, UINT32_MAX);
    for (const auto& txio : zcTxios) {
       if (txio.second.hasTxOutZC()) {
-         balance += txio.second.getValue();
+         balance += txio.second.getAmount();
       }
       if (txio.second.hasTxInZC()) {
-         balance -= txio.second.getValue();
+         balance -= txio.second.getAmount();
       }
    }
 
@@ -115,9 +121,11 @@ void ScrAddrObj::clearBlkData(void)
 ////////////////////////////////////////////////////////////////////////////////
 std::map<BinaryData, TxIOPair> ScrAddrObj::scanZC(
    const ScanAddressStruct& scanInfo,
-   std::function<bool(const BinaryDataRef)> isZcFromWallet,
+   std::function<bool(const Types::TxKey&)> isZcFromWallet,
    int32_t updateID)
 {
+   throw std::runtime_error("[ScrAddrObj::scanZC] deprecated");
+   #if 0
    //Dont use a reference for this loop. We check and set the isFromSelf flag
    //in this operation, which is based on the wallet this scrAddr belongs to.
    //The txio comes straight from the ZC container object, which only deals 
@@ -196,6 +204,7 @@ std::map<BinaryData, TxIOPair> ScrAddrObj::scanZC(
       }
    }
    return newZCs;
+   #endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -243,9 +252,12 @@ std::map<BinaryData, Ledgers::Entry> ScrAddrObj::updateLedgers(
    const std::map<BinaryData, TxIOPair>& txioMap,
    uint32_t startBlock, uint32_t endBlock) const
 {
+   throw std::runtime_error("[ScrAddrObj::updateLedgers] deprecated");
+   #if 0
    auto ctx = Ledgers::prepareContext(txioMap, *bc_, db_, zc_->getSnapshot());
    return Ledgers::computeLedgerMap(txioMap,
       startBlock, endBlock, {}, ctx);
+   #endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -266,52 +278,24 @@ uint64_t ScrAddrObj::getTxioCountFromSSH(bool withZc) const
    return count;
 }
 
-std::map<BinaryData, TxIOPair> ScrAddrObj::getTxios(
-   uint32_t startBlock, uint32_t endBlock, bool withMultisig) const
+std::map<Types::TxIOKey, TxIOPairUint> ScrAddrObj::getTxios(
+   Types::BlockId start, Types::BlockId end) const
 {
-   std::map<BinaryData, TxIOPair> outMap;
+   //grab txio range
+   auto txOutData = db_->getTxOutHistoryForScrAddrKey(id_, start, end);
+   auto txInKeys = db_->getTxInHistoryForTxOutHistory(txOutData);
 
-   //grab txio range from ssh
-   StoredScriptHistory ssh;
-   auto start = startBlock;
-   db_->getStoredScriptHistory(ssh, scrAddr_, start, endBlock);
-
-   //update scrAddrObj containers
-   totalTxioCount_ = ssh.totalTxioCount;
-
-   if (endBlock != UINT32_MAX) {
-      lastSeenBlock_ = endBlock;
-   } else if (lastSeenBlock_ == 0) {
-      lastSeenBlock_ = bc_->top()->getBlockHeight();
-   }
-
-   if (ssh.isInitialized()) {
-      //Serve content as a map. Do not overwrite existing TxIOs to avoid wiping ZC
-      //data. Since the data isn't overwritten, iterate the map from its end to make
-      //sure newer txio aren't ignored due to older ones being inserted first.
-      auto subSSHiter = ssh.subHistMap.rbegin();
-      while (subSSHiter != ssh.subHistMap.rend()) {
-         StoredSubHistory& subssh = subSSHiter->second;
-         for (auto &txioPair : subssh.txioMap) {
-            if (withMultisig || !txioPair.second.isMultisig()) {
-               outMap.emplace(txioPair);
-            }
-         }
-         ++subSSHiter;
+   //create txios
+   std::map<Types::TxIOKey, TxIOPairUint> result;
+   for (auto& txopair : txOutData) {
+      auto emplaceResult = result.emplace(txopair.first,
+         TxIOPairUint{scrAddr_, txopair.first, txopair.second.amount});
+      auto txInIter = txInKeys.find(txopair.first);
+      if (txInIter != txInKeys.end()) {
+         emplaceResult.first->second.setTxIn(txInIter->second);
       }
    }
-
-   if (endBlock == UINT32_MAX) {
-      for (const auto& zcTxio : zcTxios_) {
-         auto iter = outMap.find(zcTxio.first);
-         if (iter == outMap.end()) {
-            outMap.emplace(zcTxio);
-            continue;
-         }
-         iter->second.merge(zcTxio.second);
-      }
-   }
-   return outMap;
+   return result;
 }
 
 void ScrAddrObj::setTxioCount(uint64_t count)
@@ -327,6 +311,8 @@ uint64_t ScrAddrObj::getTxioCount() const
 ////////////////////////////////////////////////////////////////////////////////
 std::vector<Ledgers::Entry> ScrAddrObj::getHistoryPageById(uint32_t id)
 {
+   throw std::runtime_error("[ScrAddrObj::getHistoryPageById] deprecated");
+   #if 0
    if (id > hist_.getPageCount()) {
       throw std::range_error("pageId out of range");
    }
@@ -346,6 +332,7 @@ std::vector<Ledgers::Entry> ScrAddrObj::getHistoryPageById(uint32_t id)
 
    auto leMap = hist_.getPageLedgerMap(getTxio, buildLedgers, id, updateID_);
    return getTxLedgerAsVector(leMap.get());
+   #endif
 }
 
 void ScrAddrObj::mapHistory()
@@ -381,13 +368,13 @@ std::vector<Ledgers::Entry> ScrAddrObj::getTxLedgerAsVector(
    return le;
 }
 
-bool ScrAddrObj::getMoreUTXOs(std::function<bool(const BinaryData&)> spentByZC)
+bool ScrAddrObj::getMoreUTXOs(std::function<bool(const Types::TxIOKey&)> spentByZC)
 {
    return getMoreUTXOs(utxos_, spentByZC);
 }
 
 bool ScrAddrObj::getMoreUTXOs(PagedUTXOs& utxos,
-   std::function<bool(const BinaryData&)> spentByZC) const
+   std::function<bool(const Types::TxIOKey&)> spentByZC) const
 {
    return utxos.fetchMoreUTXO(spentByZC);
 }
@@ -488,8 +475,10 @@ const std::map<BinaryData, TxIOPair>& ScrAddrObj::PagedUTXOs::getUTXOs() const
 }
 
 bool ScrAddrObj::PagedUTXOs::fetchMoreUTXO(
-   const std::function<bool(const BinaryData&)>& spentByZC)
+   const std::function<bool(const Types::TxIOKey&)>& spentByZC)
 {
+   throw std::runtime_error("[ScrAddrObj::PagedUTXOs::fetchMoreUTXO] deprecated");
+   #if 0
    //return true if more UTXO were found, false otherwise
    if (topBlock < scrAddrObj->bc_->top()->getBlockHeight()) {
       uint32_t rangeTop;
@@ -505,11 +494,14 @@ bool ScrAddrObj::PagedUTXOs::fetchMoreUTXO(
       }
    }
    return false;
+   #endif
 }
 
 uint32_t ScrAddrObj::PagedUTXOs::fetchMoreUTXO(uint32_t start, uint32_t end,
-   const std::function<bool(const BinaryData&)>& spentByZC)
+   const std::function<bool(const Types::TxIOKey&)>& spentByZC)
 {
+   throw std::runtime_error("[ScrAddrObj::PagedUTXOs::fetchMoreUTXO] deprecated");
+   #if 0
    uint32_t nutxo = 0;
    uint64_t val = 0;
 
@@ -543,6 +535,7 @@ uint32_t ScrAddrObj::PagedUTXOs::fetchMoreUTXO(uint32_t start, uint32_t end,
    value += val;
    count += nutxo;
    return nutxo;
+   #endif
 }
 
 uint64_t ScrAddrObj::PagedUTXOs::getValue() const

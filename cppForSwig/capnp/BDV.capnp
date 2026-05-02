@@ -75,14 +75,12 @@ struct BdvRequest {
       unregisterWallet           @2 : Types.WalletId;
       goOnline                   @3 : Void;
 
-      getLedgerDelegate          @4 : Void;
-      getTxsByHash               @5 : List(Types.Hash);
-      getTxsByKey                @6 : List(Types.TxKey);
-      getOutputsForOutpoints     @7 : OutpointRequest;
-      getOutputsForAddress       @8 : AddressOutputsRequest;
-      updateWalletsLedgerFilter  @9 : List(Types.WalletId);
-      getCombinedBalances        @10: Void;
-      getTxios                   @11: UInt32;
+      getTxsByHash               @4 : List(Types.Hash);
+      getTxsByKey                @5 : List(Types.TxKey);
+      getOutputsForOutpoints     @6 : OutpointRequest;
+      getOutputsForAddress       @7 : AddressOutputsRequest;
+      getCombinedBalances        @8 : Void;
+      getTxios                   @9 : UInt32;
    }
 }
 
@@ -105,35 +103,12 @@ struct BdvReply {
       unregisterWallet           @2 : Void;
       goOnline                   @3 : Void;
 
-      getLedgerDelegate          @4 : Types.DelegateId;
-      getTxsByHash               @5 : List(Types.Tx);
-      getTxsByKey                @6 : List(Types.Tx);
-      getOutputsForOutpoints     @7 : List(Types.Output);
-      getOutputsForAddress       @8 : AddressOutputReply;
-      updateWalletsLedgerFilter  @9 : Void;
-      getCombinedBalances        @10: List(Types.CombinedBalanceAndCount);
-      getTxios                   @11: List(Types.TxioPair);
-   }
-}
-
-##### ledgers #####
-struct LedgerRequest {
-   ledgerId             @0 : Types.DelegateId;
-
-   union {
-      unset             @1 : Void;
-
-      getPageCount      @2: Void;
-      getHistoryPages   @3: Types.PageRequest;
-   }
-}
-
-struct LedgerReply {
-   union {
-      unset             @0 : Void;
-
-      getPageCount      @1 : UInt32;
-      getHistoryPages   @2 : List(Types.TxLedger);
+      getTxsByHash               @4 : List(Types.Tx);
+      getTxsByKey                @5 : List(Types.Tx);
+      getOutputsForOutpoints     @6 : List(Types.Output);
+      getOutputsForAddress       @7 : AddressOutputReply;
+      getCombinedBalances        @8 : List(Types.CombinedBalanceAndCount);
+      getTxios                   @9 : List(Types.TxioPair);
    }
 }
 
@@ -155,11 +130,10 @@ struct WalletRequest {
    union {
       unset                @1 : Void;
 
-      getLedgerDelegate    @2 : Void;
-      getBalanceAndCount   @3 : UInt32;
-      getOutputs           @4 : TxoutRequest;
-      setConfTarget        @5 : UInt32;
-      unregisterAddresses  @6 : List(Address);
+      getBalanceAndCount   @2 : UInt32;
+      getOutputs           @3 : TxoutRequest;
+      setConfTarget        @4 : UInt32;
+      unregisterAddresses  @5 : List(Address);
    }
 }
 
@@ -167,11 +141,10 @@ struct WalletReply {
    union {
       unset                @0 : Void;
 
-      getLedgerDelegate    @1 : Types.DelegateId;
-      getBalanceAndCount   @2 : Types.BalanceAndCount;
-      getOutputs           @3 : List(Types.Output);
-      setConfTarget        @4 : Void;
-      unregisterAddresses  @5 : Void;
+      getBalanceAndCount   @1 : Types.BalanceAndCount;
+      getOutputs           @2 : List(Types.Output);
+      setConfTarget        @3 : Void;
+      unregisterAddresses  @4 : Void;
    }
 }
 
@@ -182,9 +155,8 @@ struct AddressRequest {
    union {
       unset                @1 : Void;
 
-      getLedgerDelegate    @2 : Types.WalletId;
-      getBalanceAndCount   @3 : Void;
-      getOutputs           @4 : TxoutRequest;
+      getBalanceAndCount   @2 : Void;
+      getOutputs           @3 : TxoutRequest;
    }
 }
 
@@ -192,9 +164,8 @@ struct AddressReply {
    union {
       unset                @0 : Void;
 
-      getLedgerDelegate    @1 : Types.DelegateId;
-      getBalanceAndCount   @2 : Types.BalanceAndCount;
-      getOutputs           @3 : List(Types.Output);
+      getBalanceAndCount   @1 : Types.BalanceAndCount;
+      getOutputs           @2 : List(Types.Output);
    }
 }
 
@@ -207,7 +178,6 @@ struct Request {
       bdv      @2 : BdvRequest;
       wallet   @3 : WalletRequest;
       address  @4 : AddressRequest;
-      ledger   @5 : LedgerRequest;
    }
 }
 
@@ -221,7 +191,6 @@ struct Reply {
       bdv      @4 : BdvReply;
       wallet   @5 : WalletReply;
       address  @6 : AddressReply;
-      ledger   @7 : LedgerReply;
    }
 }
 

@@ -49,12 +49,12 @@ class BDV_Payload
 private:
    BinaryData packetData_;
    BdvPtr bdvPtr_;
-   const BdvIdKey bdvID_;
+   const Armory::Types::BdvId bdvID_;
    const btc_pubkey_& pubkey_;
    uint32_t messageID_ = UINT32_MAX;
 
 public:
-   BDV_Payload(BinaryData, BdvPtr, BdvIdKey, const btc_pubkey_&);
+   BDV_Payload(BinaryData, BdvPtr, Armory::Types::BdvId, const btc_pubkey_&);
 
    uint32_t getMessageID(void) const;
    void setMessageID(uint32_t);
@@ -84,7 +84,7 @@ public:
 class WS_Callback : public Callback
 {
 private:
-   const BdvIdKey bdvID_;
+   const Armory::Types::BdvId bdvID_;
 
 public:
    WS_Callback(const uint64_t& bdvid) :
@@ -119,7 +119,7 @@ private:
    std::atomic<unsigned> started_;
    std::thread initT_;
 
-   const BdvIdKey bdvID_;
+   const Armory::Types::BdvId bdvID_;
    std::mutex registerWalletMutex_;
    std::mutex processPacketMutex_;
    std::map<std::string, WalletRegistrationRequest> wltRegMap_;
@@ -145,14 +145,14 @@ private:
    void setup(void);
    WebSocketMessagePartial preparePayload(std::shared_ptr<BDV_Payload>);
    std::unique_ptr<BDV_Notification_ZC> createZcNotification(
-      const std::set<BinaryDataRef>&);
+      const std::set<Armory::Types::ScrAddr>&);
 
 public:
-   BDV_Server_Object(BdvIdKey, std::shared_ptr<BlockDataManager>);
+   BDV_Server_Object(Armory::Types::BdvId, std::shared_ptr<BlockDataManager>);
    ~BDV_Server_Object(void);
 
    void startThreads(void);
-   BdvIdKey getID(void) const;
+   Armory::Types::BdvId getID(void) const;
    void registerWallet(WalletRegistrationRequest&);
    void processNotification(std::shared_ptr<BDV_Notification>);
    void init(void);
@@ -179,9 +179,9 @@ struct BDVMap
    mutable std::mutex mu;
 
    void add(BdvPtr);
-   void del(BdvIdKey);
-   BdvPtr get(BdvIdKey) const;
-   std::map<BdvIdKey, BdvPtr> get(void) const;
+   void del(Armory::Types::BdvId);
+   BdvPtr get(Armory::Types::BdvId) const;
+   std::map<Armory::Types::BdvId, BdvPtr> get(void) const;
 };
 
 ////
@@ -202,7 +202,7 @@ private:
    mutable Armory::Threading::BlockingQueue<std::shared_ptr<BDV_Notification>> outerBDVNotifStack_;
    Armory::Threading::BlockingQueue<std::shared_ptr<BDV_Notification_Packet>> innerBDVNotifStack_;
    Armory::Threading::BlockingQueue<std::shared_ptr<BDV_Payload>> packetQueue_;
-   Armory::Threading::BlockingQueue<BdvIdKey> unregBDVQueue_;
+   Armory::Threading::BlockingQueue<Armory::Types::BdvId> unregBDVQueue_;
    Armory::Threading::BlockingQueue<RpcBroadcastPacket> rpcBroadcastQueue_;
 
    std::mutex shutdownMutex_;
@@ -222,9 +222,9 @@ public:
    Clients(std::shared_ptr<BlockDataManager>);
 
    void init(void);
-   BdvPtr get(BdvIdKey) const;
-   bool registerBDV(const std::string&, BdvIdKey);
-   void unregisterBDV(BdvIdKey);
+   BdvPtr get(Armory::Types::BdvId) const;
+   bool registerBDV(const std::string&, Armory::Types::BdvId);
+   void unregisterBDV(Armory::Types::BdvId);
    void shutdown(void);
    std::shared_ptr<BlockDataManager> bdm(void) const;
 
@@ -232,6 +232,6 @@ public:
    std::unique_ptr<Socket_WritePayload> processCommand(
       std::shared_ptr<BDV_Payload>);
    void rpcBroadcast(RpcBroadcastPacket&);
-   void p2pBroadcast(BdvIdKey, std::vector<BinaryDataRef>&);
+   void p2pBroadcast(Armory::Types::BdvId, std::vector<BinaryDataRef>&);
    void setMasterIsConnected(bool);
 };

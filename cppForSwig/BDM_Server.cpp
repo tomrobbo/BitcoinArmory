@@ -41,7 +41,7 @@ namespace {
    void utxoToCapn(const UTXO& utxo,
       Codec::Types::Output::Builder& result)
    {
-      result.setValue(utxo.getValue());
+      result.setValue(utxo.getAmount());
       result.setTxHeight(utxo.getHeight());
       result.setTxIndex(utxo.getTxIndex());
       result.setTxOutIndex(utxo.getTxOutIndex());
@@ -90,62 +90,18 @@ namespace {
       }
    }
 
-   void historyPageToCapn(const std::vector<Ledgers::Entry>& page,
-      Codec::Types::TxLedger::Builder& result)
-   {
-      auto capnLes = result.initLedgers(page.size());
-      unsigned i=0;
-      for (const auto& le : page) {
-         auto capnLe = capnLes[i++];
-
-         capnLe.setBalance(le.getValue());
-         capnLe.setTxHeight(le.getBlockNum());
-         capnLe.setTxOutIndex(le.getIndex());
-         capnLe.setTxTime(le.getTxTime());
-
-         capnLe.setIsCoinbase(le.isCoinbase());
-         capnLe.setIsChangeBack(le.isChangeBack());
-         capnLe.setIsSTS(le.isSentToSelf());
-         capnLe.setIsOptInRBF(le.isOptInRBF());
-         capnLe.setIsChainedZC(le.isChainedZC());
-         capnLe.setIsWitness(le.usesWitness());
-         capnLe.setWalletId(le.getWalletID());
-
-         const auto& txHash = le.getTxHash();
-         capnLe.setTxHash(capnp::Data::Builder(
-            (uint8_t*)txHash.getPtr(), txHash.getSize()
-         ));
-
-         const auto& scrAddrList = le.getScrAddrList();
-         auto capnScrAddrs = capnLe.initScrAddrs(scrAddrList.size());
-         unsigned y=0;
-         for (const auto& scrAddr : scrAddrList) {
-            capnScrAddrs.set(y++, capnp::Data::Builder(
-               (uint8_t*)scrAddr.getPtr(), scrAddr.getSize()
-            ));
-         }
-      }
-   }
-
-   void txioToCapn(const TxIOPair& txio,
+   void txioToCapn(const TxIOPairUint& txio,
       Codec::Types::TxioPair::Builder& capnTxio)
    {
-      capnTxio.setAmount(txio.getValue());
-
-      auto outputKey = txio.getDBKeyOfOutput();
-      capnTxio.setTxOut(capnp::Data::Builder(
-         (uint8_t*)outputKey.getPtr(), outputKey.getSize()));
-
-      if (txio.hasTxIn()) {
-         auto inputKey = txio.getDBKeyOfInput();
-         capnTxio.setTxIn(capnp::Data::Builder(
-            (uint8_t*)inputKey.getPtr(), inputKey.getSize()));
-      }
-
-      capnTxio.setFromSelf(txio.isTxOutFromSelf());
-      capnTxio.setCoinbase(txio.isFromCoinbase());
+      capnTxio.setAmount(txio.getAmount());
+      capnTxio.setTxOut(txio.getTxIOKeyOfOutput());
+      capnTxio.setTxIn(txio.getTxIOKeyOfInput());
+      capnTxio.setTxTime(txio.getTxTime());
+      const auto& scrAddr = txio.getScrAddr();
+      capnTxio.setScrAddr(capnp::Data::Builder(
+         (uint8_t*)scrAddr.getPtr(), scrAddr.getSize()));
       capnTxio.setRbf(txio.isRBF());
-      capnTxio.setMultisig(txio.isMultisig());
+      capnTxio.setChained(txio.isChained());
    }
 
    ////
@@ -237,14 +193,6 @@ namespace {
             break;
          }
 
-         case BdvRequest::Which::GET_LEDGER_DELEGATE:
-         {
-            auto builder = ReplyBuilder::getNew(bdv);
-            auto bdvReply = prepareReply(builder);
-            auto delegateId = bdv->getLedgerDelegate();
-            bdvReply.setGetLedgerDelegate(delegateId);
-            return builder;
-         }
 
          case BdvRequest::Which::GET_TXS_BY_HASH:
          {
@@ -271,8 +219,7 @@ namespace {
                txHashResult.setBody(capnp::Data::Builder(
                   (uint8_t*)tx.getPtr(), tx.getSize()
                ));
-               txHashResult.setHeight(tx.getTxHeight());
-               txHashResult.setDupId(tx.getDupId());
+               txHashResult.setBlockId(tx.getBlockId());
                txHashResult.setIndex(tx.getTxIndex());
                txHashResult.setIsChainZc(tx.isChained());
                txHashResult.setIsRbf(tx.isRBF());
@@ -287,16 +234,15 @@ namespace {
             std::vector<Tx> results;
             results.reserve(txKeyList.size());
             for (auto txKey : txKeyList) {
-               BinaryDataRef keyBdr(txKey.begin(), txKey.end());
-               if (!DBUtils::keyIsZC(keyBdr)) {
+               if (!Types::isThisAZCKey(txKey)) {
                   try {
-                     auto tx = bdv->getTxByKey(keyBdr);
+                     auto tx = bdv->getTxByKey(txKey);
                      results.emplace_back(std::move(tx));
                   } catch (const std::exception&) {
                      //could not get the tx, ignore
                   }
                } else {
-                  auto tx = mempool->getTxByKey(keyBdr);
+                  auto tx = mempool->getTxByKey(txKey);
                   if (tx != nullptr) {
                      results.emplace_back(tx->getTxObj());
                   }
@@ -312,8 +258,7 @@ namespace {
                txKeyResult.setBody(capnp::Data::Builder(
                   (uint8_t*)tx.getPtr(), tx.getSize()
                ));
-               txKeyResult.setHeight(tx.getTxHeight());
-               txKeyResult.setDupId(tx.getDupId());
+               txKeyResult.setBlockId(tx.getBlockId());
                txKeyResult.setIndex(tx.getTxIndex());
                txKeyResult.setIsChainZc(tx.isChained());
                txKeyResult.setIsRbf(tx.isRBF());
@@ -359,6 +304,8 @@ namespace {
 
          case BdvRequest::Which::GET_OUTPUTS_FOR_ADDRESS:
          {
+            throw std::runtime_error("[BdvRequest::Which::GET_OUTPUTS_FOR_ADDRESS] deprecated");
+            #if 0
             auto addrReq = request.getGetOutputsForAddress();
             auto addrList = addrReq.getAddresses();
 
@@ -396,20 +343,7 @@ namespace {
                }
             }
             return builder;
-         }
-
-         case BdvRequest::Which::UPDATE_WALLETS_LEDGER_FILTER:
-         {
-            auto walletIdList = request.getUpdateWalletsLedgerFilter();
-            std::vector<std::string> idVec;
-            idVec.reserve(walletIdList.size());
-
-            for (auto id : walletIdList) {
-               idVec.emplace_back(id);
-            }
-
-            bdv->updateWalletsLedgerFilter(idVec);
-            bdv->flagRefresh(BDV_filterChanged, {}, nullptr);
+            #endif
             break;
          }
 
@@ -509,19 +443,6 @@ namespace {
       //switch on the method
       switch (request.which())
       {
-         case WalletRequest::Which::GET_LEDGER_DELEGATE:
-         {
-            auto builder = ReplyBuilder::getNew(bdv);
-            auto walletReply = prepareReply(builder);
-            try {
-               auto delegateId = bdv->getLedgerDelegate(walletId);
-               walletReply.setGetLedgerDelegate(delegateId);
-            } catch (const std::exception& e) {
-               builder.setError(e.what());
-            }
-            return builder;
-         }
-
          case WalletRequest::Which::GET_BALANCE_AND_COUNT:
          {
             auto builder = ReplyBuilder::getNew(bdv);
@@ -634,20 +555,6 @@ namespace {
       //switch on the method
       switch (request.which())
       {
-         case AddressRequest::Which::GET_LEDGER_DELEGATE:
-         {
-            auto builder = ReplyBuilder::getNew(bdv);
-            auto addressReply = prepareReply(builder);
-            try {
-               std::string walletId = request.getGetLedgerDelegate();
-               auto delegateId = bdv->getLedgerDelegate(walletId, addrRef);
-               addressReply.setGetLedgerDelegate(delegateId);
-            } catch (const std::exception& e) {
-               builder.setError(e.what());
-            }
-            return builder;
-         }
-
          case AddressRequest::Which::GET_BALANCE_AND_COUNT:
          {
             auto balances = bdv->getAddrFullBalance(addrRef);
@@ -662,6 +569,8 @@ namespace {
 
          case AddressRequest::Which::GET_OUTPUTS:
          {
+            throw std::runtime_error("[AddressRequest::Which::GET_OUTPUTS] deprecated");
+            #if 0
             auto utxoReq = request.getGetOutputs();
             auto utxos = bdv->getUtxosForAddress(
                addrRef, utxoReq.getZc());
@@ -675,83 +584,14 @@ namespace {
                utxoToCapn(utxo, capnOutput);
             }
             return builder;
+            #endif
+            break;
          }
 
          default:
             auto builder = ReplyBuilder::getNew(bdv);
             prepareReply(builder);
             builder.setError("invalid address request");
-      }
-
-      return {};
-   }
-
-   ReplyBuilder parseLedgerCommand(
-      LedgerRequest::Reader request,
-      std::shared_ptr<BDV_Server_Object> bdv,
-      uint32_t msgId)
-   {
-      auto prepareReply = [&msgId](ReplyBuilder& rp)
-         ->Codec::BDV::LedgerReply::Builder
-      {
-         auto reply = rp.builder->initRoot<Codec::BDV::Reply>();
-         reply.setMsgId(msgId);
-         reply.setSuccess(true);
-         return reply.initLedger();
-      };
-
-      //get delegate, acts as sanity check
-      auto delegateId = std::string(request.getLedgerId());
-      auto delegateIter = bdv->delegateMap_.find(delegateId);
-      if (delegateIter == bdv->delegateMap_.end()) {
-         auto builder = ReplyBuilder::getNew(bdv);
-         prepareReply(builder);
-         builder.setError("unknown delegate id");
-         return builder;
-      }
-
-      //switch on the method
-      switch (request.which())
-      {
-         case LedgerRequest::Which::GET_PAGE_COUNT:
-         {
-            auto builder = ReplyBuilder::getNew(bdv);
-            auto ledgerReply = prepareReply(builder);
-            ledgerReply.setGetPageCount(delegateIter->second.getPageCount());
-            return builder;
-         }
-
-         case LedgerRequest::Which::GET_HISTORY_PAGES:
-         {
-            auto pagesReq = request.getGetHistoryPages();
-            std::list<std::vector<Ledgers::Entry>> pages;
-            for (unsigned i=pagesReq.getFirst(); i<=pagesReq.getLast(); i++) {
-               try {
-                  auto page = delegateIter->second.getHistoryPage(i);
-                  if (page.empty()) {
-                     break;
-                  }
-                  pages.emplace_back(std::move(page));
-               } catch (const std::range_error&) {
-                  break;
-               }
-            }
-
-            auto builder = ReplyBuilder::getNew(bdv);
-            auto ledgerReply = prepareReply(builder);
-            auto capnPages = ledgerReply.initGetHistoryPages(pages.size());
-            unsigned i=0;
-            for (const auto& page : pages) {
-               auto capnPage = capnPages[i++];
-               historyPageToCapn(page, capnPage);
-            }
-            return builder;
-         }
-
-         default:
-            auto builder = ReplyBuilder::getNew(bdv);
-            prepareReply(builder);
-            builder.setError("invalid bdv request");
       }
 
       return {};
@@ -775,10 +615,6 @@ namespace {
             return parseAddressCommand(request.getAddress(), bdv,
                request.getMsgId());
 
-         case Request::Which::LEDGER:
-            return parseLedgerCommand(request.getLedger(), bdv,
-               request.getMsgId());
-
          default:
             auto builder = ReplyBuilder::getNew(bdv);
             auto reply = builder.builder->initRoot<Codec::BDV::Reply>();
@@ -792,7 +628,7 @@ namespace {
    ////
    std::unique_ptr<capnp::MessageBuilder> parseStaticRequest(
       StaticRequest::Reader& request, unsigned msgId, Clients* clients,
-      BdvIdKey bdvId, const btc_pubkey_& pubkey)
+      Types::BdvId bdvId, const btc_pubkey_& pubkey)
    {
       auto result = std::make_unique<capnp::MallocMessageBuilder>();
       auto reply = result->initRoot<Codec::BDV::Reply>();
@@ -993,7 +829,7 @@ namespace {
 ///////////////////////////////////////////////////////////////////////////////
 //BDV_Payload
 BDV_Payload::BDV_Payload(BinaryData packet, BdvPtr bdv,
-   BdvIdKey id, const btc_pubkey_& key) :
+   Types::BdvId id, const btc_pubkey_& key) :
    packetData_(std::move(packet)), bdvPtr_(bdv), bdvID_(id), pubkey_(key)
 {}
 
@@ -1100,7 +936,7 @@ std::vector<uint8_t>& BDV_Server_Object::getScratchPad()
 
 ///////////////////////////////////////////////////////////////////////////////
 BDV_Server_Object::BDV_Server_Object(
-   BdvIdKey id, std::shared_ptr<BlockDataManager> bdm) :
+   Types::BdvId id, std::shared_ptr<BlockDataManager> bdm) :
    BlockDataViewer(bdm), bdvID_(id)
 {
    setup();
@@ -1111,7 +947,7 @@ BDV_Server_Object::~BDV_Server_Object()
    haltThreads();
 }
 
-BdvIdKey BDV_Server_Object::getID() const
+Types::BdvId BDV_Server_Object::getID() const
 {
    return bdvID_;
 }
@@ -1295,14 +1131,14 @@ void BDV_Server_Object::processNotification(
             notifCount = 2;
          }
 
-         //new zc legder entries
+         //new zc txios
          auto notifList = notifs.initNotifs(notifCount);
          auto notif = notifList[0];
          auto zcNotif = notif.initZc(payload->txios.size());
          unsigned i = 0;
          for (const auto& txio : payload->txios) {
             auto capnTxio = zcNotif[i++];
-            txioToCapn(txio, capnTxio);
+            txioToCapn(*txio, capnTxio);
          }
 
          if (notifCount == 2) {
@@ -1414,7 +1250,7 @@ void BDV_Server_Object::registerWallet(WalletRegistrationRequest& regReq)
       //save request
       auto emplaceResult = wltRegMap_.emplace(regReq.walletId, std::move(regReq));
       auto& wltRegReq = emplaceResult.first->second;
-      std::set<BinaryData> addrSet;
+      std::set<Types::ScrAddr> addrSet;
       for (const auto& addr : wltRegReq.addresses) {
          addrSet.emplace(addr);
       }
@@ -1422,7 +1258,8 @@ void BDV_Server_Object::registerWallet(WalletRegistrationRequest& regReq)
       //setup registration callback and track future in request
       auto promPtr = std::make_shared<std::promise<bool>>();
       wltRegReq.fut = promPtr->get_future();
-      auto callback = [promPtr](std::set<BinaryDataRef>, bool success)->void
+      auto callback = [promPtr](
+         const std::vector<std::shared_ptr<AddrAndHash>>&, bool success)->void
       {
          promPtr->set_value(success);
       };
@@ -1437,7 +1274,7 @@ void BDV_Server_Object::registerWallet(WalletRegistrationRequest& regReq)
 
    //set callback to notify of current zc
    regReq.zcCallback = [this, walletId=regReq.walletId](
-      const std::set<BinaryDataRef>& addrSet)->void
+      const std::set<Types::ScrAddr>& addrSet)->void
    {
       auto zcNotifPacket = createZcNotification(addrSet);
       flagRefresh(BDV_refreshAndRescan, walletId, std::move(zcNotifPacket));
@@ -1467,7 +1304,7 @@ void BDV_Server_Object::populateWallets(
          continue;
       }
 
-      std::map<BinaryDataRef, std::shared_ptr<ScrAddrObj>> newAddrMap;
+      std::map<Types::ScrAddr, std::shared_ptr<ScrAddrObj>> newAddrMap;
       for (const auto& addr : wlt.second.addresses) {
          if (theWallet->hasScrAddress(addr)) {
             continue;
@@ -1478,10 +1315,9 @@ void BDV_Server_Object::populateWallets(
             throw std::runtime_error("address missing from saf");
          }
 
-         auto addrRef = iter->second->scrAddr.getRef();
-         auto addrObj = std::make_shared<ScrAddrObj>(
-            db_, &blockchain(), zeroConfCont_.get(), addrRef);
-         newAddrMap.emplace(addrRef, addrObj);
+         const auto& aahObj = iter->second;
+         newAddrMap.emplace(aahObj->scrAddr,
+            std::make_shared<ScrAddrObj>(aahObj->scrAddr, aahObj->id, db_));
       }
 
       if (newAddrMap.empty()) {
@@ -1595,7 +1431,7 @@ const std::string& BDV_Server_Object::getLedgerDelegate()
 {
    //return ledger delegate for bdv wallets
    const auto& id = getID();
-   BinaryDataRef idRef{(uint8_t*)&id, sizeof(BdvIdKey)};
+   BinaryDataRef idRef{(uint8_t*)&id, sizeof(Types::BdvId)};
    auto idHex = idRef.toHexStr();
    auto iter = delegateMap_.find(idHex);
    if (iter == delegateMap_.end()) {
@@ -1632,29 +1468,28 @@ const std::string& BDV_Server_Object::getLedgerDelegate(
 
 ///////////////////////////////////////////////////////////////////////////////
 std::unique_ptr<BDV_Notification_ZC> BDV_Server_Object::createZcNotification(
-   const std::set<BinaryDataRef>& addrSet)
+   const std::set<Types::ScrAddr>& addrSet)
 {
    auto packet = std::make_shared<ZeroConf::ZcNotificationPacket>(getID());
 
    //grab zc map
    auto ss = zeroConfCont_->getSnapshot();
+   std::vector<std::shared_ptr<const TxIOPairUint>> txios;
    if (ss != nullptr) {
-      for (auto& addr : addrSet)
-      try {
-         const auto& keySet = ss->getTxioKeysForScrAddr(addr);
+      for (auto& addr : addrSet) {
+         auto txioMap = ss->getTxioMapForScrAddr(addr);
          auto iter = packet->scrAddrToTxioKeys.emplace(
-            addr, std::set<BinaryData>{});
+            addr, std::set<Types::TxIOKey>{});
 
-         for (const auto& key : keySet) {
-            iter.first->second.emplace(key);
+         for (const auto& txioPair : txioMap) {
+            iter.first->second.emplace(txioPair.first);
+            txios.emplace_back(txioPair.second);
          }
-      } catch (const std::range_error&) {
-         continue;
       }
    }
 
    packet->ssPtr = ss;
-   return std::make_unique<BDV_Notification_ZC>(packet);
+   return std::make_unique<BDV_Notification_ZC>(packet, std::move(txios));
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1735,7 +1570,7 @@ void Clients::init()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-std::shared_ptr<BDV_Server_Object> Clients::get(BdvIdKey id) const
+std::shared_ptr<BDV_Server_Object> Clients::get(Types::BdvId id) const
 {
    return BDVs_.get(id);
 }
@@ -1874,7 +1709,7 @@ void Clients::unregisterAllBDVs()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-bool Clients::registerBDV(const std::string& magicWord, BdvIdKey bdvId)
+bool Clients::registerBDV(const std::string& magicWord, Types::BdvId bdvId)
 {
    if (magicWord.empty() || bdvId == BDV_NOTIF_BROADCAST) {
       return false;
@@ -1899,7 +1734,7 @@ bool Clients::registerBDV(const std::string& magicWord, BdvIdKey bdvId)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-void Clients::unregisterBDV(BdvIdKey bdvId)
+void Clients::unregisterBDV(Types::BdvId bdvId)
 {
    unregBDVQueue_.push_back(std::move(bdvId));
 }
@@ -1909,7 +1744,7 @@ void Clients::unregisterBDVThread()
 {
    while (true) {
       //grab bdv id
-      BdvIdKey bdvId;
+      Types::BdvId bdvId;
       try {
          bdvId = std::move(unregBDVQueue_.pop_front());
       } catch(const Threading::StopBlockingLoop&) {
@@ -2142,7 +1977,7 @@ void Clients::broadcastThroughRPC()
       {
          //if this is a RPC fallback from a timed out P2P zc push
          //we may have extra requestors attached to this broadcast
-         std::set<BdvIdKey> extraRequestors;
+         std::set<Types::BdvId> extraRequestors;
          for (const auto& exReq : packet.extraRequestors_) {
             extraRequestors.emplace(exReq->getID());
          }
@@ -2320,7 +2155,7 @@ void Clients::rpcBroadcast(RpcBroadcastPacket& packet)
 }
 
 ////////
-void Clients::p2pBroadcast(BdvIdKey bdvId, std::vector<BinaryDataRef>& rawZCs)
+void Clients::p2pBroadcast(Types::BdvId bdvId, std::vector<BinaryDataRef>& rawZCs)
 {
    //run through submitted ZCs, prune already mined ones
    auto db = bdm_->getIFace();
@@ -2329,7 +2164,7 @@ void Clients::p2pBroadcast(BdvIdKey bdvId, std::vector<BinaryDataRef>& rawZCs)
       auto hash = tx.getThisHash();
 
       auto dbKey = db->getDBKeyForHash(hash);
-      if (!dbKey.empty()) {
+      if (Types::isTxKeyValid(dbKey)) {
          //notify the bdv of the error
          auto notifPacket = std::make_shared<BDV_Notification_Packet>();
          notifPacket->bdvPtr = BDVs_.get(bdvId);
@@ -2450,13 +2285,13 @@ void BDVMap::add(std::shared_ptr<BDV_Server_Object> bdvObj)
    bdvs.emplace(bdvObj->getID(), bdvObj);
 }
 
-void BDVMap::del(BdvIdKey bdvId)
+void BDVMap::del(Types::BdvId bdvId)
 {
    std::unique_lock<std::mutex> lock(mu);
    bdvs.erase(bdvId);
 }
 
-std::shared_ptr<BDV_Server_Object> BDVMap::get(BdvIdKey bdvId) const
+std::shared_ptr<BDV_Server_Object> BDVMap::get(Types::BdvId bdvId) const
 {
    std::unique_lock<std::mutex> lock(mu);
    auto iter = bdvs.find(bdvId);
@@ -2466,7 +2301,7 @@ std::shared_ptr<BDV_Server_Object> BDVMap::get(BdvIdKey bdvId) const
    return iter->second;
 }
 
-std::map<BdvIdKey, std::shared_ptr<BDV_Server_Object>> BDVMap::get() const
+std::map<Types::BdvId, std::shared_ptr<BDV_Server_Object>> BDVMap::get() const
 {
    std::unique_lock<std::mutex> lock(mu);
    return bdvs;
