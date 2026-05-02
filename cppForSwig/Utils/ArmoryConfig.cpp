@@ -93,7 +93,7 @@ void Armory::Config::printHelp(void)
 --db-type                  sets the db type:
                            DB_BARE:  tracks wallet history only. Smallest DB.
                            DB_FULL:  tracks wallet history and resolves all
-                              relevant tx hashes. ~2.4GB DB at the time
+                              relevant tx hashes. ~50GB DB at the time
                               of 0.97 release. Default DB type.
                            DB_SUPER: tracks all blockchain history.
                               XXL DB (100GB+).
@@ -460,7 +460,7 @@ void BaseSettings::reset()
 //
 ////////////////////////////////////////////////////////////////////////////////
 BdmInitMode DBSettings::initMode_ = BdmInitMode::RESUME;
-ARMORY_DB_TYPE DBSettings::armoryDbType_ = ARMORY_DB_TYPE::Full;
+ARMORY_DB_TYPE DBSettings::armoryDbType_ = ARMORY_DB_TYPE::Bare;
 SOCKET_SERVICE DBSettings::service_ = SERVICE_WEBSOCKET;
 
 unsigned DBSettings::ramUsage_ = 4;

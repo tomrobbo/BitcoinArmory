@@ -85,7 +85,7 @@ public:
    uint64_t metaInt = UINT64_MAX;
    uint32_t armoryVer = ARMORY_DB_VERSION;
    BinaryData magicBytes;
-   ARMORY_DB_TYPE armoryType = ARMORY_DB_TYPE::Full; //default db mode
+   ARMORY_DB_TYPE armoryType = ARMORY_DB_TYPE::Bare; //default db mode
 };
 
 ////////////////////////////////////////////////////////////////////////////////
