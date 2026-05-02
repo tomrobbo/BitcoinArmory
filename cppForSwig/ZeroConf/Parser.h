@@ -18,6 +18,7 @@
 #include <functional>
 #include <memory>
 
+#include <Utils/Types.h>
 #include <Utils/ArmoryErrors.h>
 #include <Utils/ThreadSafeClasses.h>
 #include <Utils/ReentrantLock.h>
@@ -41,17 +42,17 @@
    #define ZC_BUFFER_SIZE_THRESHOLD 1
 #endif
 
-using BdvIdKey = uint64_t;
 class AddrAndHash;
 class ScrAddrFilter;
 class Tx;
-class TxIOPair;
+class TxIOPairUint;
 class TxOut;
 struct UTXO;
 
 namespace Armory
 {
    class Blockchain;
+   class BlockchainData;
    struct ReorganizationState;
 
    namespace Node
@@ -95,9 +96,9 @@ namespace Armory
       ////////
       struct ZeroConfBatchFallbackStruct
       {
-         BinaryData txHash;
+         Types::TxHash txHash;
          std::shared_ptr<BinaryData> rawTxPtr;
-         std::set<BdvIdKey> extraRequestors;
+         std::set<Types::BdvId> extraRequestors;
          ArmoryErrorCodes err;
       };
 
@@ -110,11 +111,8 @@ namespace Armory
       ////////
       struct ZeroConfBatch
       {
-         //<zcKey ref, ParsedTx>, ParsedTx carries the key object
-         std::map<BinaryData, std::shared_ptr<ParsedTx>> zcMap;
-
-         //<txHash ref, zcKey ref>, ParsedTx carries both hash and key objects
-         std::map<BinaryDataRef, BinaryDataRef> hashToKeyMap;
+         std::map<Types::TxKey, std::shared_ptr<ParsedTx>> zcMap;
+         std::map<Types::TxHash, Types::TxKey> hashToKeyMap;
 
          std::shared_ptr<std::atomic<int>> counter;
          std::shared_ptr<std::promise<ArmoryErrorCodes>> isReadyPromise;
@@ -127,7 +125,7 @@ namespace Armory
          const bool hasWatcherEntries;
 
          //bdv id
-         BdvIdKey requestor;
+         Types::BdvId requestor;
 
       public:
          ZeroConfBatch(bool);
@@ -165,7 +163,7 @@ namespace Armory
 
       struct RequestZcPacket : public ZcGetPacket
       {
-         std::vector<BinaryData> hashes;
+         std::vector<Types::TxHash> hashes;
          std::chrono::steady_clock::time_point timestamp;
 
          RequestZcPacket(void);
@@ -177,7 +175,7 @@ namespace Armory
          std::shared_ptr<std::atomic<int>> batchCtr;
          std::shared_ptr<std::promise<ArmoryErrorCodes>> batchProm;
 
-         const BinaryData txHash;
+         const Types::TxHash txHash;
          std::shared_ptr<BinaryData> rawTx;
          std::shared_ptr<ParsedTx> pTx;
 
@@ -188,23 +186,21 @@ namespace Armory
       struct ZcBroadcastPacket : public ZcGetPacket
       {
          std::vector<std::shared_ptr<BinaryData>> zcVec;
-         std::vector<BinaryData> hashes;
+         std::vector<Types::TxHash> hashes;
 
          ZcBroadcastPacket(void);
       };
 
       struct RejectPacket : public ZcGetPacket
       {
-         const BinaryData txHash;
+         const Types::TxHash txHash;
          char code;
 
-         RejectPacket(const BinaryData&, char);
+         RejectPacket(const Types::TxHash&, char);
       };
 
-      using ParsedTxMap =
-         std::map<BinaryData, std::shared_ptr<ParsedTx>>;
-      using PreprocessQueue =
-         Threading::BlockingQueue<std::shared_ptr<ZcGetPacket>>;
+      using ParsedTxMap = std::map<Types::TxKey, std::shared_ptr<ParsedTx>>;
+      using PreprocessQueue = Threading::BlockingQueue<std::shared_ptr<ZcGetPacket>>;
 
       class ZcUpdateBatch
       {
@@ -213,9 +209,9 @@ namespace Armory
 
       public:
          ParsedTxMap zcToWrite;
-         std::set<BinaryData> txHashes;
-         std::set<BinaryData> keysToDelete;
-         std::set<BinaryData> txHashesToDelete;
+         std::set<Types::TxHash> txHashes;
+         std::set<Types::TxKey> keysToDelete;
+         std::set<Types::TxHash> txHashesToDelete;
 
          std::shared_future<bool> getCompletedFuture(void);
          void setCompleted(bool);
@@ -225,10 +221,10 @@ namespace Armory
       struct BatchTxMap
       {
          ParsedTxMap txMap_;
-         std::map<BinaryData, std::shared_ptr<WatcherTxBody>> watcherMap_;
+         std::map<Types::TxHash, std::shared_ptr<WatcherTxBody>> watcherMap_;
 
          //bdv id
-         BdvIdKey requestor_;
+         Types::BdvId requestor_;
       };
 
       struct ZcActionStruct
@@ -275,7 +271,7 @@ namespace Armory
 
       private:
          void processNewZcQueue(void);
-         BinaryData getNewZCkey(void);
+         Types::TxKey getNewZCkey(void);
 
          //matcher thread
          void getDataToBatchMatcherThread(void);
@@ -284,7 +280,7 @@ namespace Armory
          ZcActionQueue(
             const std::function<void(ZcActionStruct)>&,
             std::shared_ptr<PreprocessQueue>,
-            unsigned);
+            Types::ZcId);
 
          void start(void);
          void shutdown(void);
@@ -309,19 +305,19 @@ namespace Armory
          std::atomic<std::shared_ptr<MempoolSnapshot>> snapshot_;
 
          //<txHash, map<opId, ZcKeys>>
-         std::map<BinaryData,
-            std::map<unsigned, BinaryDataRef>> outPointsSpentByKey_;
-         std::set<BinaryData> minedTxHashes_;
+         std::map<Types::TxHash,std::map<unsigned, Types::TxKey>> outPointsSpentByKey_;
+         std::set<Types::TxHash> minedTxHashes_;
 
          //<zcKey, set<ScrAddr>>
-         std::map<BinaryDataRef,
-            std::shared_ptr<std::set<BinaryDataRef>>> keyToSpentScrAddr_;
+         std::map<Types::TxKey,
+            std::shared_ptr<std::set<Types::ScrAddr>>> keyToSpentScrAddr_;
 
-         std::set<BinaryData> allZcTxHashes_;
-         std::map<BinaryDataRef, std::set<BinaryDataRef>> keyToFundedScrAddr_;
+         std::set<Types::TxHash> allZcTxHashes_;
+         std::map<Types::TxKey, std::set<Types::ScrAddr>> keyToFundedScrAddr_;
 
          LMDBBlockDatabase* db_;
          std::shared_ptr<Blockchain> bc_;
+         std::shared_ptr<BlockchainData> bd_;
          std::shared_ptr<Node::BitcoinNodeInterface> networkNode_;
 
          std::shared_ptr<PreprocessQueue> zcPreprocessQueue_;
@@ -337,13 +333,13 @@ namespace Armory
          const unsigned maxZcThreadCount_;
 
          std::shared_ptr<Threading::TransactionalMap<
-            BinaryData, std::shared_ptr<AddrAndHash>>> scrAddrMap_;
+            Types::ScrAddr, std::shared_ptr<AddrAndHash>>> scrAddrMap_;
 
          unsigned parserThreadCount_ = 0;
          std::unique_ptr<ZeroConfCallbacks> bdvCallbacks_;
          std::unique_ptr<ZcActionQueue> actionQueue_;
 
-         std::map<BinaryData, std::shared_ptr<WatcherTxBody>> watcherMap_;
+         std::map<Types::TxHash, std::shared_ptr<WatcherTxBody>> watcherMap_;
          ArmoryMutex watcherMapMutex_;
 
          unsigned mergeCount_ = 0;
@@ -357,10 +353,10 @@ namespace Armory
          unsigned loadZeroConfMempool(bool);
          void reset(void);
 
-         std::map<BinaryData, std::shared_ptr<ParsedTx>> purge(
+         std::map<Types::TxKey, std::shared_ptr<ParsedTx>> purge(
             const ReorganizationState&,
             std::shared_ptr<MempoolSnapshot>);
-         std::map<BinaryData, std::shared_ptr<ParsedTx>> purgeToBranchpoint(
+         std::map<Types::TxKey, std::shared_ptr<ParsedTx>> purgeToBranchpoint(
             const ReorganizationState&,
             std::shared_ptr<MempoolSnapshot>);
 
@@ -373,22 +369,22 @@ namespace Armory
          void pushZcPacketThroughP2P(ZcBroadcastPacket&);
          void pushZcPreprocessVec(std::shared_ptr<RequestZcPacket>);
 
-         std::map<BinaryData, std::shared_ptr<ParsedTx>> dropZC(
-            std::shared_ptr<MempoolSnapshot>, const BinaryDataRef&);
-         std::map<BinaryData, std::shared_ptr<ParsedTx>> dropZCs(
-            std::shared_ptr<MempoolSnapshot>, const std::set<BinaryData>&);
+         std::map<Types::TxKey, std::shared_ptr<ParsedTx>> dropZC(
+            std::shared_ptr<MempoolSnapshot>, const Types::TxKey&);
+         std::map<Types::TxKey, std::shared_ptr<ParsedTx>> dropZCs(
+            std::shared_ptr<MempoolSnapshot>, const std::set<Types::TxKey>&);
 
          void parseNewZC(ZcActionStruct);
          void parseNewZC(
-            std::map<BinaryData, std::shared_ptr<ParsedTx>>,
+            std::map<Types::TxKey, std::shared_ptr<ParsedTx>>,
             std::shared_ptr<MempoolSnapshot>,
-            bool, bool, BdvIdKey,
-            std::map<BinaryData, std::shared_ptr<WatcherTxBody>>&);
+            bool, bool, Types::BdvId,
+            std::map<Types::TxHash, std::shared_ptr<WatcherTxBody>>&);
          void finalizePurgePacket(
             ZcActionStruct,
             std::shared_ptr<MempoolSnapshot>) const;
-         std::map<BinaryData, std::shared_ptr<ParsedTx>> checkForCollisions(
-            const std::map<BinaryDataRef, std::map<unsigned, BinaryDataRef>>&,
+         std::map<Types::TxKey, std::shared_ptr<ParsedTx>> checkForCollisions(
+            const std::map<Types::TxHash, std::map<unsigned, Types::TxKey>>&,
             std::shared_ptr<MempoolSnapshot>);
 
          void updateZCinDB(void);
@@ -399,7 +395,8 @@ namespace Armory
             std::shared_ptr<MempoolSnapshot>);
 
       public:
-         ZeroConfContainer(LMDBBlockDatabase*, std::shared_ptr<Blockchain>,
+         ZeroConfContainer(LMDBBlockDatabase*,
+            std::shared_ptr<Blockchain>, std::shared_ptr<BlockchainData>,
             std::shared_ptr<Node::BitcoinNodeInterface>, unsigned);
 
          //action queue
@@ -419,30 +416,30 @@ namespace Armory
          //broadcast
          void broadcastZC(const std::vector<BinaryDataRef>& rawzc,
             uint32_t timeout_ms, const ZcBroadcastCallback&,
-            BdvIdKey);
+            Types::BdvId);
 
          //broadcast helpers
          bool insertWatcherEntry(
-            const BinaryData&, std::shared_ptr<BinaryData>,
-            BdvIdKey, std::set<BdvIdKey>, bool=true);
-         std::shared_ptr<WatcherTxBody> eraseWatcherEntry(const BinaryData&);
+            const Types::TxHash&, std::shared_ptr<BinaryData>,
+            Types::BdvId, std::set<Types::BdvId>, bool=true);
+         std::shared_ptr<WatcherTxBody> eraseWatcherEntry(const Types::TxHash&);
 
          std::shared_ptr<ZeroConfBatch> initiateZcBatch(
             const std::vector<BinaryData>&, unsigned,
             const ZcBroadcastCallback&, bool, uint64_t);
 
          //getters
-         bool hasTxByHash(const BinaryData&) const;
-         Tx getTxByHash(const BinaryData&) const;
-         bool isTxOutSpentByZC(const BinaryData&) const;
+         bool hasTxByHash(const Types::TxHash&) const;
+         Tx getTxByHash(const Types::TxHash&) const;
+         bool isTxOutSpentByZC(const Types::TxKey&) const;
 
-         std::map<BinaryData, std::shared_ptr<const TxIOPair>>
-            getUnspentZCforScrAddr(BinaryData) const;
-         std::map<BinaryData, std::shared_ptr<const TxIOPair>>
-            getRBFTxIOsforScrAddr(BinaryData) const;
+         std::map<Types::TxIOKey, std::shared_ptr<const TxIOPairUint>>
+            getUnspentZCforScrAddr(const Types::ScrAddr&) const;
+         std::map<Types::TxIOKey, std::shared_ptr<const TxIOPairUint>>
+            getRBFTxIOsforScrAddr(const Types::ScrAddr&) const;
 
-         std::vector<TxOut> getZcTxOutsForKey(const std::set<BinaryData>&) const;
-         std::vector<UTXO> getZcUTXOsForKey(const std::set<BinaryData>&) const;
+         std::vector<TxOut> getZcTxOutsForKey(const std::set<Types::TxIOKey>&) const;
+         std::vector<UTXO> getZcUTXOsForKey(const std::set<Types::TxIOKey>&) const;
          std::shared_ptr<const MempoolSnapshot> getSnapshot(void) const;
 
          //for unit tests
