@@ -634,76 +634,80 @@ void LMDBBlockDatabase::destroyAndResetDatabases()
 }
 
 /////////////////////////////////////////////////////////////////////////////
-BinaryData LMDBBlockDatabase::getDBKeyForHash(BinaryDataRef txhash,
-   uint8_t expectedDupId) const
+Types::TxKey LMDBBlockDatabase::getDBKeyForHash(
+   const Types::TxHash& txHash) const
 {
-   throw std::runtime_error("[LMDBBlockDatabase::getDBKeyForHash] fix me");
-   #if 0
-   if (txhash.getSize() < 4) {
-      LOGWARN << "txhash is less than 4 bytes long";
+   if (txHash.getSize() != 32) {
+      LOGWARN << "invalid tx hash size:" << txHash.getSize();
       return {};
    }
-   auto hash4 = txhash.getSliceRef(0, 4);
 
-   auto txHints = beginTransaction(DB_SELECT::TXHINTS, LMDB::Mode::ReadOnly);
-   BinaryRefReader brrHints = getValueRef(DB_SELECT::TXHINTS, DbPrefix::TXHINTS, hash4);
-
-   uint32_t valSize = brrHints.getSize();
-   if (valSize < 6) {
-      return {};
-   }
-   uint32_t numHints = (uint32_t)brrHints.get_var_int();
-
-   if (Config::DBSettings::getDbType() != ARMORY_DB_TYPE::Super) {
-      uint32_t height;
-      uint8_t  dup;
-      uint16_t txIdx;
-      for (uint32_t i = 0; i < numHints; i++) {
-         BinaryDataRef hint = brrHints.get_BinaryDataRef(6);
-         BinaryRefReader brrHint(hint);
-         DBUtils::readBlkDataKeyNoPrefix(brrHint, height, dup, txIdx);
-
-         auto txKey = DBUtils::getBlkDataKey(height, dup, txIdx);
-         auto dbVal = getValueNoCopy(DB_SELECT::TXHINTS, txKey.getRef());
-         if (dbVal.getSize() < 36) {
-            continue;
-         }
-         auto txHashRef = dbVal.getSliceRef(4, 32);
-
-         if (txHashRef != txhash) {
-            continue;
-         }
-         return txKey.getSliceCopy(1, 6);
+   auto dbType = Config::DBSettings::getDbType();
+   if (dbType != ARMORY_DB_TYPE::Super) {
+      //we track known hashes in full and barenode, check that first
+      auto tx = beginTransaction(DB_SELECT::KNOWNHASHES, LMDB::Mode::ReadOnly);
+      auto val = tx->get(LMDB::DataRef{txHash.getSize(), txHash.getCharPtr()});
+      if (val.len == sizeof(Types::TxKey)) {
+         Types::TxKey txKey;
+         std::memcpy(&txKey, val.data, val.len);
+         return txKey;
       }
+
+      //no known hash, in barenode we're done
+      if (dbType == ARMORY_DB_TYPE::Bare) {
+         return Types::INVALID_TX_KEY;
+      }
+   }
+
+   //time to check tx hashes
+   auto hashTableIndex = txHash.getPtr()[8];
+   auto tx = beginHashTableTx(DB_SELECT::TXHINTS,
+      hashTableIndex, LMDB::Mode::ReadOnly);
+   auto dbIter = tx->getIterator();
+   if (!dbIter.seekToStartsWith(txHash.getSliceRef(0, 4))) {
+      //no hint starts with this a priori valid tx hash, this is odd
+      //LOGWARN << "no hint for this tx hash: " << txHash.toHexStr();
+      return Types::INVALID_TX_KEY;
+   }
+
+   //gather all db keys for valid hints
+   uint64_t hintKey;
+   std::set<Types::TxKey> result;
+   do {
+      //grab hint key
+      auto keyRef = dbIter.getKeyRef();
+      if (keyRef.getSize() !=  sizeof(uint64_t)) {
+         LOGWARN << "invalid txhint key: " << keyRef.toHexStr();
+         continue;
+      }
+
+      //check it starts with our hash
+      std::memcpy(&hintKey, keyRef.getPtr(), sizeof(uint64_t));
+      if (std::memcmp(&hintKey, txHash.getPtr(), 4) != 0) {
+         break;
+      }
+
+      //extract blockID from key
+      Types::BlockId blockID = hintKey >> 32;
+
+      //grab txids from value
+      auto valueReader = dbIter.getValueReader();
+      while (valueReader.getSizeRemaining() >= 2) {
+         result.emplace(Types::constructTxKey(
+            blockID, valueReader.get_uint16_t()));
+      }
+   } while (dbIter.advanceAndRead());
+
+   if (result.empty()) {
+      return Types::INVALID_TX_KEY;
+   } else if (result.size() == 1) {
+      //TODO: migrate to uint64_t txkeys
+      return *result.begin();
    } else {
-      BinaryData forkedMatch;
-      bool offChainHints = false;
-      for (uint32_t i = 0; i < numHints; i++) {
-         BinaryDataRef hint = brrHints.get_BinaryDataRef(6);
-
-         //check this key is on the main branch
-         auto hintRef = hint.getSliceRef(0, 4);
-
-         //check hash matches
-         auto txhashfromdb = getTxHashForLdbKey(hint, nullptr);
-         if (txhash != txhashfromdb) {
-            continue;
-         }
-         return hint;
-      }
-
-      if (forkedMatch.empty()) {
-         if (brrHints.getSizeRemaining() != 0) {
-            LOGWARN << " bytes remaining for this hint";
-         }
-         if (offChainHints) {
-            LOGWARN << " had off chain hits";
-         }
-      }
-      return forkedMatch;
+      //NOTE: db wrapper shouldnt have to pick the correct key,
+      //caller should deal with it
+      throw std::runtime_error("implement me");
    }
-   return {};
-   #endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1002,11 +1006,11 @@ void LMDBBlockDatabase::putBareHeader(const StoredHeader& sbh)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void LMDBBlockDatabase::putStoredZC(StoredTx& stx, const BinaryData& zcKey)
+void LMDBBlockDatabase::putStoredZC(StoredTx& stx, const Types::TxKey& zcKey)
 {
-   BinaryWriter bwKey{zcKey.getSize() + 1};
+   BinaryWriter bwKey{9};
    bwKey.put_uint8_t((uint8_t)DbPrefix::ZCDATA);
-   bwKey.put_BinaryData(zcKey);
+   bwKey.put_uint64_t(zcKey);
    LMDB::DataRef keyRef{bwKey.getSize(), bwKey.getDataRef().getPtr()};
 
    // Now add the base Tx entry in the BLKDATA DB.
@@ -1023,102 +1027,10 @@ void LMDBBlockDatabase::putStoredZC(StoredTx& stx, const BinaryData& zcKey)
       stxoPair.second.txVersion = READ_UINT32_LE(stx.dataCopy.getPtr());
       stxoPair.second.txIndex = stx.txIndex;
       stxoPair.second.txOutIndex = stxoPair.first;
-      BinaryData zcStxoKey(zcKey);
-      zcStxoKey.append(WRITE_UINT16_BE(stxoPair.second.txOutIndex));
+      auto zcStxoKey = Types::constructTxIOKeyFromTxKey(
+         zcKey, stxoPair.second.txOutIndex);
       putStoredZcTxOut(stxoPair.second, zcStxoKey);
    }
-}
-
-////////
-Tx LMDBBlockDatabase::getFullTxCopy(
-   uint16_t txIndex, std::shared_ptr<BlockHeader> bhPtr) const
-{
-   if (bhPtr == nullptr) {
-      throw LmdbWrapperException("null bhPtr");
-   }
-
-   if (txIndex >= bhPtr->getNumTx()) {
-      throw std::range_error("txid > numTx");
-   }
-
-   //open block file
-   auto path = FileUtils::getBlkFilename(
-      Config::Pathing::blkFilePath(), bhPtr->getBlockFileNum());
-   auto fileMap = FileUtils::FileMap(path, false);
-   try {
-      std::vector<uint64_t> xoredData;
-      std::shared_ptr<BlockData> block;
-      if (!Config::DBSettings::isXored()) {
-         block = BlockData::deserialize(
-            fileMap.ptr() + bhPtr->getOffset(),
-            bhPtr->getBlockSize(), bhPtr,
-            BlockData::CheckHashes::NoChecks);
-      } else {
-         /*
-         XOR chunks are 8 bytes aligned. Block data is packed tight,
-         therefor the start of a block is not 8 aligned.
-
-         Copy 8 bytes aligned data around the block, xor it, then read
-         from the block start offset (ignore the bytes preceding the block
-         that were carried over for alignement purposes)
-         */
-         size_t prepad = bhPtr->getOffset() % 8;
-         xoredData.resize((prepad + bhPtr->getBlockSize() + 7) / 8);
-         std::memcpy((uint8_t*)&xoredData[0],
-            fileMap.ptr() + bhPtr->getOffset() - prepad,
-            bhPtr->getBlockSize() + prepad);
-
-         auto xorkey = Config::DBSettings::getXorKey();
-         for (auto& chunk : xoredData) {
-            chunk ^= xorkey;
-         }
-
-         block = BlockData::deserialize(
-            (const uint8_t*)&xoredData[0] + prepad,
-            bhPtr->getBlockSize(), bhPtr,
-            BlockData::CheckHashes::NoChecks);
-      }
-
-      const auto& bctx = block->getTxns()[txIndex];
-      BinaryRefReader brr(bctx->data_, bctx->size_);
-      Tx tx{brr};
-      tx.setTxHeight(bhPtr->getBlockHeight());
-      tx.setDupId(0);
-      tx.setTxIndex(txIndex);
-      return tx;
-   } catch (const BtcUtils::BlockDeserializingException&) {
-      throw LmdbWrapperException("failed to grab tx");
-   }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-BinaryData LMDBBlockDatabase::getTxHashForLdbKey(
-   BinaryDataRef ldbKey6B, std::shared_ptr<BlockHeader> bhPtr) const
-{
-   if (!ldbKey6B.startsWith(DBUtils::ZCPrefix)) {
-      if (Config::DBSettings::getDbType() != ARMORY_DB_TYPE::Super) {
-         auto tx = beginTransaction(DB_SELECT::TXHINTS, LMDB::Mode::ReadOnly);
-         BinaryData keyFull(ldbKey6B.getSize() + 1);
-         keyFull[0] = (uint8_t)DbPrefix::TXDATA;
-         ldbKey6B.copyTo(keyFull.getPtr() + 1, ldbKey6B.getSize());
-         LMDB::DataRef keyRef{keyFull.getSize(), keyFull.getPtr()};
-
-         auto txData = tx->get(keyRef);
-         if (txData.len >= 36) {
-            return BinaryData{(const uint8_t*)txData.data + 4, 32};
-         }
-      } else {
-         //convert height to id
-         unsigned height;
-         uint8_t dupId;
-         uint16_t txid;
-         BinaryRefReader brr(ldbKey6B);
-         DBUtils::readBlkDataKeyNoPrefix(brr, height, dupId, txid);
-         auto tx = getFullTxCopy(txid, bhPtr);
-         return tx.getThisHash();
-      }
-   }
-   return {};
 }
 
 ////////
@@ -1144,55 +1056,48 @@ bool LMDBBlockDatabase::getStoredHeader(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-bool LMDBBlockDatabase::getStoredZC(StoredTx& stx, BinaryDataRef zcKey) const
+bool LMDBBlockDatabase::getStoredZC(StoredTx& stx, const Types::TxKey& zcKey) const
 {
    //only by zcKey
-   BinaryData zcDbKey;
+   BinaryData zcDbKey{7};
+   uint8_t* ptr = zcDbKey.getPtr();
+   ptr[0] = (uint8_t)DbPrefix::ZCDATA;
+   memcpy(ptr + 1, &zcKey, 6);
 
-   if (zcKey.getSize() == 6) {
-      zcDbKey = BinaryData(7);
-      uint8_t* ptr = zcDbKey.getPtr();
-      ptr[0] = (uint8_t)DbPrefix::ZCDATA;
-      memcpy(ptr + 1, zcKey.getPtr(), 6);
-   } else {
-      zcDbKey = zcKey;
-   }
-
-   auto tx = beginTransaction(DB_SELECT::ZERO_CONF, LMDB::Mode::ReadWrite);
+   auto tx = beginTransaction(DB_SELECT::ZERO_CONF, LMDB::Mode::ReadOnly);
    auto ldbIter = tx->getIterator();
-   if (!ldbIter.seekToExact(zcDbKey)) {
-      LOGERR << "ZERO_CONF DB does not have the requested ZC tx";
-      LOGERR << "(" << zcKey.toHexStr() << ")";
+   if (!ldbIter.seekToStartsWith(zcDbKey)) {
       return false;
    }
 
    size_t nbytes = 0;
    do {
-      // Stop if key doesn't start with [PREFIX | ZCkey | TXIDX]
-      if (!ldbIter.checkKeyStartsWith(zcDbKey)) {
+      auto keyRef = ldbIter.getKeyRef();
+      if (keyRef.getSize() != 9) {
+         LOGERR << "Unexpected ZERO_CONF entry while iterating";
+         return false;
+      }
+      Types::TxKey txKey;
+      std::memcpy(&txKey, ldbIter.getKeyRef().getPtr() + 1, sizeof(Types::TxKey));
+
+      // Stop if txio keys mismatch zc key
+      if (Types::getTxKeyFromTxIOKey(txKey) != zcKey) {
          break;
       }
 
-      // Read the prefix, height and dup 
-      uint16_t txOutIdx;
-      BinaryRefReader txKey = ldbIter.getKeyReader();
-
       // Now actually process the iter value
-      if (txKey.getSize() == 7) {
+      if (!Types::isThisATxIOKey(txKey)) {
          // Get everything else from the iter value
          stx.unserializeDBValue(ldbIter.getValueRef());
          nbytes += stx.dataCopy.getSize();
-      } else if(txKey.getSize() == 9) {
-         txOutIdx = READ_UINT16_BE(ldbIter.getKeyRef().getSliceRef(7, 2));
-         StoredTxOut & stxo = stx.stxoMap[txOutIdx];
+      } else {
+         auto txOutIdx = Types::getTxIOIndexFromTxIOKey(txKey);
+         auto& stxo = stx.stxoMap[txOutIdx];
          stxo.unserializeDBValue(ldbIter.getValueRef());
          stxo.parentHash = stx.thisHash;
          stxo.txVersion  = stx.version;
          stxo.txOutIndex = txOutIdx;
          nbytes += stxo.dataCopy.getSize();
-      } else {
-         LOGERR << "Unexpected BLKDATA entry while iterating";
-         return false;
       }
    } while (ldbIter.advanceAndRead(DbPrefix::ZCDATA));
 
@@ -1201,11 +1106,11 @@ bool LMDBBlockDatabase::getStoredZC(StoredTx& stx, BinaryDataRef zcKey) const
 }
 
 void LMDBBlockDatabase::putStoredZcTxOut(const StoredTxOut& stxo,
-   const BinaryData& zcKey)
+   const Types::TxIOKey& zcKey)
 {
-   BinaryWriter bwKey{zcKey.getSize() + 1};
+   BinaryWriter bwKey{sizeof(Types::TxIOKey) + 1};
    bwKey.put_uint8_t((uint8_t)DbPrefix::ZCDATA);
-   bwKey.put_BinaryData(zcKey);
+   bwKey.put_uint64_t(zcKey);
    LMDB::DataRef keyRef{bwKey.getSize(), bwKey.getDataRef().getPtr()};
 
    BinaryWriter bwVal;
@@ -1411,10 +1316,12 @@ bool LMDBBlockDatabase::getStoredTxHints(StoredTxHints& sths,
 TxRef LMDBBlockDatabase::getTxRef(BinaryDataRef txHash)
 {
    auto key = getDBKeyForHash(txHash);
-   if (key.empty()) {
+   if (key == UINT64_MAX) {
       throw std::runtime_error("no tx for this hash");
    }
-   return TxRef{key.getRef()};
+   BinaryData keyBD{6};
+   std::memcpy(keyBD.getPtr(), &key, 6);
+   return TxRef{keyBD.getRef()};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1715,39 +1622,45 @@ void LMDBBlockDatabase::updateHeightToIdMap(std::map<unsigned, unsigned>& idmap)
 }
 
 ////////
-std::map<uint64_t, TxOutData> LMDBBlockDatabase::getTxOutDataForScrAddrKey(
-   uint32_t scrAddrId) const
+std::map<Types::TxIOKey, TxOutData>
+LMDBBlockDatabase::getTxOutHistoryForScrAddrKey(
+   uint32_t scrAddrId, Types::BlockId start, Types::BlockId end) const
 {
    auto tx = beginTransaction(DB_SELECT::TXOUTS, LMDB::Mode::ReadWrite);
    auto dbIter = tx->getIterator();
-   BinaryDataRef scrAddrIdRef{(const uint8_t*)&scrAddrId, sizeof(uint32_t)};
-   if (!dbIter.seekToStartsWith(scrAddrIdRef)) {
+   auto firstKey = Types::constructScrAddrKey(scrAddrId, start);
+   BinaryDataRef firstKeyRef{
+      (const uint8_t*)&firstKey, sizeof(Types::ScrAddrKey)};
+   if (!dbIter.seekTo(firstKeyRef)) {
       return {};
    }
 
-   std::map<uint64_t, TxOutData> result;
+   Types::ScrAddrKey saKey;
+   std::map<Types::TxIOKey, TxOutData> result;
    do {
-      auto keyReader = dbIter.getKeyReader();
-      if (keyReader.getSize() != 8) {
+      auto keyRef = dbIter.getKeyRef();
+      if (keyRef.getSize() != sizeof(Types::ScrAddrKey)) {
          continue;
       }
-      //key is [32 bits scrAddrId | 32 bits blockID (BE)]
-      uint64_t scrAddrKey = keyReader.get_uint64_t();
-      uint32_t id = uint32_t(scrAddrKey);
-      if (id != scrAddrId) {
+      std::memcpy(&saKey, keyRef.getPtr(), sizeof(Types::ScrAddrKey));
+      auto saId = Types::getScrAddrIdFromScrAddrKey(saKey);
+      if (saId != scrAddrId) {
          break;
       }
 
       //get blockID
-      uint32_t blockID = DBUtils::getBlockIDFromScrAddrKey(scrAddrKey);
+      auto blockID = Types::getBlockIDFromScrAddrKey(saKey);
+      if (blockID > end) {
+         break;
+      }
 
       //deser txoutdata bodies
       auto valReader = dbIter.getValueReader();
       while (valReader.getSizeRemaining() >= 12) {
-         uint64_t amount = valReader.get_uint64_t();
-         uint16_t txId = valReader.get_uint16_t();
-         uint16_t txOutId = valReader.get_uint16_t();
-         uint64_t txOutKey = DBUtils::constructTxIOKey(blockID, txId, txOutId);
+         Types::Amount amount = valReader.get_uint64_t();
+         Types::TxId txId = valReader.get_uint16_t();
+         Types::TxIOId txOutId = valReader.get_uint16_t();
+         auto txOutKey = Types::constructTxIOKey(blockID, txId, txOutId);
 
          result.emplace(txOutKey, TxOutData{
             amount, blockID, txId, txOutId});
@@ -1756,24 +1669,38 @@ std::map<uint64_t, TxOutData> LMDBBlockDatabase::getTxOutDataForScrAddrKey(
    return result;
 }
 
-std::unordered_map<uint64_t, uint64_t>
-LMDBBlockDatabase::getTxInDataForTxOutData(
-   const std::map<uint64_t, TxOutData>& txOutData) const
+std::map<Types::TxIOKey, Types::TxIOKey>
+LMDBBlockDatabase::getTxInHistoryForTxOutHistory(
+   const std::map<Types::TxIOKey, TxOutData>& txOutData) const
 {
+   std::map<Types::TxIOKey, Types::TxIOKey> result;
    auto tx = beginTransaction(DB_SELECT::TXINS, LMDB::Mode::ReadWrite);
-   auto dbPtr = getDbPtr(DB_SELECT::TXINS);
 
-   std::unordered_map<uint64_t, uint64_t> result;
    for (const auto& txoutPair : txOutData) {
-      LMDB::DataRef txOutKeyRef{
-         sizeof(uint64_t), (const char*)&txoutPair.first};
-      auto valueRef = tx->get(txOutKeyRef);
-      if (valueRef.len != 8) {
+      auto val = tx->get(LMDB::DataRef{
+         sizeof(Types::TxIOKey), (const char*)&txoutPair.first});
+      if (val.len != sizeof(Types::TxIOKey)) {
          continue;
       }
-      auto emplaceResult = result.emplace(txoutPair.first, 0UL).first;
-      std::memcpy(&emplaceResult->second, valueRef.data, 8);
+      auto emplaceResult = result.emplace(
+         txoutPair.first, Types::INVALID_TXIO_KEY).first;
+      std::memcpy(&emplaceResult->second, val.data, sizeof(Types::TxIOKey));
    }
+   return result;
+}
+
+Types::TxIOKey LMDBBlockDatabase::getTxInHistoryForTxOutKey(
+   Types::TxIOKey txOutKey) const
+{
+   auto tx = beginTransaction(DB_SELECT::TXINS, LMDB::Mode::ReadWrite);
+   auto val = tx->get(LMDB::DataRef{
+      sizeof(Types::TxIOKey), (const char*)&txOutKey});
+   if (val.len != sizeof(Types::TxIOKey)) {
+      return UINT64_MAX;
+   }
+
+   Types::TxIOKey result;
+   std::memcpy(&result, val.data, sizeof(Types::TxIOKey));
    return result;
 }
 

@@ -19,6 +19,7 @@
 
 #include <Utils/BinaryData.h>
 #include <Utils/ThreadSafeClasses.h>
+#include <Utils/Types.h>
 #include "lmdbpp.h"
 
 #define META_SHARD_ID               0xFFFFFFFF
@@ -105,7 +106,6 @@ public:
    bool readIterData(void);
    bool retreat(void);
    bool advance(void);
-
    bool advance(DbPrefix);
    bool advanceAndRead(void);
    bool advanceAndRead(DbPrefix);
@@ -117,7 +117,7 @@ public:
    BinaryRefReader& getKeyReader(void) const;
    BinaryRefReader& getValueReader(void) const;
 
-   // All the seekTo* methods do the exact same thing, the variant simply 
+   // All the seekTo* methods do the exact same thing, the variant simply
    // determines the meaning of the return true/false value.
    bool seekTo(BinaryDataRef);
    bool seekTo(DbPrefix, BinaryDataRef);
@@ -286,7 +286,7 @@ public:
       DB_SELECT, uint8_t, LMDB::Mode) const;
 
    /////////////////////////////////////////////////////////////////////////////
-   BinaryData getDBKeyForHash(BinaryDataRef, uint8_t = UINT8_MAX) const;
+   uint64_t getDBKeyForHash(const Armory::Types::TxHash&) const;
    void readAllHeaders(
       const std::function<void(std::shared_ptr<Armory::BlockHeader>)>&);
 
@@ -304,12 +304,12 @@ public:
 
    /////////////////////////////////////////////////////////////////////////////
    // StoredTx Accessors
-   void putStoredZC(StoredTx&, const BinaryData&);
-   bool getStoredZC(StoredTx&, BinaryDataRef) const;
+   void putStoredZC(StoredTx&, const Armory::Types::TxKey&);
+   bool getStoredZC(StoredTx&, const Armory::Types::TxKey&) const;
 
    /////////////////////////////////////////////////////////////////////////////
    // StoredTxOut Accessors
-   void putStoredZcTxOut(const StoredTxOut&, const BinaryData&);
+   void putStoredZcTxOut(const StoredTxOut&, const Armory::Types::TxIOKey&);
 
    bool getStoredTxOut(StoredTxOut&,
       uint32_t,
@@ -360,15 +360,17 @@ public:
    TxRef getTxRef(BinaryDataRef);
    TxRef getTxRef(BinaryData, uint16_t);
    TxRef getTxRef(uint32_t, uint8_t, uint16_t);
-   Tx getFullTxCopy(uint16_t, std::shared_ptr<Armory::BlockHeader>) const;
-   BinaryData getTxHashForLdbKey(BinaryDataRef,
-      std::shared_ptr<Armory::BlockHeader>) const;
 
    /////////////////////////////////////////////////////////////////////////////
-   // TxOut/In stuff
-   std::map<uint64_t, TxOutData> getTxOutDataForScrAddrKey(uint32_t) const;
-   std::unordered_map<uint64_t, uint64_t> getTxInDataForTxOutData(
-      const std::map<uint64_t, TxOutData>&) const;
+   // TxOut/In history stuff
+   std::map<Armory::Types::TxIOKey, TxOutData>
+   getTxOutHistoryForScrAddrKey(Armory::Types::ScrAddrId,
+      Armory::Types::BlockId, Armory::Types::BlockId) const;
+   std::map<Armory::Types::TxIOKey, Armory::Types::TxIOKey>
+   getTxInHistoryForTxOutHistory(
+      const std::map<Armory::Types::TxIOKey, TxOutData>&) const;
+   Armory::Types::TxIOKey getTxInHistoryForTxOutKey(
+      Armory::Types::TxIOKey) const;
 
    /////////////////////////////////////////////////////////////////////////////
    KVLIST getAllDatabaseEntries(DB_SELECT);

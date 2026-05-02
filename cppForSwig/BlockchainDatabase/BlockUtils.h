@@ -48,6 +48,8 @@ namespace Armory
       class Builder;
    }
    struct Hash32;
+   class Blockchain;
+   class BlockchainData;
 }
 
 namespace CoreRPC
@@ -91,6 +93,7 @@ private:
    LMDBBlockDatabase* iface_ = nullptr;
    std::shared_ptr<BDM_ScrAddrFilter> scrAddrData_;
    std::shared_ptr<Armory::Blockchain> blockchain_;
+   std::shared_ptr<Armory::BlockchainData> blockchainData_;
    std::shared_ptr<BlockFiles> blockFiles_;
    std::shared_ptr<Armory::Database::Builder> dbBuilder_;
 
@@ -120,6 +123,7 @@ public:
    ~BlockDataManager(void);
 
    std::shared_ptr<Armory::Blockchain> blockchain(void) const;
+   std::shared_ptr<Armory::BlockchainData> blockchainData(void) const;
    LMDBBlockDatabase *getIFace(void) const;
    std::shared_ptr<BlockFiles> blockFiles(void) const;
    std::shared_ptr<ScrAddrFilter> getScrAddrFilter(void) const;

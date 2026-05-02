@@ -31,6 +31,7 @@
 #include "BDV_Notification.h"
 #include "txio.h"
 #include "StoredBlockObj.h"
+#include "BlockchainData.h"
 
 using namespace Armory;
 using namespace std::chrono_literals;
@@ -97,6 +98,7 @@ BlockDataManager::BlockDataManager(std::function<bool(void)> shutdownLbd) :
 {
    blockchain_ = std::make_shared<Blockchain>(
       Config::BitcoinSettings::getGenesisBlockHash());
+   blockchainData_ = std::make_shared<BlockchainData>(blockchain_);
    blockFiles_ = std::make_shared<BlockFiles>(Config::Pathing::blkFilePath());
    iface_ = new LMDBBlockDatabase(Config::Pathing::dbDir());
    nodeStatusPollMutex_ = std::make_shared<std::mutex>();
@@ -112,7 +114,7 @@ BlockDataManager::BlockDataManager(std::function<bool(void)> shutdownLbd) :
       }
 
       zeroConfCont_ = std::make_shared<ZeroConf::ZeroConfContainer>(
-         iface_, blockchain_, processNode_,
+         iface_, blockchain_, blockchainData_, processNode_,
          Config::DBSettings::zcThreadCount());
       zeroConfCont_->setWatcherNode(watchNode_);
 
@@ -427,6 +429,11 @@ void BlockDataManager::triggerOneTimeHooks(BDV_Notification* notifPtr)
 std::shared_ptr<Blockchain> BlockDataManager::blockchain() const
 {
    return blockchain_;
+}
+
+std::shared_ptr<BlockchainData> BlockDataManager::blockchainData() const
+{
+   return blockchainData_;
 }
 
 LMDBBlockDatabase* BlockDataManager::getIFace() const

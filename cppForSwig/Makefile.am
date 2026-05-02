@@ -93,6 +93,7 @@ LIBTREZORCRYPTO_SOURCE_FILES = $(LIBBTC_LIBDIR)/src/trezor-crypto/bip39.c \
 
 ARMORYUTILS_SOURCE_FILES = Utils/ArmoryConfig.cpp \
 	Utils/BinaryData.cpp \
+	Utils/Types.cpp \
 	Utils/BIP15x_Handshake.cpp \
 	Utils/BIP150_151.cpp \
 	Utils/BitcoinSettings.cpp \
@@ -153,6 +154,7 @@ ARMORYSIGNER_SOURCE_FILES = Signer/Script.cpp \
 	capnp/Types.capnp.c++
 
 BLOCKCHAINDB_SOURCE_FILES = BlockchainDatabase/Blockchain.cpp \
+	BlockchainDatabase/BlockchainData.cpp \
 	BlockchainDatabase/BlockchainScanner.cpp \
 	BlockchainDatabase/BlockchainScanner_Super.cpp \
 	BlockchainDatabase/BlockDataMap.cpp \
