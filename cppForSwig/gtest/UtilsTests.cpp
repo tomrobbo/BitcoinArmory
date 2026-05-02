@@ -3642,12 +3642,10 @@ TEST_F(BlockObjTest, TxUnserialize)
 
       EXPECT_EQ(   tx.serialize(), rawTx0_);
       EXPECT_EQ(   tx.getTxInCopy(0).getSenderScrAddrIfAvail(), tx0_In0);
-      EXPECT_EQ(   tx.getTxOutCopy(0).getScrAddressStr(), HASH160PREFIX+tx0_Out0);
-      EXPECT_EQ(   tx.getTxOutCopy(1).getScrAddressStr(), HASH160PREFIX+tx0_Out1);
-      EXPECT_EQ(   tx.getScrAddrForTxOut(0), HASH160PREFIX+tx0_Out0);
-      EXPECT_EQ(   tx.getScrAddrForTxOut(1), HASH160PREFIX+tx0_Out1);
-      EXPECT_EQ(   tx.getTxOutCopy(0).getValue(), v0);
-      EXPECT_EQ(   tx.getTxOutCopy(1).getValue(), v1);
+      EXPECT_EQ(   tx.getTxOutCopy(0).getScrAddress(), HASH160PREFIX+tx0_Out0);
+      EXPECT_EQ(   tx.getTxOutCopy(1).getScrAddress(), HASH160PREFIX+tx0_Out1);
+      EXPECT_EQ(   tx.getTxOutCopy(0).getAmount(), v0);
+      EXPECT_EQ(   tx.getTxOutCopy(1).getAmount(), v1);
       EXPECT_EQ(   tx.getSumOfOutputs(),  v0+v1);
    }
 }
@@ -6367,6 +6365,84 @@ TEST_F(TestJSONCodec, decode)
       result->getValForKey("chain"sv));
    ASSERT_NE(chain, nullptr);
    EXPECT_EQ(chain->val, "main");
+}
+
+////////////////////////////////////////////////////////////////////////////////
+class TypesTests : public ::testing::Test
+{};
+
+TEST_F(TypesTests, keys)
+{
+   auto invalidTxKey = Types::INVALID_TX_KEY;
+   ASSERT_FALSE(Types::isTxKeyValid(invalidTxKey));
+
+   auto invalidTxIOKey = Types::INVALID_TXIO_KEY;
+   ASSERT_FALSE(Types::isTxIOKeyValid(invalidTxIOKey));
+
+   Types::BlockId blockId1 = 10;
+   Types::BlockId blockId2 = 11;
+   Types::TxId txId1 = 20;
+   Types::TxId txId2 = 21;
+   Types::TxIOId txIOId1 = 30;
+   Types::TxIOId txIOId2 = 31;
+   Types::ZcId zcId1 = 40;
+   Types::ZcId zcId2 = 41;
+
+   auto txKey = Types::constructTxKey(blockId1, txId1);
+   ASSERT_TRUE(Types::isTxKeyValid(txKey));
+   EXPECT_EQ(Types::getBlockIDFromTxKey(txKey), blockId1);
+   EXPECT_EQ(Types::getTxIndexFromTxKey(txKey), txId1);
+   EXPECT_FALSE(Types::isThisATxIOKey(txKey));
+   EXPECT_FALSE(Types::isThisAZCKey(txKey));
+
+   auto txIOKey = Types::constructTxIOKey(blockId1, txId1, txIOId1);
+   ASSERT_TRUE(Types::isTxIOKeyValid(txIOKey));
+   EXPECT_EQ(Types::getTxKeyFromTxIOKey(txIOKey), txKey);
+   EXPECT_EQ(Types::getTxIOIndexFromTxIOKey(txIOKey), txIOId1);
+   EXPECT_TRUE(Types::isThisATxIOKey(txIOKey));
+   EXPECT_FALSE(Types::isThisAZCKey(txIOKey));
+
+   auto txIOKey2 = Types::constructTxIOKeyFromTxKey(txKey, txIOId1);
+   EXPECT_EQ(txIOKey, txIOKey2);
+
+   auto txKey2 = Types::constructTxKey(blockId1, txId2);
+   auto txKey3 = Types::constructTxKey(blockId2, txId1);
+   EXPECT_LT(std::memcmp(&txKey, &txKey2, 8), 0);
+   EXPECT_LT(std::memcmp(&txKey2, &txKey3, 8), 0);
+
+   auto txIOKey3 = Types::constructTxIOKey(blockId1, txId1, txIOId2);
+   auto txIOKey4 = Types::constructTxIOKeyFromTxKey(txKey2, txIOId1);
+   EXPECT_LT(std::memcmp(&txIOKey, &txIOKey3, 8), 0);
+   EXPECT_LT(std::memcmp(&txIOKey3, &txIOKey4, 8), 0);
+
+   auto zcKey = Types::constructZCKey(zcId1);
+   ASSERT_TRUE(Types::isTxKeyValid(zcKey));
+   EXPECT_EQ(Types::getZcIdFromTxKey(zcKey), zcId1);
+   EXPECT_TRUE(Types::isThisAZCKey(zcKey));
+   EXPECT_FALSE(Types::isThisATxIOKey(zcKey));
+
+   auto zcTxIOKey = Types::constructTxIOKeyFromTxKey(zcKey, txIOId1);
+   EXPECT_TRUE(Types::isThisAZCKey(zcTxIOKey));
+   EXPECT_TRUE(Types::isThisATxIOKey(zcTxIOKey));
+   EXPECT_EQ(Types::getTxIOIndexFromTxIOKey(zcTxIOKey), txIOId1);
+   EXPECT_EQ(Types::getZcIdFromTxKey(zcTxIOKey), zcId1);
+   auto zctxkey = Types::getTxKeyFromTxIOKey(zcTxIOKey);
+   EXPECT_EQ(zctxkey, zcKey);
+   EXPECT_FALSE(Types::isThisATxIOKey(zctxkey));
+   EXPECT_TRUE(Types::isThisAZCKey(zctxkey));
+   EXPECT_EQ(Types::getZcIdFromTxKey(zctxkey), zcId1);
+
+   Types::ScrAddrId scrAddrId1 = 100;
+   Types::ScrAddrId scrAddrId2 = 200;
+   auto scrAddrKey1 = Types::constructScrAddrKey(scrAddrId1, blockId1);
+   auto scrAddrKey2 = Types::constructScrAddrKey(scrAddrId2, blockId1);
+   auto scrAddrKey3 = Types::constructScrAddrKey(scrAddrId2, blockId2);
+   EXPECT_LT(std::memcmp(&scrAddrKey1, &scrAddrKey2, 8), 0);
+   EXPECT_LT(std::memcmp(&scrAddrKey2, &scrAddrKey3, 8), 0);
+   EXPECT_EQ(Types::getScrAddrIdFromScrAddrKey(scrAddrKey1), scrAddrId1);
+   EXPECT_EQ(Types::getScrAddrIdFromScrAddrKey(scrAddrKey2), scrAddrId2);
+   EXPECT_EQ(Types::getBlockIDFromScrAddrKey(scrAddrKey1), blockId1);
+   EXPECT_EQ(Types::getBlockIDFromScrAddrKey(scrAddrKey3), blockId2);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

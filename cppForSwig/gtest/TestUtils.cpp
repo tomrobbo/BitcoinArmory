@@ -14,6 +14,7 @@
 #include <Wallets/Accounts/AddressAccounts.h>
 #include <Ledgers/LedgerEntry.h>
 #include <BDM_mainthread.h>
+#include <BlockchainDatabase/BlockchainData.h>
 #include <ZeroConf/Parser.h>
 #include <ZeroConf/Utils.h>
 
@@ -63,7 +64,7 @@ namespace {
             txHash, ledger.getTxOutIndex(), ledger.getTxTime(),
             ledger.getIsCoinbase(), ledger.getIsSTS(),
             ledger.getIsChangeBack(), ledger.getIsOptInRBF(),
-            ledger.getIsChainedZC(), ledger.getIsWitness(),
+            ledger.getIsChainedZC(),
             scrAddrList
          ));
       }
@@ -103,31 +104,48 @@ namespace {
       return result;
    }
 
-   std::vector<TxIOPair> capnToTxios(
+   std::vector<TxIOPairUint> capnToTxios(
       const capnp::List<Codec::Types::TxioPair, capnp::Kind::STRUCT>::Reader& capnTxios)
    {
-      std::vector<TxIOPair> txios;
+      std::vector<TxIOPairUint> txios;
       txios.reserve(capnTxios.size());
 
       for (auto capnTxio : capnTxios) {
-         auto capnTxOut = capnTxio.getTxOut();
-         BinaryData txOutKey(capnTxOut.begin(), capnTxOut.end());
-         auto amount = capnTxio.getAmount();
-         TxIOPair txio{txOutKey, amount};
+         auto capnScrAddr = capnTxio.getScrAddr();
+         BinaryDataRef scrAddr{capnScrAddr.begin(), capnScrAddr.end()};
+         TxIOPairUint txio{scrAddr, capnTxio.getTxOut(), capnTxio.getAmount()};
+         txio.setTxIn(capnTxio.getTxIn());
 
-         if (capnTxio.hasTxIn()) {
-            auto capnTxIn = capnTxio.getTxIn();
-            BinaryData txInKey(capnTxIn.begin(), capnTxIn.end());
-            txio.setTxIn(txInKey);
-         }
-
-         txio.setTxOutFromSelf(capnTxio.getFromSelf());
-         txio.setFromCoinbase(capnTxio.getCoinbase());
+         txio.setTxTime(capnTxio.getTxTime());
          txio.setRBF(capnTxio.getRbf());
-         txio.setMultisig(capnTxio.getMultisig());
+         txio.setChained(capnTxio.getChained());
          txios.emplace_back(std::move(txio));
       }
       return txios;
+   }
+
+   UTXO getUTXO(Types::TxIOKey txIOKey, std::shared_ptr<BlockDataManager> bdm)
+   {
+      if (Types::isThisAZCKey(txIOKey)) {
+         auto ss = bdm->zeroConfCont()->getSnapshot();
+         auto tx = ss->getTxByKey(Types::getTxKeyFromTxIOKey(txIOKey));
+         auto txOutId = Types::getTxIOIndexFromTxIOKey(txIOKey);
+         auto txOut = tx->getTxObj().getTxOutCopy(txOutId);
+         return UTXO{txOut.getAmount(),
+            UINT32_MAX, UINT16_MAX, txOutId,
+            tx->getTxHash(), txOut.getScript()};
+      } else {
+         auto bc = bdm->blockchain();
+         auto bcData = bdm->blockchainData();
+
+         auto header = bc->getHeaderById(Types::getBlockIDFromTxKey(txIOKey));
+         auto txOutId = Types::getTxIOIndexFromTxIOKey(txIOKey);
+         auto tx = bcData->getTx(txIOKey);
+         auto txOut = tx.getTxOutCopy(txOutId);
+         return UTXO{txOut.getAmount(),
+            header->getBlockHeight(), tx.getTxIndex(), txOutId,
+            tx.getThisHash(), txOut.getScript()};
+      }
    }
 }
 
@@ -236,10 +254,6 @@ namespace TestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   void nullProgress(unsigned, double, unsigned, unsigned)
-   {}
-
-   /////////////////////////////////////////////////////////////////////////////
    BinaryData getTx(unsigned height, unsigned id)
    {
       auto path = dataDir / std::filesystem::path{
@@ -299,9 +313,9 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   BdvIdKey registerBDV(Clients* clients, const BinaryData& magic_word)
+   Types::BdvId registerBDV(Clients* clients, const BinaryData& magic_word)
    {
-      BdvIdKey bdvID = 123456789;
+      Types::BdvId bdvID = 123456789;
       if (!clients->registerBDV(magic_word.toHexStr(), bdvID)) {
          return {};
       }
@@ -309,7 +323,7 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   void goOnline(Clients* clients, BdvIdKey id)
+   void goOnline(Clients* clients, Types::BdvId id)
    {
       capnp::MallocMessageBuilder message(128);
       auto payload = message.getRoot<Codec::BDV::Request>();
@@ -321,14 +335,14 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   const shared_ptr<BDV_Server_Object> getBDV(Clients* clients, BdvIdKey id)
+   const shared_ptr<BDV_Server_Object> getBDV(Clients* clients, Types::BdvId id)
    {
       return clients->get(id);
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   void registerWallet(Clients* clients, BdvIdKey bdvId,
-      const vector<BinaryData>& scrAddrs, const string& wltName,
+   void registerWallet(Clients* clients, Types::BdvId bdvId,
+      const vector<Types::ScrAddr>& scrAddrs, const string& wltName,
       bool isLockbox, bool waitOnReg)
    {
       capnp::MallocMessageBuilder message;
@@ -385,7 +399,7 @@ namespace DBTestUtils
 
    /////////////////////////////////////////////////////////////////////////////
    vector<uint64_t> getBalanceAndCount(Clients* clients,
-      BdvIdKey bdvId, const string& walletId, unsigned blockheight)
+      Types::BdvId bdvId, const string& walletId, unsigned blockheight)
    {
       capnp::MallocMessageBuilder message;
       auto payload = message.initRoot<Codec::BDV::Request>();
@@ -413,57 +427,159 @@ namespace DBTestUtils
       };
    }
 
-   /////////////////////////////////////////////////////////////////////////////
-   string getLedgerDelegate(Clients* clients, BdvIdKey bdvId)
+   std::map<Armory::Types::TxIOKey, TxOutData> getTxOutHistory(
+      const Types::ScrAddr& scrAddr, std::shared_ptr<BlockDataManager> bdm)
    {
-      capnp::MallocMessageBuilder message;
-      auto payload = message.initRoot<Codec::BDV::Request>();
+      //get scrAddr uniqueID
+      Types::BlockId uniqueID = UINT32_MAX;
+      {
+         auto addrMap = bdm->getScrAddrFilter()->getScanFilterAddrMap();
+         auto iter = addrMap->find(scrAddr);
+         if (iter != addrMap->end()) {
+            uniqueID = iter->second->id;
+         }
+      }
+      if (uniqueID == UINT32_MAX) {
+         return {};
+      }
 
-      auto bdvRequest = payload.initBdv();
-      bdvRequest.setGetLedgerDelegate();
-
-      //parse reply
-      auto result = processCommand(clients, bdvId, serializeCapnp(message));
-      kj::ArrayPtr<const capnp::word> words(
-         reinterpret_cast<const capnp::word*>(result.getPtr()),
-         result.getSize() / sizeof(capnp::word));
-      capnp::FlatArrayMessageReader reader(words);
-      auto reply = reader.getRoot<Codec::BDV::Reply>();
-      auto bdvReply = reply.getBdv();
-      return bdvReply.getGetLedgerDelegate();
+      //get txout data from db
+      return bdm->getIFace()->getTxOutHistoryForScrAddrKey(
+         uniqueID, 0, UINT32_MAX);
    }
 
-   /////////////////////////////////////////////////////////////////////////////
-   vector<DBClientClasses::LedgerEntry> getHistoryPage(
-      Clients* clients, BdvIdKey bdvId,
-      const string& delegateId, uint32_t pageId)
+   std::map<Types::TxIOKey, std::shared_ptr<const TxIOPairUint>> getZcHistory(
+      const Types::ScrAddr& scrAddr, std::shared_ptr<BlockDataManager> bdm)
    {
-      capnp::MallocMessageBuilder message;
-      auto payload = message.initRoot<Codec::BDV::Request>();
-
-      auto ledgerRequest = payload.initLedger();
-      ledgerRequest.setLedgerId(delegateId);
-      auto pageReq = ledgerRequest.initGetHistoryPages();
-      pageReq.setFirst(pageId);
-
-
-      auto result = processCommand(clients, bdvId, serializeCapnp(message));
-      kj::ArrayPtr<const capnp::word> words(
-         reinterpret_cast<const capnp::word*>(result.getPtr()),
-         result.getSize() / sizeof(capnp::word));
-      capnp::FlatArrayMessageReader reader(words);
-      auto reply = reader.getRoot<Codec::BDV::Reply>();
-      auto ledgerReply = reply.getLedger();
-      auto pages = ledgerReply.getGetHistoryPages();
-
-      //hard yolo return by index
-      auto theResult = capnToHistoryPages(pages);
-      return theResult[0];
+      auto ss = bdm->zeroConfCont()->getSnapshot();
+      if (ss != nullptr) {
+         return ss->getTxioMapForScrAddr(scrAddr);
+      } else {
+         return {};
+      }
    }
+
+   Types::Amount getScrAddrBalance(const Types::ScrAddr& scrAddr,
+      std::shared_ptr<BlockDataManager> bdm)
+   {
+      auto txOutData = getTxOutHistory(scrAddr, bdm);
+      auto txInData = bdm->getIFace()->getTxInHistoryForTxOutHistory(txOutData);
+      auto zcTxIOs = getZcHistory(scrAddr, bdm);
+      auto bc = bdm->blockchain();
+
+      Types::Amount total = 0;
+      for (const auto& txOutPair : txOutData) {
+         auto header = bc->getHeaderById(txOutPair.second.blockID);
+         if (!header->isMainBranch()) {
+            continue;
+         }
+
+         auto txInIter = txInData.find(txOutPair.first);
+         if (txInIter != txInData.end()) {
+            auto txInBlockID = Types::getBlockIDFromTxKey(txInIter->second);
+            header = bc->getHeaderById(txInBlockID);
+            if (header->isMainBranch()) {
+               continue;
+            }
+         }
+
+         auto zcIter = zcTxIOs.find(txOutPair.first);
+         if (zcIter != zcTxIOs.end()) {
+            continue;
+         }
+         total += txOutPair.second.amount;
+      }
+
+      for (const auto& zcTxio : zcTxIOs) {
+         if (!zcTxio.second->hasTxIn()) {
+            total += zcTxio.second->getAmount();
+         }
+      }
+      return total;
+   }
+
+   std::vector<UTXO> getUTXOsForScrAddrs(std::shared_ptr<BlockDataManager> bdm,
+      const std::set<Types::ScrAddr>& addrSet)
+   {
+      std::vector<UTXO> result;
+      for (const auto& addr : addrSet) {
+         auto txOutData = getTxOutHistory(addr, bdm);
+         auto txInData = bdm->getIFace()->getTxInHistoryForTxOutHistory(txOutData);
+         auto zcTxIOs = getZcHistory(addr, bdm);
+
+         auto bc = bdm->blockchain();
+         auto bcData = bdm->blockchainData();
+         for (const auto& txOutPair : txOutData) {
+            if (txOutPair.second.txId == 0) {
+               continue;
+            }
+            auto header = bc->getHeaderById(txOutPair.second.blockID);
+            if (!header->isMainBranch()) {
+               continue;
+            }
+
+            auto txInIter = txInData.find(txOutPair.first);
+            if (txInIter != txInData.end()) {
+               auto txInBlockID = Types::getBlockIDFromTxKey(txInIter->second);
+               header = bc->getHeaderById(txInBlockID);
+               if (header->isMainBranch()) {
+                  continue;
+               }
+            }
+
+            auto zcIter = zcTxIOs.find(txOutPair.first);
+            if (zcIter != zcTxIOs.end()) {
+               continue;
+            }
+
+            auto txOutId = Types::getTxIOIndexFromTxIOKey(txOutPair.first);
+            auto tx = bcData->getTx(txOutPair.first);
+            auto txOut = tx.getTxOutCopy(txOutId);
+            result.emplace_back(getUTXO(txOutPair.first, bdm));
+         }
+      }
+      //std::sort(result.begin(), result.end());
+      return result;
+   }
+
+   std::vector<UTXO> getRBFUTXOs(std::shared_ptr<BlockDataManager> bdm,
+      const std::set<Types::ScrAddr>& addrSet)
+   {
+      std::vector<UTXO> result;
+      for (const auto& addr : addrSet) {
+         auto zcTxIOs = getZcHistory(addr, bdm);
+         for (const auto& txio : zcTxIOs) {
+            if (!txio.second->isRBF()) {
+               continue;
+            }
+            result.emplace_back(getUTXO(txio.first, bdm));
+         }
+      }
+      //std::sort(result.begin(), result.end());
+      return result;
+   }
+
+   std::vector<UTXO> getZCUTXOs(std::shared_ptr<BlockDataManager> bdm,
+      const std::set<Types::ScrAddr>& addrSet)
+   {
+      std::vector<UTXO> result;
+      for (const auto& addr : addrSet) {
+         auto zcTxIOs = getZcHistory(addr, bdm);
+         for (const auto& txio : zcTxIOs) {
+            if (txio.second->hasTxIn() || !txio.second->hasTxOutZC()) {
+               continue;
+            }
+            result.emplace_back(getUTXO(txio.first, bdm));
+         }
+      }
+      //std::sort(result.begin(), result.end());
+      return result;
+   }
+
 
    /////////////////////////////////////////////////////////////////////////////
    std::tuple<BinaryData, unsigned> waitOnSignal(
-      Clients* clients, BdvIdKey bdvId, int signal)
+      Clients* clients, Types::BdvId bdvId, int signal)
    {
       auto processCallback = [signal](const BinaryData& packet)->int
       {
@@ -517,7 +633,7 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   void waitOnBDMReady(Clients* clients, BdvIdKey bdvId)
+   void waitOnBDMReady(Clients* clients, Types::BdvId bdvId)
    {
       waitOnSignal(clients, bdvId, (int)Codec::BDV::Notification::READY);
    }
@@ -530,7 +646,7 @@ namespace DBTestUtils
 
    /////////////////////////////////////////////////////////////////////////////
    std::tuple<BinaryData, unsigned> waitOnNewBlockSignal(
-      Clients* clients, BdvIdKey bdvId)
+      Clients* clients, Types::BdvId bdvId)
    {
       return waitOnSignal(clients, bdvId, (int)Codec::BDV::Notification::NEW_BLOCK);
    }
@@ -568,8 +684,7 @@ namespace DBTestUtils
          auto action = waitOnNotification(BDMAction_ZC);
          auto mempoolSnapshot = zcPtr->getSnapshot();
          for (const auto& txio : action->txios) {
-            auto hashOut = mempoolSnapshot->getHashForKey(
-               txio.getTxRefOfOutput().getDBKey());
+            auto hashOut = mempoolSnapshot->getHashForKey(txio.getTxKeyOfOutput());
             auto iterOut = bdHashes.find(hashOut);
             if (iterOut != bdHashes.end()) {
                bdHashes.erase(iterOut);
@@ -578,8 +693,7 @@ namespace DBTestUtils
             if (!txio.hasTxIn()) {
                continue;
             }
-            auto hashIn = mempoolSnapshot->getHashForKey(
-               txio.getTxRefOfInput().getDBKey());
+            auto hashIn = mempoolSnapshot->getHashForKey(txio.getTxKeyOfInput());
             auto iterIn = bdHashes.find(hashIn);
             if (iterIn != bdHashes.end()) {
                bdHashes.erase(iterIn);
@@ -590,14 +704,14 @@ namespace DBTestUtils
 
    void UTCallback::waitOnZc_OutOfOrder(
       std::shared_ptr<ZeroConf::ZeroConfContainer> zcPtr,
-      const std::set<BinaryData>& hashes)
+      const std::set<Types::TxHash>& hashes)
    {
       auto bdHashes = hashes;
       for (auto& pastNotif : zcNotifVec_) {
          auto mempoolSnapshot = zcPtr->getSnapshot();
          for (const auto& txio : pastNotif.txios) {
             auto hashOut = mempoolSnapshot->getHashForKey(
-               txio.getTxRefOfOutput().getDBKey());
+               txio.getTxKeyOfOutput());
             auto iterOut = bdHashes.find(hashOut);
             if (iterOut != bdHashes.end()) {
                bdHashes.erase(iterOut);
@@ -607,7 +721,7 @@ namespace DBTestUtils
                continue;
             }
             auto hashIn = mempoolSnapshot->getHashForKey(
-               txio.getTxRefOfInput().getDBKey());
+               txio.getTxKeyOfInput());
             auto iterIn = bdHashes.find(hashIn);
             if (iterIn != bdHashes.end()) {
                bdHashes.erase(iterIn);
@@ -626,7 +740,7 @@ namespace DBTestUtils
 
          for (const auto& txio : action->txios) {
             auto hashOut = mempoolSnapshot->getHashForKey(
-               txio.getTxRefOfOutput().getDBKey());
+               txio.getTxKeyOfOutput());
             auto iterOut = bdHashes.find(hashOut);
             if (iterOut != bdHashes.end()) {
                bdHashes.erase(iterOut);
@@ -636,7 +750,7 @@ namespace DBTestUtils
                continue;
             }
             auto hashIn = mempoolSnapshot->getHashForKey(
-               txio.getTxRefOfInput().getDBKey());
+               txio.getTxKeyOfInput());
             auto iterIn = bdHashes.find(hashIn);
             if (iterIn != bdHashes.end()) {
                bdHashes.erase(iterIn);
@@ -646,8 +760,8 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   std::pair<vector<TxIOPair>, std::set<BinaryData>> waitOnNewZcSignal(
-      Clients* clients, BdvIdKey bdvId)
+   std::pair<vector<TxIOPairUint>, std::set<Types::TxHash>> waitOnNewZcSignal(
+      Clients* clients, Types::BdvId bdvId)
    {
       auto result = waitOnSignal(clients, bdvId,
          (int)Codec::BDV::Notification::ZC);
@@ -670,22 +784,22 @@ namespace DBTestUtils
 
       auto capnZcs = zcNotif.getZc();
 
-      std::pair<vector<TxIOPair>, std::set<BinaryData>> txioData;
+      std::pair<vector<TxIOPairUint>, std::set<Types::TxHash>> txioData;
       txioData.first = capnToTxios(capnZcs);
 
       if (notifList.size() >= (int)index + 2) {
          auto invalidatedNotif = notifList[index + 1];
          auto invalidatedZCs = invalidatedNotif.getInvalidatedZc();
          for (auto zcHash : invalidatedZCs) {
-            BinaryDataRef hashRef(zcHash.begin(), zcHash.end());
-            txioData.second.emplace(hashRef);
+            txioData.second.emplace(
+               Types::TxHash{zcHash.begin(), zcHash.end()});
          }
       }
       return txioData;
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   void waitOnWalletRefresh(Clients* clients, BdvIdKey bdvId,
+   void waitOnWalletRefresh(Clients* clients, Types::BdvId bdvId,
       const std::string& wltId)
    {
       while (true) {
@@ -803,8 +917,8 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   Tx getTxByHash(Clients* clients, BdvIdKey bdvId,
-      const BinaryData& txHash)
+   Tx getTxByHash(Clients* clients, Types::BdvId bdvId,
+      const Types::TxHash& txHash)
    {
       capnp::MallocMessageBuilder message;
       auto payload = message.initRoot<Codec::BDV::Request>();
@@ -827,7 +941,7 @@ namespace DBTestUtils
       BinaryDataRef rawTx(body.begin(), body.end());
 
       Tx txobj(rawTx);
-      txobj.setTxHeight(capnTx.getHeight());
+      txobj.setBlockId(capnTx.getBlockId());
       txobj.setTxIndex(capnTx.getIndex());
       txobj.setChainedZC(capnTx.getIsChainZc());
       txobj.setRBF(capnTx.getIsRbf());
@@ -835,16 +949,15 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   Tx getTxByKey(Clients* clients, BdvIdKey bdvId,
-      const BinaryData& txKey)
+   Tx getTxByKey(Clients* clients, Types::BdvId bdvId,
+      const Types::TxKey& txKey)
    {
       capnp::MallocMessageBuilder message;
       auto payload = message.initRoot<Codec::BDV::Request>();
 
       auto bdvRequest = payload.initBdv();
       auto keyReq = bdvRequest.initGetTxsByKey(1);
-      keyReq.set(0, capnp::Data::Builder(
-         (uint8_t*)txKey.getPtr(), txKey.getSize()));
+      keyReq.set(0, txKey);
 
       auto result = processCommand(clients, bdvId, serializeCapnp(message));
       kj::ArrayPtr<const capnp::word> words(
@@ -854,12 +967,15 @@ namespace DBTestUtils
       auto reply = reader.getRoot<Codec::BDV::Reply>();
       auto bdvReply = reply.getBdv();
       auto capnTxs = bdvReply.getGetTxsByKey();
+      if (capnTxs.size() != 1) {
+         throw std::runtime_error(std::format("no tx for key {:x}", txKey));
+      }
       auto capnTx = capnTxs[0];
       auto body = capnTx.getBody();
       BinaryDataRef rawTx(body.begin(), body.end());
 
       Tx txobj(rawTx);
-      txobj.setTxHeight(capnTx.getHeight());
+      txobj.setBlockId(capnTx.getBlockId());
       txobj.setTxIndex(capnTx.getIndex());
       txobj.setChainedZC(capnTx.getIsChainZc());
       txobj.setRBF(capnTx.getIsRbf());
@@ -867,8 +983,8 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   std::vector<UTXO> getUtxoForAddress(Clients* clients, BdvIdKey bdvId,
-      const BinaryData& scrAddr, bool withZc)
+   std::vector<UTXO> getUtxoForAddress(Clients* clients, Types::BdvId bdvId,
+      const Types::ScrAddr& scrAddr, bool withZc)
    {
       //create capnp request
       capnp::MallocMessageBuilder message;
@@ -979,21 +1095,6 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   void updateWalletsLedgerFilter(
-      Clients* clients, BdvIdKey bdvId, const vector<string>& idVec)
-   {
-      capnp::MallocMessageBuilder message;
-      auto payload = message.initRoot<Codec::BDV::Request>();
-
-      auto bdvRequest = payload.initBdv();
-      auto walletIds = bdvRequest.initUpdateWalletsLedgerFilter(idVec.size());
-      for (unsigned i=0; i<idVec.size(); i++) {
-         walletIds.set(i, idVec[i]);
-      }
-      processCommand(clients, bdvId, serializeCapnp(message));
-   }
-
-   /////////////////////////////////////////////////////////////////////////////
    void init()
    {
       /*
@@ -1011,7 +1112,7 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   BinaryData processCommand(Clients* clients, BdvIdKey bdvId,
+   BinaryData processCommand(Clients* clients, Types::BdvId bdvId,
       BinaryData msg)
    {
       auto bdVec = WebSocketMessageCodec::serialize(
@@ -1042,6 +1143,8 @@ namespace DBTestUtils
    AsyncClient::LedgerDelegate getLedgerDelegate(
       shared_ptr<AsyncClient::BlockDataViewer> bdv)
    {
+      throw std::runtime_error("[TestUtils::getLedgerDelegate] deprecated");
+      #if 0
       auto prom = make_shared<promise<AsyncClient::LedgerDelegate>>();
       auto fut = prom->get_future();
       auto getDelegate = [prom]
@@ -1051,6 +1154,7 @@ namespace DBTestUtils
       };
       bdv->getLedgerDelegate(getDelegate);
       return fut.get();
+      #endif
    }
 
    /////////////////////////////////////////////////////////////////////////////
@@ -1058,6 +1162,8 @@ namespace DBTestUtils
       shared_ptr<AsyncClient::BlockDataViewer> bdv,
       const string& walletId, const BinaryData& scrAddr)
    {
+      throw std::runtime_error("[TestUtils::getLedgerDelegateForScrAddr] deprecated");
+      #if 0
       auto prom = make_shared<promise<AsyncClient::LedgerDelegate>>();
       auto fut = prom->get_future();
       auto getDelegate = [prom]
@@ -1069,12 +1175,15 @@ namespace DBTestUtils
       auto addrObj = walletObj.getScrAddrObj(scrAddr, 0, 0, 0, 0);
       addrObj.getLedgerDelegate(getDelegate);
       return fut.get();
+      #endif
    }
 
    /////////////////////////////////////////////////////////////////////////////
    vector<DBClientClasses::LedgerEntry> getHistoryPage(
       AsyncClient::LedgerDelegate& del, uint32_t id)
    {
+      throw std::runtime_error("[TestUtils::getHistoryPage] deprecated");
+      #if 0
       auto prom = make_shared<promise<vector<DBClientClasses::HistoryPage>>>();
       auto fut = prom->get_future();
       auto lbd = [prom](ReturnMessage<vector<DBClientClasses::HistoryPage>> msg)
@@ -1084,20 +1193,7 @@ namespace DBTestUtils
       del.getHistoryPages(id, 0, lbd);
       auto result = fut.get();
       return result[0];
-   }
-
-   /////////////////////////////////////////////////////////////////////////////
-   uint64_t getPageCount(AsyncClient::LedgerDelegate& del)
-   {
-      auto prom = make_shared<promise<uint64_t>>();
-      auto fut = prom->get_future();
-      auto lbd = [prom](ReturnMessage<uint64_t> msg)
-      {
-         prom->set_value(msg.get());
-      };
-      del.getPageCount(lbd);
-
-      return fut.get();
+      #endif
    }
 
    /////////////////////////////////////////////////////////////////////////////

@@ -27,6 +27,7 @@
 #include <BridgeAPI/ProtoCommandParser.h>
 #include <BridgeAPI/Wallets/Manager.h>
 #include <BridgeAPI/Wallets/Notifications.h>
+#include <BridgeAPI/Wallets/TxIOCache.h>
 #include <BridgeAPI/BlockchainDbClient.h>
 
 #include "BDM_mainthread.h"
@@ -171,7 +172,7 @@ namespace {
             capnLedger.getTxOutIndex(), capnLedger.getTxTime(),
             addrSet,
             capnLedger.getIsCoinbase(), capnLedger.getIsSTS(), capnLedger.getIsChangeBack(),
-            capnLedger.getIsOptInRBF(), capnLedger.getIsWitness(), capnLedger.getIsChainedZC()
+            capnLedger.getIsOptInRBF(), capnLedger.getIsChainedZC()
          });
       }
       return result;
@@ -1792,8 +1793,8 @@ namespace {
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
-      auto req = toBridge.initService();
-      req.setGetLedgerDelegateId();
+      auto req = toBridge.initWalletManager();
+      req.setGetMainLedgerDelegateId();
       auto rawReq = serializeCapnp(message);
       pushRequest(bridge, rawReq);
 
@@ -1812,11 +1813,11 @@ namespace {
       if (!reply.getSuccess()) {
          return {};
       }
-      if (reply.which() != Codec::Bridge::RpcReply::SERVICE) {
+      if (reply.which() != Codec::Bridge::RpcReply::WALLET_MANAGER) {
          return {};
       }
-      auto serviceReply = reply.getService();
-      return serviceReply.getGetLedgerDelegateId();
+      auto mgrReply = reply.getWalletManager();
+      return mgrReply.getGetMainLedgerDelegateId();
    }
 
    std::string getLedgerDelegateIdForWallet(
@@ -2291,7 +2292,7 @@ namespace {
          auto capnUtxo = capnUtxos[i];
          const auto& utxo = utxos[i];
 
-         capnUtxo.setValue(utxo.getValue());
+         capnUtxo.setValue(utxo.getAmount());
          capnUtxo.setTxHeight(utxo.getHeight());
          capnUtxo.setTxIndex(utxo.getTxIndex());
          capnUtxo.setTxOutIndex(utxo.getTxOutIndex());
@@ -2929,7 +2930,7 @@ namespace {
       uint64_t totalInputs = 0;
       std::set<BinaryData> supportingTxHashes;
       for (const auto& utxo : utxoSelection) {
-         totalInputs += utxo.getValue();
+         totalInputs += utxo.getAmount();
          supportingTxHashes.emplace(utxo.getTxHash());
       }
 
@@ -2990,7 +2991,7 @@ namespace {
          if (!populateUtxo(
             bridge, signerId,
             utxo.getTxHash(), utxo.getTxOutIndex(),
-            utxo.getValue(), utxo.getScript())) {
+            utxo.getAmount(), utxo.getScript())) {
             throw std::runtime_error("failed to populate utxo");
          }
 
@@ -3703,7 +3704,7 @@ protected:
       initBDM();
       auto nodePtr = std::dynamic_pointer_cast<NodeUnitTest>(
          Config::NetworkSettings::bitcoinNodes().first);
-      nodePtr->setIface(theBDMt_->bdm()->getIFace());
+      nodePtr->setBDM(theBDMt_->bdm());
       hexMagicBytes = Config::BitcoinSettings::getMagicBytes().toHexStr();
    }
 
@@ -3839,9 +3840,10 @@ TEST_F(WalletManagerWebsocketsTests, Connect)
 
       for (const auto& mgrBal : addrBalances) {
          auto addrBal = TestChain::testAddrBalances[5].at(mgrBal.first);
-         for (unsigned i = 0; i < 3; i++) {
-            EXPECT_EQ(addrBal[i], mgrBal.second[i]);
-         }
+         EXPECT_EQ(addrBal[0], mgrBal.second.fullBalance);
+         EXPECT_EQ(addrBal[1], mgrBal.second.spendableBalance);
+         EXPECT_EQ(addrBal[2], mgrBal.second.unconfirmedBalance);
+         EXPECT_EQ(addrBal[3], mgrBal.second.txCount);
       }
    } catch (const std::exception& e) {
       std::cout << e.what() << std::endl;
@@ -5837,7 +5839,7 @@ protected:
       initBDM();
       auto nodePtr = std::dynamic_pointer_cast<NodeUnitTest>(
          Config::NetworkSettings::bitcoinNodes().first);
-      nodePtr->setIface(theBDMt_->bdm()->getIFace());
+      nodePtr->setBDM(theBDMt_->bdm());
       hexMagicBytes = Config::BitcoinSettings::getMagicBytes().toHexStr();
    }
 
@@ -5991,7 +5993,7 @@ TEST_F(BridgeWalletsWithDBTests, CycleConnection)
       initBDM();
       auto nodePtr = std::dynamic_pointer_cast<NodeUnitTest>(
          Config::NetworkSettings::bitcoinNodes().first);
-      nodePtr->setIface(theBDMt_->bdm()->getIFace());
+      nodePtr->setBDM(theBDMt_->bdm());
    }
 
    WebSocketServer::initAuthPeers({
@@ -6503,9 +6505,7 @@ protected:
       initBDM();
       nodePtr_ = std::dynamic_pointer_cast<NodeUnitTest>(
          Config::NetworkSettings::bitcoinNodes().first);
-      nodePtr_->setIface(theBDMt_->bdm()->getIFace());
-      nodePtr_->setBlockchain(theBDMt_->bdm()->blockchain());
-      nodePtr_->setBlockFiles(theBDMt_->bdm()->blockFiles());
+      nodePtr_->setBDM(theBDMt_->bdm());
       hexMagicBytes = Config::BitcoinSettings::getMagicBytes().toHexStr();
    }
 
@@ -8650,7 +8650,7 @@ TEST_F(BridgeChainDataTests, getUTXOs)
    ASSERT_EQ(utxo.getHeight(), 4);
    ASSERT_EQ(utxo.getTxIndex(), 2);
    ASSERT_EQ(utxo.getTxOutIndex(), 0);
-   ASSERT_EQ(utxo.getValue(), 5 * COIN);
+   ASSERT_EQ(utxo.getAmount(), 5 * COIN);
    ASSERT_EQ(utxo.getTxHash(), TestChain::hash42);
 
    //Block 3, tx 4, output 0, 25 COINS
@@ -8658,7 +8658,7 @@ TEST_F(BridgeChainDataTests, getUTXOs)
    ASSERT_EQ(utxo.getHeight(), 3);
    ASSERT_EQ(utxo.getTxIndex(), 4);
    ASSERT_EQ(utxo.getTxOutIndex(), 0);
-   ASSERT_EQ(utxo.getValue(), 25 * COIN);
+   ASSERT_EQ(utxo.getAmount(), 25 * COIN);
    ASSERT_EQ(utxo.getTxHash(), TestChain::hash34);
 
    //Block 3, tx 2, output 0, 5 COINS
@@ -8666,7 +8666,7 @@ TEST_F(BridgeChainDataTests, getUTXOs)
    ASSERT_EQ(utxo.getHeight(), 3);
    ASSERT_EQ(utxo.getTxIndex(), 2);
    ASSERT_EQ(utxo.getTxOutIndex(), 0);
-   ASSERT_EQ(utxo.getValue(), 5 * COIN);
+   ASSERT_EQ(utxo.getAmount(), 5 * COIN);
    ASSERT_EQ(utxo.getTxHash(), TestChain::hash32);
 
    //Block 5, tx 2, output 0, 5 COINS
@@ -8674,7 +8674,7 @@ TEST_F(BridgeChainDataTests, getUTXOs)
    ASSERT_EQ(utxo.getHeight(), 5);
    ASSERT_EQ(utxo.getTxIndex(), 2);
    ASSERT_EQ(utxo.getTxOutIndex(), 0);
-   ASSERT_EQ(utxo.getValue(), 5 * COIN);
+   ASSERT_EQ(utxo.getAmount(), 5 * COIN);
    ASSERT_EQ(utxo.getTxHash(), TestChain::hash52);
 
    //Block 4, tx 3, output 2, 10 COINS
@@ -8682,7 +8682,7 @@ TEST_F(BridgeChainDataTests, getUTXOs)
    ASSERT_EQ(utxo.getHeight(), 4);
    ASSERT_EQ(utxo.getTxIndex(), 3);
    ASSERT_EQ(utxo.getTxOutIndex(), 2);
-   ASSERT_EQ(utxo.getValue(), 10 * COIN);
+   ASSERT_EQ(utxo.getAmount(), 10 * COIN);
    ASSERT_EQ(utxo.getTxHash(), TestChain::hash43);
 
    //Block 5, tx 1, output 0, 10 COINS
@@ -8690,7 +8690,7 @@ TEST_F(BridgeChainDataTests, getUTXOs)
    ASSERT_EQ(utxo.getHeight(), 5);
    ASSERT_EQ(utxo.getTxIndex(), 1);
    ASSERT_EQ(utxo.getTxOutIndex(), 0);
-   ASSERT_EQ(utxo.getValue(), 10 * COIN);
+   ASSERT_EQ(utxo.getAmount(), 10 * COIN);
    ASSERT_EQ(utxo.getTxHash(), TestChain::hash51);
 
    //Block 5, tx 1, output 1, 20 COINS
@@ -8698,7 +8698,7 @@ TEST_F(BridgeChainDataTests, getUTXOs)
    ASSERT_EQ(utxo.getHeight(), 5);
    ASSERT_EQ(utxo.getTxIndex(), 1);
    ASSERT_EQ(utxo.getTxOutIndex(), 1);
-   ASSERT_EQ(utxo.getValue(), 20 * COIN);
+   ASSERT_EQ(utxo.getAmount(), 20 * COIN);
    ASSERT_EQ(utxo.getTxHash(), TestChain::hash51);
 
    //Block 3, tx 1, output 0, 5 COINS
@@ -8706,7 +8706,7 @@ TEST_F(BridgeChainDataTests, getUTXOs)
    ASSERT_EQ(utxo.getHeight(), 3);
    ASSERT_EQ(utxo.getTxIndex(), 1);
    ASSERT_EQ(utxo.getTxOutIndex(), 0);
-   ASSERT_EQ(utxo.getValue(), 5 * COIN);
+   ASSERT_EQ(utxo.getAmount(), 5 * COIN);
    ASSERT_EQ(utxo.getTxHash(), TestChain::hash31);
 
    //grab AFLB utxos
@@ -8718,7 +8718,7 @@ TEST_F(BridgeChainDataTests, getUTXOs)
    ASSERT_EQ(utxo.getHeight(), 4);
    ASSERT_EQ(utxo.getTxIndex(), 1);
    ASSERT_EQ(utxo.getTxOutIndex(), 1);
-   ASSERT_EQ(utxo.getValue(), 5 * COIN);
+   ASSERT_EQ(utxo.getAmount(), 5 * COIN);
    ASSERT_EQ(utxo.getTxHash(), TestChain::hash41);
 
    //Block 4, tx 3, output 0, 25 COINS
@@ -8726,7 +8726,7 @@ TEST_F(BridgeChainDataTests, getUTXOs)
    ASSERT_EQ(utxo.getHeight(), 4);
    ASSERT_EQ(utxo.getTxIndex(), 3);
    ASSERT_EQ(utxo.getTxOutIndex(), 0);
-   ASSERT_EQ(utxo.getValue(), 25 * COIN);
+   ASSERT_EQ(utxo.getAmount(), 25 * COIN);
    ASSERT_EQ(utxo.getTxHash(), TestChain::hash43);
 
    //Block 4, tx 3, output 1, 20 COINS
@@ -8734,7 +8734,7 @@ TEST_F(BridgeChainDataTests, getUTXOs)
    ASSERT_EQ(utxo.getHeight(), 4);
    ASSERT_EQ(utxo.getTxIndex(), 3);
    ASSERT_EQ(utxo.getTxOutIndex(), 1);
-   ASSERT_EQ(utxo.getValue(), 20 * COIN);
+   ASSERT_EQ(utxo.getAmount(), 20 * COIN);
    ASSERT_EQ(utxo.getTxHash(), TestChain::hash43);
 
    //Block 3, tx 5, output 0, 10 COINS
@@ -8742,7 +8742,7 @@ TEST_F(BridgeChainDataTests, getUTXOs)
    ASSERT_EQ(utxo.getHeight(), 3);
    ASSERT_EQ(utxo.getTxIndex(), 5);
    ASSERT_EQ(utxo.getTxOutIndex(), 0);
-   ASSERT_EQ(utxo.getValue(), 10 * COIN);
+   ASSERT_EQ(utxo.getAmount(), 10 * COIN);
    ASSERT_EQ(utxo.getTxHash(), TestChain::hash35);
 
    //Block 3, tx 5, output 1, 5 COINS
@@ -8750,7 +8750,7 @@ TEST_F(BridgeChainDataTests, getUTXOs)
    ASSERT_EQ(utxo.getHeight(), 3);
    ASSERT_EQ(utxo.getTxIndex(), 5);
    ASSERT_EQ(utxo.getTxOutIndex(), 1);
-   ASSERT_EQ(utxo.getValue(), 5 * COIN);
+   ASSERT_EQ(utxo.getAmount(), 5 * COIN);
    ASSERT_EQ(utxo.getTxHash(), TestChain::hash35);
 }
 
@@ -9250,7 +9250,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_Chain)
    //grab amount for change output
    Tx tx(signedTx);
    auto changeOutput = tx.getTxOutCopy(1);
-   int64_t changeAmount = changeOutput.getValue();
+   int64_t changeAmount = changeOutput.getAmount();
    EXPECT_TRUE(changeAmount > 8 * COIN);
    EXPECT_TRUE(changeAmount < 9 * COIN);
 
@@ -9321,7 +9321,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_Chain)
 
    Tx tx2(signedTx2);
    auto changeOutput2 = tx2.getTxOutCopy(1);
-   int64_t changeAmount2 = changeOutput2.getValue();
+   int64_t changeAmount2 = changeOutput2.getAmount();
    EXPECT_TRUE(changeAmount2 > 3 * COIN);
    EXPECT_TRUE(changeAmount2 < 4 * COIN);
 
@@ -9543,7 +9543,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_StaggeredChain)
    //grab amount for change output
    Tx tx(signedTx);
    auto changeOutput = tx.getTxOutCopy(1);
-   int64_t changeAmount = changeOutput.getValue();
+   int64_t changeAmount = changeOutput.getAmount();
    EXPECT_TRUE(changeAmount > 8 * COIN);
    EXPECT_TRUE(changeAmount < 9 * COIN);
 
@@ -9655,7 +9655,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_StaggeredChain)
 
    Tx tx2(signedTx2);
    auto changeOutput2 = tx2.getTxOutCopy(1);
-   int64_t changeAmount2 = changeOutput2.getValue();
+   int64_t changeAmount2 = changeOutput2.getAmount();
    EXPECT_TRUE(changeAmount2 > 3 * COIN);
    EXPECT_TRUE(changeAmount2 < 4 * COIN);
 
@@ -10057,7 +10057,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_ChainRBF)
    //grab amount for change output
    Tx tx(signedTx);
    auto changeOutput = tx.getTxOutCopy(1);
-   int64_t changeAmount = changeOutput.getValue();
+   int64_t changeAmount = changeOutput.getAmount();
    EXPECT_TRUE(changeAmount > 8 * COIN);
    EXPECT_TRUE(changeAmount < 9 * COIN);
 
@@ -10174,7 +10174,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_ChainRBF)
 
    Tx tx2(signedTx2);
    auto changeOutput2 = tx2.getTxOutCopy(1);
-   int64_t changeAmount2 = changeOutput2.getValue();
+   int64_t changeAmount2 = changeOutput2.getAmount();
    EXPECT_TRUE(changeAmount2 > 3 * COIN);
    EXPECT_TRUE(changeAmount2 < 4 * COIN);
 
@@ -10314,7 +10314,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_ChainRBF)
 
    Tx tx3(txRbf);
    auto changeOutput3 = tx3.getTxOutCopy(1);
-   int64_t changeAmountRbf = changeOutput3.getValue();
+   int64_t changeAmountRbf = changeOutput3.getAmount();
    EXPECT_EQ(changeAmountRbf, 12 * COIN - rbfFee);
 
    //broadcast it
@@ -10490,7 +10490,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_Reload)
    //grab amount for change output
    Tx tx(signedTx);
    auto changeOutput = tx.getTxOutCopy(1);
-   int64_t changeAmount = changeOutput.getValue();
+   int64_t changeAmount = changeOutput.getAmount();
    EXPECT_TRUE(changeAmount > 8 * COIN);
    EXPECT_TRUE(changeAmount < 9 * COIN);
 
@@ -10561,7 +10561,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_Reload)
 
    Tx tx2(signedTx2);
    auto changeOutput2 = tx2.getTxOutCopy(1);
-   int64_t changeAmount2 = changeOutput2.getValue();
+   int64_t changeAmount2 = changeOutput2.getAmount();
    EXPECT_TRUE(changeAmount2 > 3 * COIN);
    EXPECT_TRUE(changeAmount2 < 4 * COIN);
 
@@ -10852,7 +10852,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_Reorg)
    //grab amount for change output
    Tx tx(signedTx);
    auto changeOutput = tx.getTxOutCopy(1);
-   int64_t changeAmount = changeOutput.getValue();
+   int64_t changeAmount = changeOutput.getAmount();
    EXPECT_TRUE(changeAmount > 2 * COIN);
    EXPECT_TRUE(changeAmount < 3 * COIN);
 
@@ -11030,9 +11030,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_RegisterWallet)
    initBDM();
    nodePtr_ = std::dynamic_pointer_cast<NodeUnitTest>(
       Config::NetworkSettings::bitcoinNodes().first);
-   nodePtr_->setIface(theBDMt_->bdm()->getIFace());
-   nodePtr_->setBlockchain(theBDMt_->bdm()->blockchain());
-   nodePtr_->setBlockFiles(theBDMt_->bdm()->blockFiles());
+   nodePtr_->setBDM(theBDMt_->bdm());
 
    TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
    WebSocketServer::initAuthPeers({
@@ -11304,7 +11302,7 @@ TEST_F(BridgeChainDataTests, RestoreSynchronize)
    //grab amount for change output
    Tx tx(signedTx);
    auto changeOutput = tx.getTxOutCopy(4);
-   int64_t changeAmount = changeOutput.getValue();
+   int64_t changeAmount = changeOutput.getAmount();
    EXPECT_TRUE(changeAmount > 9 * COIN);
    EXPECT_TRUE(changeAmount < 10 * COIN);
 
@@ -11678,7 +11676,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_SpendNew)
    //grab amount for change output
    Tx tx(signedTx);
    auto changeOutput = tx.getTxOutCopy(1);
-   int64_t changeAmount = changeOutput.getValue();
+   int64_t changeAmount = changeOutput.getAmount();
    EXPECT_TRUE(changeAmount > 8 * COIN);
    EXPECT_TRUE(changeAmount < 9 * COIN);
 
@@ -11843,7 +11841,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_SpendNew)
    //grab amount for change output
    Tx tx2(signedTx2);
    auto changeOutput2 = tx2.getTxOutCopy(1);
-   int64_t changeAmount2 = changeOutput2.getValue();
+   int64_t changeAmount2 = changeOutput2.getAmount();
    EXPECT_TRUE(changeAmount2 > 5 * COIN);
    EXPECT_TRUE(changeAmount2 < 6 * COIN);
 
@@ -12471,7 +12469,7 @@ protected:
       initBDM();
       auto nodePtr = std::dynamic_pointer_cast<NodeUnitTest>(
          Config::NetworkSettings::bitcoinNodes().first);
-      nodePtr->setIface(theBDMt_->bdm()->getIFace());
+      nodePtr->setBDM(theBDMt_->bdm());
    }
 
    /////////////////////////////////////////////////////////////////////////////

@@ -88,7 +88,6 @@ namespace TestUtils
       const std::filesystem::path&);
    void setBlocks(const std::vector<std::string>&,
       const std::filesystem::path&);
-   void nullProgress(unsigned, double, unsigned, unsigned);
    BinaryData getTx(unsigned, unsigned);
 
    std::shared_ptr<Armory::Assets::AssetEntry> getMainAccountAssetForIndex(
@@ -105,30 +104,39 @@ namespace DBTestUtils
 
    Armory::Hash32 getTopBlockHash(LMDBBlockDatabase*, DB_SELECT);
 
-   BdvIdKey registerBDV(Clients*, const BinaryData&);
-   void goOnline(Clients*, BdvIdKey);
-   const std::shared_ptr<BDV_Server_Object> getBDV(Clients*, BdvIdKey);
-   
-   void registerWallet(Clients*, BdvIdKey,
+   Armory::Types::BdvId registerBDV(Clients*, const BinaryData&);
+   void goOnline(Clients*, Armory::Types::BdvId);
+   const std::shared_ptr<BDV_Server_Object> getBDV(Clients*, Armory::Types::BdvId);
+   void registerWallet(Clients*, Armory::Types::BdvId,
       const std::vector<BinaryData>&, const std::string&,
       bool, bool);
 
    std::vector<uint64_t> getBalanceAndCount(Clients*,
-      BdvIdKey, const std::string&, unsigned);
-   std::string getLedgerDelegate(Clients*, BdvIdKey);
-   std::vector<DBClientClasses::LedgerEntry> getHistoryPage(
-      Clients*, BdvIdKey, const std::string&, uint32_t);
+      Armory::Types::BdvId, const std::string&, unsigned);
+   std::map<Armory::Types::TxIOKey, TxOutData> getTxOutHistory(
+      const  Armory::Types::ScrAddr&, std::shared_ptr<BlockDataManager>);
+   std::map< Armory::Types::TxIOKey, std::shared_ptr<const TxIOPairUint>> getZcHistory(
+      const  Armory::Types::ScrAddr&, std::shared_ptr<BlockDataManager>);
+   Armory::Types::Amount getScrAddrBalance(const  Armory::Types::ScrAddr&,
+      std::shared_ptr<BlockDataManager>);
+
+   std::vector<UTXO> getUTXOsForScrAddrs(std::shared_ptr<BlockDataManager>,
+      const std::set<Armory::Types::ScrAddr>&);
+   std::vector<UTXO> getZCUTXOs(std::shared_ptr<BlockDataManager>,
+      const std::set<Armory::Types::ScrAddr>&);
+   std::vector<UTXO> getRBFUTXOs(std::shared_ptr<BlockDataManager>,
+      const std::set<Armory::Types::ScrAddr>&);
 
    std::tuple<BinaryData, unsigned> waitOnSignal(
-      Clients*, BdvIdKey, int);
+      Clients*, Armory::Types::BdvId, int);
    void waitOnBDMSignal(std::shared_ptr<BlockDataManager>, BDV_Action);
-   void waitOnBDMReady(Clients*, BdvIdKey);
+   void waitOnBDMReady(Clients*, Armory::Types::BdvId);
    void waitOnBDMError(std::shared_ptr<BlockDataManager>);
 
-   std::tuple<BinaryData, unsigned> waitOnNewBlockSignal(Clients*, BdvIdKey);
-   std::pair<std::vector<TxIOPair>, std::set<BinaryData>>
-      waitOnNewZcSignal(Clients*, BdvIdKey);
-   void waitOnWalletRefresh(Clients*, BdvIdKey, const std::string&);
+   std::tuple<BinaryData, unsigned> waitOnNewBlockSignal(Clients*, Armory::Types::BdvId);
+   std::pair<std::vector<TxIOPairUint>, std::set<Armory::Types::TxHash>>
+   waitOnNewZcSignal(Clients*, Armory::Types::BdvId);
+   void waitOnWalletRefresh(Clients*, Armory::Types::BdvId, const std::string&);
    void triggerNewBlockNotification(BlockDataManagerThread*);
    void mineNewBlock(BlockDataManagerThread*, const BinaryData&,
       unsigned);
@@ -153,30 +161,17 @@ namespace DBTestUtils
    std::pair<BinaryData, BinaryData> getAddrAndPubKeyFromPrivKey(
       BinaryData, bool = false);
 
-   Tx getTxByHash(Clients*, BdvIdKey, const BinaryData&);
-   Tx getTxByKey(Clients*, BdvIdKey, const BinaryData&);
-   std::vector<UTXO> getUtxoForAddress(Clients*, BdvIdKey, const BinaryData&, bool);
+   Tx getTxByHash(Clients*, Armory::Types::BdvId, const Armory::Types::TxHash&);
+   Tx getTxByKey(Clients*, Armory::Types::BdvId, const Armory::Types::TxKey&);
+   std::vector<UTXO> getUtxoForAddress(Clients*, Armory::Types::BdvId, const BinaryData&, bool);
 
    void addTxioToSsh(StoredScriptHistory&,
       const std::map<BinaryDataRef, std::shared_ptr<const TxIOPair>>&);
    void prettyPrintSsh(StoredScriptHistory&);
    Armory::Ledgers::Entry getLedgerEntryFromWallet(std::shared_ptr<BtcWallet>, const BinaryData&);
    Armory::Ledgers::Entry getLedgerEntryFromAddr(ScrAddrObj*, const BinaryData&);
-   void updateWalletsLedgerFilter(
-      Clients*, BdvIdKey, const std::vector<std::string> &);
 
-   BinaryData processCommand(Clients*, BdvIdKey, BinaryData);
-
-   /////////////////////////////////////////////////////////////////////////////
-   AsyncClient::LedgerDelegate getLedgerDelegate(
-      std::shared_ptr<AsyncClient::BlockDataViewer>);
-   AsyncClient::LedgerDelegate getLedgerDelegateForScrAddr(
-      std::shared_ptr<AsyncClient::BlockDataViewer>,
-      const std::string&, const BinaryData&);
-   
-   std::vector<DBClientClasses::LedgerEntry> getHistoryPage(
-      AsyncClient::LedgerDelegate& del, uint32_t id);
-   uint64_t getPageCount(AsyncClient::LedgerDelegate& del);
+   BinaryData processCommand(Clients*, Armory::Types::BdvId, BinaryData);
 
    std::map<BinaryData, std::vector<uint64_t>> getAddrBalancesFromDB(
       std::shared_ptr<AsyncClient::BlockDataViewer>, const std::string&);
@@ -203,7 +198,7 @@ namespace DBTestUtils
       {
          BDMAction action;
          std::set<std::string> idSet;
-         std::vector<TxIOPair> txios;
+         std::vector<TxIOPairUint> txios;
          unsigned reorgHeight = UINT32_MAX;
          BDV_Error_Struct error;
          std::string requestID;

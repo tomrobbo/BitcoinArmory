@@ -200,9 +200,7 @@ protected:
 
       auto nodePtr = std::dynamic_pointer_cast<NodeUnitTest>(
          Config::NetworkSettings::bitcoinNodes().first);
-      nodePtr->setBlockchain(theBDMt_->bdm()->blockchain());
-      nodePtr->setBlockFiles(theBDMt_->bdm()->blockFiles());
-      nodePtr->setIface(iface_);
+      nodePtr->setBDM(theBDMt_->bdm());
       clients_ = new Clients(theBDMt_->bdm());
    }
 
@@ -292,7 +290,7 @@ TEST_F(SignerTest, DISABLED_CheckChain_Test)
 
    BlockDataManager bdm(nullptr);
    try {
-      bdm.doInitialSyncOnLoad(BdmInitMode::RESUME, TestUtils::nullProgress);
+      bdm.doInitialSyncOnLoad(BdmInitMode::RESUME, nullptr);
    } catch (const std::exception&) {
       //signify the failure
       EXPECT_TRUE(false);
@@ -345,7 +343,7 @@ TEST_F(SignerTest, Signer_Test)
    //create script spender objects
    uint64_t total = 0;
    for (auto& utxo : unspentVec) {
-      total += utxo.getValue();
+      total += utxo.getAmount();
       signer.addSpender(getSpenderPtr(utxo));
    }
 
@@ -458,7 +456,7 @@ TEST_F(SignerTest, SpendTest_SizeEstimates)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -470,7 +468,7 @@ TEST_F(SignerTest, SpendTest_SizeEstimates)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -541,10 +539,10 @@ TEST_F(SignerTest, SpendTest_SizeEstimates)
          auto unspentVec = dbAssetWlt->getSpendableTxOutListZC();
          std::vector<UTXO> utxoVec;
          for (auto& unspentTxo : unspentVec) {
-            UTXO entry(unspentTxo.value_, unspentTxo.txHeight_,
-               unspentTxo.txIndex_, unspentTxo.txOutIndex_,
-               std::move(unspentTxo.txHash_),
-               std::move(unspentTxo.script_));
+            UTXO entry(unspentTxo.amount, unspentTxo.txHeight,
+               unspentTxo.txIndex, unspentTxo.txOutIndex,
+               std::move(unspentTxo.txHash),
+               std::move(unspentTxo.script));
             utxoVec.emplace_back(entry);
          }
          return utxoVec;
@@ -570,7 +568,7 @@ TEST_F(SignerTest, SpendTest_SizeEstimates)
       //create spenders
       uint64_t total = 0;
       for (auto& utxo : utxoSelect) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer2.addSpender(std::make_shared<ScriptSpender>(utxo));
       }
 
@@ -658,10 +656,10 @@ TEST_F(SignerTest, SpendTest_SizeEstimates)
 
          std::vector<UTXO> utxoVec;
          for (auto& unspentTxo : unspentVec) {
-            UTXO entry(unspentTxo.value_, unspentTxo.txHeight_,
-               unspentTxo.txIndex_, unspentTxo.txOutIndex_,
-               std::move(unspentTxo.txHash_),
-               std::move(unspentTxo.script_));
+            UTXO entry(unspentTxo.amount, unspentTxo.txHeight,
+               unspentTxo.txIndex, unspentTxo.txOutIndex,
+               std::move(unspentTxo.txHash),
+               std::move(unspentTxo.script));
             utxoVec.emplace_back(entry);
          }
          return utxoVec;
@@ -692,7 +690,7 @@ TEST_F(SignerTest, SpendTest_SizeEstimates)
       //create spenders
       uint64_t total = 0;
       for (auto& utxo : utxoSelect) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer3.addSpender(std::make_shared<ScriptSpender>(utxo));
       }
 
@@ -855,7 +853,7 @@ TEST_F(SignerTest, SpendTest_P2WPKH)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -867,7 +865,7 @@ TEST_F(SignerTest, SpendTest_P2WPKH)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -935,7 +933,7 @@ TEST_F(SignerTest, SpendTest_P2WPKH)
       //create spenders
       uint64_t total = 0;
       for (auto& utxo : unspentVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer2.addSpender(getSpenderPtr(utxo));
          signer_nofeed.addSpender(getSpenderPtr(utxo));
       }
@@ -1125,7 +1123,7 @@ TEST_F(SignerTest, SpendTest_MixedInputTypes)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -1137,7 +1135,7 @@ TEST_F(SignerTest, SpendTest_MixedInputTypes)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -1215,7 +1213,7 @@ TEST_F(SignerTest, SpendTest_MixedInputTypes)
       //create spenders
       uint64_t total = 0;
       for (auto& utxo : unspentVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer2.addSpender(getSpenderPtr(utxo));
       }
 
@@ -1402,7 +1400,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_1of3)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -1414,7 +1412,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_1of3)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -1484,7 +1482,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_1of3)
       //create spenders
       uint64_t total = 0;
       for (auto& utxo : unspentVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer2.addSpender(getSpenderPtr(utxo));
       }
 
@@ -1701,7 +1699,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_2of3_NativeP2WSH)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -1713,7 +1711,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_2of3_NativeP2WSH)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -1793,7 +1791,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_2of3_NativeP2WSH)
    //create spenders
    uint64_t total = 0;
    for (auto& utxo : unspentVec) {
-      total += utxo.getValue();
+      total += utxo.getAmount();
       signer2.addSpender(getSpenderPtr(utxo));
    }
 
@@ -2069,7 +2067,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -2081,7 +2079,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -2150,7 +2148,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs)
       //create wlt_1 spenders
       uint64_t total = 0;
       for (const auto& utxo : unspentVec_1) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer2.addSpender(getSpenderPtr(utxo));
       }
 
@@ -2179,7 +2177,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs)
       //add spender from wlt_2
       uint64_t total = 0;
       for (const auto& utxo : unspentVec_2) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer3.addSpender(getSpenderPtr(utxo));
       }
 
@@ -2361,7 +2359,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs_Strings)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -2373,7 +2371,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs_Strings)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -2441,7 +2439,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs_Strings)
       //create wlt_1 spenders
       uint64_t total = 0;
       for (const auto& utxo : unspentVec_1) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer2.addSpender(getSpenderPtr(utxo));
       }
 
@@ -2468,7 +2466,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs_Strings)
       //add spender from wlt_2
       uint64_t total = 0;
       for (const auto& utxo : unspentVec_2) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer3.addSpender(getSpenderPtr(utxo));
       }
 
@@ -2652,7 +2650,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs_StringsLegacy)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -2664,7 +2662,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs_StringsLegacy)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -2733,7 +2731,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs_StringsLegacy)
       uint64_t total = 0;
       std::set<BinaryData> spenderHashes;
       for (const auto& utxo : unspentVec_1) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          spenderHashes.emplace(utxo.getTxHash());
          signer2.addSpender(getSpenderPtr(utxo));
       }
@@ -2768,7 +2766,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs_StringsLegacy)
       uint64_t total = 0;
       std::set<BinaryData> spenderHashes;
       for (const auto& utxo : unspentVec_2) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          spenderHashes.emplace(utxo.getTxHash());
          signer3.addSpender(getSpenderPtr(utxo));
       }
@@ -2960,7 +2958,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -2972,7 +2970,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -3038,7 +3036,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning)
       //create wlt_1 spenders
       uint64_t total = 0;
       for (auto& utxo : unspentVec_1) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer2.addSpender(getSpenderPtr(utxo));
       }
 
@@ -3065,7 +3063,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning)
       //add spender from wlt_2
       uint64_t total = 0;
       for (auto& utxo : unspentVec_2) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer3.addSpender(getSpenderPtr(utxo));
       }
 
@@ -3105,8 +3103,8 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning)
    signer5.deserializeState(serializedSignerState);
 
    for (auto& utxo : unspentVec_2) {
-      UTXO entry(utxo.value_, utxo.txHeight_, utxo.txIndex_, utxo.txOutIndex_,
-         std::move(utxo.txHash_), std::move(utxo.script_));
+      UTXO entry(utxo.amount, utxo.txHeight, utxo.txIndex, utxo.txOutIndex,
+         std::move(utxo.txHash), std::move(utxo.script));
       signer5.populateUtxo(entry);
    }
 
@@ -3284,7 +3282,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning_GetUnsignedTx)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -3296,7 +3294,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning_GetUnsignedTx)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -3363,7 +3361,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning_GetUnsignedTx)
       auto _assetFeed = std::make_shared<ResolverFeed_AssetWalletSingle>(assetWlt_1);
       uint64_t total = 0;
       for (auto& utxo : unspentVec_1) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer2.addSpender(getSpenderPtr(utxo));
       }
 
@@ -3414,7 +3412,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning_GetUnsignedTx)
       //add spender from wlt_2
       uint64_t total = 0;
       for (auto& utxo : unspentVec_2) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          auto spender = getSpenderPtr(utxo);
          spender->setSequence(UINT32_MAX - 2);
          signer3.addSpender(spender);
@@ -3465,8 +3463,8 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning_GetUnsignedTx)
    signer5.deserializeState(serializedSignerState);
 
    for (auto& utxo : unspentVec_2) {
-      UTXO entry(utxo.value_, utxo.txHeight_, utxo.txIndex_, utxo.txOutIndex_,
-         std::move(utxo.txHash_), std::move(utxo.script_));
+      UTXO entry(utxo.amount, utxo.txHeight, utxo.txIndex, utxo.txOutIndex,
+         std::move(utxo.txHash), std::move(utxo.script));
       signer5.populateUtxo(entry);
    }
 
@@ -3648,7 +3646,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning_GetUnsignedTx_Neste
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -3660,7 +3658,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning_GetUnsignedTx_Neste
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -3727,7 +3725,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning_GetUnsignedTx_Neste
       auto _assetFeed = std::make_shared<ResolverFeed_AssetWalletSingle>(assetWlt_1);
       uint64_t total = 0;
       for (auto& utxo : unspentVec_1) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer2.addSpender(getSpenderPtr(utxo));
       }
 
@@ -3788,7 +3786,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning_GetUnsignedTx_Neste
       //add spender from wlt_2
       uint64_t total = 0;
       for (auto& utxo : unspentVec_2) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer3.addSpender(getSpenderPtr(utxo));
       }
 
@@ -3846,8 +3844,8 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning_GetUnsignedTx_Neste
          const auto& utxo = utxoVec[i];
          for (unsigned y=0; y<signer.getTxInCount(); y++) {
             auto spender = signer.getSpender(y);
-            if (spender->getOutputHash() == utxo.txHash_ &&
-               spender->getOutputIndex() == utxo.txOutIndex_) {
+            if (spender->getOutputHash() == utxo.txHash &&
+               spender->getOutputIndex() == utxo.txOutIndex) {
                spenderIndexes.emplace(y);
                break;
             }
@@ -3880,8 +3878,8 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning_GetUnsignedTx_Neste
 
    auto unspentVec_2Copy = unspentVec_2;
    for (auto& utxo : unspentVec_2) {
-      UTXO entry(utxo.value_, utxo.txHeight_, utxo.txIndex_, utxo.txOutIndex_,
-         std::move(utxo.txHash_), std::move(utxo.script_));
+      UTXO entry(utxo.amount, utxo.txHeight, utxo.txIndex, utxo.txOutIndex,
+         std::move(utxo.txHash), std::move(utxo.script));
       signer5.populateUtxo(entry);
    }
 
@@ -4067,7 +4065,7 @@ TEST_F(SignerTest, GetUnsignedTxId)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -4079,7 +4077,7 @@ TEST_F(SignerTest, GetUnsignedTxId)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -4162,7 +4160,7 @@ TEST_F(SignerTest, GetUnsignedTxId)
       //create wlt_1 spenders
       uint64_t total = 0;
       for (auto& utxo : unspentVec_1) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer2.addSpender(
             std::make_shared<ScriptSpender>(
                utxo.getTxHash(), utxo.getTxOutIndex()));
@@ -4200,7 +4198,7 @@ TEST_F(SignerTest, GetUnsignedTxId)
       //add spender from wlt_2
       uint64_t total = 0;
       for (auto& utxo : unspentVec_2) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer3.addSpender(
             std::make_shared<ScriptSpender>(
                utxo.getTxHash(), utxo.getTxOutIndex()));
@@ -4422,7 +4420,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2WPKH)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -4434,7 +4432,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2WPKH)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -4503,7 +4501,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2WPKH)
       //create spenders
       uint64_t total = 0;
       for (auto& utxo : unspentVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer2.addSpender(getSpenderPtr(utxo));
       }
 
@@ -4708,7 +4706,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2WPKH_WOResolution_fromWOCopy)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -4720,7 +4718,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2WPKH_WOResolution_fromWOCopy)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -4791,7 +4789,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2WPKH_WOResolution_fromWOCopy)
       uint64_t total = 0;
       for (auto& utxo : unspentVec)
       {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer2.addSpender(getSpenderPtr(utxo));
       }
 
@@ -4986,7 +4984,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2WPKH_WOResolution_fromXPub)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -4998,7 +4996,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2WPKH_WOResolution_fromXPub)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -5067,7 +5065,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2WPKH_WOResolution_fromXPub)
       //create spenders
       uint64_t total = 0;
       for (auto& utxo : unspentVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer2.addSpender(getSpenderPtr(utxo));
       }
 
@@ -5229,7 +5227,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2PK)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -5241,7 +5239,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2PK)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -5311,7 +5309,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2PK)
       //create spenders
       uint64_t total = 0;
       for (auto& utxo : unspentVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer2.addSpender(getSpenderPtr(utxo));
       }
 
@@ -5485,7 +5483,7 @@ TEST_F(SignerTest, SpendTest_FromAccount_Reload)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -5497,7 +5495,7 @@ TEST_F(SignerTest, SpendTest_FromAccount_Reload)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -5575,7 +5573,7 @@ TEST_F(SignerTest, SpendTest_FromAccount_Reload)
       //create spenders
       uint64_t total = 0;
       for (auto& utxo : unspentVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer2.addSpender(getSpenderPtr(utxo));
       }
 
@@ -5707,7 +5705,7 @@ TEST_F(SignerTest, SpendTest_FromAccount_Reload)
       //create spenders
       uint64_t total = 0;
       for (auto& utxo : unspentVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer3.addSpender(getSpenderPtr(utxo));
       }
 
@@ -5873,7 +5871,7 @@ TEST_F(SignerTest, SpendTest_BIP32_Accounts)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -5885,7 +5883,7 @@ TEST_F(SignerTest, SpendTest_BIP32_Accounts)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -5975,7 +5973,7 @@ TEST_F(SignerTest, SpendTest_BIP32_Accounts)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -5987,7 +5985,7 @@ TEST_F(SignerTest, SpendTest_BIP32_Accounts)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -6127,7 +6125,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Armory135)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -6139,7 +6137,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Armory135)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -6226,7 +6224,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Armory135)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -6238,7 +6236,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Armory135)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -6378,7 +6376,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_BIP32)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -6390,7 +6388,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_BIP32)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -6476,7 +6474,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_BIP32)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -6488,7 +6486,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_BIP32)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -6651,7 +6649,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Salted)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -6663,7 +6661,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Salted)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -6749,7 +6747,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Salted)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -6761,7 +6759,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Salted)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -6932,7 +6930,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_ECDH)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -6944,7 +6942,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_ECDH)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -7031,7 +7029,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_ECDH)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -7043,7 +7041,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_ECDH)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -7187,7 +7185,7 @@ TEST_F(SignerTest, SpendTest_InjectSignature)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -7200,7 +7198,7 @@ TEST_F(SignerTest, SpendTest_InjectSignature)
       uint64_t total = 0;
       unsigned sigCount = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
          signer_inject.addSpender(getSpenderPtr(utxo));
          ++sigCount;
@@ -7325,7 +7323,7 @@ TEST_F(SignerTest, SpendTest_InjectSignature)
       //create spenders
       uint64_t total = 0;
       for (auto& utxo : unspentVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer2.addSpender(getSpenderPtr(utxo));
          signer_inject.addSpender(getSpenderPtr(utxo));
       }
@@ -7579,7 +7577,7 @@ TEST_F(SignerTest, SpendTest_InjectSignature_Multisig)
       uint64_t tval = 0;
       auto utxoIter = unspentVec.begin();
       while (utxoIter != unspentVec.end()) {
-         tval += utxoIter->getValue();
+         tval += utxoIter->getAmount();
          utxoVec.push_back(*utxoIter);
 
          if (tval > spendVal) {
@@ -7591,7 +7589,7 @@ TEST_F(SignerTest, SpendTest_InjectSignature_Multisig)
       //create script spender objects
       uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getValue();
+         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -7668,7 +7666,7 @@ TEST_F(SignerTest, SpendTest_InjectSignature_Multisig)
    //create spenders
    uint64_t total = 0;
    for (auto& utxo : unspentVec) {
-      total += utxo.getValue();
+      total += utxo.getAmount();
       signer2.addSpender(getSpenderPtr(utxo));
    }
 
@@ -9139,7 +9137,7 @@ TEST_F(ExtrasTest, PSBT)
       auto txOut = tx.getTxOutCopy(index);
 
       UTXO utxo(
-         txOut.getValue(),
+         txOut.getAmount(),
          UINT32_MAX, UINT32_MAX, index,
          hash, txOut.getScript());
 

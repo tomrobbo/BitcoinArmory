@@ -1,12 +1,13 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2019-2025, goatpig.                                         //
+//  Copyright (C) 2019-2026, goatpig.                                         //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <algorithm>
+#include <cstring>
 
 #include "MockedNode.h"
 #include <Utils/ArmoryErrors.h>
@@ -20,6 +21,7 @@
 #include <BlockchainDatabase/Blockchain.h>
 #include <BlockchainDatabase/BlockDataMap.h>
 #include <BlockchainDatabase/BlockUtils.h>
+#include <BlockchainDatabase/BlockchainData.h>
 #include "BDV_Notification.h"
 
 using namespace Armory;
@@ -27,23 +29,18 @@ using namespace std::chrono_literals;
 
 namespace
 {
-   Tx getFullTxCopy(const LMDBBlockDatabase* iface, std::shared_ptr<Blockchain> bc,
-      const BinaryData& txHash)
+   Tx getFullTxCopy(const LMDBBlockDatabase* iface, std::shared_ptr<BlockchainData> bd,
+      const Types::TxHash& txHash)
    {
       auto dbKey = iface->getDBKeyForHash(txHash);
-      if (dbKey.empty()) {
+      if (!Types::isTxKeyValid(dbKey)) {
          throw std::runtime_error("[MockedNode] no key for this txhash");
       }
-      unsigned id; uint8_t dup; uint16_t idx;
-      BinaryRefReader brrKey(dbKey);
-      DBUtils::readBlkDataKeyNoPrefix(brrKey, id, dup, idx);
-
-      auto header = bc->getHeaderForTxKey(dbKey);
-      return iface->getFullTxCopy(idx, header);
+      return bd->getTx(dbKey);
    }
 
    int verifyTxSigs(const BinaryData& rawTx, const LMDBBlockDatabase* iface,
-      std::shared_ptr<Blockchain> bc,
+      std::shared_ptr<BlockchainData> bd,
       const std::map<BinaryDataRef, std::shared_ptr<MempoolObject>>& mempool)
    {
       Tx tx(rawTx);
@@ -55,10 +52,10 @@ namespace
 
          auto prevHash = outpoint.getTxHash();
          try {
-            auto prevTx = getFullTxCopy(iface, bc, prevHash);
+            auto prevTx = getFullTxCopy(iface, bd, prevHash);
             auto txOut = prevTx.getTxOutCopy(outpoint.getTxOutIndex());
             UTXO utxo(
-               txOut.getValue(), prevTx.getTxHeight(),
+               txOut.getAmount(), UINT32_MAX,
                prevTx.getTxIndex(), outpoint.getTxOutIndex(),
                prevHash, txOut.getScriptRef());
 
@@ -85,7 +82,7 @@ namespace
          auto txOutCopy = zcTx.getTxOutCopy(outpoint.getTxOutIndex());
          UTXO utxo;
          utxo.unserializeRaw(txOutCopy.serializeRef());
-         utxo.txOutIndex_ = outpoint.getTxOutIndex();
+         utxo.txOutIndex = outpoint.getTxOutIndex();
 
          auto& idMap = utxoMap[outpoint.getTxHash()];
          idMap.emplace(outpoint.getTxOutIndex(), utxo);
@@ -186,7 +183,7 @@ std::map<unsigned, BinaryData> NodeUnitTest::mineNewBlock(
 {
    auto diffBits = BtcUtils::convertDoubleToDiffBits(diff);
    if (header_.prevHash_.empty()) {
-      auto top = blockchain_->top();
+      auto top = bdm->blockchain()->top();
       header_.prevHash_ = top->getThisHash().toBinaryData();
       header_.timestamp_ = top->getTimestamp();
       header_.diffBits_  = diffBits;
@@ -332,7 +329,7 @@ std::map<unsigned, BinaryData> NodeUnitTest::mineNewBlock(
          /* append to blocks data file */
 
          //get file stream
-         auto lastFilePath = filesPtr_->getLastFilePath();
+         auto lastFilePath = bdm_->blockFiles()->getLastFilePath();
          auto fStream = std::ofstream(lastFilePath, std::ios::binary | std::ios::app);
 
          //magic byte
@@ -562,38 +559,25 @@ void NodeUnitTest::evictZC(const BinaryData& txHash)
 }
 
 ////////
-void NodeUnitTest::setBlockchain(std::shared_ptr<Blockchain> bcPtr)
+void NodeUnitTest::setBDM(std::shared_ptr<BlockDataManager> bdm)
 {
-   blockchain_ = bcPtr;
-}
-
-void NodeUnitTest::setBlockFiles(std::shared_ptr<BlockFiles> filesPtr)
-{
-   filesPtr_ = filesPtr;
-}
-
-void NodeUnitTest::setIface(LMDBBlockDatabase* iface)
-{
-   iface_ = iface;
+   bdm_ = bdm;
 }
 
 ////////
 uint64_t NodeUnitTest::getFeeForTx(const Tx& tx) const
 {
-   if (iface_ == nullptr) {
-      throw std::runtime_error("null db ptr");
-   }
-
    //tally inputs value
    uint64_t inputsVal = 0;
    for (unsigned i=0; i<tx.getNumTxIn(); i++) {
       auto txin = tx.getTxInCopy(i);
       auto outpoint = txin.getOutPoint();
 
-      auto tx = getFullTxCopy(iface_, blockchain_, outpoint.getTxHash());
+      auto tx = getFullTxCopy(bdm_->getIFace(),
+         bdm_->blockchainData(), outpoint.getTxHash());
       try {
          auto txOutCopy = tx.getTxOutCopy(outpoint.getTxOutIndex());
-         inputsVal += txOutCopy.getValue();
+         inputsVal += txOutCopy.getAmount();
          continue;
       } catch (const std::exception&) {
          //could not find output in db, check mempool
@@ -606,14 +590,14 @@ uint64_t NodeUnitTest::getFeeForTx(const Tx& tx) const
 
       Tx mempoolTx(iter->second->rawTx);
       auto txout = mempoolTx.getTxOutCopy(outpoint.getTxOutIndex());
-      inputsVal += txout.getValue();
+      inputsVal += txout.getAmount();
    }
 
    //tally outputs value
    uint64_t outputsVal = 0;
    for (unsigned i=0; i<tx.getNumTxOut(); i++) {
       auto txout = tx.getTxOutCopy(i);
-      outputsVal += txout.getValue();
+      outputsVal += txout.getAmount();
    }
 
    //return diff
@@ -627,9 +611,6 @@ uint64_t NodeUnitTest::getFeeForTx(const Tx& tx) const
 void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
 {
    //need access to the db to check zc validity
-   if (iface_ == nullptr) {
-      throw std::runtime_error("uninitialized lmdb_wrapper ptr");
-   }
    std::unique_lock<std::mutex> lock(sendMessageMutex_);
 
    //mock the bitcoin node response to these sendMessage payloads
@@ -714,7 +695,8 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
 
                   //check sigs
                   if (checkSigs_) {
-                     if (verifyTxSigs(obj->rawTx, iface_, blockchain_, mempool_) !=
+                     if (verifyTxSigs(obj->rawTx, bdm_->getIFace(),
+                           bdm_->blockchainData(), mempool_) !=
                         (int)ArmoryErrorCodes::Success) {
                         break;
                      }
@@ -735,8 +717,8 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
                         continue;
                      }
 
-                     auto dbKey = iface_->getDBKeyForHash(outpoint.getTxHash());
-                     if (dbKey.empty()) {
+                     auto dbKey = bdm_->getIFace()->getDBKeyForHash(outpoint.getTxHash());
+                     if (!Types::isTxKeyValid(dbKey)) {
                         //there is no tx with this hash, outpoint is invalid
                         opFailure = true;
                         break;
@@ -749,12 +731,12 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
                      DBUtils::readBlkDataKeyNoPrefix(keyReader,
                         blockid, dup, stxo.txIndex);
 
-                     auto headerPtr = blockchain_->getHeaderById(blockid);
+                     auto headerPtr = bdm_->blockchain()->getHeaderById(blockid);
                      stxo.blockHeight = headerPtr->getBlockHeight();
                      stxo.txOutIndex = outpoint.getTxOutIndex();
 
                      try {
-                        iface_->getSpentness(stxo);
+                        bdm_->getIFace()->getSpentness(stxo);
                         if (stxo.isSpent()) {
                            opFailure = true;
                            break;
@@ -1013,7 +995,7 @@ void NodeRPC_UnitTest::stallNextZc(unsigned seconds)
 
 int NodeRPC_UnitTest::broadcastTx(const BinaryDataRef& rawTx, std::string&)
 {
-   auto iface = primaryNode_->iface_;
+   auto iface = primaryNode_->bdm_->getIFace();
    if (iface == nullptr) {
       throw std::runtime_error("null iface ptr");
    }
@@ -1034,12 +1016,10 @@ int NodeRPC_UnitTest::broadcastTx(const BinaryDataRef& rawTx, std::string&)
    //is this tx already mined?
    Tx tx(rawTx);
    auto dbKey = iface->getDBKeyForHash(tx.getThisHash());
-   if (dbKey.getSize() == 6) {
+   if (Types::isTxKeyValid(dbKey)) {
       StoredTxOut stxo;
-      BinaryRefReader keyReader(dbKey);
-      uint32_t blockid; uint8_t dup;
-      DBUtils::readBlkDataKeyNoPrefix(keyReader, blockid, dup, stxo.txIndex);
-      auto headerPtr = nodeUT->blockchain_->getHeaderById(blockid);
+      auto blockId = Types::getBlockIDFromTxKey(dbKey);
+      auto headerPtr = nodeUT->bdm_->blockchain()->getHeaderById(blockId);
       stxo.blockHeight = headerPtr->getBlockHeight();
 
       //are any of its outpouts spent?
@@ -1075,7 +1055,8 @@ int NodeRPC_UnitTest::broadcastTx(const BinaryDataRef& rawTx, std::string&)
 
    //check sigs
    if (nodeUT->checkSigs_) {
-      auto sigState = verifyTxSigs(rawTx, iface, nodeUT->blockchain_, nodeUT->mempool_);
+      auto sigState = verifyTxSigs(rawTx, iface,
+         nodeUT->bdm_->blockchainData(), nodeUT->mempool_);
       if (sigState != (int)ArmoryErrorCodes::Success) {
          return sigState;
       }
@@ -1102,19 +1083,15 @@ int NodeRPC_UnitTest::broadcastTx(const BinaryDataRef& rawTx, std::string&)
 
       //is it in the chain?
       auto dbKeyInput = iface->getDBKeyForHash(outpoint.getTxHash());
-      if (dbKeyInput.empty()) {
+      if (!Types::isTxKeyValid(dbKeyInput)) {
          //outpoint does not exist
          return (int)ArmoryErrorCodes::ZcBroadcast_Error;
       }
 
       //is this outpoint spent?
       StoredTxOut stxo;
-      BinaryRefReader keyReader(dbKeyInput);
-      uint32_t blockid; uint8_t dup;
-      DBUtils::readBlkDataKeyNoPrefix(keyReader,
-         blockid, dup, stxo.txIndex);
-
-      auto headerPtr = nodeUT->blockchain_->getHeaderById(blockid);
+      auto blockid = Types::getBlockIDFromTxKey(dbKeyInput);
+      auto headerPtr = nodeUT->bdm_->blockchain()->getHeaderById(blockid);
       stxo.blockHeight = headerPtr->getBlockHeight();
       stxo.txOutIndex = outpoint.getTxOutIndex();
 

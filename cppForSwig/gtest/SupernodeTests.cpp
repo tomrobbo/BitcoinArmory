@@ -24,6 +24,7 @@
 #include <Wallets/Assets.h>
 #include <Signer/ScriptSpender.h>
 #include <ZeroConf/Parser.h>
+#include <BlockchainDatabase/BlockchainData.h>
 
 #include "BDM_mainthread.h"
 #include "Server.h"
@@ -96,8 +97,7 @@ protected:
 
       auto nodePtr = dynamic_pointer_cast<NodeUnitTest>(
          Config::NetworkSettings::bitcoinNodes().first);
-      nodePtr->setBlockchain(theBDMt_->bdm()->blockchain());
-      nodePtr->setBlockFiles(theBDMt_->bdm()->blockFiles());
+      nodePtr->setBDM(theBDMt_->bdm());
       clients_ = new Clients(theBDMt_->bdm());
    }
 
@@ -587,10 +587,8 @@ TEST_F(BlockUtilsSuper, Load3BlocksPlus3)
    //grab a tx by hash for coverage
    const auto& txioHeightMap = ssh.subHistMap.rbegin()->second;
    const auto& txio = txioHeightMap.txioMap.rbegin()->second;
-   auto blockchain = theBDMt_->bdm()->blockchain();
    auto txKey = txio.getTxRefOfOutput().getDBKey();
-   auto header = blockchain->getHeaderForTxKey(txKey);
-   auto txhash = iface_->getTxHashForLdbKey(txKey, header);
+   auto txhash = theBDMt_->bdm()->blockchainData()->getTxHashForTxKey(txKey);
    auto txObj = DBTestUtils::getTxByHash(clients_, bdvID, txhash);
    EXPECT_EQ(txObj.getThisHash(), txhash);
 }
@@ -1164,9 +1162,7 @@ protected:
       auto nodePtr = dynamic_pointer_cast<NodeUnitTest>(
          Config::NetworkSettings::bitcoinNodes().first);
 
-      nodePtr->setBlockchain(theBDMt_->bdm()->blockchain());
-      nodePtr->setBlockFiles(theBDMt_->bdm()->blockFiles());
-      nodePtr->setIface(iface_);
+      nodePtr->setBDM(theBDMt_->bdm());
       clients_ = new Clients(theBDMt_->bdm());
    }
 
@@ -1716,10 +1712,7 @@ protected:
 
       rpcNode_ = std::dynamic_pointer_cast<NodeRPC_UnitTest>(
          Config::NetworkSettings::rpcNode());
-
-      nodePtr_->setIface(iface_);
-      nodePtr_->setBlockchain(theBDMt_->bdm()->blockchain());
-      nodePtr_->setBlockFiles(theBDMt_->bdm()->blockFiles());
+      nodePtr_->setBDM(theBDMt_->bdm());
    }
 
    /////////////////////////////////////////////////////////////////////////////

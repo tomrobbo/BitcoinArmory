@@ -72,13 +72,12 @@ private:
       BinaryData diffBits_;
    };
 
+   std::shared_ptr<BlockDataManager> bdm_;
    std::map<BinaryDataRef, std::shared_ptr<MempoolObject>> mempool_;
    std::map<BinaryData, std::map<unsigned, BinaryData>> spenderSet_;
    std::vector<UnitTestBlock> blocks_;
    std::atomic<unsigned> counter_;
 
-   std::shared_ptr<Armory::Blockchain> blockchain_ = nullptr;
-   std::shared_ptr<BlockFiles> filesPtr_ = nullptr;
    std::atomic<unsigned> skipZc_ = {0};
    std::mutex sendMessageMutex_;
    std::deque<unsigned> zcDelays_;
@@ -90,7 +89,6 @@ private:
 
    static Armory::Threading::BlockingQueue<BinaryData> watcherInvQueue_;
    std::thread watcherThread_;
-   LMDBBlockDatabase* iface_ = nullptr;
 
    std::set<BinaryData> seenHashes_;
    bool checkSigs_ = true;
@@ -127,9 +125,7 @@ public:
    uint64_t getFeeForTx(const Tx&) const;
 
    //set
-   void setBlockchain(std::shared_ptr<Armory::Blockchain>);
-   void setBlockFiles(std::shared_ptr<BlockFiles>);
-   void setIface(LMDBBlockDatabase*);
+   void setBDM(std::shared_ptr<BlockDataManager>);
 
    //virtuals
    void sendMessage(std::unique_ptr<Armory::Node::Payload>) override;
