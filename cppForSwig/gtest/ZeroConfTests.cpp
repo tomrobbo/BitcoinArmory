@@ -2750,12 +2750,7 @@ TEST_F(ZeroConfTests_FullNode, ChainZC_RBFchild_Test)
          std::make_shared<Signing::ResolverFeed_AssetWalletSingle>(assetWlt);
 
       //get utxo list for spend value
-      auto unspentVec = DBTestUtils::getRBFUTXOs(bdm, {
-         addrVec[0],
-         addrVec[1],
-         addrVec[2],
-         addrVec[3]}
-      );
+      auto unspentVec = DBTestUtils::getRBFUTXOs(bdm, {addrVec[0]});
 
       std::vector<UTXO> utxoVec;
       uint64_t tval = 0;
