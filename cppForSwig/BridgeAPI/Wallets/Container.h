@@ -47,7 +47,14 @@ namespace Armory
    {
       class TxIOCache;
       struct ChainData;
-      struct Amounts;
+
+      struct Amounts
+      {
+         const Types::Amount fullBalance;
+         const Types::Amount spendableBalance;
+         const Types::Amount unconfirmedBalance;
+         const size_t txCount;
+      };
 
       ////////
       struct OfflineException

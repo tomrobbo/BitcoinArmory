@@ -197,13 +197,13 @@ namespace {
          case BdvRequest::Which::GET_TXS_BY_HASH:
          {
             auto txHashList = request.getGetTxsByHash();
-            std::vector<Tx> results;
-            results.reserve(txHashList.size());
+            std::map<Types::TxKey, Tx> results;
             for (auto txHash : txHashList) {
                BinaryDataRef hashBdr(txHash.begin(), txHash.end());
                try {
-                  auto tx = bdv->getTxByHash(hashBdr);
-                  results.emplace_back(std::move(tx));
+                  auto txKey = bdv->getDB()->getDBKeyForHash(hashBdr);
+                  auto tx = bdv->getTxByKey(txKey);
+                  results.emplace(txKey, std::move(tx));
                } catch (const std::exception&) {
                   //could not get the tx, ignore
                   continue;
@@ -212,17 +212,16 @@ namespace {
 
             auto builder = ReplyBuilder::getNew(bdv);
             auto bdvReply = prepareReply(builder);
-            auto txHashResults = bdvReply.initGetTxsByHash(results.size());
-            for (unsigned i=0; i < results.size(); i++) {
-               const auto& tx = results[i];
-               auto txHashResult = txHashResults[i];
-               txHashResult.setBody(capnp::Data::Builder(
-                  (uint8_t*)tx.getPtr(), tx.getSize()
+            auto capnTxs = bdvReply.initGetTxsByHash(results.size());
+            unsigned txCount = 0;
+            for (const auto& tx : results) {
+               auto capnTx = capnTxs[txCount++];
+               capnTx.setBody(capnp::Data::Builder(
+                  (uint8_t*)tx.second.getPtr(), tx.second.getSize()
                ));
-               txHashResult.setBlockId(tx.getBlockId());
-               txHashResult.setIndex(tx.getTxIndex());
-               txHashResult.setIsChainZc(tx.isChained());
-               txHashResult.setIsRbf(tx.isRBF());
+               capnTx.setKey(tx.first);
+               capnTx.setIsChainedZc(tx.second.isChained());
+               capnTx.setIsRbf(tx.second.isRBF());
             }
             return builder;
          }
@@ -230,38 +229,47 @@ namespace {
          case BdvRequest::GET_TXS_BY_KEY:
          {
             auto txKeyList = request.getGetTxsByKey();
-            auto mempool = bdv->zcContainer()->getSnapshot();
-            std::vector<Tx> results;
-            results.reserve(txKeyList.size());
+            std::map<Types::TxKey, Tx> results;
+            std::vector<Types::TxKey> zcKeys;
+            zcKeys.reserve(txKeyList.size());
             for (auto txKey : txKeyList) {
+               if (Types::isThisATxIOKey(txKey)) {
+                  continue;
+               }
                if (!Types::isThisAZCKey(txKey)) {
                   try {
                      auto tx = bdv->getTxByKey(txKey);
-                     results.emplace_back(std::move(tx));
+                     results.emplace(txKey, std::move(tx));
                   } catch (const std::exception&) {
                      //could not get the tx, ignore
                   }
                } else {
-                  auto tx = mempool->getTxByKey(txKey);
+                  zcKeys.emplace_back(txKey);
+               }
+            }
+
+            if (!zcKeys.empty()) {
+               auto mempool = bdv->zcContainer()->getSnapshot();
+               for (auto zcKey : zcKeys) {
+                  auto tx = mempool->getTxByKey(zcKey);
                   if (tx != nullptr) {
-                     results.emplace_back(tx->getTxObj());
+                     results.emplace(zcKey, tx->getTxObj());
                   }
                }
             }
 
             auto builder = ReplyBuilder::getNew(bdv);
             auto bdvReply = prepareReply(builder);
-            auto txKeyResults = bdvReply.initGetTxsByKey(results.size());
-            for (unsigned i=0; i < results.size(); i++) {
-               const auto& tx = results[i];
-               auto txKeyResult = txKeyResults[i];
-               txKeyResult.setBody(capnp::Data::Builder(
-                  (uint8_t*)tx.getPtr(), tx.getSize()
+            auto capnTxs = bdvReply.initGetTxsByKey(results.size());
+            unsigned txCount = 0;
+            for (const auto& tx : results) {
+               auto capnTx = capnTxs[txCount++];
+               capnTx.setBody(capnp::Data::Builder(
+                  (uint8_t*)tx.second.getPtr(), tx.second.getSize()
                ));
-               txKeyResult.setBlockId(tx.getBlockId());
-               txKeyResult.setIndex(tx.getTxIndex());
-               txKeyResult.setIsChainZc(tx.isChained());
-               txKeyResult.setIsRbf(tx.isRBF());
+               capnTx.setKey(tx.first);
+               capnTx.setIsChainedZc(tx.second.isChained());
+               capnTx.setIsRbf(tx.second.isRBF());
             }
             return builder;
          }

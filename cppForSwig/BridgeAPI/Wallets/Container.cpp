@@ -207,7 +207,7 @@ void WalletContainer::synchronizeAddressChainState()
    auto account = wallet_->getAccountForID(accountId_);
 
    auto parseChainData = [&topIndexMap, &addressesToUpdate, accPtr=account]
-   (const std::map<Types::ScrAddr, Amounts>& amountMap)
+   (const std::map<Types::ScrAddr, Values>& amountMap)
    {
       for (const auto& amountPair : amountMap) {
          const auto& scrAddr = amountPair.first;
@@ -239,8 +239,8 @@ void WalletContainer::synchronizeAddressChainState()
       }
    };
 
-   parseChainData(chainDataMain_->amountMap);
-   parseChainData(chainDataZC_->amountMap);
+   parseChainData(chainDataMain_->valueMap);
+   parseChainData(chainDataZC_->valueMap);
 
    //compare effective top index with known top index
    std::shared_ptr<Wallets::IO::WalletIfaceTransaction> dbtx;
@@ -272,8 +272,39 @@ std::map<Types::ScrAddr, Amounts> WalletContainer::getAddrBalanceMap() const
    if (chainDataMain_ == nullptr) {
       return {};
    }
-   auto result = chainDataMain_->amountMap;
-   result.insert(chainDataZC_->amountMap.begin(), chainDataZC_->amountMap.end());
+   std::map<Types::ScrAddr, Amounts> result;
+   for (const auto& values : chainDataMain_->valueMap) {
+      auto zcIter = chainDataZC_->valueMap.find(values.first);
+      if (zcIter == chainDataZC_->valueMap.end()) {
+         result.emplace(values.first, Amounts{
+            static_cast<Types::Amount>(values.second.fullBalance),
+            static_cast<Types::Amount>(values.second.spendableBalance),
+            static_cast<Types::Amount>(values.second.unconfirmedBalance),
+            values.second.txCount
+         });
+      } else {
+         result.emplace(values.first, Amounts{
+            static_cast<Types::Amount>(
+               values.second.fullBalance + zcIter->second.fullBalance),
+            static_cast<Types::Amount>(
+               values.second.spendableBalance + zcIter->second.spendableBalance),
+            static_cast<Types::Amount>(
+               values.second.unconfirmedBalance + zcIter->second.unconfirmedBalance),
+            values.second.txCount + zcIter->second.txCount
+         });
+      }
+   }
+   for (const auto& values : chainDataZC_->valueMap) {
+      if (result.find(values.first) != result.end()) {
+         continue;
+      }
+      result.emplace(values.first, Amounts{
+         static_cast<Types::Amount>(values.second.fullBalance),
+         static_cast<Types::Amount>(values.second.spendableBalance),
+         static_cast<Types::Amount>(values.second.unconfirmedBalance),
+         values.second.txCount
+      });
+   }
    return result;
 }
 

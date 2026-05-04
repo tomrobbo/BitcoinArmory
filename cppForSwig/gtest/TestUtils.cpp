@@ -941,9 +941,8 @@ namespace DBTestUtils
       BinaryDataRef rawTx(body.begin(), body.end());
 
       Tx txobj(rawTx);
-      txobj.setBlockId(capnTx.getBlockId());
-      txobj.setTxIndex(capnTx.getIndex());
-      txobj.setChainedZC(capnTx.getIsChainZc());
+      txobj.setTxKey(capnTx.getKey());
+      txobj.setChainedZC(capnTx.getIsChainedZc());
       txobj.setRBF(capnTx.getIsRbf());
       return txobj;
    }
@@ -975,9 +974,8 @@ namespace DBTestUtils
       BinaryDataRef rawTx(body.begin(), body.end());
 
       Tx txobj(rawTx);
-      txobj.setBlockId(capnTx.getBlockId());
-      txobj.setTxIndex(capnTx.getIndex());
-      txobj.setChainedZC(capnTx.getIsChainZc());
+      txobj.setTxKey(capnTx.getKey());
+      txobj.setChainedZC(capnTx.getIsChainedZc());
       txobj.setRBF(capnTx.getIsRbf());
       return txobj;
    }

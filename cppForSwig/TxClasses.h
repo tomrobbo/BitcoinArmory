@@ -225,10 +225,9 @@ public:
    size_t getTxWeight(void) const;
 
    /////////////////////////////////////////////////////////////////////////////
+   void setTxKey(Armory::Types::TxKey);
    void setRBF(bool);
    void setChainedZC(bool);
-   void setBlockId(Armory::Types::BlockId) const;
-   void setTxIndex(Armory::Types::TxId) const;
    void setTxTime(uint32_t);
    void pushBackOpId(uint32_t) const;
 
@@ -239,20 +238,18 @@ private:
 
    const uint32_t version_;
    const uint32_t lockTime_;
-   uint32_t txTime_{0};
-
-   // Derived properties - we expect these to be set after construct/copy
-   mutable Armory::Types::TxHash thisHash_;
 
    // Will always create TxIns and TxOuts on-the-fly; only store the offsets
    const std::vector<size_t> offsetsTxIn_;
    const std::vector<size_t> offsetsTxOut_;
    const std::vector<size_t> offsetsWitness_;
 
+   uint32_t txTime_{0};
+   mutable Armory::Types::TxHash thisHash_;
+   Armory::Types::TxKey txKey_;
+
    bool isRBF_ = false;
    bool isChainedZc_ = false;
-   mutable Armory::Types::BlockId blockId_ = Armory::Types::INVALID_BLOCK_ID;
-   mutable Armory::Types::TxId txIndex_ = UINT16_MAX;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -40,7 +40,7 @@ Tx BlockchainData::getTx(const Types::TxKey& key) const
    return getTx(blockID, txId);
 }
 
-Tx BlockchainData::getTx(const Types::BlockId& blockID,  Types::TxId txId) const
+Tx BlockchainData::getTx(const Types::BlockId& blockID, Types::TxId txId) const
 {
    //grab header
    auto header = blockchain_->getHeaderById(blockID);
@@ -95,8 +95,7 @@ Tx BlockchainData::getTx(const Types::BlockId& blockID,  Types::TxId txId) const
 
       const auto& bctx = block->getTxns()[txId];
       Tx tx{bctx->data_, bctx->size_};
-      tx.setBlockId(blockID);
-      tx.setTxIndex(txId);
+      tx.setTxKey(Types::constructTxKey(blockID, txId));
       return tx;
    } catch (const BtcUtils::BlockDeserializingException&) {
       throw BlockchainDataException(std::format(

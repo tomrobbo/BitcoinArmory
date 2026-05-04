@@ -624,15 +624,16 @@ ChainData::ChainData(CacheResolveResult& data) :
       Types::Value unconfirmed = 0;
       std::set<Types::TxKey> addrTxKeys;
 
-      for (const auto& txio : addr.second) {
-         Types::Value val = static_cast<Types::Value>(txio->getAmount());
-         auto txKeyOfOutput = txio->getTxKeyOfOutput();
-         if (!data.isZC || txio->hasTxOutZC()) {
+      for (auto txioPtr : addr.second) {
+         const auto& txio = *txioPtr;
+         Types::Value val = static_cast<Types::Value>(txio.getAmount());
+         auto txKeyOfOutput = txio.getTxKeyOfOutput();
+         if (!data.isZC || txio.hasTxOutZC()) {
             addrTxKeys.emplace(txKeyOfOutput);
          }
-         if (txio->hasTxIn()) {
-            addrTxKeys.emplace(txio->getTxKeyOfInput());
-            if (txio->hasTxInZC() && !txio->hasTxOutZC()) {
+         if (txio.hasTxIn()) {
+            addrTxKeys.emplace(txio.getTxKeyOfInput());
+            if (txio.hasTxInZC() && !txio.hasTxOutZC()) {
                total -= val;
                spendable -= val;
                if (isUnconfirmed(txKeyOfOutput, data.topBlock, data.dbCache)) {
@@ -658,17 +659,15 @@ ChainData::ChainData(CacheResolveResult& data) :
       }
 
       //set address data
-      amountMap.emplace(addr.first, Amounts{
-         static_cast<Types::Amount>(total),
-         static_cast<Types::Amount>(spendable),
-         static_cast<Types::Amount>(unconfirmed),
+      valueMap.emplace(addr.first, Values{
+         total, spendable, unconfirmed,
          addrTxKeys.size()
       });
 
       //update wallet aggregate
-      totalBalance        += static_cast<Types::Amount>(total);
-      spendableBalance    += static_cast<Types::Amount>(spendable);
-      unconfirmedBalance  += static_cast<Types::Amount>(unconfirmed);
+      totalBalance        += total;
+      spendableBalance    += spendable;
+      unconfirmedBalance  += unconfirmed;
       allTxKeys.insert(addrTxKeys.begin(), addrTxKeys.end());
    }
    txCount = allTxKeys.size();

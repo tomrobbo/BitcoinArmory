@@ -56,10 +56,9 @@ struct Outpoint {
 
 struct Tx {
    body        @0 : Data;
-   blockId     @1 : UInt32;
-   index       @2 : UInt16;
-   isChainZc   @3 : Bool;
-   isRbf       @4 : Bool;
+   key         @1 : TxKey;
+   isChainedZc @2 : Bool;
+   isRbf       @3 : Bool;
 }
 
 ## bitcoin node & db status ##

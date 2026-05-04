@@ -658,15 +658,28 @@ uint32_t Tx::getTxTime() const
    return txTime_;
 }
 
-Types::BlockId Tx::getBlockId() const
+////////
+void Tx::setTxKey(Types::TxKey key)
 {
-   return blockId_;
+   txKey_ = key;
 }
 
+Types::BlockId Tx::getBlockId() const
+{
+   if (!Types::isThisAZCKey(txKey_)) {
+      return Types::getBlockIDFromTxKey(txKey_);
+   } else {
+      return Types::INVALID_BLOCK_ID;
+   }
+}
 
 Types::TxId Tx::getTxIndex() const
 {
-   return txIndex_;
+   if (!Types::isThisAZCKey(txKey_)) {
+      return Types::getTxIndexFromTxKey(txKey_);
+   } else {
+      return UINT16_MAX;
+   }
 }
 
 ////////
@@ -694,16 +707,6 @@ void Tx::setRBF(bool isTrue)
 void Tx::setChainedZC(bool isTrue)
 {
    isChainedZc_ = isTrue;
-}
-
-void Tx::setBlockId(Types::BlockId blockId) const
-{
-   blockId_ = blockId;
-}
-
-void Tx::setTxIndex(Types::TxId index) const
-{
-   txIndex_ = index;
 }
 
 void Tx::setTxTime(uint32_t txtime)
@@ -831,7 +834,7 @@ size_t Tx::getTxWeight() const
 ////////
 Types::TxKey Tx::getDBKey() const
 {
-   return Types::constructTxKey(blockId_, txIndex_);
+   return txKey_;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

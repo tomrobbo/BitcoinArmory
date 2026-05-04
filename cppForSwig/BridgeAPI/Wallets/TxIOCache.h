@@ -57,23 +57,23 @@ namespace Armory
       };
 
       //////////////////////////////////////////////////////////////////////////
-      struct Amounts
+      struct Values
       {
-         const Types::Amount fullBalance;
-         const Types::Amount spendableBalance;
-         const Types::Amount unconfirmedBalance;
+         const Types::Value fullBalance;
+         const Types::Value spendableBalance;
+         const Types::Value unconfirmedBalance;
          const size_t txCount;
       };
 
       struct ChainData
       {
          const std::map<Types::TxIOKey, TxIOPairUint> txioMap;
-         std::map<Types::ScrAddr, Amounts> amountMap;
+         std::map<Types::ScrAddr, Values> valueMap;
 
-         Types::Amount totalBalance       = 0;
-         Types::Amount spendableBalance   = 0;
-         Types::Amount unconfirmedBalance = 0;
-         size_t txCount                   = 0;
+         Types::Value totalBalance       = 0;
+         Types::Value spendableBalance   = 0;
+         Types::Value unconfirmedBalance = 0;
+         size_t txCount                  = 0;
 
          ChainData(CacheResolveResult&);
       };

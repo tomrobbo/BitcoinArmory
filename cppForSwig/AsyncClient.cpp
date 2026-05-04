@@ -273,9 +273,8 @@ namespace {
          BinaryDataRef rawTx(body.begin(), body.end());
          try {
             auto txObj = std::make_shared<Tx>(rawTx);
-            txObj->setBlockId(capnTx.getBlockId());
-            txObj->setTxIndex(capnTx.getIndex());
-            txObj->setChainedZC(capnTx.getIsChainZc());
+            txObj->setTxKey(capnTx.getKey());
+            txObj->setChainedZC(capnTx.getIsChainedZc());
             txObj->setRBF(capnTx.getIsRbf());
 
             result.emplace(txObj->getThisHash(), std::move(txObj));
@@ -294,9 +293,8 @@ namespace {
          BinaryDataRef rawTx(body.begin(), body.end());
          try {
             auto& txObj = result.emplace_back(Tx{rawTx});
-            txObj.setBlockId(capnTx.getBlockId());
-            txObj.setTxIndex(capnTx.getIndex());
-            txObj.setChainedZC(capnTx.getIsChainZc());
+            txObj.setTxKey(capnTx.getKey());
+            txObj.setChainedZC(capnTx.getIsChainedZc());
             txObj.setRBF(capnTx.getIsRbf());
          } catch (const BtcUtils::BlockDeserializingException&) {}
       }

@@ -725,24 +725,16 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
                      }
 
                      //check spentness for this outpoint
-                     StoredTxOut stxo;
-                     BinaryRefReader keyReader(dbKey);
-                     uint32_t blockid; uint8_t dup;
-                     DBUtils::readBlkDataKeyNoPrefix(keyReader,
-                        blockid, dup, stxo.txIndex);
-
-                     auto headerPtr = bdm_->blockchain()->getHeaderById(blockid);
-                     stxo.blockHeight = headerPtr->getBlockHeight();
-                     stxo.txOutIndex = outpoint.getTxOutIndex();
-
-                     try {
-                        bdm_->getIFace()->getSpentness(stxo);
-                        if (stxo.isSpent()) {
+                     auto txioKey = Types::constructTxIOKeyFromTxKey(
+                        dbKey, outpoint.getTxOutIndex());
+                     auto spenderKey = bdm_->getIFace()->getTxInHistoryForTxOutKey(txioKey);
+                     if (Types::isTxIOKeyValid(spenderKey)) {
+                        auto blockId = Types::getBlockIDFromTxKey(spenderKey);
+                        auto header = bdm_->blockchain()->getHeaderById(blockId);
+                        if (header->isMainBranch()) {
                            opFailure = true;
                            break;
                         }
-                     } catch (const LmdbWrapperException&) {
-                        //indulgent check in fullnode
                      }
                   }
 
