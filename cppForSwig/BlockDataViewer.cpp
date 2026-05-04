@@ -783,9 +783,11 @@ std::shared_ptr<ScrAddrFilter> BlockDataViewer::getSAF() const
 }
 
 std::map<Types::TxIOKey, TxIOPairUint> BlockDataViewer::getTxioForRange(
-   uint32_t from) const
+   uint32_t fromHeight) const
 {
-   return wallets_.getTxioForRange(from, getTopBlockHeight());
+   //convert height to blockId
+   auto header = bc_->getHeaderByHeight(fromHeight);
+   return wallets_.getTxioForRange(header->getUniqueID(), UINT32_MAX);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

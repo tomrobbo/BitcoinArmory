@@ -34,6 +34,8 @@ struct Header {
 struct NewBlockNotif {
    height            @0 : UInt32;
    branchHeight      @1 : UInt32;
+   invalidatedIds    @2 : List(UInt32);
+   newMainBranchIds  @3 : List(UInt32);
 }
 
 ## tx data ##

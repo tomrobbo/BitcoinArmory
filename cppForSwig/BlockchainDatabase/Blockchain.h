@@ -34,6 +34,9 @@ namespace Armory
       std::shared_ptr<BlockHeader> prevTop;
       std::shared_ptr<BlockHeader> newTop;
       std::shared_ptr<BlockHeader> reorgBranchPoint;
+
+      std::vector<Types::BlockId> invalidatedBlockIds;
+      std::vector<Types::BlockId> newMainBranchIds;
    };
 
    /////////////////////////////////////////////////////////////////////////////

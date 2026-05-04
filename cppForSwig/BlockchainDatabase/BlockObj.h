@@ -174,10 +174,10 @@ namespace Armory
       double            difficultySum_ = -1.0;
       size_t            blkFileOffset_ = SIZE_MAX;
       uint32_t          blockHeight_ = UINT32_MAX;
-      Types::BlockId uniqueID_ = Types::INVALID_BLOCK_ID;
+      Types::BlockId    uniqueID_ = Types::INVALID_BLOCK_ID;
       uint32_t          numTx_ = UINT32_MAX;
       uint32_t          numBlockBytes_; // includes header + nTx + sum(Tx)
-      Types::FileId  blkFileNum_ = Types::INVALID_FILE_ID;
+      Types::FileId     blkFileNum_ = Types::INVALID_FILE_ID;
       MerkleState       checkState_ = MerkleState::Unchecked;
 
       //only useful to write header on disk the one time

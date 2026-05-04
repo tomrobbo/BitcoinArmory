@@ -281,19 +281,49 @@ uint64_t ScrAddrObj::getTxioCountFromSSH(bool withZc) const
 std::map<Types::TxIOKey, TxIOPairUint> ScrAddrObj::getTxios(
    Types::BlockId start, Types::BlockId end) const
 {
+   //TODO: cache keys for unspent txouts so that we
+   //      don't have to fetch them every time
+
    //grab txio range
-   auto txOutData = db_->getTxOutHistoryForScrAddrKey(id_, start, end);
+   auto txOutData = db_->getTxOutHistoryForScrAddrKey(id_, 0, UINT32_MAX);
    auto txInKeys = db_->getTxInHistoryForTxOutHistory(txOutData);
 
-   //create txios
    std::map<Types::TxIOKey, TxIOPairUint> result;
-   for (auto& txopair : txOutData) {
+   auto addTxio = [this, &result](
+      const std::pair<Types::TxIOKey, TxOutData>& txopair,
+      Types::TxIOKey txInKey)
+   {
       auto emplaceResult = result.emplace(txopair.first,
          TxIOPairUint{scrAddr_, txopair.first, txopair.second.amount});
+      emplaceResult.first->second.setTxIn(txInKey);
+   };
+
+   //create txios
+   for (const auto& txopair : txOutData) {
+      //check txout does not go over end range
+      if (txopair.second.blockID > end) {
+         continue;
+      }
+
+      //if we have a spender, check it vs start and end range
+      Types::TxIOKey txInKey = Types::INVALID_TXIO_KEY;
       auto txInIter = txInKeys.find(txopair.first);
       if (txInIter != txInKeys.end()) {
-         emplaceResult.first->second.setTxIn(txInIter->second);
+         auto inBlockId = Types::getBlockIDFromTxKey(txInIter->second);
+         if (inBlockId >= start && inBlockId <= end) {
+            txInKey = txInIter->second;
+         }
       }
+
+      //finally, if txout is unspent, check it vs start range
+      if (!Types::isTxIOKeyValid(txInKey)) {
+         if (txopair.second.blockID < start) {
+            continue;
+         }
+      }
+
+      //if we got this far, this is an eligible txio
+      addTxio(txopair, txInKey);
    }
    return result;
 }

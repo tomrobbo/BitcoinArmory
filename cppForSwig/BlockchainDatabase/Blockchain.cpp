@@ -136,6 +136,29 @@ ReorganizationState Blockchain::organize(bool force, bool verbose)
    st.prevTopStillValid = (st.reorgBranchPoint == nullptr);
    st.hasNewTop = (st.prevTop != top());
    st.newTop = top();
+
+   if (!st.prevTopStillValid) {
+      std::unique_lock<std::mutex> lock(mu_);
+      auto header = st.prevTop;
+      while (header->getUniqueID() != st.reorgBranchPoint->getUniqueID()) {
+         st.invalidatedBlockIds.emplace_back(header->getUniqueID());
+         auto headerIter = headerSet_.find(header->prevHash_);
+         if (headerIter == headerSet_.end()) {
+            break;
+         }
+         header = *headerIter;
+      }
+
+      header = st.newTop;
+      while (header->getUniqueID() != st.reorgBranchPoint->getUniqueID()) {
+         st.newMainBranchIds.emplace_back(header->getUniqueID());
+         auto headerIter = headerSet_.find(header->prevHash_);
+         if (headerIter == headerSet_.end()) {
+            break;
+         }
+         header = *headerIter;
+      }
+   }
    return st;
 }
 

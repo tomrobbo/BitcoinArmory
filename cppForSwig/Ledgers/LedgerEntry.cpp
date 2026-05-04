@@ -65,7 +65,7 @@ namespace
             txInIter = txnTxIOMap.emplace(txInKey, TxData{}).first;
          }
          auto insertResult = txInIter->second.txios.emplace(
-            txio.second.getTxIOKeyOfInput(), &txio.second);
+            txio.second.getTxIOKeyOfOutput(), &txio.second);
          if (!insertResult.second) {
             insertResult.first->second = &txio.second;
          }
@@ -107,7 +107,7 @@ namespace
 // LedgerEntry
 Entry::Entry(const std::string& ID,
    Types::Value val, uint32_t blkNum, const Types::TxHash& txHash,
-   Types::TxIOId idx, uint32_t txtime,
+   uint32_t idx, uint32_t txtime,
    std::set<Types::ScrAddr>& scrAddrSet,
    bool isCoinbase, bool isToSelf, bool isChange,
    bool isOptInRBF, bool isChainedZC) :
@@ -143,7 +143,7 @@ const Types::TxHash& Entry::getTxHash() const
    return txHash_;
 }
 
-Types::TxIOId Entry::getIndex() const
+uint32_t Entry::getIndex() const
 {
    return index_;
 }
@@ -265,7 +265,7 @@ std::map<Types::TxKey, Entry> Ledgers::computeLedgerMap(
          continue;
       }
 
-      bool isZc         = txnData.zcIndex == UINT32_MAX ? true : false;
+      bool isZc         = txnData.zcIndex == UINT32_MAX ? false : true;
       bool isRBF        = false;
       bool usesWitness  = false;
       bool isChained    = false;

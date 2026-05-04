@@ -308,9 +308,9 @@ namespace AsyncClient
 
    public:
       Blockchain(const BlockDataViewer&);
-      void getHeadersByHash(const std::set<BinaryDataRef>&,
-         const std::function<void(ReturnMessage<HeaderVec>)>&);
       void getHeadersByHeight(const std::set<unsigned>&,
+         const std::function<void(ReturnMessage<HeaderVec>)>&);
+      void getHeadersById(const std::set<Armory::Types::BlockId>&,
          const std::function<void(ReturnMessage<HeaderVec>)>&);
    };
 

@@ -73,7 +73,7 @@ namespace DBClientClasses
       bool           isMainBranch;
 
       BlockHeader(BinaryDataRef, BinaryDataRef,
-         Armory::Types::BlockId,
+         Armory::Types::BlockId, bool,
          uint32_t, uint32_t, uint32_t, uint32_t);
    };
 
@@ -175,24 +175,31 @@ struct BDV_Error_Struct
 
 class NewBlockNotif
 {
+   using BlockIdVec = std::vector<Armory::Types::BlockId>;
+
 private:
    uint32_t height_ = UINT32_MAX;
    uint32_t branchHeight_ = UINT32_MAX;
+   BlockIdVec invalidatedBlockIds_;
+   BlockIdVec newMainBranchBlockIds_;
 
 public:
-   NewBlockNotif(uint32_t, uint32_t);
+   NewBlockNotif(uint32_t, uint32_t, BlockIdVec, BlockIdVec);
 
    bool isValid(void) const;
    bool isReorg(void) const;
    uint32_t getHeight(void) const;
    uint32_t getBranchHeight(void) const;
+
+   const BlockIdVec& invalidatedBlockIds(void) const;
+   const BlockIdVec& newMainBranchBlockIds(void) const;
 };
 
 struct BdmNotification
 {
    const BDMAction action;
 
-   NewBlockNotif newBlock{UINT32_MAX, UINT32_MAX};
+   NewBlockNotif newBlock{UINT32_MAX, UINT32_MAX, {}, {}};
 
    std::vector<TxIOPairUint> txios;
    std::set<Armory::Types::TxHash> invalidatedZcHashes;

@@ -83,10 +83,10 @@ void initLibrary()
 ///////////////////////////////////////////////////////////////////////////////
 // BlockHeader
 BlockHeader::BlockHeader(BinaryDataRef thishash, BinaryDataRef prevhash,
-   Types::BlockId blockId, uint32_t height,
+   Types::BlockId blockId, bool ismain, uint32_t height,
    uint32_t time, uint32_t size, uint32_t ntx) :
    thisHash{thishash}, prevHash{prevhash},
-   blockId{blockId}, blockHeight{height},
+   blockId{blockId}, isMainBranch(ismain), blockHeight{height},
    timestamp{time}, blockSize{size}, numTxs{ntx}
 {}
 
@@ -225,14 +225,26 @@ bool RemoteCallback::processNotifications(
          {
             auto newblock = notif.getNewBlock();
             auto height = newblock.getHeight();
-            if (height != 0)
-            {
+            if (height != 0) {
+               std::vector<Armory::Types::BlockId> invalidatedIds;
+               std::vector<Armory::Types::BlockId> newMainIds;
+               auto branchHeight = newblock.getBranchHeight();
+               if (branchHeight != UINT32_MAX) {
+                  for (const auto& blockId : newblock.getInvalidatedIds()) {
+                     invalidatedIds.emplace_back(blockId);
+                  }
+                  for (const auto& blockId : newblock.getNewMainBranchIds()) {
+                     newMainIds.emplace_back(blockId);
+                  }
+               }
+
+
                BdmNotification bdmNotif(BDMAction_NewBlock);
                bdmNotif.newBlock = NewBlockNotif{
-                  height, newblock.getBranchHeight()};
+                  height, branchHeight,
+                  std::move(invalidatedIds), std::move(newMainIds)};
                run(std::move(bdmNotif));
             }
-
             break;
          }
 
@@ -304,7 +316,7 @@ bool RemoteCallback::processNotifications(
             BdmNotification bdmNotif(BDMAction_Ready);
             auto newBlock = notif.getReady();
             bdmNotif.newBlock = NewBlockNotif{
-               newBlock.getHeight(), newBlock.getBranchHeight()};
+               newBlock.getHeight(), newBlock.getBranchHeight(), {}, {}};
             run(std::move(bdmNotif));
             break;
          }
@@ -479,8 +491,11 @@ void BDV_Error_Struct::deserialize(const BinaryData& data)
 
 ////////////////////////////////////////////////////////////////////////////////
 // NewBlockNotif
-NewBlockNotif::NewBlockNotif(uint32_t hgt, uint32_t branch) :
-   height_(hgt), branchHeight_(branch)
+NewBlockNotif::NewBlockNotif(uint32_t hgt, uint32_t branch,
+   BlockIdVec invalidIds, BlockIdVec mainIds) :
+   height_(hgt), branchHeight_(branch),
+   invalidatedBlockIds_{std::move(invalidIds)},
+   newMainBranchBlockIds_{std::move(mainIds)}
 {}
 
 bool NewBlockNotif::isValid() const
@@ -507,4 +522,14 @@ uint32_t NewBlockNotif::getBranchHeight() const
       throw std::runtime_error("not a reorg!");
    }
    return branchHeight_;
+}
+
+const NewBlockNotif::BlockIdVec& NewBlockNotif::invalidatedBlockIds() const
+{
+   return invalidatedBlockIds_;
+}
+
+const NewBlockNotif::BlockIdVec& NewBlockNotif::newMainBranchBlockIds() const
+{
+   return newMainBranchBlockIds_;
 }

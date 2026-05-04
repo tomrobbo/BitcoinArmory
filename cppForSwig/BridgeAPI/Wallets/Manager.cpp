@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2016-2025, goatpig                                          //
+//  Copyright (C) 2016-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -360,6 +360,7 @@ std::shared_ptr<WalletContainer> WalletManager::addAccount(
       wltIter = wallets_.emplace(wltPtr->getID(),
          std::map<Wallets::AddressAccountId, std::shared_ptr<WalletContainer>>{}).first;
    }
+   auto filterIter = mainLedgerFilter_.emplace(wltPtr->getID(), AAIdSet{}).first;
 
    auto accIter = wltIter->second.find(accId);
    if (accIter != wltIter->second.end()) {
@@ -380,6 +381,7 @@ std::shared_ptr<WalletContainer> WalletManager::addAccount(
    wltCont->setWalletPtr(wltPtr, accId);
    wltIter->second.emplace(accId, wltCont);
    walletsByDbId_.emplace(wltCont->getDbId(), wltCont);
+   filterIter->second.emplace(accId);
 
    //return it
    return wltCont;

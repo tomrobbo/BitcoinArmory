@@ -385,8 +385,8 @@ namespace {
 
          case BdvRequest::Which::GET_TXIOS:
          {
-            auto from = request.getGetTxios();
-            auto txioMap = bdv->getTxioForRange(from);
+            auto fromHeight = request.getGetTxios();
+            auto txioMap = bdv->getTxioForRange(fromHeight);
             auto zcTxioMap = bdv->getZcTxios();
 
             auto builder = ReplyBuilder::getNew(bdv);
@@ -799,6 +799,50 @@ namespace {
                capnHeader.setBlockSize(header->getBlockSize());
                capnHeader.setNumTxs(header->getNumTx());
                capnHeader.setHeight(header->getBlockHeight());
+               capnHeader.setBlockId(header->getUniqueID());
+               capnHeader.setMainBranch(header->isMainBranch());
+            }
+            break;
+         }
+
+         case StaticRequest::Which::GET_HEADERS_BY_ID:
+         {
+            auto bcPtr = clients->bdm()->blockchain();
+            if (bcPtr == nullptr) {
+               reply.setSuccess(false);
+               reply.setError("invalid bcPtr");
+               break;
+            }
+
+            auto headersRequest = request.getGetHeadersById();
+            std::vector<std::shared_ptr<BlockHeader>> headers;
+            headers.reserve(headersRequest.size());
+            for (const auto blockId : headersRequest) {
+               try {
+                  auto header = bcPtr->getHeaderById(blockId);
+                  headers.emplace_back(std::move(header));
+               } catch (const std::exception&) {
+                  continue;
+               }
+            }
+
+            auto capnHeaders = staticReply.initGetHeadersById(headers.size());
+            unsigned i = 0;
+            for (const auto& header : headers) {
+               auto capnHeader = capnHeaders[i++];
+               const auto& thisHash = header->getThisHash();
+               capnHeader.setThisHash(capnp::Data::Builder(
+                  (uint8_t*)thisHash.data, 32));
+               const auto& prevHash = header->getPrevHash();
+               capnHeader.setPrevHash(capnp::Data::Builder(
+                  (uint8_t*)prevHash.data, 32));
+
+               capnHeader.setTimestamp(header->getTimestamp());
+               capnHeader.setBlockSize(header->getBlockSize());
+               capnHeader.setNumTxs(header->getNumTx());
+               capnHeader.setHeight(header->getBlockHeight());
+               capnHeader.setBlockId(header->getUniqueID());
+               capnHeader.setMainBranch(header->isMainBranch());
             }
             break;
          }
@@ -1088,6 +1132,22 @@ void BDV_Server_Object::processNotification(
          if (!payload->reorgState.prevTopStillValid) {
             blockData.setBranchHeight(
                payload->reorgState.reorgBranchPoint->getBlockHeight());
+
+            //for reorgs, we have to provide the set of blocks ids
+            //that were moved on and off branch
+            unsigned idCount = 0;
+            auto invalidIds = blockData.initInvalidatedIds(
+               payload->reorgState.invalidatedBlockIds.size());
+            for (auto invalidId : payload->reorgState.invalidatedBlockIds) {
+               invalidIds.set(idCount++, invalidId);
+            }
+
+            idCount = 0;
+            auto validIds = blockData.initNewMainBranchIds(
+               payload->reorgState.newMainBranchIds.size());
+            for (auto validId : payload->reorgState.newMainBranchIds) {
+               validIds.set(idCount++, validId);
+            }
          } else {
             blockData.setBranchHeight(UINT32_MAX);
          }

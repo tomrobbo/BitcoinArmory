@@ -1994,9 +1994,9 @@ namespace {
       try {
          for (const auto& balPair : balances) {
             const auto& addrBal = addrMap.at(balPair.first);
-            EXPECT_EQ(addrBal[0], balPair.second[0]);
-            EXPECT_EQ(addrBal[1], balPair.second[1]);
-            EXPECT_EQ(addrBal[2], balPair.second[2]);
+            EXPECT_EQ(addrBal[0], balPair.second[0]) << balPair.first.toHexStr();
+            EXPECT_EQ(addrBal[1], balPair.second[1]) << balPair.first.toHexStr();
+            EXPECT_EQ(addrBal[2], balPair.second[2]) << balPair.first.toHexStr();
             EXPECT_EQ(addrBal[3], balPair.second[3]) << balPair.first.toHexStr();
          }
       } catch (const std::exception&) {
@@ -6706,7 +6706,7 @@ TEST_F(BridgeChainDataTests, AddBlocks_BCDE)
    for (unsigned i = 0; i < ledgersAt5Blocks.size(); i++) {
       EXPECT_TRUE(
          checkLedgers(ledgersAt5Blocks[i],
-         TestChain::ledgersBCDE[i]));
+         TestChain::ledgersBCDE[i])) << i;
    }
 }
 

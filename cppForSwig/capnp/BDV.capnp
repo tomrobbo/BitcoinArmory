@@ -18,8 +18,8 @@ struct StaticRequest {
       getNodeStatus        @6 : Void;
       getFeeSchedule       @7 : Text;
       getTopBlockHeight    @8 : Void;
-      getHeadersByHash     @9 : List(Types.Hash);
-      getHeadersByHeight   @10: List(UInt32);
+      getHeadersByHeight   @9 : List(UInt32);
+      getHeadersById       @10: List(UInt32);
       broadcast            @11: List(Data);
       rpcBroadcast         @12: Data;
    }
@@ -32,8 +32,8 @@ struct StaticReply {
       getNodeStatus        @1 : Types.NodeStatus;
       getFeeSchedule       @2 : List(Types.FeeSchedule);
       getTopBlockHeight    @3 : UInt32;
-      getHeadersByHash     @4 : List(Types.Header);
-      getHeadersByHeight   @5 : List(Types.Header);
+      getHeadersByHeight   @4 : List(Types.Header);
+      getHeadersById       @5 : List(Types.Header);
    }
 }
 

@@ -75,7 +75,7 @@ namespace Armory
       {
       public:
          Entry(const std::string&, Types::Value, uint32_t,
-            const Types::TxHash&, Types::TxIOId, uint32_t,
+            const Types::TxHash&, uint32_t, uint32_t,
             std::set<Types::ScrAddr>&,
             bool, bool, bool, bool, bool);
 
@@ -83,7 +83,7 @@ namespace Armory
          Types::Value      getValue(void) const;
          uint32_t          getBlockNum(void) const;
          const Types::TxHash& getTxHash(void) const;
-         Types::TxIOId     getIndex(void) const;
+         uint32_t          getIndex(void) const;
          uint32_t          getTxTime(void) const;
          bool              isCoinbase(void) const;
          bool              isSentToSelf(void) const;
@@ -106,7 +106,7 @@ namespace Armory
          Types::Value value_;
          uint32_t    blockNum_;
          Types::TxHash txHash_;
-         Types::TxIOId index_; // either a tx index, txout index or txin index
+         uint32_t    index_; // either a tx or a zc index
          uint32_t    txTime_ = 0;
          bool        isCoinbase_ = false;
          bool        isSentToSelf_ = false;

@@ -100,6 +100,7 @@ namespace Armory
             const std::vector<TxIOPairUint>&,
             const std::set<BinaryData>&, bool);
          std::vector<UTXO> getZcUTXOs(bool, const AddressFilter&) const;
+         void updateBlockBranching(const NewBlockNotif&);
 
       public:
          TxIOCache(void);

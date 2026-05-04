@@ -316,11 +316,10 @@ namespace {
             std::make_shared<DBClientClasses::BlockHeader>(
             BinaryDataRef{thisHash.begin(), thisHash.end()},
             BinaryDataRef{prevHash.begin(), prevHash.end()},
-            capnHeader.getBlockId(), capnHeader.getHeight(),
-            capnHeader.getTimestamp(),
+            capnHeader.getBlockId(), capnHeader.getMainBranch(),
+            capnHeader.getHeight(), capnHeader.getTimestamp(),
             capnHeader.getBlockSize(), capnHeader.getNumTxs()
          ));
-         headerPtr->isMainBranch = capnHeader.getMainBranch();
       }
       return result;
    }
@@ -1299,66 +1298,6 @@ AsyncClient::Blockchain::Blockchain(const BlockDataViewer& bdv) :
 {}
 
 ///////////////////////////////////////////////////////////////////////////////
-void AsyncClient::Blockchain::getHeadersByHash(
-   const std::set<BinaryDataRef>& hashes,
-   const std::function<void(ReturnMessage<HeaderVec>)>& callback)
-{
-   //create capnp request
-   capnp::MallocMessageBuilder message;
-   auto payload = message.initRoot<Codec::BDV::Request>();
-
-   auto staticRequest = payload.initStatic();
-   auto getHeaders = staticRequest.initGetHeadersByHash(hashes.size());
-   unsigned i=0;
-   for (const auto& hash : hashes) {
-      getHeaders.set(i++, capnp::Data::Builder(
-         (uint8_t*)hash.getPtr(), hash.getSize())
-      );
-   }
-
-   //serialize and add to payload
-   auto write_payload = toWritePayload(message);
-
-   //reply handling lambda
-   auto read_payload = std::make_shared<Socket_ReadPayload>();
-   read_payload->callbackReturn_ =
-      std::make_unique<ClientCallback>([callback](
-         const WebSocketMessagePartial& msg){
-         try {
-            //deser capnp reply
-            auto msgReader = msg.getReader();
-            auto capnReader = msgReader->getReader();
-            auto reply = capnReader->getRoot<Codec::BDV::Reply>();
-
-            //sanity checks
-            if (!reply.getSuccess()) {
-               throw ClientMessageError(reply.getError(), -1);
-            }
-
-            if (!reply.isStatic()) {
-               throw ClientMessageError("expected static reply", WRONG_REPLY_CLASS);
-            }
-
-            auto staticReply = reply.getStatic();
-            if (!staticReply.isGetHeadersByHash()) {
-               throw ClientMessageError(
-                  "expected getHeadersByHash reply", WRONG_REPLY_TYPE);
-            }
-
-            //convert to header
-            auto result = capnToHeaderVec(staticReply.getGetHeadersByHash());
-            callback(ReturnMessage<HeaderVec>{std::move(result)});
-         } catch (ClientMessageError& e) {
-            //something went wrong, set error message and fire callback
-            callback(ReturnMessage<HeaderVec>(e));
-         }
-      });
-
-   //push to server
-   sock_->pushPayload(std::move(write_payload), read_payload);
-}
-
-///////////////////////////////////////////////////////////////////////////////
 void AsyncClient::Blockchain::getHeadersByHeight(
    const std::set<unsigned>& heights,
    const std::function<void(ReturnMessage<HeaderVec>)>& callback)
@@ -1405,6 +1344,63 @@ void AsyncClient::Blockchain::getHeadersByHeight(
 
             //convert to header
             auto result = capnToHeaderVec(staticReply.getGetHeadersByHeight());
+            callback(ReturnMessage<HeaderVec>(std::move(result)));
+         } catch (ClientMessageError& e) {
+            //something went wrong, set error message and fire callback
+            callback(ReturnMessage<HeaderVec>(e));
+         }
+      });
+
+   //push to server
+   sock_->pushPayload(move(write_payload), read_payload);
+}
+
+void AsyncClient::Blockchain::getHeadersById(
+   const std::set<Types::BlockId>& blockIds,
+   const std::function<void(ReturnMessage<HeaderVec>)>& callback)
+{
+   //create capnp request
+   capnp::MallocMessageBuilder message;
+   auto payload = message.initRoot<Codec::BDV::Request>();
+
+   auto staticRequest = payload.initStatic();
+   auto getHeaders = staticRequest.initGetHeadersById(blockIds.size());
+   unsigned i = 0;
+   for (const auto& blockId : blockIds) {
+      getHeaders.set(i++, blockId);
+   }
+
+   //serialize and add to payload
+   auto write_payload = toWritePayload(message);
+
+   //reply handling lambda
+   auto read_payload = std::make_shared<Socket_ReadPayload>();
+   read_payload->callbackReturn_ =
+      std::make_unique<ClientCallback>([callback](
+         const WebSocketMessagePartial& msg){
+         try {
+            //deser capnp reply
+            auto msgReader = msg.getReader();
+            auto capnReader = msgReader->getReader();
+            auto reply = capnReader->getRoot<Codec::BDV::Reply>();
+
+            //sanity checks
+            if (!reply.getSuccess()) {
+               throw ClientMessageError(reply.getError(), -1);
+            }
+
+            if (!reply.isStatic()) {
+               throw ClientMessageError("expected static reply", WRONG_REPLY_CLASS);
+            }
+
+            auto staticReply = reply.getStatic();
+            if (!staticReply.isGetHeadersById()) {
+               throw ClientMessageError(
+                  "expected getHeadersById reply", WRONG_REPLY_TYPE);
+            }
+
+            //convert to header
+            auto result = capnToHeaderVec(staticReply.getGetHeadersById());
             callback(ReturnMessage<HeaderVec>(std::move(result)));
          } catch (ClientMessageError& e) {
             //something went wrong, set error message and fire callback

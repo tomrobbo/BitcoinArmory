@@ -45,7 +45,7 @@ uint32_t Context::getHeightForBlockId(Types::BlockId blockId) const
       return header->blockHeight;
    } catch (const std::out_of_range&) {
       LOGWARN << "no block for id " << blockId;
-      return Types::INVALID_BLOCK_ID;
+      return UINT32_MAX;
    }
 }
 
@@ -85,7 +85,6 @@ void DBCache::addHeaders(const std::vector<HeaderPtr>& headerVec)
       if (iter == headers.end()) {
          iter = headers.emplace(header->blockId, header).first;
       }
-      iter->second->isMainBranch = header->isMainBranch;
    }
 }
 
@@ -93,7 +92,9 @@ HeaderPtr DBCache::getHeaderForHeight(uint32_t bheight) const
 {
    for (const auto& hPair : headers) {
       if (bheight == hPair.second->blockHeight) {
-         return hPair.second;
+         if (hPair.second->isMainBranch) {
+            return hPair.second;
+         }
       }
    }
    return nullptr;

@@ -160,6 +160,28 @@ CacheResolveResult TxIOCache::resolveZC(const AddressFilter& filter) const
    return result;
 }
 
+////////
+void TxIOCache::updateBlockBranching(const NewBlockNotif& reorgNotif)
+{
+   if (!reorgNotif.isReorg()) {
+      return;
+   }
+
+   for (auto blockId : reorgNotif.invalidatedBlockIds()) {
+      auto iter = dbCache_->headers.find(blockId);
+      if (iter != dbCache_->headers.end()) {
+         iter->second->isMainBranch = false;
+      }
+   }
+
+   for (auto blockId : reorgNotif.newMainBranchBlockIds()) {
+      auto iter = dbCache_->headers.find(blockId);
+      if (iter != dbCache_->headers.end()) {
+         iter->second->isMainBranch = true;
+      }
+   }
+}
+
 bool TxIOCache::txKeyIsValid(const Types::TxKey& txKey) const
 {
    auto blockId = Types::getBlockIDFromTxKey(txKey);
@@ -181,7 +203,7 @@ uint32_t TxIOCache::update(
       return UINT32_MAX;
    }
 
-   NewBlockNotif blockNotif{UINT32_MAX, UINT32_MAX};
+   NewBlockNotif blockNotif{UINT32_MAX, UINT32_MAX, {}, {}};
    if (notif->type == NotifType::NEWBLOCK) {
       auto blockPtr =
          std::dynamic_pointer_cast<NotifStruct_NewBlock>(notif);
@@ -190,6 +212,7 @@ uint32_t TxIOCache::update(
    uint32_t fromHeight = 0;
    if (blockNotif.isReorg()) {
       fromHeight = blockNotif.getBranchHeight() + 1;
+      updateBlockBranching(blockNotif);
    } else if (notif->type != NotifType::REFRESH) {
       fromHeight = lastKnownBlock_ + 1;
    }
@@ -208,14 +231,7 @@ uint32_t TxIOCache::update(
       UINT32_MAX : blockNotif.getHeight();
    auto missingStuff = addTxios(txios, fetchedHeight);
    auto missingTxKeys = std::move(missingStuff.first);
-   auto missingHeights = std::move(missingStuff.second);
-   if (blockNotif.isReorg()) {
-      missingHeights.clear();
-      for (unsigned i = blockNotif.getBranchHeight() + 1;
-         i <= blockNotif.getHeight(); i++) {
-         missingHeights.emplace(i);
-      }
-   }
+   auto missingBlockIds = std::move(missingStuff.second);
 
    //2. missing txs
    auto promTxs = std::make_shared<std::promise<std::vector<Tx>>>();
@@ -230,7 +246,7 @@ uint32_t TxIOCache::update(
       std::promise<std::vector<std::shared_ptr<DBClientClasses::BlockHeader>>>>();
    auto futHeaders = promHeader->get_future();
    AsyncClient::Blockchain bc{*bdvPtr};
-   bc.getHeadersByHeight(missingHeights, [prom = promHeader]
+   bc.getHeadersById(missingBlockIds, [prom = promHeader]
       (ReturnMessage<std::vector<std::shared_ptr<DBClientClasses::BlockHeader>>> result) {
          prom->set_value(result.get());
       }
@@ -390,7 +406,7 @@ TxIOCache::addTxios(
             continue;
          }
          addKey(txio.getTxKeyOfInput());
-         spentTxios_.emplace(txio.getTxIOKeyOfOutput(), std::move(txio));
+         spentTxios_.emplace(txio.getTxIOKeyOfInput(), std::move(txio));
       } else if (!txio.hasTxOutZC()) {
          unspentTxios_.emplace(txio.getTxIOKeyOfOutput(), std::move(txio));
       }
@@ -585,7 +601,6 @@ void CacheResolveResult::addTxio(const Types::TxIOKey& key,
 {
    auto emplaceResult = txioMap.emplace(key, txio);
    if (!emplaceResult.second) {
-      std::cout << "txio merge" << std::endl;
       emplaceResult.first->second.merge(txio);
    }
    auto addrIter = addrTxioMap.find(addr);
