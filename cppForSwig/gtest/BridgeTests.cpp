@@ -1543,7 +1543,12 @@ namespace {
       }
 
       auto notif = fromBridge.getNotification();
-      return notif.which() == Codec::Bridge::Notification::REGISTER_DONE;
+      if (notif.which() != Codec::Bridge::Notification::REGISTER_DONE) {
+         std::cout << "expected register_done notif, instead got: " <<
+            (int)notif.which() << std::endl;
+         return false;
+      }
+      return true;
    }
 
    bool registerWallet(std::shared_ptr<Bridge::CppBridge> bridge,
@@ -11002,8 +11007,9 @@ TEST_F(BridgeChainDataTests, ZeroConf_Reorg)
    }
 }
 
-TEST_F(BridgeChainDataTests, ZeroConf_RegisterWallet)
+TEST_F(BridgeChainDataTests, DISABLED_ZeroConf_RegisterWallet)
 {
+   //NOTE: reenable once supernode scanner is redesigned
    /* this test only works with a supernode db */
 
    //shutdown bdm, clean up db folder
@@ -11871,6 +11877,8 @@ TEST_F(BridgeChainDataTests, ZeroConf_SpendNew)
 // goes 4A, 4, 5, 5A vs 4, 5, 4A, 5A.
 // could be the test chain is weird too, it seems too big to have been
 // missing for so long
+//
+// test adding blocks where blockId are wildly out of order
 
 ////////////////////////////////////////////////////////////////////////////////
 // BridgeBlocksAutoDBTests

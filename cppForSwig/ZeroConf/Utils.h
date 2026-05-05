@@ -263,7 +263,7 @@ namespace Armory
 
          std::shared_ptr<const ParsedTx> getTxByKey(Types::TxKey) const;
          std::shared_ptr<const ParsedTx> getTxByHash(const Types::TxHash&) const;
-         TxOut getTxOutCopy(Types::TxKey, uint16_t) const;
+         TxOut getTxOutCopy(Types::TxKey, Types::TxIOId) const;
 
          Types::TxKey getKeyForHash(const Types::TxHash&) const;
          const Types::TxHash& getHashForKey(Types::TxKey) const;

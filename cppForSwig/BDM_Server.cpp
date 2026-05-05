@@ -198,6 +198,7 @@ namespace {
          {
             auto txHashList = request.getGetTxsByHash();
             std::map<Types::TxKey, Tx> results;
+            std::set<Types::TxHash> possibleZcHashes;
             for (auto txHash : txHashList) {
                BinaryDataRef hashBdr(txHash.begin(), txHash.end());
                try {
@@ -205,8 +206,22 @@ namespace {
                   auto tx = bdv->getTxByKey(txKey);
                   results.emplace(txKey, std::move(tx));
                } catch (const std::exception&) {
-                  //could not get the tx, ignore
+                  //could not get the tx, maybe it's a zc?
+                  possibleZcHashes.emplace(hashBdr);
                   continue;
+               }
+            }
+
+            if (!possibleZcHashes.empty()) {
+               auto mempool = bdv->zcContainer()->getSnapshot();
+               for (const auto& txHash : possibleZcHashes) {
+                  auto zcKey = mempool->getKeyForHash(txHash);
+                  if (!Types::isTxKeyValid(zcKey)) {
+                     //we don't know this txhash, ignore
+                     continue;
+                  }
+                  auto zcTx = mempool->getTxByKey(zcKey);
+                  results.emplace(zcKey, zcTx->getTxObj());
                }
             }
 

@@ -41,7 +41,7 @@ namespace
 
    int verifyTxSigs(const BinaryData& rawTx, const LMDBBlockDatabase* iface,
       std::shared_ptr<BlockchainData> bd,
-      const std::map<BinaryDataRef, std::shared_ptr<MempoolObject>>& mempool)
+      const std::map<Types::TxHash, std::shared_ptr<MempoolObject>>& mempool)
    {
       Tx tx(rawTx);
       std::map<BinaryData, std::map<unsigned, UTXO>> utxoMap;
@@ -237,7 +237,7 @@ std::map<unsigned, BinaryData> NodeUnitTest::mineNewBlock(
 
       //grab all tx in the mempool, respect ordering
       std::vector<std::shared_ptr<MempoolObject>> mempoolV;
-      std::map<BinaryDataRef, std::shared_ptr<MempoolObject>> purgedMempool;
+      std::map<Types::TxHash, std::shared_ptr<MempoolObject>> purgedMempool;
       mempoolV.push_back(coinbaseObj);
       for (auto& obj : mempool_) {
          if (obj.second->staged) {
@@ -247,7 +247,7 @@ std::map<unsigned, BinaryData> NodeUnitTest::mineNewBlock(
             mempoolV.push_back(obj.second);
          } else {
             --obj.second->blocksUntilMined;
-            purgedMempool.emplace(obj.second->hash.getRef(), std::move(obj.second));
+            purgedMempool.emplace(obj.second->hash, std::move(obj.second));
          }
       }
 
@@ -635,14 +635,14 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
                case Node::Inv_Msg_Witness_Tx:
                {
                   //bail if we have seen this hash before
-                  BinaryData hashBd(&entry.hash[0], sizeof(entry.hash));
-                  if (!seenHashes_.insert(hashBd).second) {
+                  BinaryData thisTxHash{&entry.hash[0], sizeof(entry.hash)};
+                  if (!seenHashes_.insert(thisTxHash).second) {
                      break;
                   }
 
                   {
                      //or if we already have this tx
-                     auto mempoolIter = mempool_.find(hashBd.getRef());
+                     auto mempoolIter = mempool_.find(thisTxHash);
                      if (mempoolIter != mempool_.end()) {
                         break;
                      }
@@ -652,7 +652,7 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
                   {
                      //consume getDataMap entry
                      auto gdpMap = getDataPayloadMap_.get();
-                     auto iter = gdpMap->find(hashBd);
+                     auto iter = gdpMap->find(thisTxHash);
                      if (iter == gdpMap->end()) {
                         break;
                      }
@@ -662,7 +662,7 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
                         payloadTxSPtr);
 
                      //cleanup getdatapayload map
-                     getDataPayloadMap_.erase(hashBd);
+                     getDataPayloadMap_.erase(thisTxHash);
                   }
 
                   //bail if we have to skip a zc
@@ -674,8 +674,8 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
 
                   auto obj = std::make_shared<MempoolObject>();
                   auto rawTx = payloadTx->getRawTx();
-                  obj->rawTx = BinaryData(&rawTx[0], rawTx.size());
-                  obj->hash = hashBd;
+                  obj->rawTx = BinaryData{&rawTx[0], rawTx.size()};
+                  obj->hash = thisTxHash;
                   obj->order = counter_.fetch_add(1, std::memory_order_relaxed);
 
                   unsigned delay = 0;
@@ -744,29 +744,29 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
 
                   //check for RBFs & add to utxo set
                   bool replaceFailure = false;
-                  std::set<BinaryData> replacedHashes;
-                  for (unsigned i=0; i<tx.getNumTxIn(); i++) {
+                  std::set<Types::TxHash> replacedHashes;
+                  for (unsigned i = 0; i < tx.getNumTxIn(); i++) {
                      auto txin = tx.getTxInCopy(i);
                      auto outpoint = txin.getOutPoint();
                      auto hashIter = spenderSet_.find(outpoint.getTxHash());
 
                      if (hashIter == spenderSet_.end()) {
                         hashIter = spenderSet_.emplace(outpoint.getTxHash(),
-                           std::map<unsigned, BinaryData>()).first;
+                           std::map<Types::TxIOId, Types::TxHash>{}).first;
                      }
 
                      auto idIter = hashIter->second.find(outpoint.getTxOutIndex());
                      if (idIter == hashIter->second.end()) {
                         hashIter->second.emplace(
-                           outpoint.getTxOutIndex(), hashBd);
+                           outpoint.getTxOutIndex(), thisTxHash);
                         continue;
                      }
 
                      /*
-                     This outpoint is consumed by a zc already in the mempool, 
+                     This outpoint is consumed by a zc already in the mempool,
                      need to purge it
                      */
-                  
+
                      //grab the replaceable tx
                      auto replaceIter = mempool_.find(idIter->second);
                      if (replaceIter == mempool_.end()) {
@@ -799,18 +799,18 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
                            (char)ArmoryErrorCodes::P2PReject_InsufficientFee;
 
                         rejectPayload->extra_.resize(32);
-                        memcpy(&rejectPayload->extra_[0], hashBd.getPtr(), 32);
+                        memcpy(&rejectPayload->extra_[0], thisTxHash.getPtr(), 32);
 
                         processGetTx(std::move(rejectPayload));
                         replaceFailure = true;
                         break;
                      }
-                     
-                     //replace spender
-                     idIter->second = tx.getThisHash();
 
                      //flag replaced tx
-                     replacedHashes.insert(idIter->second);
+                     replacedHashes.emplace(idIter->second);
+
+                     //replace spender
+                     idIter->second = tx.getThisHash();
                   }
 
                   if (replaceFailure) {
@@ -819,7 +819,7 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
 
                   for (auto& hash : replacedHashes) {
                      //purge replaced ZCs
-                     auto txIter = mempool_.find(hash.getRef());
+                     auto txIter = mempool_.find(hash);
                      if (txIter == mempool_.end()) {
                         continue;
                      }
@@ -827,7 +827,7 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
                      Tx purgeTx(mempoolObj->rawTx);
 
                      //cleanup spender set
-                     for (unsigned i=0; i<purgeTx.getNumTxIn(); i++) {
+                     for (unsigned i = 0; i < purgeTx.getNumTxIn(); i++) {
                         auto txin = purgeTx.getTxInCopy(i);
                         auto op = txin.getOutPoint();
 
@@ -857,7 +857,7 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
                   mempool_.emplace(obj->hash.getRef(), obj);
 
                   //send out the inventory payload through the watcher
-                  watcherInvQueue_.push_back(std::move(hashBd));
+                  watcherInvQueue_.push_back(std::move(thisTxHash));
                   break;
                }
 

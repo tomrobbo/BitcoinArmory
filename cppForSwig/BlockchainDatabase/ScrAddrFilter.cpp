@@ -341,7 +341,7 @@ void ScrAddrFilter::run(std::shared_future<bool> bdmReadyFut)
             //if the returned addr map is empty, there's nothing else to do.
             auto newScrAddrMap = prepareRegistrationBatch(batchPtr);
             if (newScrAddrMap.empty()) {
-               return;
+               break;
             }
 
             /* BDM is initialized and maintenance thread is running, scan the batch */
@@ -371,7 +371,7 @@ void ScrAddrFilter::run(std::shared_future<bool> bdmReadyFut)
                std::unique_lock<std::mutex> lock(mergeLock_);
                auto sdbi = getSDBI();
                if (!sdbi.topScannedBlkHash.valid() && !sdbi.metaHash.valid()) {
-                  //edge case: main scrAddr db is viring, set top hash to
+                  //edge case: main scrAddr db is varying, set top hash to
                   //side scan one and proceed with address merge
                   sdbi.topScannedBlkHash = scannedHash;
                   auto tx = lmdb_->beginTransaction(DB_SELECT::SCRADDR, LMDB::Mode::ReadWrite);
@@ -400,7 +400,7 @@ void ScrAddrFilter::run(std::shared_future<bool> bdmReadyFut)
             if (!scannedHash.valid()) {
                //no, fire callback and exit thread
                batchPtr->callback({}, false);
-               return;
+               break;
             }
 
             //notify

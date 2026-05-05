@@ -290,8 +290,11 @@ public:
       const std::map<BinaryDataRef, std::set<unsigned>>&, bool) const;
    CombinedBalances getCombinedBalances(void) const;
 
-   std::map<Armory::Types::TxIOKey, TxIOPairUint> getTxioForRange(uint32_t) const;
-   std::map<BinaryData, std::shared_ptr<const TxIOPairUint>> getZcTxios(void) const;
+   //txios
+   std::map<Armory::Types::TxIOKey, TxIOPairUint>
+   getTxioForRange(uint32_t) const;
+   std::map<Armory::Types::TxIOKey, std::shared_ptr<const TxIOPairUint>>
+   getZcTxios(void) const;
 
 protected:
    static void unregisterAddresses(

@@ -73,8 +73,8 @@ private:
    };
 
    std::shared_ptr<BlockDataManager> bdm_;
-   std::map<BinaryDataRef, std::shared_ptr<MempoolObject>> mempool_;
-   std::map<BinaryData, std::map<unsigned, BinaryData>> spenderSet_;
+   std::map<Armory::Types::TxHash, std::shared_ptr<MempoolObject>> mempool_;
+   std::map<Armory::Types::TxHash, std::map<Armory::Types::TxIOId, Armory::Types::TxHash>> spenderSet_;
    std::vector<UnitTestBlock> blocks_;
    std::atomic<unsigned> counter_;
 

@@ -1232,7 +1232,7 @@ std::map<Types::TxIOKey, TxIOPairUint> WalletGroup::getTxioForRange(
    return result;
 }
 
-std::map<BinaryData, std::shared_ptr<const TxIOPairUint>>
+std::map<Types::TxIOKey, std::shared_ptr<const TxIOPairUint>>
 BlockDataViewer::getZcTxios() const
 {
    auto snapshot = zcContainer()->getSnapshot();
@@ -1240,7 +1240,7 @@ BlockDataViewer::getZcTxios() const
       return {};
    }
 
-   std::map<BinaryData, std::shared_ptr<const TxIOPairUint>> result;
+   std::map<Types::TxIOKey, std::shared_ptr<const TxIOPairUint>> result;
    auto addrSet = getAddrSet();
 
    for (const auto& addr : addrSet) {

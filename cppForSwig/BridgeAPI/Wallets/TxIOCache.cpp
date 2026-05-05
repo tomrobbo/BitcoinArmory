@@ -485,9 +485,14 @@ std::vector<UTXO> TxIOCache::getZcUTXOs(bool rbf,
       }
 
       auto txOut = tx.getTxOutCopy(txio.getIndexOfOutput());
-      auto header = dbCache_->headers.at(tx.getBlockId());
+
+      uint32_t height = UINT32_MAX;
+      if (!Types::isThisAZCKey(tx.getDBKey())) {
+         auto header = dbCache_->headers.at(tx.getBlockId());
+         height = header->blockHeight;
+      }
       result.emplace_back(UTXO{txio.getAmount(),
-         header->blockHeight, tx.getTxIndex(), txio.getIndexOfOutput(),
+         height, tx.getTxIndex(), txio.getIndexOfOutput(),
          tx.getThisHash(), txOut.getScript()
       });
    };
