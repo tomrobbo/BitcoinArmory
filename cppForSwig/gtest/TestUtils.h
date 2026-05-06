@@ -130,7 +130,7 @@ namespace DBTestUtils
    std::tuple<BinaryData, unsigned> waitOnSignal(
       Clients*, Armory::Types::BdvId, int);
    void waitOnBDMSignal(std::shared_ptr<BlockDataManager>, BDV_Action);
-   void waitOnBDMReady(Clients*, Armory::Types::BdvId);
+   void waitOnBDVReady(Clients*, Armory::Types::BdvId);
    void waitOnBDMError(std::shared_ptr<BlockDataManager>);
 
    std::tuple<BinaryData, unsigned> waitOnNewBlockSignal(Clients*, Armory::Types::BdvId);

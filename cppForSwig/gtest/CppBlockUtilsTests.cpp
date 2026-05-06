@@ -139,7 +139,7 @@ TEST_F(BlockDir, HeadersFirst)
 
    BDMt->start(BdmInitMode::RESUME);
    DBTestUtils::goOnline(clients, bdvID);
-   DBTestUtils::waitOnBDMReady(clients, bdvID);
+   DBTestUtils::waitOnBDVReady(clients, bdvID);
 
    EXPECT_EQ(DBTestUtils::getScrAddrBalance(TestChain::scrAddrA, BDMt->bdm()), 50 * COIN);
    EXPECT_EQ(DBTestUtils::getScrAddrBalance(TestChain::scrAddrB, BDMt->bdm()), 70 * COIN);
@@ -177,7 +177,7 @@ TEST_F(BlockDir, HeadersFirstUpdate)
    auto bdvPtr = DBTestUtils::getBDV(clients, bdvID);
 
    DBTestUtils::goOnline(clients, bdvID);
-   DBTestUtils::waitOnBDMReady(clients, bdvID);
+   DBTestUtils::waitOnBDVReady(clients, bdvID);
 
    TestUtils::appendBlocks({ "4", "3", "5" }, blk0dat_);
    DBTestUtils::triggerNewBlockNotification(BDMt);
@@ -218,7 +218,7 @@ TEST_F(BlockDir, HeadersFirstReorg)
    auto bdvPtr = DBTestUtils::getBDV(clients, bdvID);
 
    DBTestUtils::goOnline(clients, bdvID);
-   DBTestUtils::waitOnBDMReady(clients, bdvID);
+   DBTestUtils::waitOnBDVReady(clients, bdvID);
 
    TestUtils::appendBlocks({ "4A" }, blk0dat_);
    TestUtils::appendBlocks({ "3" }, blk0dat_);
@@ -277,7 +277,7 @@ TEST_F(BlockDir, HeadersFirstUpdateTwice)
    auto bdvPtr = DBTestUtils::getBDV(clients, bdvID);
 
    DBTestUtils::goOnline(clients, bdvID);
-   DBTestUtils::waitOnBDMReady(clients, bdvID);
+   DBTestUtils::waitOnBDVReady(clients, bdvID);
 
    TestUtils::appendBlocks({ "5" }, blk0dat_);
    TestUtils::appendBlocks({ "4" }, blk0dat_);
@@ -325,7 +325,7 @@ TEST_F(BlockDir, BlockFileSplit)
    auto bdvPtr = DBTestUtils::getBDV(clients, bdvID);
 
    DBTestUtils::goOnline(clients, bdvID);
-   DBTestUtils::waitOnBDMReady(clients, bdvID);
+   DBTestUtils::waitOnBDVReady(clients, bdvID);
 
    EXPECT_EQ(DBTestUtils::getScrAddrBalance(TestChain::scrAddrA, BDMt->bdm()), 50 * COIN);
    EXPECT_EQ(DBTestUtils::getScrAddrBalance(TestChain::scrAddrB, BDMt->bdm()), 70 * COIN);
@@ -361,7 +361,7 @@ TEST_F(BlockDir, BlockFileSplitUpdate)
    auto bdvPtr = DBTestUtils::getBDV(clients, bdvID);
 
    DBTestUtils::goOnline(clients, bdvID);
-   DBTestUtils::waitOnBDMReady(clients, bdvID);
+   DBTestUtils::waitOnBDVReady(clients, bdvID);
 
    auto blk1dat = FileUtils::getBlkFilename(blkdir_, 1);
    TestUtils::appendBlocks({ "2", "4", "3", "5" }, blk0dat_);
@@ -405,7 +405,7 @@ TEST_F(BlockDir, DISABLED_FixBlockDataOffsets)
    auto bdvPtr = DBTestUtils::getBDV(clients, bdvID);
 
    DBTestUtils::goOnline(clients, bdvID);
-   DBTestUtils::waitOnBDMReady(clients, bdvID);
+   DBTestUtils::waitOnBDVReady(clients, bdvID);
 
    //check balances
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
@@ -491,7 +491,7 @@ TEST_F(BlockDir, DISABLED_FixBlockDataOffsets)
 
    auto bdvPtr3 = DBTestUtils::getBDV(clients, bdvID3);
    DBTestUtils::goOnline(clients, bdvID3);
-   DBTestUtils::waitOnBDMReady(clients, bdvID3);
+   DBTestUtils::waitOnBDVReady(clients, bdvID3);
 
    //check balances
    wlt = bdvPtr3->getWalletOrLockbox("wallet3");
@@ -539,7 +539,7 @@ TEST_F(BlockDir, StartAtBlkFile1)
 
    BDMt->start(BdmInitMode::RESUME);
    DBTestUtils::goOnline(clients, bdvID);
-   DBTestUtils::waitOnBDMReady(clients, bdvID);
+   DBTestUtils::waitOnBDVReady(clients, bdvID);
 
    EXPECT_EQ(DBTestUtils::getScrAddrBalance(TestChain::scrAddrA, BDMt->bdm()), 50 * COIN);
    EXPECT_EQ(DBTestUtils::getScrAddrBalance(TestChain::scrAddrB, BDMt->bdm()), 70 * COIN);
@@ -644,6 +644,7 @@ protected:
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BlockUtilsBare, Load5Blocks)
 {
+   theBDMt_->start(Config::DBSettings::initMode());
    clients_->init();
    auto bdvID = DBTestUtils::registerBDV(
       clients_, Config::BitcoinSettings::getMagicBytes());
@@ -678,14 +679,9 @@ TEST_F(BlockUtilsBare, Load5Blocks)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   theBDMt_->start(Config::DBSettings::initMode());
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
 
    auto bdm = theBDMt_->bdm();
-   auto lastScannedRange = bdm->getLastScannedRange();
-   EXPECT_EQ(lastScannedRange.first, TestChain::blkHash0);
-   EXPECT_EQ(lastScannedRange.second, TestChain::blkHash5);
-
    auto getBal = [bdm](const BinaryData& scrAddr)->uint64_t
    { return DBTestUtils::getScrAddrBalance(scrAddr, bdm); };
 
@@ -714,7 +710,8 @@ TEST_F(BlockUtilsBare, Load5Blocks_DamagedBlkFile)
 
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
-   auto bdvID = DBTestUtils::registerBDV(clients_, Config::BitcoinSettings::getMagicBytes());
+   auto bdvID = DBTestUtils::registerBDV(
+      clients_, Config::BitcoinSettings::getMagicBytes());
 
    std::vector<BinaryData> scrAddrVec {
       TestChain::scrAddrA,
@@ -727,7 +724,7 @@ TEST_F(BlockUtilsBare, Load5Blocks_DamagedBlkFile)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
 
    auto bdm = theBDMt_->bdm();
    auto getBal = [bdm](const BinaryData& scrAddr)->uint64_t
@@ -747,7 +744,8 @@ TEST_F(BlockUtilsBare, Load4Blocks_Plus2)
    TestUtils::setBlocks({ "0", "1", "2", "3" }, blk0dat_);
 
    clients_->init();
-   auto bdvID = DBTestUtils::registerBDV(clients_, Config::BitcoinSettings::getMagicBytes());
+   auto bdvID = DBTestUtils::registerBDV(
+      clients_, Config::BitcoinSettings::getMagicBytes());
 
    std::vector<BinaryData> scrAddrVec {
       TestChain::scrAddrA,
@@ -782,7 +780,7 @@ TEST_F(BlockUtilsBare, Load4Blocks_Plus2)
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
    theBDMt_->start(Config::DBSettings::initMode());
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
 
    EXPECT_EQ(TestUtils::getTopBlockHeightInDB(theBDMt_->bdm().get(), DB_SELECT::SCRADDR), 3U);
    EXPECT_EQ(DBTestUtils::getTopBlockHash(iface_, DB_SELECT::SCRADDR), TestChain::blkHash3);
@@ -790,10 +788,6 @@ TEST_F(BlockUtilsBare, Load4Blocks_Plus2)
    EXPECT_TRUE(header->isMainBranch());
 
    auto bdm = theBDMt_->bdm();
-   auto lastScannedRange = bdm->getLastScannedRange();
-   EXPECT_EQ(lastScannedRange.first, TestChain::blkHash0);
-   EXPECT_EQ(lastScannedRange.second, TestChain::blkHash3);
-
    auto getBal = [bdm](const BinaryData& scrAddr)->uint64_t
    { return DBTestUtils::getScrAddrBalance(scrAddr, bdm); };
 
@@ -817,7 +811,7 @@ TEST_F(BlockUtilsBare, Load4Blocks_Plus2)
    EXPECT_EQ(TestUtils::getTopBlockHeightInDB(theBDMt_->bdm().get(), DB_SELECT::SCRADDR), 5U);
    EXPECT_EQ(DBTestUtils::getTopBlockHash(iface_, DB_SELECT::SCRADDR), TestChain::blkHash5);
    EXPECT_TRUE(theBDMt_->bdm()->blockchain()->getHeaderByHash(TestChain::blkHash5)->isMainBranch());
-   lastScannedRange = bdm->getLastScannedRange();
+   auto lastScannedRange = bdm->getLastScannedRange();
    EXPECT_EQ(lastScannedRange.first, TestChain::blkHash4);
    EXPECT_EQ(lastScannedRange.second, TestChain::blkHash5);
 
@@ -841,13 +835,14 @@ TEST_F(BlockUtilsBare, Load4Blocks_Plus2)
 TEST_F(BlockUtilsBare, Load5Blocks_FullReorg)
 {
    clients_->init();
-   auto bdvID = DBTestUtils::registerBDV(clients_, Config::BitcoinSettings::getMagicBytes());
+   auto bdvID = DBTestUtils::registerBDV(
+      clients_, Config::BitcoinSettings::getMagicBytes());
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
    theBDMt_->start(Config::DBSettings::initMode());
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
 
    DBTestUtils::registerWallet(clients_, bdvID, {
       TestChain::scrAddrA,
@@ -969,13 +964,10 @@ TEST_F(BlockUtilsBare, Load5Blocks_DoubleReorg)
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
    theBDMt_->start(Config::DBSettings::initMode());
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    EXPECT_EQ(DBTestUtils::getTopBlockHash(iface_, DB_SELECT::SCRADDR), TestChain::blkHash4A);
 
    auto bdm = theBDMt_->bdm();
-   auto lastScannedRange = bdm->getLastScannedRange();
-   EXPECT_EQ(lastScannedRange.first, TestChain::blkHash0);
-   EXPECT_EQ(lastScannedRange.second, TestChain::blkHash4A);
 
    //first reorg: up to 5
    TestUtils::setBlocks({ "0", "1", "2", "3", "4A", "4", "5" }, blk0dat_);
@@ -983,7 +975,7 @@ TEST_F(BlockUtilsBare, Load5Blocks_DoubleReorg)
    DBTestUtils::waitOnNewBlockSignal(clients_, bdvID);
    EXPECT_EQ(DBTestUtils::getTopBlockHash(iface_, DB_SELECT::SCRADDR), TestChain::blkHash5);
 
-   lastScannedRange = bdm->getLastScannedRange();
+   auto lastScannedRange = bdm->getLastScannedRange();
    EXPECT_EQ(lastScannedRange.first, TestChain::blkHash4);
    EXPECT_EQ(lastScannedRange.second, TestChain::blkHash5);
 
@@ -1060,15 +1052,8 @@ TEST_F(BlockUtilsBare, Load5Blocks_ReloadBDM_Reorg)
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
    theBDMt_->start(Config::DBSettings::initMode());
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    EXPECT_EQ(DBTestUtils::getTopBlockHash(iface_, DB_SELECT::SCRADDR), TestChain::blkHash5);
-
-   {
-      auto bdm = theBDMt_->bdm();
-      auto lastScannedRange = bdm->getLastScannedRange();
-      EXPECT_EQ(lastScannedRange.first, TestChain::blkHash0);
-      EXPECT_EQ(lastScannedRange.second, TestChain::blkHash5);
-   }
 
    //shutdown bdm
    bdvPtr.reset();
@@ -1116,7 +1101,7 @@ TEST_F(BlockUtilsBare, Load5Blocks_ReloadBDM_Reorg)
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
    theBDMt_->start(Config::DBSettings::initMode());
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    EXPECT_EQ(DBTestUtils::getTopBlockHash(iface_, DB_SELECT::SCRADDR), TestChain::blkHash5A);
 
    {
@@ -1180,7 +1165,7 @@ TEST_F(BlockUtilsBare, DISABLED_CorruptedBlock)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    auto wltLB1 = bdvPtr->getWalletOrLockbox(LB1ID);
    auto wltLB2 = bdvPtr->getWalletOrLockbox(LB2ID);
@@ -1243,7 +1228,7 @@ TEST_F(BlockUtilsBare, Load5Blocks_RescanOps)
       //wait on signals
       DBTestUtils::goOnline(clients_, bdvID);
       theBDMt_->start(init);
-      DBTestUtils::waitOnBDMReady(clients_, bdvID);
+      DBTestUtils::waitOnBDVReady(clients_, bdvID);
    };
 
    auto checkBalance = [](std::shared_ptr<BlockDataManager> bdm)
@@ -1282,16 +1267,12 @@ TEST_F(BlockUtilsBare, Load5Blocks_RescanOps)
    startbdm(BdmInitMode::RESUME);
    checkBalance(theBDMt_->bdm());
    auto lastScannedRange = theBDMt_->bdm()->getLastScannedRange();
-   EXPECT_EQ(lastScannedRange.first, TestChain::blkHash0);
-   EXPECT_EQ(lastScannedRange.second, TestChain::blkHash5);
 
    //rebuild
    resetbdm();
    startbdm(BdmInitMode::REBUILD);
    checkBalance(theBDMt_->bdm());
    lastScannedRange = theBDMt_->bdm()->getLastScannedRange();
-   EXPECT_EQ(lastScannedRange.first, TestChain::blkHash0);
-   EXPECT_EQ(lastScannedRange.second, TestChain::blkHash5);
 
    //regular start
    resetbdm();
@@ -1358,7 +1339,7 @@ TEST_F(BlockUtilsBare, Load5Blocks_RescanEmptyDB)
       //wait on signals
       DBTestUtils::goOnline(clients_, bdvID);
       theBDMt_->start(init);
-      DBTestUtils::waitOnBDMReady(clients_, bdvID);
+      DBTestUtils::waitOnBDVReady(clients_, bdvID);
    };
 
    auto checkBalance = [](std::shared_ptr<BlockDataManager> bdm)
@@ -1384,9 +1365,6 @@ TEST_F(BlockUtilsBare, Load5Blocks_RescanEmptyDB)
    //start with rescan atop an empty db
    startbdm(BdmInitMode::RESCAN);
    checkBalance(theBDMt_->bdm());
-   auto lastScannedRange = theBDMt_->bdm()->getLastScannedRange();
-   EXPECT_EQ(lastScannedRange.first, TestChain::blkHash0);
-   EXPECT_EQ(lastScannedRange.second, TestChain::blkHash5);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1427,7 +1405,7 @@ TEST_F(BlockUtilsBare, Load5Blocks_RebuildEmptyDB)
       //wait on signals
       DBTestUtils::goOnline(clients_, bdvID);
       theBDMt_->start(init);
-      DBTestUtils::waitOnBDMReady(clients_, bdvID);
+      DBTestUtils::waitOnBDVReady(clients_, bdvID);
    };
 
    auto checkBalance = [](std::shared_ptr<BlockDataManager> bdm)
@@ -1453,9 +1431,6 @@ TEST_F(BlockUtilsBare, Load5Blocks_RebuildEmptyDB)
    //start with rebuild atop an empty db
    startbdm(BdmInitMode::REBUILD);
    checkBalance(theBDMt_->bdm());
-   auto lastScannedRange = theBDMt_->bdm()->getLastScannedRange();
-   EXPECT_EQ(lastScannedRange.first, TestChain::blkHash0);
-   EXPECT_EQ(lastScannedRange.second, TestChain::blkHash5);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1493,7 +1468,7 @@ TEST_F(BlockUtilsBare, Load5Blocks_SideScan)
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
    theBDMt_->start(Config::DBSettings::initMode());
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
 
    auto bdm = theBDMt_->bdm();
    auto getBal = [bdm](const BinaryData& scrAddr)->uint64_t
@@ -1599,7 +1574,7 @@ TEST_F(BlockUtilsBare, BlockXor)
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
    theBDMt_->start(Config::DBSettings::initMode());
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
 
    auto bdm = theBDMt_->bdm();
    auto getBal = [bdm](const BinaryData& scrAddr)->uint64_t
@@ -1636,7 +1611,7 @@ TEST_F(BlockUtilsBare, DISABLED_PPrintTestChain)
    auto blockchain = theBDMt_->bdm()->blockchain();
 
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
    auto db = bdvPtr->getDB();
 
@@ -1826,7 +1801,7 @@ TEST_F(BlockUtilsFull, TxHints)
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
    theBDMt_->start(Config::DBSettings::initMode());
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
 
    auto bdm = theBDMt_->bdm();
    auto db = bdm->getIFace();

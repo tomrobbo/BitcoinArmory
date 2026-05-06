@@ -58,12 +58,14 @@ struct RegistrationBatch : public AddressBatch
 {
    using Callback = std::function<void(
       const std::vector<std::shared_ptr<AddrAndHash>>&, bool)>;
+
    const Callback callback;
    const bool isNew;
-   const std::set<Armory::Types::ScrAddr> scrAddrSet;
-   std::string walletID;
+   const std::vector<Armory::Types::ScrAddr> scrAddrVec;
+   const std::vector<std::string> walletIDs;
 
-   RegistrationBatch(std::set<Armory::Types::ScrAddr>, bool, const Callback&);
+   RegistrationBatch(const std::vector<std::string>&,
+      std::vector<Armory::Types::ScrAddr>, bool, const Callback&);
 };
 
 ////
@@ -162,7 +164,7 @@ private:
    void run(std::shared_future<bool>);
    AddrMap prepareRegistrationBatch(std::shared_ptr<RegistrationBatch>);
    std::vector<std::shared_ptr<AddrAndHash>> mergeAddresses(AddrMap, bool);
-   AddrMap assignScrAddrKeys(const std::set<Armory::Types::ScrAddr>&);
+   AddrMap assignScrAddrKeys(const std::vector<Armory::Types::ScrAddr>&);
 
    Armory::Hash32 computeMerkleRoot(void) const;
    void updateAddressMerkle(void);

@@ -1482,7 +1482,7 @@ TEST_F(ZeroConfTests_FullNode, Load4Blocks_ReloadBDM_ZC_Plus2)
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
    theBDMt_->start(Config::DBSettings::initMode());
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
 
    EXPECT_EQ(TestUtils::getTopBlockHeightInDB(theBDMt_->bdm().get(), DB_SELECT::HEADERS), 3U);
    EXPECT_EQ(DBTestUtils::getTopBlockHash(iface_, DB_SELECT::HEADERS), TestChain::blkHash3);
@@ -1522,7 +1522,7 @@ TEST_F(ZeroConfTests_FullNode, Load4Blocks_ReloadBDM_ZC_Plus2)
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
    theBDMt_->start(Config::DBSettings::initMode());
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
 
    bdm = theBDMt_->bdm();
    EXPECT_EQ(DBTestUtils::getScrAddrBalance(TestChain::scrAddrA, bdm), 50 * COIN);
@@ -1607,7 +1607,7 @@ TEST_F(ZeroConfTests_FullNode, Load3Blocks_ZC_Plus3)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
 
    EXPECT_EQ(TestUtils::getTopBlockHeightInDB(theBDMt_->bdm().get(), DB_SELECT::HEADERS), 3U);
    EXPECT_EQ(DBTestUtils::getTopBlockHash(iface_, DB_SELECT::HEADERS), TestChain::blkHash3);
@@ -1675,7 +1675,7 @@ TEST_F(ZeroConfTests_FullNode, Load3Blocks_ZC_Plus3)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
 
    //add 5th block
    TestUtils::setBlocks({ "0", "1", "2", "3", "4" }, blk0dat_);
@@ -1776,7 +1776,7 @@ TEST_F(ZeroConfTests_FullNode, Load3Blocks_ZCchain)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
 
    EXPECT_EQ(TestUtils::getTopBlockHeightInDB(theBDMt_->bdm().get(), DB_SELECT::HEADERS), 2U);
    EXPECT_EQ(DBTestUtils::getTopBlockHash(iface_, DB_SELECT::HEADERS), TestChain::blkHash2);
@@ -1952,7 +1952,7 @@ TEST_F(ZeroConfTests_FullNode, Load3Blocks_RBF)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
 
    auto bdm = theBDMt_->bdm();
    EXPECT_EQ(DBTestUtils::getScrAddrBalance(TestChain::scrAddrA, bdm), 50 * COIN);
@@ -2035,7 +2035,7 @@ TEST_F(ZeroConfTests_FullNode, Replace_ZC_Test)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
 
    //check balances
    auto bdm = theBDMt_->bdm();
@@ -2500,7 +2500,7 @@ TEST_F(ZeroConfTests_FullNode, ChainZC_RBFchild_Test)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    auto dbAssetWlt = bdvPtr->getWalletOrLockbox(assetWlt->getID());
 
@@ -2899,7 +2899,7 @@ TEST_F(ZeroConfTests_FullNode, ZC_InOut_SameBlock)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
 
    //check balances
    auto bdm = theBDMt_->bdm();
@@ -3046,7 +3046,7 @@ TEST_F(ZeroConfTests_Supernode, ZeroConfUpdate)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
 
    BinaryData ZChash;
@@ -3160,7 +3160,7 @@ TEST_F(ZeroConfTests_Supernode, UnrelatedZC_CheckLedgers)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    auto delegateID = DBTestUtils::getLedgerDelegate(clients_, bdvID);
 
@@ -3317,7 +3317,7 @@ TEST_F(ZeroConfTests_Supernode, RegisterAfterZC)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    auto delegateID = DBTestUtils::getLedgerDelegate(clients_, bdvID);
 
@@ -3448,7 +3448,7 @@ TEST_F(ZeroConfTests_Supernode, ZC_Reorg)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    auto assetWltDbObj = bdvPtr->getWalletOrLockbox(assetWlt->getID());
    auto delegateID = DBTestUtils::getLedgerDelegate(clients_, bdvID);
@@ -3620,7 +3620,7 @@ TEST_F(ZeroConfTests_Supernode, ChainZC_RBFchild_Test)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    EXPECT_EQ(TestUtils::getTopBlockHeightInDB(theBDMt_->bdm().get(), DB_SELECT::HEADERS), 3U);
 
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
@@ -3998,7 +3998,7 @@ TEST_F(ZeroConfTests_Supernode, ZC_InOut_SameBlock)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
 
    //check balances
@@ -4072,7 +4072,7 @@ TEST_F(ZeroConfTests_Supernode, ZC_MineAfter1Block)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
 
    uint64_t balanceWlt;

@@ -160,14 +160,15 @@ namespace {
          case BdvRequest::Which::REGISTER_WALLET:
          {
             auto walletRequest = request.getRegisterWallet();
-            std::string walletId(walletRequest.getWalletId());
+            std::string walletId{walletRequest.getWalletId()};
 
             auto capnAddresses = walletRequest.getAddresses();
-            std::vector<BinaryData> addresses;
+            std::vector<Types::ScrAddr> addresses;
             addresses.reserve(capnAddresses.size());
             for (auto capnAddr : capnAddresses) {
                auto addrBody = capnAddr.getBody();
-               addresses.emplace_back(BinaryData{addrBody.begin(), addrBody.end()});
+               addresses.emplace_back(
+                  Types::ScrAddr{addrBody.begin(), addrBody.end()});
             }
 
             auto walletType = WalletRegType(walletRequest.getWalletType());
@@ -525,7 +526,7 @@ namespace {
             wltPtr->setConfTarget(request.getSetConfTarget());
 
             //push refersh notif for the wallet
-            bdv->flagRefresh(BDV_refreshSkipRescan, walletId, nullptr);
+            bdv->flagRefresh(BDV_refreshSkipRescan, walletId);
             break;
          }
 
@@ -542,7 +543,7 @@ namespace {
             wltPtr->unregisterAddresses(addresses);
 
             //push refersh notif for the wallet
-            bdv->flagRefresh(BDV_registrationCompleted, walletId, nullptr);
+            bdv->flagRefresh(BDV_registrationCompleted, walletId);
             break;
          }
 
@@ -1044,41 +1045,50 @@ void BDV_Server_Object::init()
 {
    bdm_->blockUntilReady();
    while (true) {
-      std::map<std::string, WalletRegistrationRequest> wltMap;
-      {
-         std::unique_lock<std::mutex> lock(registerWalletMutex_);
-         if (wltRegMap_.empty()) {
-            break;
-         }
-         wltMap = std::move(wltRegMap_);
-         wltRegMap_.clear();
+      //grab all pending wallet registration requests
+      std::unique_lock<std::mutex> lock(registerWalletMutex_);
+      if (walletRegistrationQueue_.empty()) {
+         break;
+      }
+      auto regQueue = std::move(walletRegistrationQueue_);
+      lock.unlock();
+
+      //gather all addresses across each request
+      std::vector<Types::ScrAddr> addresses;
+      std::vector<std::string> walletIds;
+      bool isNew = false;
+      for (const auto& regReq : regQueue) {
+         addresses.insert(addresses.end(),
+            regReq.addresses.begin(), regReq.addresses.end());
+         walletIds.emplace_back(regReq.walletId);
+         isNew |= regReq.isNew;
       }
 
-      //wait on registration callbacks
-      for (auto& wltPair : wltMap) {
-         if (wltPair.second.fut.get() == false) {
-            return;
-         }
+      //finality callback
+      auto prom = std::make_shared<std::promise<bool>>();
+      auto fut = prom->get_future();
+      auto callback = [promPtr=prom]
+      (const std::vector<std::shared_ptr<AddrAndHash>>&, bool success)
+      {
+         promPtr->set_value(success);
+      };
+
+      //push one big batch to scraddr filter
+      auto batch = std::make_shared<RegistrationBatch>(
+         walletIds, std::move(addresses), isNew, callback);
+      saf_->pushAddressBatch(batch);
+
+      //wait on registration callback
+      auto result = fut.get();
+      if (!result) {
+         //TODO: should notify client and disconnect it
+         LOGERR << "failed to register addresses for bdv!";
+         isReadyPromise_->set_value(false);
+         return;
       }
 
       //addresses are now registered, populate the wallet maps
-      populateWallets(wltMap);
-   }
-
-   //could a wallet registration event get lost in between the init loop
-   //and setting the promise?
-
-   //init wallets
-   auto notifPtr = std::make_unique<BDV_Notification_Init>();
-   scanWallets(std::move(notifPtr));
-
-   //create zc packet and pass to wallets
-   auto addrSet = getAddrSet();
-   auto zcstruct = createZcNotification(addrSet);
-   auto zcAction = dynamic_cast<BDV_Notification_ZC*>(zcstruct.get());
-   if (zcAction != nullptr &&
-      !zcAction->packet->scrAddrToTxioKeys.empty()) {
-      scanWallets(std::move(zcstruct));
+      populateWallets(regQueue);
    }
 
    //mark bdv object as ready
@@ -1327,59 +1337,31 @@ void BDV_Server_Object::processNotification(
 void BDV_Server_Object::registerWallet(WalletRegistrationRequest& regReq)
 {
    if (isReadyFuture_.wait_for(0s) != std::future_status::ready) {
-      //only run this code if the bdv maintenance thread hasn't started yet
+      //the bdv maintenance thread hasn't started yet, queue the request
       std::unique_lock<std::mutex> lock(registerWalletMutex_);
-
-      //save request
-      auto emplaceResult = wltRegMap_.emplace(regReq.walletId, std::move(regReq));
-      auto& wltRegReq = emplaceResult.first->second;
-      std::set<Types::ScrAddr> addrSet;
-      for (const auto& addr : wltRegReq.addresses) {
-         addrSet.emplace(addr);
-      }
-
-      //setup registration callback and track future in request
-      auto promPtr = std::make_shared<std::promise<bool>>();
-      wltRegReq.fut = promPtr->get_future();
-      auto callback = [promPtr](
-         const std::vector<std::shared_ptr<AddrAndHash>>&, bool success)->void
-      {
-         promPtr->set_value(success);
-      };
-
-      //queue up registration
-      auto batch = std::make_shared<RegistrationBatch>(
-         std::move(addrSet), false, callback);
-      auto saf = bdm_->getScrAddrFilter();
-      saf->pushAddressBatch(batch);
+      walletRegistrationQueue_.emplace_back(std::move(regReq));
       return;
    }
 
-   //set callback to notify of current zc
-   regReq.zcCallback = [this, walletId=regReq.walletId](
-      const std::set<Types::ScrAddr>& addrSet)->void
-   {
-      auto zcNotifPacket = createZcNotification(addrSet);
-      flagRefresh(BDV_refreshAndRescan, walletId, std::move(zcNotifPacket));
-   };
-
-   //register wallet with BDV
-   registerAWallet(regReq);
+   //TODO: notify on failed registration too
+   registerAWallet(regReq, [this, wId=regReq.walletId](bool success){
+      if (success) { flagRefresh(BDV_registrationCompleted, wId); }
+   });
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 void BDV_Server_Object::populateWallets(
-   std::map<std::string, WalletRegistrationRequest>& wltMap)
+   std::deque<WalletRegistrationRequest>& wltQueue)
 {
    auto safPtr = getSAF();
    auto addrMap = safPtr->getScanFilterAddrMap();
 
-   for (const auto& wlt : wltMap) {
+   for (const auto& wlt : wltQueue) {
       std::shared_ptr<BtcWallet> theWallet;
-      if (wlt.second.type == WalletRegType::WALLET) {
-         theWallet = wallets_.getOrSetWallet(wlt.first);
+      if (wlt.type == WalletRegType::WALLET) {
+         theWallet = wallets_.getOrSetWallet(wlt.walletId);
       } else {
-         theWallet = lockboxes_.getOrSetWallet(wlt.first);
+         theWallet = lockboxes_.getOrSetWallet(wlt.walletId);
       }
 
       if (theWallet == nullptr) {
@@ -1388,7 +1370,7 @@ void BDV_Server_Object::populateWallets(
       }
 
       std::map<Types::ScrAddr, std::shared_ptr<ScrAddrObj>> newAddrMap;
-      for (const auto& addr : wlt.second.addresses) {
+      for (const auto& addr : wlt.addresses) {
          if (theWallet->hasScrAddress(addr)) {
             continue;
          }
@@ -1406,21 +1388,16 @@ void BDV_Server_Object::populateWallets(
       if (newAddrMap.empty()) {
          continue;
       }
-
       theWallet->scrAddrMap_.update(newAddrMap);
    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void BDV_Server_Object::flagRefresh(
-   BDV_refresh refresh, const std::string& refreshID,
-   std::unique_ptr<BDV_Notification_ZC> zcPtr)
+void BDV_Server_Object::flagRefresh(BDV_refresh refresh,
+   const std::string& refreshID)
 {
    auto notif = std::make_unique<BDV_Notification_Refresh>(
       getID(), refresh, refreshID);
-   if (zcPtr != nullptr) {
-      notif->zcPacket = std::move(zcPtr->packet);
-   }
 
    if (notifLambda_) {
       notifLambda_(std::move(notif));

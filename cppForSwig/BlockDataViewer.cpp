@@ -121,16 +121,17 @@ bool BlockDataViewer::hasWallet(const std::string& ID) const
    return wallets_.hasID(ID);
 }
 
-void BlockDataViewer::registerAWallet(WalletRegistrationRequest& request)
+void BlockDataViewer::registerAWallet(WalletRegistrationRequest& request,
+   const std::function<void(bool)>& callback)
 {
    switch (request.type)
    {
       case WalletRegType::WALLET:
-         wallets_.registerAddresses(request);
+         wallets_.registerAddresses(request, callback);
          break;
 
       case WalletRegType::LOCKBOX:
-         lockboxes_.registerAddresses(request);
+         lockboxes_.registerAddresses(request, callback);
          break;
 
       default:
@@ -142,15 +143,6 @@ void BlockDataViewer::unregisterWallet(const std::string& walletID)
 {
    wallets_.unregisterWallet(walletID);
    lockboxes_.unregisterWallet(walletID);
-}
-
-void BlockDataViewer::registerAddresses(WalletRegistrationRequest& request)
-{
-   if (wallets_.hasID(request.walletId)) {
-      wallets_.registerAddresses(request);
-   } else if (lockboxes_.hasID(request.walletId)) {
-      lockboxes_.registerAddresses(request);
-   }
 }
 
 ////////
@@ -948,21 +940,25 @@ bool WalletGroup::unregisterWallet(const std::string& id)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void WalletGroup::registerAddresses(WalletRegistrationRequest& request)
+void WalletGroup::registerAddresses(WalletRegistrationRequest& request,
+   const std::function<void(bool)>& callback)
 {
    if (request.walletId.empty()) {
+      callback(false);
       return;
    }
 
    auto theWallet = getOrSetWallet(request.walletId);
    if (theWallet == nullptr) {
       LOGWARN << "failed to get or set wallet";
+      callback(false);
       return;
    }
 
    //strip collisions from set of addresses to register
    auto addrMap = theWallet->scrAddrMap_.get();
-   std::set<Types::ScrAddr> scrAddrSet;
+   std::vector<Types::ScrAddr> scrAddrVec;
+   scrAddrVec.reserve(request.addresses.size());
    for (auto& addr : request.addresses) {
       if (addr.empty()) {
          continue;
@@ -970,43 +966,36 @@ void WalletGroup::registerAddresses(WalletRegistrationRequest& request)
       if (addrMap->find(addr) != addrMap->end()) {
          continue;
       }
-      scrAddrSet.emplace(std::move(addr));
+      scrAddrVec.emplace_back(std::move(addr));
    }
 
-   auto callback = [theWallet, zcCB=request.zcCallback](
-      std::vector<std::shared_ptr<AddrAndHash>> addrVec, bool success)->void
+   auto registrationCompleteCB = [theWallet, callback]
+   (std::vector<std::shared_ptr<AddrAndHash>> addrVec, bool success)
    {
       if (!success) {
+         callback(false);
          return;
       }
 
       auto bdvPtr = theWallet->bdvPtr_;
       auto dbPtr = theWallet->bdvPtr_->getDB();
-
       std::map<Types::ScrAddr, std::shared_ptr<ScrAddrObj>> saMap;
-      {
-         for (const auto& addr : addrVec) {
-            auto scrAddrPtr = std::make_shared<ScrAddrObj>(
-               addr->scrAddr, addr->id, dbPtr);
-            saMap.emplace(addr->scrAddr, scrAddrPtr);
-         }
+      for (const auto& addr : addrVec) {
+         auto scrAddrPtr = std::make_shared<ScrAddrObj>(
+            addr->scrAddr, addr->id, dbPtr);
+         saMap.emplace(addr->scrAddr, scrAddrPtr);
       }
 
       if (!saMap.empty()) {
          theWallet->scrAddrMap_.update(saMap);
-         if (zcCB) {
-            std::set<Types::ScrAddr> addrSet;
-            for (const auto& addr : addrVec) {
-               addrSet.emplace(addr->scrAddr);
-            }
-            zcCB(addrSet);
-         }
       }
       theWallet->setRegistered();
+      callback(true);
    };
 
    auto batch = std::make_shared<RegistrationBatch>(
-      std::move(scrAddrSet), request.isNew, callback);
+      std::vector<std::string>{request.walletId}, std::move(scrAddrVec),
+      request.isNew, registrationCompleteCB);
    saf->pushAddressBatch(batch);
    theWallet->resetCounters();
 }

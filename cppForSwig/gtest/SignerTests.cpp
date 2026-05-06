@@ -323,7 +323,7 @@ TEST_F(SignerTest, Signer_Test)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
 
    //// spend 2 from wlt to scrAddrF, rest back to scrAddrA ////
@@ -412,7 +412,7 @@ TEST_F(SignerTest, SpendTest_SizeEstimates)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    auto dbAssetWlt = bdvPtr->getWalletOrLockbox(assetWlt->getID());
 
@@ -809,7 +809,7 @@ TEST_F(SignerTest, SpendTest_P2WPKH)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    auto dbAssetWlt = bdvPtr->getWalletOrLockbox(assetWlt->getID());
 
@@ -1079,7 +1079,7 @@ TEST_F(SignerTest, SpendTest_MixedInputTypes)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    auto dbAssetWlt = bdvPtr->getWalletOrLockbox(assetWlt->getID());
 
@@ -1358,7 +1358,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_1of3)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    auto ms_wlt = bdvPtr->getWalletOrLockbox("ms_entry");
 
@@ -1656,7 +1656,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_2of3_NativeP2WSH)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    auto ms_wlt = bdvPtr->getWalletOrLockbox("ms_entry");
    auto wlt_singleSig = bdvPtr->getWalletOrLockbox(assetWlt_2->getID());
@@ -2022,7 +2022,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    auto wlt_1 = bdvPtr->getWalletOrLockbox(assetWlt_1->getID());
    auto wlt_2 = bdvPtr->getWalletOrLockbox(assetWlt_2->getID());
@@ -2314,7 +2314,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs_Strings)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    auto wlt_1 = bdvPtr->getWalletOrLockbox(assetWlt_1->getID());
    auto wlt_2 = bdvPtr->getWalletOrLockbox(assetWlt_2->getID());
@@ -2605,7 +2605,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs_StringsLegacy)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    auto wlt_1 = bdvPtr->getWalletOrLockbox(assetWlt_1->getID());
    auto wlt_2 = bdvPtr->getWalletOrLockbox(assetWlt_2->getID());
@@ -2913,7 +2913,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    auto wlt_1 = bdvPtr->getWalletOrLockbox(assetWlt_1->getID());
    auto wlt_2 = bdvPtr->getWalletOrLockbox(assetWlt_2->getID());
@@ -3237,7 +3237,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning_GetUnsignedTx)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    auto wlt_1 = bdvPtr->getWalletOrLockbox(assetWlt_1->getID());
    auto wlt_2 = bdvPtr->getWalletOrLockbox(assetWlt_2->getID());
@@ -3601,7 +3601,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning_GetUnsignedTx_Neste
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    auto wlt_1 = bdvPtr->getWalletOrLockbox(assetWlt_1->getID());
    auto wlt_2 = bdvPtr->getWalletOrLockbox(assetWlt_2->getID());
@@ -4019,7 +4019,7 @@ TEST_F(SignerTest, GetUnsignedTxId)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    auto wlt_1 = bdvPtr->getWalletOrLockbox(assetWlt_1->getID());
    auto wlt_2 = bdvPtr->getWalletOrLockbox(assetWlt_2->getID());
@@ -4376,7 +4376,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2WPKH)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    auto dbAssetWlt = bdvPtr->getWalletOrLockbox(assetWlt->getID());
 
@@ -4661,7 +4661,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2WPKH_WOResolution_fromWOCopy)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    auto dbAssetWlt = bdvPtr->getWalletOrLockbox(wltWO->getID());
 
@@ -4940,7 +4940,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2WPKH_WOResolution_fromXPub)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    auto dbAssetWlt = bdvPtr->getWalletOrLockbox(wltWO->getID());
 
@@ -5182,7 +5182,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2PK)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    auto dbAssetWlt = bdvPtr->getWalletOrLockbox(assetWlt->getID());
 
@@ -5437,7 +5437,7 @@ TEST_F(SignerTest, SpendTest_FromAccount_Reload)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    auto dbAssetWlt = bdvPtr->getWalletOrLockbox(assetWlt->getID());
    EXPECT_EQ(TestUtils::getTopBlockHeightInDB(
@@ -5828,7 +5828,7 @@ TEST_F(SignerTest, SpendTest_BIP32_Accounts)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    EXPECT_EQ(TestUtils::getTopBlockHeightInDB(
       theBDMt_->bdm().get(), DB_SELECT::HEADERS), 3U);
@@ -6075,7 +6075,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Armory135)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    EXPECT_EQ(TestUtils::getTopBlockHeightInDB(
       theBDMt_->bdm().get(), DB_SELECT::HEADERS), 3U);
@@ -6325,7 +6325,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_BIP32)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    EXPECT_EQ(TestUtils::getTopBlockHeightInDB(
       theBDMt_->bdm().get(), DB_SELECT::HEADERS), 3U);
@@ -6599,7 +6599,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Salted)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    EXPECT_EQ(TestUtils::getTopBlockHeightInDB(
       theBDMt_->bdm().get(), DB_SELECT::HEADERS), 3U);
@@ -6872,7 +6872,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_ECDH)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    EXPECT_EQ(TestUtils::getTopBlockHeightInDB(
       theBDMt_->bdm().get(), DB_SELECT::HEADERS), 3U);
@@ -7140,7 +7140,7 @@ TEST_F(SignerTest, SpendTest_InjectSignature)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    auto dbAssetWlt = bdvPtr->getWalletOrLockbox(assetWlt->getID());
 
@@ -7534,7 +7534,7 @@ TEST_F(SignerTest, SpendTest_InjectSignature_Multisig)
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
-   DBTestUtils::waitOnBDMReady(clients_, bdvID);
+   DBTestUtils::waitOnBDVReady(clients_, bdvID);
    auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    auto ms_wlt = bdvPtr->getWalletOrLockbox("ms_entry");
    auto wlt_singleSig = bdvPtr->getWalletOrLockbox(assetWlt_2->getID());

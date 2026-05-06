@@ -122,7 +122,7 @@ private:
    const Armory::Types::BdvId bdvID_;
    std::mutex registerWalletMutex_;
    std::mutex processPacketMutex_;
-   std::map<std::string, WalletRegistrationRequest> wltRegMap_;
+   std::deque<WalletRegistrationRequest> walletRegistrationQueue_;
 
    std::shared_ptr<std::promise<bool>> isReadyPromise_;
    std::shared_future<bool> isReadyFuture_;
@@ -141,7 +141,7 @@ public:
 
 private:
    BDV_Server_Object(BDV_Server_Object&) = delete; //no copies
-   void populateWallets(std::map<std::string, WalletRegistrationRequest>&);
+   void populateWallets(std::deque<WalletRegistrationRequest>&);
    void setup(void);
    WebSocketMessagePartial preparePayload(std::shared_ptr<BDV_Payload>);
    std::unique_ptr<BDV_Notification_ZC> createZcNotification(
@@ -168,8 +168,7 @@ public:
    const std::string& getLedgerDelegate(
       const std::string&, const BinaryData&); //walletId, address
 
-   void flagRefresh(BDV_refresh, const std::string&,
-      std::unique_ptr<BDV_Notification_ZC>);
+   void flagRefresh(BDV_refresh, const std::string&);
 };
 
 ///////////////////////////////////////////////////////////////////////////////

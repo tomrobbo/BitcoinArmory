@@ -36,19 +36,16 @@ enum class WalletRegType : int
 
 struct WalletRegistrationRequest
 {
-   const std::string& walletId;
-   const std::vector<BinaryData> addresses;
-   const bool isNew;
-   const WalletRegType type;
-   std::function<void(const std::set<Armory::Types::ScrAddr>&)> zcCallback;
-   std::shared_future<bool> fut;
+   std::string walletId;
+   std::vector<Armory::Types::ScrAddr> addresses;
+   bool isNew;
+   WalletRegType type;
 
    WalletRegistrationRequest(const std::string& wId,
-      std::vector<BinaryData>& addrs,
+      std::vector<Armory::Types::ScrAddr>& addrs,
       bool isnew, WalletRegType wType) :
       walletId(wId), addresses(std::move(addrs)),
-      isNew(isnew), type(wType),
-      zcCallback(nullptr)
+      isNew(isnew), type(wType)
    {}
 };
 
@@ -188,7 +185,8 @@ public:
    ~WalletGroup(void);
 
    std::shared_ptr<BtcWallet> getOrSetWallet(const std::string&);
-   void registerAddresses(WalletRegistrationRequest&);
+   void registerAddresses(WalletRegistrationRequest&,
+      const std::function<void(bool)>&);
    bool unregisterWallet(const std::string&);
 
    bool hasID(const std::string&) const;
@@ -219,14 +217,14 @@ public:
    void reset(void);
 
    /////////////////////////////////////////////////////////////////////////////
-   // If you register you wallet with the BDM, it will automatically maintain 
+   // If you register you wallet with the BDM, it will automatically maintain
    // tx lists relevant to that wallet.  You can get away without registering
-   // your wallet objects (using scanBlockchainForTx), but without the full 
-   // blockchain in RAM, each scan will take 30-120 seconds.  Registering makes 
-   // sure that the intial blockchain scan picks up wallet-relevant stuff as 
+   // your wallet objects (using scanBlockchainForTx), but without the full
+   // blockchain in RAM, each scan will take 30-120 seconds.  Registering makes
+   // sure that the intial blockchain scan picks up wallet-relevant stuff as
    // it goes, and does a full [re-]scan of the blockchain only if necessary.
-   void registerAWallet(WalletRegistrationRequest&);
-   void registerAddresses(WalletRegistrationRequest&);
+   void registerAWallet(WalletRegistrationRequest&,
+      const std::function<void(bool)>&);
    void unregisterWallet(const std::string&);
 
    void scanWallets(std::shared_ptr<BDV_Notification>);

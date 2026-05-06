@@ -132,7 +132,7 @@ ScrAddrFilter::AddrMap ScrAddrFilter::prepareRegistrationBatch(
    }
 
    //filter out collisions, assign IDs for fresh addresses
-   auto newScrAddrMap = assignScrAddrKeys(batch->scrAddrSet);
+   auto newScrAddrMap = assignScrAddrKeys(batch->scrAddrVec);
    if (newScrAddrMap.empty()) {
       //all addresses are already registered
       batch->callback({}, true);
@@ -165,11 +165,11 @@ ScrAddrFilter::getScanFilterAddrMap() const
 
 ////////
 ScrAddrFilter::AddrMap ScrAddrFilter::assignScrAddrKeys(
-   const std::set<Types::ScrAddr>& addrSet)
+   const std::vector<Types::ScrAddr>& addrVec)
 {
    AddrMap result;
    auto scraddrmap = scanFilterAddrMap_->get();
-   for (const auto& sa : addrSet) {
+   for (const auto& sa : addrVec) {
       auto iter = scraddrmap->find(sa);
       if (iter != scraddrmap->end()) {
          continue;
@@ -348,10 +348,6 @@ void ScrAddrFilter::run(std::shared_future<bool> bdmReadyFut)
             LOGINFO << "Starting address registration process";
 
             //prepare for side scan
-            std::vector<std::string> walletIDs;
-            if (!batchPtr->walletID.empty()) {
-               walletIDs.emplace_back(batchPtr->walletID);
-            }
             auto saf = getNew(SIDESCAN_ID);
             saf->mergeAddresses(newScrAddrMap, false);
             auto scanFromHeader = blockchain()->getGenesisHeader();
@@ -361,7 +357,7 @@ void ScrAddrFilter::run(std::shared_future<bool> bdmReadyFut)
             while (true) {
                //run the side scan
                scannedHash = saf->applyBlockRangeToDB(
-                  scanFromHeader->getBlockHeight(), walletIDs, true);
+                  scanFromHeader->getBlockHeight(), batchPtr->walletIDs, true);
                if (!scannedHash.valid()) {
                   break;
                }
@@ -404,7 +400,7 @@ void ScrAddrFilter::run(std::shared_future<bool> bdmReadyFut)
             }
 
             //notify
-            for (const auto& wID : walletIDs) {
+            for (const auto& wID : batchPtr->walletIDs) {
                LOGINFO << "Completed scan of wallet " << wID;
             }
             batchPtr->callback(scaVec, true);
@@ -488,10 +484,13 @@ AddressBatch::~AddressBatch()
 {}
 
 ////////
-RegistrationBatch::RegistrationBatch(std::set<Types::ScrAddr> addrSet,
+RegistrationBatch::RegistrationBatch(
+   const std::vector<std::string>& wltIds,
+   std::vector<Types::ScrAddr> addrVec,
    bool isnew, const RegistrationBatch::Callback& cb) :
    AddressBatch(AddressBatchType::Register),
-   scrAddrSet{std::move(addrSet)}, isNew(isnew), callback(cb)
+   walletIDs{wltIds}, scrAddrVec{std::move(addrVec)},
+   isNew(isnew), callback(cb)
 {}
 
 UnregistrationBatch::UnregistrationBatch() :

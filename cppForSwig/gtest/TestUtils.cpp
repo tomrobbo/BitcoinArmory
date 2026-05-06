@@ -576,7 +576,6 @@ namespace DBTestUtils
       return result;
    }
 
-
    /////////////////////////////////////////////////////////////////////////////
    std::tuple<BinaryData, unsigned> waitOnSignal(
       Clients* clients, Types::BdvId bdvId, int signal)
@@ -633,7 +632,7 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   void waitOnBDMReady(Clients* clients, Types::BdvId bdvId)
+   void waitOnBDVReady(Clients* clients, Types::BdvId bdvId)
    {
       waitOnSignal(clients, bdvId, (int)Codec::BDV::Notification::READY);
    }
