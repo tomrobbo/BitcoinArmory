@@ -141,6 +141,7 @@ private:
    void service(lws_context*);
    bool processAEADHandshake(const WebSocketMessagePartial&);
    void promptUser(const BinaryDataRef&, const std::string&);
+   void cleanup(void);
 
 public:
    WebSocketClient(const std::string& addr, const std::string& port,
@@ -150,7 +151,6 @@ public:
 
    //locals
    void shutdown(void);
-   void cleanup(void);
    bool running(void) const override;
    std::pair<unsigned, unsigned> getRekeyCount(void) const;
    void addPublicKey(const SecureBinaryData&, bool);

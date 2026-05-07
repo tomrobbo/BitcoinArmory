@@ -3667,7 +3667,7 @@ protected:
          "--datadir=./fakehomedir",
          "--dbdir=./ldbtestdir",
          "--satoshi-datadir=./blkfiletest",
-         "--db-type=DB_FULL",
+         "--db-type=DB_BARE",
          "--thread-count=3",
          "--public"},
          Config::ProcessType::DB);
@@ -5803,7 +5803,7 @@ protected:
          "--datadir=./fakehomedir",
          "--dbdir=./ldbtestdir",
          "--satoshi-datadir=./blkfiletest",
-         "--db-type=DB_FULL",
+         "--db-type=DB_BARE",
          "--thread-count=3",
          "--public"},
          Config::ProcessType::DB);
@@ -5991,7 +5991,7 @@ TEST_F(BridgeWalletsWithDBTests, CycleConnection)
          "--datadir=./fakehomedir",
          "--dbdir=./ldbtestdir",
          "--satoshi-datadir=./blkfiletest",
-         "--db-type=DB_FULL",
+         "--db-type=DB_BARE",
          "--thread-count=3",
          "--public"},
          Config::ProcessType::DB);
@@ -6473,7 +6473,7 @@ protected:
          "--datadir=./fakehomedir",
          "--dbdir=./ldbtestdir",
          "--satoshi-datadir=./blkfiletest",
-         "--db-type=DB_FULL",
+         "--db-type=DB_BARE",
          "--thread-count=3",
          "--public"},
          Config::ProcessType::DB);
@@ -11924,7 +11924,7 @@ protected:
          (char*)"--datadir=./fakehomedir"sv.data(),
          (char*)"--dbdir=./ldbtestdir"sv.data(),
          (char*)"--satoshi-datadir=./blkfiletest"sv.data(),
-         (char*)"--db-type=DB_FULL"sv.data(),
+         (char*)"--db-type=DB_BARE"sv.data(),
          (char*)"--thread-count=3"sv.data()
       };
       Config::parseArgs(6, argv, Config::ProcessType::Bridge);
@@ -12420,7 +12420,7 @@ protected:
          "--datadir=./fakehomedir",
          "--dbdir=./ldbtestdir",
          "--satoshi-datadir=./blkfiletest",
-         "--db-type=DB_FULL",
+         "--db-type=DB_BARE",
          "--thread-count=3",
          "--public"},
          Config::ProcessType::DB);

@@ -778,8 +778,12 @@ std::map<Types::TxIOKey, TxIOPairUint> BlockDataViewer::getTxioForRange(
    uint32_t fromHeight) const
 {
    //convert height to blockId
-   auto header = bc_->getHeaderByHeight(fromHeight);
-   return wallets_.getTxioForRange(header->getUniqueID(), UINT32_MAX);
+   try {
+      auto header = bc_->getHeaderByHeight(fromHeight);
+      return wallets_.getTxioForRange(header->getUniqueID(), UINT32_MAX);
+   } catch (const std::range_error&) {
+      return {};
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

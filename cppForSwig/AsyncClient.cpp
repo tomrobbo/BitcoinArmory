@@ -452,28 +452,7 @@ void BlockDataViewer::unregisterFromDB()
    if (sock_ == nullptr) {
       return;
    }
-
-   if (sock_->type() == SocketType::WS) {
-      auto sockws = std::dynamic_pointer_cast<WebSocketClient>(sock_);
-      if (sockws == nullptr) {
-         return;
-      }
-      sockws->shutdown();
-      return;
-   }
-
-   //create capnp request
-   capnp::MallocMessageBuilder message;
-   auto payload = message.initRoot<Codec::BDV::Request>();
-
-   auto staticRequest = payload.initStatic();
-   staticRequest.setUnregister();
-
-   //serialize and add to payload
-   auto write_payload = toWritePayload(message);
-
-   //push to server
-   sock_->pushPayload(std::move(write_payload), nullptr);
+   sock_.reset();
 }
 
 ///////////////////////////////////////////////////////////////////////////////

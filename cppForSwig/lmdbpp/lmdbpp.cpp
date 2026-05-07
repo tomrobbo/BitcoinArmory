@@ -19,6 +19,7 @@
 #include <cstring>
 #include <algorithm>
 #include <iostream>
+#include <format>
 
 using namespace LMDB;
 
@@ -573,9 +574,8 @@ void Env::open(const std::filesystem::path &path, unsigned flags)
 
    rc = mdb_env_open(mdbEnv_, path.string().c_str(), MDB_NOSUBDIR | flags, 0600);
    if (rc != MDB_SUCCESS) {
-      std::string errStr{
-         "Failed to open db \"" + path.string() + "\" (" + errorString(rc) + ")"};
-      throw Exception(errStr);
+      throw Exception(std::format("Failed to open db \"{}\" with error: {}",
+         path.filename().string(), errorString(rc)));
    }
    path_ = path;
 }
