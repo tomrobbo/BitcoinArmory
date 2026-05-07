@@ -1122,9 +1122,9 @@ size_t PaymentStruct::getRecipientCount() const
 // CoinSelectionInstance
 CoinSelectionInstance::CoinSelectionInstance(
    std::shared_ptr<Wallets::AssetWallet> const walletPtr,
-   std::function<std::vector<UTXO>(uint64_t)> getUtxoLbd,
+   std::function<std::vector<UTXO>(Types::Amount)> getUtxoLbd,
    const std::vector<AddressBookEntry>& addrBook,
-   uint64_t spendableBalance, unsigned topHeight) :
+   Types::Amount spendableBalance, unsigned topHeight) :
    cs_(getFetchLambdaFromWallet(walletPtr, getUtxoLbd),
       addrBook, spendableBalance, topHeight
    ), walletPtr_(walletPtr), spendableBalance_(spendableBalance)
