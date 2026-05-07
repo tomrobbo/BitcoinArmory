@@ -450,7 +450,7 @@ BlockOffset Builder::parseForNewHeaders(const ProgressCallback& progress)
    std::atomic<uint32_t> total, count;
    total.store(0, std::memory_order_relaxed);
    count.store(0, std::memory_order_relaxed);
-   auto parseBlock = [this, bdl, &total, &count]()
+   auto parseBlock = [this, bdl, &total, &count](bool verbose=false)
    {
       std::vector<std::shared_ptr<BlockHeader>> headers;
       headers.reserve(200);
@@ -483,6 +483,7 @@ BlockOffset Builder::parseForNewHeaders(const ProgressCallback& progress)
          }
       };
 
+      uint16_t parsedThreshold = 150;
       while (true) {
          auto fileCopy = bdl->getNextCopy();
          if (!fileCopy.isValid()) {
@@ -498,6 +499,13 @@ BlockOffset Builder::parseForNewHeaders(const ProgressCallback& progress)
          }
          auto added = blockchain_->stageNewHeaders(headers);
          count.fetch_add(added, std::memory_order_relaxed);
+
+         if (verbose) {
+            if (fileCopy.fileID >= parsedThreshold) {
+               LOGINFO << "parsed block file #" << fileCopy.fileID;
+               parsedThreshold += 150;
+            }
+         }
       }
    };
 
@@ -509,7 +517,7 @@ BlockOffset Builder::parseForNewHeaders(const ProgressCallback& progress)
    for (unsigned i = 1; i < threadcount; i++) {
       tIDs.emplace_back(std::thread(parseBlock));
    }
-   parseBlock();
+   parseBlock(true);
 
    for (auto& tID : tIDs) {
       if (tID.joinable()) {
@@ -640,17 +648,23 @@ std::set<uint32_t> Builder::addBlocksToDB(
    std::set<uint32_t> invalidBlockIds;
    blocksVec.reserve(200);
 
+   const auto& headerSet = blockchain_->getHeaderSet();
    bool fullHints = Config::DBSettings::getDbType() != ARMORY_DB_TYPE::Bare;
    auto tallyBlocks =
-   [&blocksVec, &invalidBlockIds, fullHints, bc=blockchain_, fileID=bdc.fileID]
+   [&blocksVec, &invalidBlockIds, fullHints, fileID=bdc.fileID, &headerSet]
    (const uint8_t* data, size_t size, size_t)->bool
    {
       try {
          //deser raw header to get its hash
          auto header = std::make_shared<BlockHeader>(data, size);
 
-         //look hash it in blockchain obj
-         auto knownHeader = bc->getHeaderByHash(header->getThisHash());
+         //check if block hash is known
+         auto headerIter = headerSet.find(header->getThisHash());
+         if (headerIter == headerSet.end()) {
+            LOGERR << "unknown header hash: " << header->getThisHash().toHexStr();
+            return false;
+         }
+         auto knownHeader = *headerIter;
          if (knownHeader->parsedBlockData()) {
             //we already parsed this block, skip it
             return size == knownHeader->getBlockSize();
@@ -670,10 +684,6 @@ std::set<uint32_t> Builder::addBlocksToDB(
       } catch (const BtcUtils::BlockDeserializingException &e) {
          LOGERR << "block deser except: " << e.what();
          LOGERR << "block fileID: " << fileID;
-         return false;
-      } catch (const std::range_error& e) {
-         //header hash is unknown, this shouldn't happen
-         LOGERR << "block parse error: " << e.what();
          return false;
       } catch (const std::exception &e) {
          LOGERR << "block deser exception: " << e.what();

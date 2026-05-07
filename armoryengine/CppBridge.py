@@ -601,25 +601,6 @@ class BlockchainService(ProtoWrapper):
       self.send(packet, needsReply=False)
 
    ####
-   def getLedgerDelegateIdForWallets(self):
-      packet = Bridge.ToBridge.new_message()
-      packet.init("service").getLedgerDelegateId = None
-
-      fut = self.send(packet)
-      response = fut.getVal()
-      return response.service.getLedgerDelegateId
-
-   ####
-   def updateWalletsLedgerFilter(self, ids: list[str]):
-      packet = Bridge.ToBridge.new_message()
-
-      packetIds = packet.init("service").init("updateWalletsLedgerFilter", len(ids))
-      for i, id_ in enumerate(ids):
-         packetIds[i] = id_
-
-      self.send(packet, needsReply=False)
-
-   ####
    def getNodeStatus(self):
       packet = Bridge.ToBridge.new_message()
       packet.init("service").getNodeStatus = None
@@ -866,6 +847,24 @@ class WalletManagerWrapper(ProtoWrapper):
       request.walletPath = walletPath
       request.callbackId = callbackId
       self.send(packet, callback=callbackFunc)
+
+   ####
+   def getMainLedgerDelegateId(self):
+      packet = Bridge.ToBridge.new_message()
+      packet.init("walletManager").getMainLedgerDelegateId = None
+
+      fut = self.send(packet)
+      response = fut.getVal()
+      return response.walletManager.getMainLedgerDelegateId
+
+   ####
+   def updateMainLedgerFilter(self, ids: list[str]):
+      return
+      packet = Bridge.ToBridge.new_message()
+      packetIds = packet.init("walletManager").init("updateMainLedgerFilter", len(ids))
+      for i, id_ in enumerate(ids):
+         packetIds[i] = id_
+      self.send(packet, needsReply=False)
 
 ################################################################################
 class BridgeWalletWrapper(ProtoWrapper):

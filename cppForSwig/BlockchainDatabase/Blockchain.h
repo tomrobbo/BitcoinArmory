@@ -44,6 +44,8 @@ namespace Armory
    // and our longest cord
    class Blockchain
    {
+      using HeaderSet = std::unordered_set<HeaderPtr,
+         BlockHeader::Hasher, BlockHeader::IsEqual>;
    private:
       void clear(void);
       std::shared_ptr<BlockHeader> organizeChain(bool = false, bool = false);
@@ -74,6 +76,7 @@ namespace Armory
       std::shared_ptr<BlockHeader> top(void) const;
       std::shared_ptr<BlockHeader> getGenesisHeader(void) const;
 
+      const HeaderSet& getHeaderSet(void) const;
       const std::shared_ptr<BlockHeader> getHeaderByHeight(unsigned) const;
       HeaderPtr getHeaderByHash(const BinaryData&) const;
       HeaderPtr getHeaderByHash(BinaryDataRef) const;
@@ -87,7 +90,7 @@ namespace Armory
 
    private:
       const Hash32 genesisHash_;
-      std::unordered_set<HeaderPtr, BlockHeader::Hasher, BlockHeader::IsEqual> headerSet_;
+      HeaderSet headerSet_;
       std::vector<HeaderPtr> headersById_;
       std::vector<HeaderPtr> headersByHeight_;
 

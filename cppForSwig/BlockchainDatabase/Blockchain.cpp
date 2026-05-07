@@ -73,6 +73,12 @@ HeaderPtr Blockchain::getGenesisHeader() const
 }
 
 ////////
+const Blockchain::HeaderSet& Blockchain::getHeaderSet() const
+{
+   std::unique_lock<std::mutex> lock(mu_);
+   return headerSet_;
+}
+
 const HeaderPtr Blockchain::getHeaderByHeight(unsigned height) const
 {
    /*

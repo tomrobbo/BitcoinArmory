@@ -806,7 +806,7 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
       self.mainLedgerCurrentPage = 1
       self.PageLineEdit.setText(str(self.mainLedgerCurrentPage))
       filterList = self.wallets.getVisibilityFilter()
-      TheBridge.service.updateWalletsLedgerFilter(filterList)
+      TheBridge.wltManager.updateMainLedgerFilter(filterList)
 
    ############################################################################
    def loadArmoryModulesNoZip(self):
@@ -4545,8 +4545,8 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
          for progId in idList:
             self.walletSideScanProgress[progId] = prog*100
             if len(progId) > 0:
-               if progId in self.walletMap:
-                  wlt = self.walletMap[progId]
+               if progId in self.wallets:
+                  wlt = self.wallets[progId]
                   wlt.disableWalletUI()
                   if progId in self.walletDialogDict:
                      self.walletDialogDict[progId].reject()
@@ -4899,7 +4899,7 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
       self.ledgerTable = []
       self.ledgerModel = LedgerDispModelSimple(self.ledgerTable, self, self)
       self.ledgerModel.setLedgerDelegateId(
-         TheBridge.service.getLedgerDelegateIdForWallets())
+         TheBridge.wltManager.getMainLedgerDelegateId())
       self.ledgerModel.setConvertLedgerMethod(self.convertLedgerToTable)
 
       self.frmLedgUpDown = QtWidgets.QFrame()

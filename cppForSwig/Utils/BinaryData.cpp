@@ -1050,21 +1050,17 @@ bool BinaryDataRef::isZero() const
 // Hasher
 std::size_t BinaryData::Hasher::operator()(const BinaryData& bd) const
 {
-   if (bd.getSize() < sizeof(std::size_t)) {
-      throw std::runtime_error("not enough data to hash");
-   }
-   std::size_t result;
-   std::memcpy(&result, &bd.data_[0], sizeof(std::size_t));
+   std::size_t result = 0;
+   std::memcpy(&result, &bd.data_[0],
+      std::min(sizeof(std::size_t), bd.getSize()));
    return result;
 }
 
 std::size_t BinaryData::Hasher::operator()(const BinaryDataRef& bdr) const
 {
-   if (bdr.getSize() < sizeof(std::size_t)) {
-      throw std::runtime_error("not enough data to hash");
-   }
-   std::size_t result;
-   std::memcpy(&result, bdr.getPtr(), sizeof(std::size_t));
+   std::size_t result = 0;
+   std::memcpy(&result, bdr.getPtr(),
+      std::min(sizeof(std::size_t), bdr.getSize()));
    return result;
 }
 

@@ -225,7 +225,7 @@ std::vector<std::shared_ptr<AddrAndHash>> ScrAddrFilter::mergeAddresses(
 Hash32 ScrAddrFilter::headerHashToScanFrom()
 {
    auto sdbi = getSDBI();
-   if (!merkleRoot_.valid()) {
+   if (!merkleRoot_.valid() || !sdbi.metaHash.valid()) {
       merkleRoot_ = computeMerkleRoot();
       sdbi.metaHash = merkleRoot_;
       auto tx = lmdb_->beginTransaction(DB_SELECT::SCRADDR, LMDB::Mode::ReadWrite);
