@@ -205,7 +205,8 @@ std::map<unsigned, BinaryData> NodeUnitTest::mineNewBlock(
          bwCoinbase.put_var_int(1);
 
          //outpoint
-         BinaryData outpoint(36);
+         BinaryData outpoint;
+         outpoint.resize(36);
          memset(outpoint.getPtr(), 0, outpoint.getSize());
          bwCoinbase.put_BinaryData(outpoint);
 

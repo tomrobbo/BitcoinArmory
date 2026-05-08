@@ -295,9 +295,9 @@ bool TxIn::getSenderScrAddrIfAvail(BinaryData& addrTarget) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-BinaryData TxIn::getSenderScrAddrIfAvail(void) const
+BinaryData TxIn::getSenderScrAddrIfAvail() const
 {
-   BinaryData addrTarget(20);
+   BinaryData addrTarget;
    getSenderScrAddrIfAvail(addrTarget);
    return addrTarget;
 }
@@ -1129,7 +1129,6 @@ UnspentTxOut::UnspentTxOut() :
    txOutIndex_(0),
    txHeight_(0),
    value_(0),
-   script_(BinaryData(0)),
    isMultisigRef_(false)
 {}
 

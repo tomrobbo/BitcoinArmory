@@ -124,9 +124,9 @@ namespace
       }
 
       ++mostSignificantByteOffset;
-      BinaryData bd(mostSignificantByteOffset);
-      auto ptr = bd.getPtr();
-      memcpy(ptr, &absval, mostSignificantByteOffset);
+      BinaryData bd;
+      bd.resize(mostSignificantByteOffset);
+      memcpy(bd.getPtr(), &absval, mostSignificantByteOffset);
       return bd;
    }
 

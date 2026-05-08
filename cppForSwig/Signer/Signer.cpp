@@ -795,9 +795,7 @@ void Signer::sign()
             auto sig = this->signScript(script, privKey, SHD, i);
 
             //append sighash byte
-            BinaryData sbd_hashbyte(1);
-            *sbd_hashbyte.getPtr() = shb;
-            sig.append(sbd_hashbyte);
+            sig.append(shb);
             return sig;
          }
       );

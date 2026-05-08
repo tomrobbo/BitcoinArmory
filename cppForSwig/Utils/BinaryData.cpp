@@ -28,11 +28,6 @@ BinaryData::BinaryData()
    : data_(0)
 {}
 
-BinaryData::BinaryData(size_t sz)
-{
-   alloc(sz);
-}
-
 BinaryData::BinaryData(const uint8_t* inData, size_t sz)
 {
    copyFrom(inData, sz);
@@ -121,7 +116,8 @@ BinaryData BinaryData::operator+(const BinaryData& bd2) const
       return *this;
    }
 
-   BinaryData out{getSize() + bd2.getSize()};
+   BinaryData out;
+   out.resize(getSize() + bd2.getSize());
    if (!empty()) {
       memcpy(out.getPtr(), getPtr(), getSize());
    }
@@ -787,7 +783,8 @@ void BinaryDataRef::copyTo(std::string& str)
 
 BinaryData BinaryDataRef::copy() const
 {
-   BinaryData outData(nBytes_);
+   BinaryData outData;
+   outData.resize(nBytes_);
    copyTo(outData);
    return outData;
 }
@@ -1087,8 +1084,10 @@ bool BinaryData::IsEqual::operator()(
 /////////////////////////////////////////////////////////////////////////////
 // BinaryReader
 BinaryReader::BinaryReader(int sz) :
-   bdStr_(sz), pos_(0)
-{}
+   pos_(0)
+{
+   bdStr_.resize(sz);
+}
 
 BinaryReader::BinaryReader(const BinaryData& toRead)
 {
@@ -1553,8 +1552,7 @@ BinaryDataRef BinaryRefReader::getRawRef()
 
 /////////////////////////////////////////////////////////////////////////////
 // BinaryWriter
-BinaryWriter::BinaryWriter(size_t reserveSize) :
-   theString_(0)
+BinaryWriter::BinaryWriter(size_t reserveSize)
 {
    if (reserveSize != 0) {
       theString_.reserve(reserveSize);

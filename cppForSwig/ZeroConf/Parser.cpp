@@ -939,7 +939,8 @@ void ZeroConfContainer::updateZCinDB()
       }
 
       for (auto& key : batch.keysToDelete) {
-         BinaryData keyWithPrefix{7};
+         BinaryData keyWithPrefix;
+         keyWithPrefix.resize(7);
          keyWithPrefix[0] = (uint8_t)DbPrefix::ZCDATA;
          std::memcpy(keyWithPrefix.getPtr() + 1, &key, 6);
          auto dbIter = tx->getIterator();

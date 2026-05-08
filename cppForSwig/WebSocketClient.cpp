@@ -130,7 +130,8 @@ void WebSocketClient::writeService()
          }
 
          if (needs_rekey) {
-            BinaryData rekeyPacket(BIP151PUBKEYSIZE);
+            BinaryData rekeyPacket;
+            rekeyPacket.resize(BIP151PUBKEYSIZE);
             memset(rekeyPacket.getPtr(), 0, BIP151PUBKEYSIZE);
 
             SerializedMessage rekey_msg;

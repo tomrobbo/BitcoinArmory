@@ -1535,7 +1535,7 @@ TEST_F(ZeroConfTests_FullNode, Load4Blocks_ReloadBDM_ZC_Plus2)
 
    //add ZC
    std::filesystem::path zcPath(TestUtils::dataDir / "ZCtx.tx");
-   BinaryData rawZC(TestChain::zcTxSize);
+   BinaryData rawZC; rawZC.resize(TestChain::zcTxSize);
    std::ifstream zcStream(zcPath, std::ios::in | std::ios::binary);
    zcStream.read(rawZC.getCharPtr(), TestChain::zcTxSize);
    zcStream.close();
@@ -1543,7 +1543,7 @@ TEST_F(ZeroConfTests_FullNode, Load4Blocks_ReloadBDM_ZC_Plus2)
    rawZcVec.push_back(std::move(rawZC), 0);
 
    std::filesystem::path lbPath(TestUtils::dataDir / "LBZC.tx");
-   BinaryData rawLBZC(TestChain::lbZCTxSize);
+   BinaryData rawLBZC; rawLBZC.resize(TestChain::lbZCTxSize);
    std::ifstream lbStream(lbPath, std::ios::in | std::ios::binary);
    lbStream.read(rawLBZC.getCharPtr(), TestChain::lbZCTxSize);
    lbStream.close();

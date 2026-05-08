@@ -8643,10 +8643,10 @@ TEST_F(ExtrasTest, PSBT)
 
       {
          //read hash hexits
-         auto&& hash = READHEX("75ddabb27b8845f5247975c8a5ba7c6f336c4570708ebe230caf6db5217ae858");
+         auto hash = READHEX("75ddabb27b8845f5247975c8a5ba7c6f336c4570708ebe230caf6db5217ae858");
 
          //flip endianess
-         BinaryData hashBE(32);
+         BinaryData hashBE; hashBE.resize(32);
          auto hashPtr = hash.getPtr();
          auto hashBEPtr = (uint8_t*)hashBE.getPtr();
          for (unsigned i=0; i<32; i++)
@@ -8658,10 +8658,10 @@ TEST_F(ExtrasTest, PSBT)
 
       {
          //read hash hexits
-         auto&& hash = READHEX("1dea7cd05979072a3578cab271c02244ea8a090bbb46aa680a65ecd027048d83");
+         auto hash = READHEX("1dea7cd05979072a3578cab271c02244ea8a090bbb46aa680a65ecd027048d83");
 
          //flip endianess
-         BinaryData hashBE(32);
+         BinaryData hashBE; hashBE.resize(32);
          auto hashPtr = hash.getPtr();
          auto hashBEPtr = (uint8_t*)hashBE.getPtr();
          for (unsigned i=0; i<32; i++)

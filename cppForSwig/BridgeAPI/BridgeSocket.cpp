@@ -150,7 +150,8 @@ void CppBridgeSocket::respond(std::vector<uint8_t>& data)
             return;
          }
 
-         BinaryData requestBody(dataRef.getSize() - 1);
+         BinaryData requestBody;
+         requestBody.resize(dataRef.getSize() - 1);
          memcpy(requestBody.getPtr(), dataRef.getPtr() + 1, requestBody.getSize());
          if (!ProtoCommandParser::processData(bridgePtr_, requestBody)) {
             shutdown();

@@ -46,8 +46,9 @@ SecureBinaryData::SecureBinaryData() :
 {}
 
 SecureBinaryData::SecureBinaryData(size_t sz) :
-   BinaryData{sz}
+   BinaryData{}
 {
+   resize(sz);
    lockData();
 }
 

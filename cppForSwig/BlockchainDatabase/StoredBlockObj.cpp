@@ -886,7 +886,8 @@ BinaryData DBTx::getSerializedTxFragged() const
    uint32_t afterLast = outOffsets[outOffsets.size()-1];
    uint32_t span = afterLast - firstOut;
 
-   BinaryData output(dataCopy.getSize() - span);
+   BinaryData output;
+   output.resize(dataCopy.getSize() - span);
    dataCopy.getSliceRef(0,  firstOut).copyTo(output.getPtr());
    dataCopy.getSliceRef(afterLast, 4).copyTo(output.getPtr()+firstOut);
    return output;
@@ -933,10 +934,9 @@ void DBTx::pprintOneLine(uint32_t indent) const
 ////////////////////////////////////////////////////////////////////////////////
 // StoredTxOut
 StoredTxOut::StoredTxOut()
-   : txVersion(UINT32_MAX), dataCopy(0), blockHeight(UINT32_MAX),
+   : txVersion(UINT32_MAX), blockHeight(UINT32_MAX),
    txIndex(UINT16_MAX), txOutIndex(UINT16_MAX),
-   parentHash(0), spentness(SPENTNESS::SPENTUNK), isCoinbase(false),
-   spentByTxInKey(0)
+   spentness(SPENTNESS::SPENTUNK), isCoinbase(false)
 {}
 
 bool StoredTxOut::isInitialized() const
@@ -1224,7 +1224,6 @@ void StoredTxOut::pprintOneLine(uint32_t indent) const
 // above are adhered to, despite TxIOPair objects being used in RAM to store
 // zero-confirmation data as well as in-blockchain data.
 StoredScriptHistory::StoredScriptHistory() :
-   uniqueKey(0),
    version(UINT32_MAX),
    totalTxioCount(0),
    totalUnspent(0)
@@ -1650,7 +1649,7 @@ void StoredScriptHistory::substractSummary(const StoredScriptHistory& ssh)
 // for massively-reused addresses like SatoshiDice.
 ////////////////////////////////////////////////////////////////////////////////
 StoredSubHistory::StoredSubHistory() :
-   hgtX(0), height(0), txioCount(0)
+   height(0), txioCount(0)
 {}
 
 StoredSubHistory::StoredSubHistory(const StoredSubHistory& copy)
@@ -1685,7 +1684,8 @@ void StoredSubHistory::unserializeDBValue(BinaryRefReader& brr)
       return;
    }
 
-   BinaryData fullTxKey(8);
+   BinaryData fullTxKey;
+   fullTxKey.resize(8);
    hgtX.copyTo(fullTxKey.getPtr());
 
    txioCount = (uint32_t)(brr.get_var_int());
@@ -1997,8 +1997,7 @@ void StoredSubHistory::compressMany(
 
 ////////////////////////////////////////////////////////////////////////////////
 // StoredTxHints
-StoredTxHints::StoredTxHints() :
-   txHashPrefix(0), dbKeyList(0), preferredDBKey(0)
+StoredTxHints::StoredTxHints()
 {}
 
 bool StoredTxHints::isInitialized() const

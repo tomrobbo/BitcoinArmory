@@ -96,7 +96,6 @@ class BinaryData
 {
 public:
    BinaryData(void);
-   explicit BinaryData(size_t);
    BinaryData(const uint8_t*, size_t);
    BinaryData(const char*, size_t);
    BinaryData(const uint8_t*, const uint8_t*);
@@ -196,8 +195,9 @@ public:
    static BinaryData IntToStrLE(INTTYPE val)
    {
       static const uint8_t SZ = sizeof(INTTYPE);
-      BinaryData out(SZ);
-      for (uint8_t i=0; i<SZ; i++, val>>=8) {
+      BinaryData out;
+      out.resize(SZ);
+      for (uint8_t i = 0; i < SZ; i++, val >>= 8) {
          out[i] = val % 256;
       }
       return out;
@@ -207,9 +207,10 @@ public:
    inline static BinaryData IntToStrBE(INTTYPE val)
    {
       static const uint8_t SZ = sizeof(INTTYPE);
-      BinaryData out(SZ);
-      for (uint8_t i=0; i<SZ; i++, val>>=8) {
-         out[(SZ-1)-i] = val % 256;
+      BinaryData out;
+      out.resize(SZ);
+      for (uint8_t i = 0; i < SZ; i++, val >>= 8) {
+         out[(SZ - 1) - i] = val % 256;
       }
       return out;
    }
@@ -235,8 +236,8 @@ public:
       }
 
       INTTYPE out = 0;
-      for (uint8_t i=0; i<SZ; i++) {
-         out |= ((INTTYPE)binstr[i]) << (8*((SZ-1)-i));
+      for (uint8_t i = 0; i < SZ; i++) {
+         out |= ((INTTYPE)binstr[i]) << (8 * ((SZ - 1) - i));
       }
       return out;
    }
@@ -252,8 +253,8 @@ public:
    {
       uint8_t const SZ = sizeof(INTTYPE);
       INTTYPE out = 0;
-      for (uint8_t i=0; i<SZ; i++) {
-         out |= ((INTTYPE)ptr[i]) << (8*((SZ-1)-i));
+      for (uint8_t i = 0; i < SZ; i++) {
+         out |= ((INTTYPE)ptr[i]) << (8 * ((SZ - 1) - i));
       }
       return out;
    }

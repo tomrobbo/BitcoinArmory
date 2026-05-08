@@ -595,7 +595,8 @@ void WebSocketServer::prepareWriteThread()
 
          if (needs_rekey) {
             //create rekey packet
-            BinaryData rekeyPacket(BIP151PUBKEYSIZE);
+            BinaryData rekeyPacket;
+            rekeyPacket.resize(BIP151PUBKEYSIZE);
             memset(rekeyPacket.getPtr(), 0, BIP151PUBKEYSIZE);
             
             SerializedMessage ws_msg;
