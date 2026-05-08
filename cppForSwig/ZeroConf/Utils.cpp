@@ -114,10 +114,9 @@ FilteredZeroConfData ZeroConf::filterParsedTx(
       }
 
       auto txio = std::make_shared<TxIOPairUint>(
-         input.scrAddr,
-         input.opRef.getDbKey(),
-         input.opRef.getIndex(),
-         input.value
+         Types::constructTxIOKeyFromTxKey(
+            input.opRef.getDbKey(), input.opRef.getIndex()),
+         input.value, input.scrAddr
       );
 
       txio->setTxIn(zcKey, inputId);
@@ -143,7 +142,7 @@ FilteredZeroConfData ZeroConf::filterParsedTx(
    }
 
    //funded txios
-   for (unsigned iout = 0; iout < parsedTxPtr->outputs.size(); iout++) {
+   for (Types::TxIOId iout = 0; iout < parsedTxPtr->outputs.size(); iout++) {
       /*
       NOTE: there is a potential issue with this filtering. If a chained zc
          affects a zc previously filtered out here, how is that handled?
@@ -151,14 +150,15 @@ FilteredZeroConfData ZeroConf::filterParsedTx(
       const auto& output = parsedTxPtr->outputs[iout];
       auto flaggedBDVs = filter(output.scrAddr);
       if (flaggedBDVs.first) {
+         auto zcOutputKey = Types::constructTxIOKeyFromTxKey(zcKey, iout);
          auto txio = std::make_shared<TxIOPairUint>(
-            output.scrAddr, zcKey, iout, output.value);
+            zcOutputKey, output.value, output.scrAddr);
          txio->setTxTime(timeFromTx);
          txio->setRBF(parsedTxPtr->isRBF);
          txio->setChained(parsedTxPtr->isChainedZc);
 
          auto& fundedScrAddr = result.keyToFundedScrAddr[zcKey];
-         fundedScrAddr.emplace(output.scrAddr.getRef());
+         fundedScrAddr.emplace(output.scrAddr);
 
          insertNewZc(
             std::move(txio),

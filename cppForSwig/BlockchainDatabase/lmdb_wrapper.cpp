@@ -1059,7 +1059,8 @@ bool LMDBBlockDatabase::getStoredHeader(
 bool LMDBBlockDatabase::getStoredZC(StoredTx& stx, const Types::TxKey& zcKey) const
 {
    //only by zcKey
-   BinaryData zcDbKey{7};
+   BinaryData zcDbKey;
+   zcDbKey.resize(7);
    uint8_t* ptr = zcDbKey.getPtr();
    ptr[0] = (uint8_t)DbPrefix::ZCDATA;
    memcpy(ptr + 1, &zcKey, 6);
@@ -1310,36 +1311,6 @@ bool LMDBBlockDatabase::getStoredTxHints(StoredTxHints& sths,
       return false;
    }
    #endif
-}
-
-////////////////////////////////////////////////////////////////////////////////
-TxRef LMDBBlockDatabase::getTxRef(BinaryDataRef txHash)
-{
-   auto key = getDBKeyForHash(txHash);
-   if (key == UINT64_MAX) {
-      throw std::runtime_error("no tx for this hash");
-   }
-   BinaryData keyBD{6};
-   std::memcpy(keyBD.getPtr(), &key, 6);
-   return TxRef{keyBD.getRef()};
-}
-
-////////////////////////////////////////////////////////////////////////////////
-TxRef LMDBBlockDatabase::getTxRef(BinaryData hgtx, uint16_t txIndex)
-{
-   BinaryWriter bw;
-   bw.put_BinaryData(hgtx);
-   bw.put_uint16_t(txIndex, BE);
-   return TxRef(bw.getDataRef());
-}
-
-////////////////////////////////////////////////////////////////////////////////
-TxRef LMDBBlockDatabase::getTxRef(uint32_t hgt, uint8_t dup, uint16_t txIndex)
-{
-   BinaryWriter bw;
-   bw.put_BinaryData(DBUtils::heightAndDupToHgtx(hgt, dup));
-   bw.put_uint16_t(txIndex, BE);
-   return TxRef(bw.getDataRef());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1671,19 +1642,18 @@ LMDBBlockDatabase::getTxOutHistoryForScrAddrKey(
 
 std::map<Types::TxIOKey, Types::TxIOKey>
 LMDBBlockDatabase::getTxInHistoryForTxOutHistory(
-   const std::map<Types::TxIOKey, TxOutData>& txOutData) const
+   const std::vector<Types::TxIOKey>& txOutKeys) const
 {
    std::map<Types::TxIOKey, Types::TxIOKey> result;
    auto tx = beginTransaction(DB_SELECT::TXINS, LMDB::Mode::ReadWrite);
 
-   for (const auto& txoutPair : txOutData) {
+   for (const auto& key : txOutKeys) {
       auto val = tx->get(LMDB::DataRef{
-         sizeof(Types::TxIOKey), (const char*)&txoutPair.first});
+         sizeof(Types::TxIOKey), (const char*)&key});
       if (val.len != sizeof(Types::TxIOKey)) {
          continue;
       }
-      auto emplaceResult = result.emplace(
-         txoutPair.first, Types::INVALID_TXIO_KEY).first;
+      auto emplaceResult = result.emplace(key, Types::INVALID_TXIO_KEY).first;
       std::memcpy(&emplaceResult->second, val.data, sizeof(Types::TxIOKey));
    }
    return result;

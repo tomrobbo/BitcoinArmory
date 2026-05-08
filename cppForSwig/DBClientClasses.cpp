@@ -59,13 +59,11 @@ namespace {
       for (auto capnTxio : capnTxios) {
          auto capnAddr = capnTxio.getScrAddr();
          BinaryDataRef scrAddr{capnAddr.begin(), capnAddr.end()};
-         TxIOPairUint txio{scrAddr, capnTxio.getTxOut(), capnTxio.getAmount()};
-         txio.setTxIn(capnTxio.getTxIn());
-
-         //txio.setTxOutFromSelf(capnTxio.getFromSelf());
-         //txio.setFromCoinbase(capnTxio.getCoinbase());
+         TxIOPairUint txio{
+            capnTxio.getTxOut(), capnTxio.getAmount(),
+            scrAddr, capnTxio.getTxIn()
+         };
          txio.setRBF(capnTxio.getRbf());
-         //txio.setMultisig(capnTxio.getMultisig());
          txios.emplace_back(std::move(txio));
       }
       return txios;

@@ -367,16 +367,15 @@ void TxIOPair::pprint() const
 
 ////////////////////////////////////////////////////////////////////////////////
 // TxIOPairUint
-TxIOPairUint::TxIOPairUint(const Types::ScrAddr& scrAddr,
-   Types::TxKey keyOfOutput, Types::TxId idOfOutput, Types::Amount amount) :
-   scrAddr_{scrAddr},
-   txIOKeyOfOutput_{Types::constructTxIOKeyFromTxKey(keyOfOutput, idOfOutput)},
-   amount_{amount}
+TxIOPairUint::TxIOPairUint(Types::TxIOKey txOutKey, uint64_t amount,
+   const Types::ScrAddr& scrAddr) :
+   txIOKeyOfOutput_(txOutKey), amount_{amount}, scrAddr_{scrAddr}
 {}
 
-TxIOPairUint::TxIOPairUint(const Types::ScrAddr& scrAddr,
-   Types::TxIOKey txOutKey, uint64_t amount) :
-   scrAddr_{scrAddr}, txIOKeyOfOutput_(txOutKey), amount_{amount}
+TxIOPairUint::TxIOPairUint(Types::TxIOKey txOutKey, uint64_t amount,
+   const Types::ScrAddr& scrAddr, Types::TxIOKey txInKey) :
+   txIOKeyOfOutput_(txOutKey), amount_{amount}, scrAddr_{scrAddr},
+   txIOKeyOfInput_(txInKey)
 {}
 
 ////////

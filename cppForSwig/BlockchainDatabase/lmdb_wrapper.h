@@ -39,7 +39,6 @@
 class TxFilterPoolWriter;
 struct StoredDBInfo;
 struct StoredSubHistory;
-class UnspentTxOut;
 struct TxOutData;
 
 enum class DB_SELECT : int;
@@ -356,19 +355,13 @@ public:
    bool getStoredTxHints(StoredTxHints&, BinaryDataRef) const;
 
    /////////////////////////////////////////////////////////////////////////////
-   // Tx stuff
-   TxRef getTxRef(BinaryDataRef);
-   TxRef getTxRef(BinaryData, uint16_t);
-   TxRef getTxRef(uint32_t, uint8_t, uint16_t);
-
-   /////////////////////////////////////////////////////////////////////////////
    // TxOut/In history stuff
    std::map<Armory::Types::TxIOKey, TxOutData>
    getTxOutHistoryForScrAddrKey(Armory::Types::ScrAddrId,
       Armory::Types::BlockId, Armory::Types::BlockId) const;
    std::map<Armory::Types::TxIOKey, Armory::Types::TxIOKey>
    getTxInHistoryForTxOutHistory(
-      const std::map<Armory::Types::TxIOKey, TxOutData>&) const;
+      const std::vector<Armory::Types::TxIOKey>&) const;
    Armory::Types::TxIOKey getTxInHistoryForTxOutKey(
       Armory::Types::TxIOKey) const;
 

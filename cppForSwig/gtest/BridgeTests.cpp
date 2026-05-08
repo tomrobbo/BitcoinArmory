@@ -11221,7 +11221,7 @@ TEST_F(BridgeChainDataTests, RestoreSynchronize)
 
    //create legacy wallet, grab backup
    auto legacyWltId = createAWallet(bridge_, 50ms, 10, false);
-   ASSERT_FALSE(bip32WltId.empty());
+   ASSERT_FALSE(legacyWltId.empty());
    auto legacyBackup = getWalletBackup(bridge_, legacyWltId, "pass1",
       Codec::Bridge::WalletBackup::Type::ARMORY200_A);
    ASSERT_FALSE(legacyBackup.empty());
@@ -11370,7 +11370,7 @@ TEST_F(BridgeChainDataTests, RestoreSynchronize)
       wltLegacyPath = wltData4.path;
    }
 
-   /* delete the 2 news wallets */
+   /* delete the 2 new wallets */
 
    //check wallet path
    ASSERT_TRUE(FileUtils::pathExists(wltBip32Path, 0));

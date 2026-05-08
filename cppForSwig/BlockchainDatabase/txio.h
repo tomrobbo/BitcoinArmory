@@ -126,12 +126,10 @@ private:
 class TxIOPairUint
 {
 public:
-   TxIOPairUint(const Armory::Types::ScrAddr&,
-      Armory::Types::TxKey, Armory::Types::TxId,
-      Armory::Types::Amount);
-   TxIOPairUint(const Armory::Types::ScrAddr&,
-      Armory::Types::TxIOKey,
-      Armory::Types::Amount);
+   TxIOPairUint(Armory::Types::TxIOKey, Armory::Types::Amount,
+      const Armory::Types::ScrAddr&);
+   TxIOPairUint(Armory::Types::TxIOKey, Armory::Types::Amount,
+      const Armory::Types::ScrAddr&, Armory::Types::TxIOKey);
 
    bool hasTxIn(void) const;
    bool hasTxOutZC(void) const;
