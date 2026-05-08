@@ -49,24 +49,6 @@ struct WalletRegistrationRequest
    {}
 };
 
-struct CombinedBalances
-{
-   struct BalanceAndCount
-   {
-      const uint64_t full;
-      const uint64_t spendable;
-      const uint64_t unconfirmed;
-      const uint32_t txnCount;
-   };
-
-   struct Wallet
-   {
-      const BalanceAndCount bnc;
-      const std::map<BinaryData, BalanceAndCount> addresses;
-   };
-   std::map<std::string, Wallet> wallets;
-};
-
 class ScrAddrFilter;
 class BtcWallet;
 class BlockDataManager;
@@ -193,17 +175,9 @@ public:
    std::shared_ptr<BtcWallet> getWalletByID(const std::string&) const;
 
    void reset(void);
-   size_t getPageCount(void) const;
-   std::vector<Armory::Ledgers::Entry> getHistoryPage(
-      uint32_t, unsigned, bool, bool);
    std::map<Armory::Types::TxIOKey, TxIOPairUint> getTxioForRange(
       uint32_t, uint32_t) const;
 
-   std::map<uint32_t, uint32_t> computeWalletsSSHSummary(bool, bool);
-   bool pageHistory(bool, bool);
-   void updateLedgerFilter(const std::vector<std::string>&);
-
-   void scanWallets(ScanWalletStruct&, int32_t);
    uint32_t getBlockInVicinity(uint32_t) const;
    uint32_t getPageIdForBlockHeight(uint32_t) const;
 };
@@ -227,66 +201,25 @@ public:
       const std::function<void(bool)>&);
    void unregisterWallet(const std::string&);
 
-   void scanWallets(std::shared_ptr<BDV_Notification>);
    bool hasWallet(const std::string&) const;
-   Tx getTxByHash(BinaryDataRef) const;
-   Tx getTxByKey(Armory::Types::TxKey) const;
-   TxOut getPrevTxOut(const TxIn&) const;
-   Tx getPrevTx(const TxIn&) const;
-   BinaryData getSenderScrAddr(const TxIn&) const;
-   int64_t getSentValue(const TxIn&) const;
+   std::shared_ptr<BtcWallet> getWalletOrLockbox(const std::string&) const;
+
+   bool scrAddressIsRegistered(const Armory::Types::ScrAddr&) const;
+   bool hasScrAddress(const Armory::Types::ScrAddr&) const;
+   std::set<Armory::Types::ScrAddr> getAddrSet(void) const;
 
    LMDBBlockDatabase* getDB(void) const;
+   std::shared_ptr<BlockDataManager> bdm(void) const;
    Armory::ZeroConf::ZeroConfContainer* zcContainer(void) const;
    const Armory::Blockchain& blockchain(void) const;
-   uint32_t getTopBlockHeight(void) const;
-   const std::shared_ptr<Armory::BlockHeader> getTopBlockHeader(void) const;
-   std::shared_ptr<Armory::BlockHeader> getHeaderByHash(const BinaryData&) const;
-
-   size_t getWalletsPageCount(void) const;
-   std::vector<Armory::Ledgers::Entry> getWalletsHistoryPage(
-      uint32_t, bool, bool);
-
-   size_t getLockboxesPageCount(void) const;
-   std::vector<Armory::Ledgers::Entry> getLockboxesHistoryPage(
-      uint32_t, bool, bool);
-
-   StoredHeader getBlockFromDB(uint32_t) const;
-   bool scrAddressIsRegistered(const BinaryData&) const;
+   std::shared_ptr<ScrAddrFilter> getSAF(void) const;
 
    bool isBDMRunning(void) const;
    void blockUntilBDMisReady(void) const;
 
-   bool isTxOutSpentByZC(const Armory::Types::TxIOKey&) const;
-   std::map<Armory::Types::TxIOKey, std::shared_ptr<const TxIOPair>>
-   getRBFTxIOsforScrAddr(const Armory::Types::ScrAddr&) const;
-   std::vector<TxOut> getZcTxOutsForKeys(const std::set<Armory::Types::TxIOKey>&) const;
-   std::vector<UTXO> getZcUTXOsForKeys(const std::set<Armory::Types::TxIOKey>&) const;
-   std::shared_ptr<ScrAddrFilter> getSAF(void) const;
-   uint32_t getClosestBlockHeightForTime(uint32_t);
-
-   std::shared_ptr<BtcWallet> getWalletOrLockbox(const std::string&) const;
-   Armory::Ledgers::Delegate getLedgerDelegateForWallets(void);
-   Armory::Ledgers::Delegate getLedgerDelegateForLockboxes(void);
-   Armory::Ledgers::Delegate getLedgerDelegateForWallet(const std::string&);
-   Armory::Ledgers::Delegate getLedgerDelegateForScrAddr(
-      const std::string&, const BinaryData&);
-
-   Tx getSpenderTxForTxOut(uint32_t, uint32_t, uint16_t) const;
-
    bool isZcEnabled(void) const;
    void flagRescanZC(bool);
    bool getZCflag(void) const;
-
-   bool isRBF(const BinaryData&) const;
-   bool hasScrAddress(const BinaryDataRef&) const;
-   std::set<Armory::Types::ScrAddr> getAddrSet(void) const;
-   std::tuple<uint64_t, uint64_t> getAddrFullBalance(const BinaryData&);
-
-   //wallet agnostic methods
-   std::vector<std::pair<StoredTxOut, BinaryDataRef>> getOutputsForOutpoints(
-      const std::map<BinaryDataRef, std::set<unsigned>>&, bool) const;
-   CombinedBalances getCombinedBalances(void) const;
 
    //txios
    std::map<Armory::Types::TxIOKey, TxIOPairUint>

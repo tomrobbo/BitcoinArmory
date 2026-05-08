@@ -264,50 +264,6 @@ namespace
       }
    }
 
-   void ledgerToCapnp(const DBClientClasses::LedgerEntry& ledger,
-      Codec::Types::TxLedger::LedgerEntry::Builder& capnLedger)
-   {
-      capnLedger.setBalance(ledger.getValue());
-      capnLedger.setTxHeight(ledger.getBlockHeight());
-      capnLedger.setTxOutIndex(ledger.getTxOutIndex());
-      capnLedger.setTxTime(ledger.getTxTime());
-      capnLedger.setIsCoinbase(ledger.isCoinbase());
-      capnLedger.setIsSTS(ledger.isSentToSelf());
-      capnLedger.setIsOptInRBF(ledger.isOptInRBF());
-      capnLedger.setIsChainedZC(ledger.isChainedZC());
-
-      auto txHash = ledger.getTxHash();
-      capnLedger.setTxHash(capnp::Data::Builder(
-         (uint8_t*)txHash.getPtr(), txHash.getSize()
-      ));
-
-      capnLedger.setWalletId(ledger.getID());
-
-      auto scrAddrList = ledger.getScrAddrList();
-      auto capnAddrs = capnLedger.initScrAddrs(scrAddrList.size());
-      unsigned i=0;
-      for (const auto& scrAddr : scrAddrList) {
-         capnAddrs.set(i++, capnp::Data::Builder(
-            (uint8_t*)scrAddr.getPtr(), scrAddr.getSize()
-         ));
-      }
-   }
-
-   void ledgersToCapnp(const std::vector<DBClientClasses::HistoryPage>& pages,
-      capnp::List<Codec::Types::TxLedger, capnp::Kind::STRUCT>::Builder& txLedgers)
-   {
-      for (unsigned i=0; i<pages.size(); i++) {
-         auto txLedger = txLedgers[i];
-         const auto& page = pages[i];
-
-         auto capnLedgers = txLedger.initLedgers(page.size());
-         for (unsigned y=0; y<page.size(); y++) {
-            auto capnLedger = capnLedgers[y];
-            ledgerToCapnp(page[y], capnLedger);
-         }
-      }
-   }
-
    void nodeStatusToCapnp (std::shared_ptr<DBClientClasses::NodeStatus> nodeStatus,
       NodeStatus::Builder& capnNodeStatus)
    {

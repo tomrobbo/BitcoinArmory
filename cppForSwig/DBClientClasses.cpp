@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2018-2024, goatpig.                                         //
+//  Copyright (C) 2018-2026, goatpig.                                         //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -92,109 +92,6 @@ BlockHeader::BlockHeader(BinaryDataRef thishash, BinaryDataRef prevhash,
 
 ///////////////////////////////////////////////////////////////////////////////
 //
-// LedgerEntry
-//
-///////////////////////////////////////////////////////////////////////////////
-DBClientClasses::LedgerEntry::LedgerEntry(const std::string& id,
-   Types::Value value,
-   uint32_t blockHeight, Types::TxHash& txHash, Types::TxIOId txOutIndex,
-   uint32_t timestamp, bool isCoinbase, bool isSentToSelf, bool isChangeBack,
-   bool isOptInRBF, bool isChainedZC,
-   std::vector<Types::ScrAddr>& scrAddrList) :
-   id_(std::move(id)), value_(value), blockHeight_(blockHeight),
-   txHash_(std::move(txHash)), txOutIndex_(txOutIndex), timestamp_(timestamp),
-   isCoinbase_(isCoinbase), isSentToSelf_(isSentToSelf),
-   isChangeBack_(isChangeBack), isOptInRBF_(isOptInRBF),
-   isChainedZC_(isChainedZC),
-   scrAddrList_(std::move(scrAddrList))
-{}
-
-///////////////////////////////////////////////////////////////////////////////
-const std::string& LedgerEntry::getID() const
-{
-   return id_;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-int64_t LedgerEntry::getValue() const
-{
-   return value_;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-uint32_t LedgerEntry::getBlockHeight() const
-{
-   return blockHeight_;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-const Types::TxHash& LedgerEntry::getTxHash() const
-{
-   return txHash_;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-Types::TxIOId LedgerEntry::getTxOutIndex() const
-{
-   return txOutIndex_;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-uint32_t LedgerEntry::getTxTime() const
-{
-   return timestamp_;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-bool LedgerEntry::isCoinbase() const
-{
-   return isCoinbase_;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-bool LedgerEntry::isSentToSelf() const
-{
-   return isSentToSelf_;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-bool LedgerEntry::isChangeBack() const
-{
-   return isChangeBack_;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-bool LedgerEntry::isOptInRBF() const
-{
-   return isOptInRBF_;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-bool LedgerEntry::isChainedZC() const
-{
-   return isChainedZC_;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-bool LedgerEntry::operator==(const LedgerEntry& rhs)
-{
-   if (getTxHash() != rhs.getTxHash())
-      return false;
-
-   if (getTxOutIndex() != rhs.getTxOutIndex())
-      return false;
-
-   return true;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-const std::vector<BinaryData>& LedgerEntry::getScrAddrList() const
-{
-   return scrAddrList_;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-//
 // RemoteCallback
 //
 ///////////////////////////////////////////////////////////////////////////////
@@ -237,7 +134,6 @@ bool RemoteCallback::processNotifications(
                      newMainIds.emplace_back(blockId);
                   }
                }
-
 
                BdmNotification bdmNotif(BDMAction_NewBlock);
                bdmNotif.newBlock = NewBlockNotif{

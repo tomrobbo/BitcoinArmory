@@ -158,16 +158,6 @@ public:
    void init(void);
    void haltThreads(void);
    std::vector<uint8_t>& getScratchPad(void);
-
-   /*
-   Creates a delegate, inserts it in the delegate map and returns the id.
-   Also checks if the delegate already exists
-   */
-   const std::string& getLedgerDelegate(void); //the bdv itself
-   const std::string& getLedgerDelegate(const std::string&); //walletId
-   const std::string& getLedgerDelegate(
-      const std::string&, const BinaryData&); //walletId, address
-
    void flagRefresh(BDV_refresh, const std::string&);
 };
 

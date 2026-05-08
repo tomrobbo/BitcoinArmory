@@ -23,7 +23,6 @@ class SecureBinaryData;
 
 namespace AsyncClient
 {
-   class LedgerDelegate;
    class BlockDataViewer;
 }
 
@@ -110,7 +109,6 @@ namespace Armory
          std::shared_ptr<AsyncClient::BlockDataViewer> bdvPtr_;
 
          //various states cache
-         std::map<std::string, AsyncClient::LedgerDelegate> delegateMap_;
          std::map<std::string,
             std::shared_ptr<CoinSelection::CoinSelectionInstance>> csMap_;
          std::map<std::string,

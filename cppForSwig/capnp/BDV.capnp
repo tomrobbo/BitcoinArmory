@@ -77,10 +77,7 @@ struct BdvRequest {
 
       getTxsByHash               @4 : List(Types.Hash);
       getTxsByKey                @5 : List(Types.TxKey);
-      getOutputsForOutpoints     @6 : OutpointRequest;
-      getOutputsForAddress       @7 : AddressOutputsRequest;
-      getCombinedBalances        @8 : Void;
-      getTxios                   @9 : UInt32;
+      getTxios                   @6 : UInt32;
    }
 }
 
@@ -105,10 +102,7 @@ struct BdvReply {
 
       getTxsByHash               @4 : List(Types.Tx);
       getTxsByKey                @5 : List(Types.Tx);
-      getOutputsForOutpoints     @6 : List(Types.Output);
-      getOutputsForAddress       @7 : AddressOutputReply;
-      getCombinedBalances        @8 : List(Types.CombinedBalanceAndCount);
-      getTxios                   @9 : List(Types.TxioPair);
+      getTxios                   @6 : List(Types.TxioPair);
    }
 }
 
@@ -130,10 +124,8 @@ struct WalletRequest {
    union {
       unset                @1 : Void;
 
-      getBalanceAndCount   @2 : UInt32;
-      getOutputs           @3 : TxoutRequest;
-      setConfTarget        @4 : UInt32;
-      unregisterAddresses  @5 : List(Address);
+      setConfTarget        @2 : UInt32;
+      unregisterAddresses  @3 : List(Address);
    }
 }
 
@@ -141,31 +133,8 @@ struct WalletReply {
    union {
       unset                @0 : Void;
 
-      getBalanceAndCount   @1 : Types.BalanceAndCount;
-      getOutputs           @2 : List(Types.Output);
-      setConfTarget        @3 : Void;
-      unregisterAddresses  @4 : Void;
-   }
-}
-
-##### addresses #####
-struct AddressRequest {
-   address                 @0 : Address;
-
-   union {
-      unset                @1 : Void;
-
-      getBalanceAndCount   @2 : Void;
-      getOutputs           @3 : TxoutRequest;
-   }
-}
-
-struct AddressReply {
-   union {
-      unset                @0 : Void;
-
-      getBalanceAndCount   @1 : Types.BalanceAndCount;
-      getOutputs           @2 : List(Types.Output);
+      setConfTarget        @1 : Void;
+      unregisterAddresses  @2 : Void;
    }
 }
 
@@ -177,7 +146,6 @@ struct Request {
       static   @1 : StaticRequest;
       bdv      @2 : BdvRequest;
       wallet   @3 : WalletRequest;
-      address  @4 : AddressRequest;
    }
 }
 
@@ -190,7 +158,6 @@ struct Reply {
       static   @3 : StaticReply;
       bdv      @4 : BdvReply;
       wallet   @5 : WalletReply;
-      address  @6 : AddressReply;
    }
 }
 

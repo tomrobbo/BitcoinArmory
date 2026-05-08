@@ -1,13 +1,12 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2018-2024, goatpig.                                         //
+//  Copyright (C) 2018-2026, goatpig.                                         //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _H_CLIENTCLASSES
-#define _H_CLIENTCLASSES
+#pragma once
 
 #include <exception>
 #include <string>
@@ -76,49 +75,6 @@ namespace DBClientClasses
          Armory::Types::BlockId, bool,
          uint32_t, uint32_t, uint32_t, uint32_t);
    };
-
-   ////////////////////////////////////////////////////////////////////////////
-   class LedgerEntry
-   {
-   private:
-      const std::string id_;
-      const Armory::Types::Value value_;
-      const uint32_t    blockHeight_;
-      const Armory::Types::TxHash txHash_;
-      const Armory::Types::TxIOId txOutIndex_;
-      const uint32_t    timestamp_; //seconds
-      const bool        isCoinbase_;
-      const bool        isSentToSelf_;
-      const bool        isChangeBack_;
-      const bool        isOptInRBF_;
-      const bool        isChainedZC_;
-
-      const std::vector<Armory::Types::ScrAddr> scrAddrList_;
-
-   public:
-      LedgerEntry(const std::string&, Armory::Types::Value,
-         uint32_t, Armory::Types::TxHash&, Armory::Types::TxIOId, uint32_t,
-         bool, bool, bool,
-         bool, bool,
-         std::vector<Armory::Types::ScrAddr>& scrAddrList);
-
-      const std::string&  getID(void) const;
-      Armory::Types::Value getValue(void) const;
-      uint32_t            getBlockHeight(void) const;
-      const Armory::Types::TxHash& getTxHash(void) const;
-      Armory::Types::TxIOId getTxOutIndex(void) const;
-      uint32_t            getTxTime(void) const;
-      bool                isCoinbase(void) const;
-      bool                isSentToSelf(void) const;
-      bool                isChangeBack(void) const;
-      bool                isOptInRBF(void) const;
-      bool                isChainedZC(void) const;
-
-      const std::vector<Armory::Types::ScrAddr>& getScrAddrList(void) const;
-
-      bool operator==(const LedgerEntry& rhs);
-   };
-   using HistoryPage = std::vector<LedgerEntry>;
 
    ////////////////////////////////////////////////////////////////////////////
    class NodeChainStatus
@@ -231,5 +187,3 @@ public:
 
    bool processNotifications(std::unique_ptr<capnp::MessageReader>);
 };
-
-#endif

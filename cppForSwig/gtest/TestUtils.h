@@ -111,8 +111,6 @@ namespace DBTestUtils
       const std::vector<BinaryData>&, const std::string&,
       bool, bool);
 
-   std::vector<uint64_t> getBalanceAndCount(Clients*,
-      Armory::Types::BdvId, const std::string&, unsigned);
    std::map<Armory::Types::TxIOKey, TxOutData> getTxOutHistory(
       const  Armory::Types::ScrAddr&, std::shared_ptr<BlockDataManager>);
    std::map< Armory::Types::TxIOKey, std::shared_ptr<const TxIOPairUint>> getZcHistory(
@@ -163,29 +161,12 @@ namespace DBTestUtils
 
    Tx getTxByHash(Clients*, Armory::Types::BdvId, const Armory::Types::TxHash&);
    Tx getTxByKey(Clients*, Armory::Types::BdvId, const Armory::Types::TxKey&);
-   std::vector<UTXO> getUtxoForAddress(Clients*, Armory::Types::BdvId, const BinaryData&, bool);
-
-   void addTxioToSsh(StoredScriptHistory&,
-      const std::map<BinaryDataRef, std::shared_ptr<const TxIOPair>>&);
-   void prettyPrintSsh(StoredScriptHistory&);
-   Armory::Ledgers::Entry getLedgerEntryFromWallet(std::shared_ptr<BtcWallet>, const BinaryData&);
-   Armory::Ledgers::Entry getLedgerEntryFromAddr(ScrAddrObj*, const BinaryData&);
 
    BinaryData processCommand(Clients*, Armory::Types::BdvId, BinaryData);
-
-   std::map<BinaryData, std::vector<uint64_t>> getAddrBalancesFromDB(
-      std::shared_ptr<AsyncClient::BlockDataViewer>, const std::string&);
-
-   std::vector<uint64_t> getBalancesAndCount(AsyncClient::BtcWallet&,
-      uint32_t);
 
    AsyncClient::TxResult getTxByHash(
       std::shared_ptr<AsyncClient::BlockDataViewer>,
       const BinaryData&);
-
-   std::vector<UTXO> getSpendableTxOutListForValue(
-      AsyncClient::BtcWallet&, uint64_t);
-   std::vector<UTXO> getSpendableZCList(AsyncClient::BtcWallet&);
 
    /////////////////////////////////////////////////////////////////////////////
    std::vector<UnitTestBlock> getMinedBlocks(BlockDataManagerThread*);

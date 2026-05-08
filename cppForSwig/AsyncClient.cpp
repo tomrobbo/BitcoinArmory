@@ -69,159 +69,6 @@ namespace {
    }
 
    // deser helpers
-   std::vector<UTXO> capnToUtxoVec(
-      capnp::List<Codec::Types::Output, capnp::Kind::STRUCT>::Reader outputs)
-   {
-      std::vector<UTXO> result;
-      result.reserve(outputs.size());
-      for (auto output : outputs) {
-         auto hashCapn = output.getTxHash();
-         BinaryDataRef txHash(hashCapn.begin(), hashCapn.end());
-
-         auto scriptCapn = output.getScript();
-         BinaryDataRef script(scriptCapn.begin(), scriptCapn.end());
-
-         result.emplace_back(UTXO(
-            output.getValue(), output.getTxHeight(), output.getTxIndex(),
-            output.getTxOutIndex(), txHash, script
-         ));
-      }
-      return result;
-   }
-
-   std::vector<Output> capnToOutputVec(
-      capnp::List<Codec::Types::Output, capnp::Kind::STRUCT>::Reader outputs)
-   {
-      std::vector<Output> result;
-      result.reserve(outputs.size());
-      for (auto output : outputs) {
-         auto hashCapn = output.getTxHash();
-         BinaryDataRef txHash(hashCapn.begin(), hashCapn.end());
-
-         auto scriptCapn = output.getScript();
-         BinaryDataRef script(scriptCapn.begin(), scriptCapn.end());
-
-         BinaryDataRef spenderHash;
-         if (output.hasSpenderHash()) {
-            auto capnSpender = output.getSpenderHash();
-            spenderHash = BinaryDataRef(capnSpender.begin(), capnSpender.end());
-         }
-
-         result.emplace_back(Output(
-            output.getValue(), output.getTxHeight(), output.getTxIndex(),
-            output.getTxOutIndex(), txHash, script, spenderHash
-         ));
-      }
-      return result;
-   }
-
-   //
-   OutputBatch capnToOutputMap(
-      Codec::BDV::BdvReply::AddressOutputReply::Reader addrOutputs)
-   {
-      OutputBatch result {
-         addrOutputs.getHeightCutoff(),
-         addrOutputs.getZcCutoff()
-      };
-
-      auto capnAddrs = addrOutputs.getAddresses();
-      for (auto capnAddr : capnAddrs) {
-         auto addrBody = capnAddr.getAddr().getBody();
-         BinaryDataRef addrRef(addrBody.begin(), addrBody.end());
-         auto resultOutputs = result.addrMap.emplace(
-            addrRef, std::vector<Output>{}).first;
-
-         auto outputs = capnAddr.getOutputs();
-         for (auto output : outputs) {
-            auto hashCapn = output.getTxHash();
-            BinaryDataRef txHash(hashCapn.begin(), hashCapn.end());
-
-            auto scriptCapn = output.getScript();
-            BinaryDataRef script(scriptCapn.begin(), scriptCapn.end());
-
-            BinaryDataRef spenderHash;
-            if (output.hasSpenderHash()) {
-               auto capnHash = output.getSpenderHash();
-               spenderHash.setRef(capnHash.begin(), capnHash.end());
-            }
-
-            resultOutputs->second.emplace_back(Output(
-               output.getValue(), output.getTxHeight(), output.getTxIndex(),
-               output.getTxOutIndex(), txHash, script, spenderHash
-            ));
-         }
-      }
-      return result;
-   }
-
-   ////
-   std::vector<AddressBookEntry> capnToAddrBook(
-      Codec::Types::AddressBook::Reader addrBook)
-   {
-      auto entries = addrBook.getEntries();
-      std::vector<AddressBookEntry> result;
-      result.reserve(entries.size());
-      for (auto entry : entries) {
-         auto addrCapn = entry.getScrAddr();
-         BinaryDataRef addr(addrCapn.begin(), addrCapn.end());
-         AddressBookEntry abe(addr);
-
-         auto hashList = entry.getTxHashes();
-         for (const auto& hashCapn : hashList) {
-            BinaryDataRef hash(hashCapn.begin(), hashCapn.end());
-            abe.addTxHash(hash);
-         }
-         result.emplace_back(std::move(abe));
-      }
-      return result;
-   }
-
-   std::vector<uint64_t> capnToBalanceVec(
-      Codec::Types::BalanceAndCount::Reader balances)
-   {
-      std::vector<uint64_t> result(4);
-      result[0] = balances.getFull();
-      result[1] = balances.getSpendable();
-      result[2] = balances.getUnconfirmed();
-      result[3] = balances.getTxnCount();
-      return result;
-   }
-
-   std::map<std::string, CombinedBalances> capnToCombinedBalances(
-      capnp::List<Codec::Types::CombinedBalanceAndCount, capnp::Kind::STRUCT>::Reader builder)
-   {
-      std::map<std::string, CombinedBalances> result;
-      for (auto capnBalance : builder) {
-         CombinedBalances bal;
-         auto walletId = capnBalance.getId();
-         bal.walletId = std::string(walletId.begin(), walletId.end());
-
-         auto walletBalances = capnBalance.getBalances();
-         bal.walletBalanceAndCount.resize(4);
-         bal.walletBalanceAndCount[0] = walletBalances.getFull();
-         bal.walletBalanceAndCount[1] = walletBalances.getSpendable();
-         bal.walletBalanceAndCount[2] = walletBalances.getUnconfirmed();
-         bal.walletBalanceAndCount[3] = walletBalances.getTxnCount();
-
-         auto capnAddresses = capnBalance.getAddresses();
-         for (auto capnAddr : capnAddresses) {
-            auto capnScrAddr = capnAddr.getScrAddr();
-            BinaryDataRef addrRef(capnScrAddr.begin(), capnScrAddr.end());
-
-            auto capnAddrBalance = capnAddr.getBalances();
-            bal.addressBalances.emplace(addrRef, std::vector<uint64_t>{
-               capnAddrBalance.getFull(),
-               capnAddrBalance.getSpendable(),
-               capnAddrBalance.getUnconfirmed(),
-               capnAddrBalance.getTxnCount()
-            });
-         }
-         result.emplace(walletId, std::move(bal));
-      }
-
-      return result;
-   }
-
    std::map<unsigned, DBClientClasses::FeeEstimateStruct> capnToFeeSchedules(
       capnp::List<Codec::Types::FeeSchedule, capnp::Kind::STRUCT>::Reader fees)
    {
@@ -329,23 +176,19 @@ namespace {
 //
 ///////////////////////////////////////////////////////////////////////////////
 BlockDataViewer::BlockDataViewer()
-{
-   cache_ = std::make_shared<ClientCache>();
-}
+{}
 
 BlockDataViewer::BlockDataViewer(std::shared_ptr<SocketPrototype> sock) :
    sock_(sock)
-{
-   cache_ = std::make_shared<ClientCache>();
-}
+{}
 
 BlockDataViewer::~BlockDataViewer()
 {}
 
+////////
 BlockDataViewer& BlockDataViewer::operator=(const BlockDataViewer& rhs)
 {
    sock_ = rhs.sock_;
-   cache_ = rhs.cache_;
    return *this;
 }
 
@@ -537,8 +380,6 @@ void BlockDataViewer::broadcastZC(const std::vector<BinaryData>& rawTxVec)
    unsigned i=0;
    for (auto& rawTx : rawTxVec) {
       auto tx = std::make_shared<Tx>(rawTx);
-      cache_->insertTx(tx);
-
       txList.set(i++, capnp::Data::Builder(
          (uint8_t*)rawTx.getPtr(), rawTx.getSize()));
    }
@@ -554,7 +395,6 @@ void BlockDataViewer::broadcastZC(const std::vector<BinaryData>& rawTxVec)
 void BlockDataViewer::broadcastThroughRPC(const BinaryData& rawTx)
 {
    auto tx = std::make_shared<Tx>(rawTx);
-   cache_->insertTx(tx);
 
    //create capnp request
    capnp::MallocMessageBuilder message;
@@ -875,75 +715,6 @@ void BlockDataViewer::setCheckServerKeyPromptLambda(
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-void BlockDataViewer::getOutputsForOutpoints(
-   const std::map<BinaryData, std::set<unsigned>>& outpoints, bool withZc,
-   std::function<void(ReturnMessage<std::vector<Output>>)> callback)
-{
-   //create capnp request
-   capnp::MallocMessageBuilder message;
-   auto payload = message.initRoot<Codec::BDV::Request>();
-
-   auto bdvRequest = payload.initBdv();
-   auto opsReq = bdvRequest.initGetOutputsForOutpoints();
-   opsReq.setWithZc(withZc);
-   auto capnOps = opsReq.initOutpoints(outpoints.size());
-
-   //populate request data
-   unsigned i = 0;
-   for (auto& op : outpoints) {
-      auto capnOp = capnOps[i++];
-      capnOp.setTxHash(
-         capnp::Data::Builder((uint8_t*)op.first.getPtr(), op.first.getSize()));
-
-      auto capnIds = capnOp.initOutpointIds(op.second.size());
-      unsigned y = 0;
-      for (auto& id : op.second) {
-         capnIds.set(y++, id);
-      }
-   }
-
-   //serialize and add to payload
-   auto write_payload = toWritePayload(message);
-
-   //reply handling lambda
-   auto read_payload = std::make_shared<Socket_ReadPayload>();
-   read_payload->callbackReturn_ =
-      std::make_unique<ClientCallback>([callback](const WebSocketMessagePartial& msg){
-         try {
-            //deser capnp reply
-            auto msgReader = msg.getReader();
-            auto capnReader = msgReader->getReader();
-            auto reply = capnReader->getRoot<Codec::BDV::Reply>();
-
-            //sanity checks
-            if (!reply.getSuccess()) {
-               throw ClientMessageError(reply.getError(), -1);
-            }
-
-            if (!reply.isBdv()) {
-               throw ClientMessageError("expected bdv reply", WRONG_REPLY_CLASS);
-            }
-
-            auto bdvReply = reply.getBdv();
-            if (!bdvReply.isGetOutputsForOutpoints()) {
-               throw ClientMessageError(
-                  "expected GetOutputsForOutpoints reply", WRONG_REPLY_TYPE);
-            }
-
-            //convert to utxo vector and fire callback
-            auto result = capnToOutputVec(bdvReply.getGetOutputsForOutpoints());
-            callback(ReturnMessage<std::vector<Output>>(result));
-         } catch (ClientMessageError& e) {
-            //something went wrong, set error message and fire callback
-            callback(ReturnMessage<std::vector<Output>>(e));
-         }
-      });
-
-   //push to server
-   sock_->pushPayload(std::move(write_payload), read_payload);
-}
-
-///////////////////////////////////////////////////////////////////////////////
 //
 // BtcWallet
 //
@@ -1043,146 +814,11 @@ void AsyncClient::BtcWallet::unregister()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-void AsyncClient::BtcWallet::getBalancesAndCount(uint32_t blockheight,
-   std::function<void(ReturnMessage<std::vector<uint64_t>>)> callback)
-{
-   //create capnp request
-   capnp::MallocMessageBuilder message;
-   auto payload = message.initRoot<Codec::BDV::Request>();
-
-   auto walletRequest = payload.initWallet();
-   walletRequest.setWalletId(walletID_);
-   walletRequest.setGetBalanceAndCount(blockheight);
-
-   //serialize and add to payload
-   auto write_payload = toWritePayload(message);
-
-   //reply handling lambda
-   auto read_payload = std::make_shared<Socket_ReadPayload>();
-   read_payload->callbackReturn_ =
-      std::make_unique<ClientCallback>([callback](const WebSocketMessagePartial& msg){
-         try {
-            //deser capnp reply
-            auto msgReader = msg.getReader();
-            auto capnReader = msgReader->getReader();
-            auto reply = capnReader->getRoot<Codec::BDV::Reply>();
-
-            //sanity checks
-            if (!reply.getSuccess()) {
-               throw ClientMessageError(reply.getError(), -1);
-            }
-
-            if (!reply.isWallet()) {
-               throw ClientMessageError("expected wallet reply", WRONG_REPLY_CLASS);
-            }
-
-            auto walletReply = reply.getWallet();
-            if (!walletReply.isGetBalanceAndCount()) {
-               throw ClientMessageError(
-                  "expected balance and count reply", WRONG_REPLY_TYPE);
-            }
-
-            //convert to utxo vector and fire callback
-            auto result = capnToBalanceVec(walletReply.getGetBalanceAndCount());
-            callback(ReturnMessage<std::vector<uint64_t>>(result));
-         } catch (ClientMessageError& e) {
-            //something went wrong, set error message and fire callback
-            callback(ReturnMessage<std::vector<uint64_t>>(e));
-         }
-      });
-
-   //push to server
-   sock_->pushPayload(move(write_payload), read_payload);
-}
-
-///////////////////////////////////////////////////////////////////////////////
-void AsyncClient::BtcWallet::getUTXOs(uint64_t val, bool zc, bool rbf,
-   std::function<void(ReturnMessage<std::vector<UTXO>>)> callback)
-{
-   //create capnp request
-   capnp::MallocMessageBuilder message;
-   auto payload = message.initRoot<Codec::BDV::Request>();
-
-   auto walletRequest = payload.initWallet();
-   walletRequest.setWalletId(walletID_);
-
-   auto outputReq = walletRequest.initGetOutputs();
-   outputReq.setZc(zc);
-   outputReq.setRbf(rbf);
-   if (val > 0) {
-      outputReq.setTargetValue(val);
-   }
-
-   //serialize and add to payload
-   auto write_payload = toWritePayload(message);
-
-   //reply handling lambda
-   auto read_payload = std::make_shared<Socket_ReadPayload>();
-   read_payload->callbackReturn_ =
-      std::make_unique<ClientCallback>([callback](const WebSocketMessagePartial& msg){
-         try {
-            //deser capnp reply
-            auto msgReader = msg.getReader();
-            auto capnReader = msgReader->getReader();
-            auto reply = capnReader->getRoot<Codec::BDV::Reply>();
-
-            //sanity checks
-            if (!reply.getSuccess()) {
-               throw ClientMessageError(reply.getError(), -1);
-            }
-
-            if (!reply.isWallet()) {
-               throw ClientMessageError("expected wallet reply", WRONG_REPLY_CLASS);
-            }
-
-            auto walletReply = reply.getWallet();
-            if (!walletReply.isGetOutputs()) {
-               throw ClientMessageError(
-                  "expected getOutputs reply", WRONG_REPLY_TYPE);
-            }
-
-            //convert to utxo vector and fire callback
-            auto result = capnToUtxoVec(walletReply.getGetOutputs());
-            callback(ReturnMessage<std::vector<UTXO>>(result));
-         } catch (ClientMessageError& e) {
-            //something went wrong, set error message and fire callback
-            callback(ReturnMessage<std::vector<UTXO>>(e));
-         }
-      });
-
-   //push to server
-   sock_->pushPayload(move(write_payload), read_payload);
-}
-
-///////////////////////////////////////////////////////////////////////////////
 ScrAddrObj AsyncClient::BtcWallet::getScrAddrObj(const BinaryData& scrAddr,
    uint64_t full, uint64_t spendable, uint64_t unconf, uint32_t count)
 {
    return ScrAddrObj(sock_, walletID_, scrAddr, INT32_MAX,
       full, spendable, unconf, count);
-}
-
-///////////////////////////////////////////////////////////////////////////////
-//
-// Lockbox
-//
-///////////////////////////////////////////////////////////////////////////////
-void Lockbox::getBalancesAndCountFromDB(uint32_t topBlockHeight)
-{
-   auto setValue = [this](ReturnMessage<std::vector<uint64_t>> int_vec)->void
-   {
-      auto v = std::move(int_vec.get());
-      if (v.size() != 4)
-         throw std::runtime_error("unexpected vector size");
-
-      fullBalance_ = v[0];
-      spendableBalance_ = v[1];
-      unconfirmedBalance_ = v[2];
-
-      txnCount_ = v[3];
-   };
-
-   BtcWallet::getBalancesAndCount(topBlockHeight, setValue);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1206,64 +842,6 @@ ScrAddrObj::ScrAddrObj(AsyncClient::BtcWallet* wlt, const BinaryData& scrAddr,
    fullBalance_(full), spendableBalance_(spendabe),
    unconfirmedBalance_(unconf), count_(count), index_(index)
 {}
-
-///////////////////////////////////////////////////////////////////////////////
-void ScrAddrObj::getOutputs(uint64_t targetValue, bool zc, bool rbf,
-   std::function<void(ReturnMessage<std::vector<UTXO>>)> callback)
-{
-   //create capnp request
-   capnp::MallocMessageBuilder message;
-   auto payload = message.initRoot<Codec::BDV::Request>();
-
-   auto addrRequest = payload.initAddress();
-   auto address = addrRequest.getAddress();
-   address.setBody(capnp::Data::Builder(
-      (uint8_t*)scrAddr_.getPtr(), scrAddr_.getSize()));
-   auto outputReq = addrRequest.initGetOutputs();
-   outputReq.setTargetValue(targetValue);
-   outputReq.setZc(zc);
-   outputReq.setRbf(rbf);
-
-   //serialize and add to payload
-   auto write_payload = toWritePayload(message);
-
-   //reply handling lambda
-   auto read_payload = std::make_shared<Socket_ReadPayload>();
-   read_payload->callbackReturn_ =
-      std::make_unique<ClientCallback>([callback](const WebSocketMessagePartial& msg){
-         try {
-            //deser capnp reply
-            auto msgReader = msg.getReader();
-            auto capnReader = msgReader->getReader();
-            auto reply = capnReader->getRoot<Codec::BDV::Reply>();
-
-            //sanity checks
-            if (!reply.getSuccess()) {
-               throw ClientMessageError(reply.getError(), -1);
-            }
-
-            if (!reply.isAddress()) {
-               throw ClientMessageError("expected address reply", WRONG_REPLY_CLASS);
-            }
-
-            auto addressReply = reply.getAddress();
-            if (!addressReply.isGetOutputs()) {
-               throw ClientMessageError(
-                  "expected getOutputs reply", WRONG_REPLY_TYPE);
-            }
-
-            //convert to utxo vector and fire callback
-            auto result = capnToUtxoVec(addressReply.getGetOutputs());
-            callback(ReturnMessage<std::vector<UTXO>>(result));
-         } catch (ClientMessageError& e) {
-            //something went wrong, set error message and fire callback
-            callback(ReturnMessage<std::vector<UTXO>>(e));
-         }
-      });
-
-   //push to server
-   sock_->pushPayload(move(write_payload), read_payload);
-}
 
 ///////////////////////////////////////////////////////////////////////////////
 //
@@ -1397,201 +975,4 @@ std::pair<unsigned, unsigned> AsyncClient::BlockDataViewer::getRekeyCount() cons
       return std::make_pair(0, 0);
 
    return wsSocket->getRekeyCount();
-}
-
-///////////////////////////////////////////////////////////////////////////////
-void AsyncClient::BlockDataViewer::getCombinedBalances(std::function<void(
-   ReturnMessage<std::map<std::string, CombinedBalances>>)> callback)
-{
-   //create capnp request
-   capnp::MallocMessageBuilder message;
-   auto payload = message.initRoot<Codec::BDV::Request>();
-
-   auto bdvRequest = payload.initBdv();
-   bdvRequest.setGetCombinedBalances();
-
-   //serialize and add to payload
-   auto write_payload = toWritePayload(message);
-
-   //reply handling lambda
-   auto read_payload = std::make_shared<Socket_ReadPayload>();
-   read_payload->callbackReturn_ = std::make_unique<ClientCallback>(
-      [callback](const WebSocketMessagePartial& msg){
-         try {
-            //deser capnp reply
-            auto msgReader = msg.getReader();
-            auto capnReader = msgReader->getReader();
-            auto reply = capnReader->getRoot<Codec::BDV::Reply>();
-
-            //sanity checks
-            if (!reply.getSuccess()) {
-               throw ClientMessageError(reply.getError(), -1);
-            }
-
-            if (!reply.isBdv()) {
-               throw ClientMessageError("expected bdv reply", WRONG_REPLY_CLASS);
-            }
-
-            auto bdvReply = reply.getBdv();
-            if (!bdvReply.isGetCombinedBalances()) {
-               throw ClientMessageError(
-                  "expected GetCombinedBalances reply", WRONG_REPLY_TYPE);
-            }
-            //convert to utxo vector and fire callback
-            auto result = capnToCombinedBalances(bdvReply.getGetCombinedBalances());
-            callback(ReturnMessage<std::map<std::string, CombinedBalances>>(result));
-         } catch (ClientMessageError& e) {
-            //something went wrong, set error message and fire callback
-            callback(ReturnMessage<std::map<std::string, CombinedBalances>>(e));
-         }
-      });
-
-   //push to server
-   sock_->pushPayload(move(write_payload), read_payload);
-}
-
-///////////////////////////////////////////////////////////////////////////////
-void AsyncClient::BlockDataViewer::getOutputsForAddresses(
-   std::set<BinaryData>& addrSet, uint32_t heightCutoff, uint32_t zcCutoff,
-   std::function<void(ReturnMessage<OutputBatch>)> callback)
-{
-   //create capnp request
-   capnp::MallocMessageBuilder message;
-   auto payload = message.initRoot<Codec::BDV::Request>();
-
-   auto bdvRequest = payload.initBdv();
-   auto addrReq = bdvRequest.initGetOutputsForAddress();
-   addrReq.setHeightCutoff(heightCutoff);
-   addrReq.setZcCutoff(zcCutoff);
-
-   //populate request data
-   auto capnAddrs = addrReq.initAddresses(addrSet.size());
-   unsigned i = 0;
-   for (auto& addr : addrSet) {
-      auto capnAddr = capnAddrs[i++];
-      capnAddr.setBody(capnp::Data::Builder(
-         (uint8_t*)addr.getPtr(), addr.getSize()
-      ));
-   }
-
-   //serialize and add to payload
-   auto write_payload = toWritePayload(message);
-
-   //reply handler
-   auto read_payload = std::make_shared<Socket_ReadPayload>();
-   read_payload->callbackReturn_ = std::make_unique<ClientCallback>(
-      [callback](const WebSocketMessagePartial& msg){
-         try {
-            //deser capnp reply
-            auto msgReader = msg.getReader();
-            auto capnReader = msgReader->getReader();
-            auto reply = capnReader->getRoot<Codec::BDV::Reply>();
-
-            //sanity checks
-            if (!reply.getSuccess()) {
-               throw ClientMessageError(reply.getError(), -1);
-            }
-
-            if (!reply.isBdv()) {
-               throw ClientMessageError("expected bdv reply", WRONG_REPLY_CLASS);
-            }
-
-            auto bdvReply = reply.getBdv();
-            if (!bdvReply.isGetOutputsForAddress()) {
-               throw ClientMessageError(
-                  "expected getOutputsForAddress reply", WRONG_REPLY_TYPE);
-            }
-
-            //convert to output map and fire callback
-            auto result = capnToOutputMap(bdvReply.getGetOutputsForAddress());
-            callback(ReturnMessage<OutputBatch>(std::move(result)));
-         } catch (ClientMessageError& e) {
-            //something went wrong, set error message and fire callback
-            callback(ReturnMessage<OutputBatch>(e));
-         }
-      });
-
-   //push to server
-   sock_->pushPayload(move(write_payload), read_payload);
-}
-
-///////////////////////////////////////////////////////////////////////////////
-//
-// ClientCache
-//
-///////////////////////////////////////////////////////////////////////////////
-void ClientCache::insertTx(std::shared_ptr<Tx> tx)
-{
-   ReentrantLock(this);
-   txMap_.emplace(tx->getThisHash(), tx);
-}
-
-///////////////////////////////////////////////////////////////////////////////
-void ClientCache::insertTx(const BinaryData& hash, std::shared_ptr<Tx> tx)
-{
-   ReentrantLock(this);
-   txMap_.emplace(hash, tx);
-}
-
-///////////////////////////////////////////////////////////////////////////////
-void ClientCache::insertRawHeader(unsigned& height, BinaryDataRef header)
-{
-   ReentrantLock(this);
-   rawHeaderMap_.insert(std::make_pair(height, header));
-}
-
-///////////////////////////////////////////////////////////////////////////////
-void ClientCache::insertHeightForTxHash(BinaryData& hash, unsigned& height)
-{
-   ReentrantLock(this);
-   txHashToHeightMap_.insert(std::make_pair(hash, height));
-}
-
-///////////////////////////////////////////////////////////////////////////////
-std::shared_ptr<const Tx> ClientCache::getTx(const BinaryDataRef& hashRef) const
-{
-   ReentrantLock(this);
-
-   auto iter = txMap_.find(hashRef);
-   if (iter == txMap_.end())
-      throw NoMatch();
-
-   auto constTx = std::const_pointer_cast<const Tx>(iter->second);
-   return constTx;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-std::shared_ptr<Tx> ClientCache::getTx_NoConst(const BinaryDataRef& hashRef)
-{
-   ReentrantLock(this);
-
-   auto iter = txMap_.find(hashRef);
-   if (iter == txMap_.end())
-      throw NoMatch();
-
-   return iter->second;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-const BinaryData& ClientCache::getRawHeader(const unsigned& height) const
-{
-   ReentrantLock(this);
-
-   auto iter = rawHeaderMap_.find(height);
-   if (iter == rawHeaderMap_.end())
-      throw NoMatch();
-
-   return iter->second;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-const unsigned& ClientCache::getHeightForTxHash(const BinaryData& height) const
-{
-   ReentrantLock(this);
-
-   auto iter = txHashToHeightMap_.find(height);
-   if (iter == txHashToHeightMap_.end())
-      throw NoMatch();
-
-   return iter->second;
 }

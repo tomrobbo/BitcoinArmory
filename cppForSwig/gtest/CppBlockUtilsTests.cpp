@@ -384,6 +384,7 @@ TEST_F(BlockDir, BlockFileSplitUpdate)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BlockDir, DISABLED_FixBlockDataOffsets)
 {
+   #if 0
    /* 1. setup regular test, check balances */
    TestUtils::setBlocks({ "0", "1", "2", "4", "3", "5" }, blk0dat_);
 
@@ -513,6 +514,7 @@ TEST_F(BlockDir, DISABLED_FixBlockDataOffsets)
 
    delete clients;
    delete BDMt;
+   #endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1131,6 +1133,7 @@ TEST_F(BlockUtilsBare, Load5Blocks_ReloadBDM_Reorg)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BlockUtilsBare, DISABLED_CorruptedBlock)
 {
+   #if 0
    TestUtils::setBlocks({ "0", "1", "2", "3", "4" }, blk0dat_);
 
    clients_->init();
@@ -1192,6 +1195,7 @@ TEST_F(BlockUtilsBare, DISABLED_CorruptedBlock)
    scrObj = wlt->getScrAddrObjByKey(TestChain::scrAddrB);
    EXPECT_EQ(scrObj->getFullBalance(), 70*COIN);
    EXPECT_EQ(wlt->getFullBalance(), 140*COIN);
+   #endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////

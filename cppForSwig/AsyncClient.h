@@ -35,17 +35,6 @@ namespace Armory
    }
 }
 
-class TxIOPair;
-
-////
-struct OutputBatch
-{
-   unsigned heightCutoff;
-   unsigned zcIndexCutoff;
-
-   std::map<BinaryData, std::vector<Output>> addrMap;
-};
-
 ///////////////////////////////////////////////////////////////////////////////
 class ClientMessageError : public std::runtime_error
 {
@@ -96,76 +85,6 @@ public:
 
 namespace AsyncClient
 {
-   struct CombinedBalances
-   {
-      std::string walletId;
-
-      /*
-      {
-         fullBalance,
-         spendableBalance,
-         unconfirmedBalance,
-         wltTxnCount
-      }
-      */
-      std::vector<uint64_t> walletBalanceAndCount;
-
-      /*
-      {
-         scrAddr (prefixed):
-         {
-            fullBalance,
-            spendableBalance,
-            unconfirmedBalance,
-            txnCount
-         }
-      }
-      */
-      std::map<BinaryData, std::vector<uint64_t>> addressBalances;
-
-      bool operator<(const CombinedBalances& rhs) const
-      {
-         return walletId < rhs.walletId;
-      }
-
-      bool operator<(const std::string& rhs) const
-      {
-         return walletId < rhs;
-      }
-   };
-
-   ////////////////////////////////////////////////////////////////////////////
-   class ClientCache : public Lockable
-   {
-      friend struct CallbackReturn_Tx;
-      friend struct CallbackReturn_TxBatch;
-      
-   private:
-      std::map<BinaryData, std::shared_ptr<Tx>> txMap_;
-      std::map<unsigned, BinaryData> rawHeaderMap_;
-      std::map<BinaryData, unsigned> txHashToHeightMap_;
-
-   private:
-      std::shared_ptr<Tx> getTx_NoConst(const BinaryDataRef&);
-      void insertTx(const BinaryData&, std::shared_ptr<Tx>);
-
-   public:
-      void insertTx(std::shared_ptr<Tx>);
-      void insertRawHeader(unsigned&, BinaryDataRef);
-      void insertHeightForTxHash(BinaryData&, unsigned&);
-
-      std::shared_ptr<const Tx> getTx(const BinaryDataRef&) const;
-      const BinaryData& getRawHeader(const unsigned&) const;
-      const unsigned& getHeightForTxHash(const BinaryData&) const;
-
-      //virtuals
-      void initAfterLock(void) {}
-      void cleanUpBeforeUnlock(void) {}
-   };
-
-   class NoMatch
-   {};
-
    ///////////////////////////////////////////////////////////////////////////////
    typedef std::shared_ptr<Tx> TxResult;
    typedef std::function<void(ReturnMessage<TxResult>)> TxCallback;
@@ -174,22 +93,6 @@ namespace AsyncClient
    typedef std::function<void(ReturnMessage<TxBatchResult>)> TxBatchCallback;
 
    class BlockDataViewer;
-
-   /////////////////////////////////////////////////////////////////////////////
-   class LedgerDelegate
-   {
-   private:
-      std::string delegateID_;
-      std::shared_ptr<SocketPrototype> sock_;
-
-   public:
-      LedgerDelegate(void) {}
-      LedgerDelegate(std::shared_ptr<SocketPrototype>, const std::string&);
-
-      void getPageCount(std::function<void(ReturnMessage<uint64_t>)>) const;
-
-      const std::string& getID(void) const { return delegateID_; }
-   };
 
    class BtcWallet;
 
@@ -233,8 +136,6 @@ namespace AsyncClient
 
       uint64_t getTxioCount(void) const { return count_; }
 
-      void getOutputs(uint64_t, bool, bool,
-         std::function<void(ReturnMessage<std::vector<UTXO>>)>);
       const BinaryData& getScrAddr(void) const { return scrAddr_; }
 
       void setComment(const std::string& comment) { comment_ = comment; }
@@ -254,11 +155,6 @@ namespace AsyncClient
 
    public:
       BtcWallet(const BlockDataViewer&, const std::string&);
-      void getBalancesAndCount(uint32_t topBlockHeight,
-         std::function<void(ReturnMessage<std::vector<uint64_t>>)>);
-
-      void getUTXOs(uint64_t val, bool, bool,
-         std::function<void(ReturnMessage<std::vector<UTXO>>)>);
 
       ScrAddrObj getScrAddrObj(const BinaryData&,
          uint64_t, uint64_t, uint64_t, uint32_t);
@@ -267,9 +163,6 @@ namespace AsyncClient
          const std::vector<BinaryData>& addrVec, bool isNew);
       void unregisterAddresses(const std::set<BinaryData>&);
       void unregister(void);
-
-      void getLedgerDelegate(
-         std::function<void(ReturnMessage<LedgerDelegate>)>);
 
       void setUnconfirmedTarget(unsigned);
       std::string walletID(void) const { return walletID_; }
@@ -290,8 +183,6 @@ namespace AsyncClient
       Lockbox(const BlockDataViewer& bdv, const std::string& id) :
          BtcWallet(bdv, id)
       {}
-
-      void getBalancesAndCountFromDB(uint32_t topBlockHeight);
 
       uint64_t getFullBalance(void) const { return fullBalance_; }
       uint64_t getSpendableBalance(void) const { return spendableBalance_; }
@@ -327,7 +218,6 @@ namespace AsyncClient
    private:
       bool registered_ = false;
       std::shared_ptr<SocketPrototype> sock_;
-      std::shared_ptr<ClientCache> cache_;
 
    private:
       BlockDataViewer(void);
@@ -375,16 +265,6 @@ namespace AsyncClient
          std::function<void(ReturnMessage<std::shared_ptr<DBClientClasses::NodeStatus>>)>);
       void getFeeSchedule(const std::string&, std::function<void(ReturnMessage<
             std::map<unsigned, DBClientClasses::FeeEstimateStruct>>)>);
-
-      //balances & outputs
-      void getCombinedBalances(std::function<void(
-         ReturnMessage<std::map<std::string, CombinedBalances>>)>);
-
-      void getOutputsForAddresses(std::set<BinaryData>&, uint32_t, uint32_t,
-         std::function<void(ReturnMessage<OutputBatch>)>);
-      void getOutputsForOutpoints(
-         const std::map<BinaryData, std::set<unsigned>>&, bool,
-         std::function<void(ReturnMessage<std::vector<Output>>)>);
 
       /*
       Broadcast methods:
