@@ -45,7 +45,7 @@ namespace {
       for (auto capnTxio : capnTxios) {
          auto capnScrAddr = capnTxio.getScrAddr();
          BinaryDataRef scrAddr{capnScrAddr.begin(), capnScrAddr.end()};
-         TxIOPairUint txio{scrAddr, capnTxio.getTxOut(), capnTxio.getAmount()};
+         TxIOPairUint txio{capnTxio.getTxOut(), capnTxio.getAmount(), scrAddr};
          txio.setTxIn(capnTxio.getTxIn());
 
          txio.setTxTime(capnTxio.getTxTime());
@@ -54,6 +54,17 @@ namespace {
          txios.emplace_back(std::move(txio));
       }
       return txios;
+   }
+
+   std::vector<Types::TxIOKey> toKeyVector(
+      const std::map<Types::TxIOKey, TxOutData>& txOutData)
+   {
+      std::vector<Types::TxIOKey> txOutKeys;
+      txOutKeys.reserve(txOutData.size());
+      for (const auto& txOutPair : txOutData) {
+         txOutKeys.emplace_back(txOutPair.first);
+      }
+      return txOutKeys;
    }
 
    UTXO getUTXO(Types::TxIOKey txIOKey, std::shared_ptr<BlockDataManager> bdm)
@@ -275,7 +286,7 @@ namespace DBTestUtils
    /////////////////////////////////////////////////////////////////////////////
    void registerWallet(Clients* clients, Types::BdvId bdvId,
       const vector<Types::ScrAddr>& scrAddrs, const string& wltName,
-      bool isLockbox, bool waitOnReg)
+      bool waitOnReg)
    {
       capnp::MallocMessageBuilder message;
       auto payload = message.initRoot<Codec::BDV::Request>();
@@ -284,12 +295,6 @@ namespace DBTestUtils
       auto regReq = bdvRequest.initRegisterWallet();
       regReq.setWalletId(wltName);
       regReq.setIsNew(false);
-      if (isLockbox) {
-         regReq.setWalletType(Codec::BDV::BdvRequest::WalletType::LOCKBOX);
-      } else {
-         regReq.setWalletType(Codec::BDV::BdvRequest::WalletType::WALLET);
-      }
-
       regReq.initAddresses(scrAddrs.size());
       auto capnAddresses = regReq.getAddresses();
       for (unsigned i=0; i<scrAddrs.size(); i++) {
@@ -365,7 +370,8 @@ namespace DBTestUtils
       std::shared_ptr<BlockDataManager> bdm)
    {
       auto txOutData = getTxOutHistory(scrAddr, bdm);
-      auto txInData = bdm->getIFace()->getTxInHistoryForTxOutHistory(txOutData);
+      auto txInData = bdm->getIFace()->getTxInHistoryForTxOutHistory(
+         toKeyVector(txOutData));
       auto zcTxIOs = getZcHistory(scrAddr, bdm);
       auto bc = bdm->blockchain();
 
@@ -406,7 +412,8 @@ namespace DBTestUtils
       std::vector<UTXO> result;
       for (const auto& addr : addrSet) {
          auto txOutData = getTxOutHistory(addr, bdm);
-         auto txInData = bdm->getIFace()->getTxInHistoryForTxOutHistory(txOutData);
+         auto txInData = bdm->getIFace()->getTxInHistoryForTxOutHistory(
+            toKeyVector(txOutData));
          auto zcTxIOs = getZcHistory(addr, bdm);
 
          auto bc = bdm->blockchain();

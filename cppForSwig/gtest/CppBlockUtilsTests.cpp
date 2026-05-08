@@ -135,7 +135,7 @@ TEST_F(BlockDir, HeadersFirst)
    auto bdvID = DBTestUtils::registerBDV(clients, Config::BitcoinSettings::getMagicBytes());
    auto bdvPtr = DBTestUtils::getBDV(clients, bdvID);
    DBTestUtils::registerWallet(clients, bdvID, scraddrs, "wallet1",
-      false, false);
+      false);
 
    BDMt->start(BdmInitMode::RESUME);
    DBTestUtils::goOnline(clients, bdvID);
@@ -173,7 +173,7 @@ TEST_F(BlockDir, HeadersFirstUpdate)
 
    auto bdvID = DBTestUtils::registerBDV(clients, Config::BitcoinSettings::getMagicBytes());
    DBTestUtils::registerWallet(clients, bdvID, scraddrs, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients, bdvID);
 
    DBTestUtils::goOnline(clients, bdvID);
@@ -214,7 +214,7 @@ TEST_F(BlockDir, HeadersFirstReorg)
 
    auto bdvID = DBTestUtils::registerBDV(clients, Config::BitcoinSettings::getMagicBytes());
    DBTestUtils::registerWallet(clients, bdvID, scraddrs, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients, bdvID);
 
    DBTestUtils::goOnline(clients, bdvID);
@@ -273,7 +273,7 @@ TEST_F(BlockDir, HeadersFirstUpdateTwice)
 
    auto bdvID = DBTestUtils::registerBDV(clients, Config::BitcoinSettings::getMagicBytes());
    DBTestUtils::registerWallet(clients, bdvID, scraddrs, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients, bdvID);
 
    DBTestUtils::goOnline(clients, bdvID);
@@ -321,7 +321,7 @@ TEST_F(BlockDir, BlockFileSplit)
 
    auto bdvID = DBTestUtils::registerBDV(clients, Config::BitcoinSettings::getMagicBytes());
    DBTestUtils::registerWallet(clients, bdvID, scraddrs, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients, bdvID);
 
    DBTestUtils::goOnline(clients, bdvID);
@@ -357,7 +357,7 @@ TEST_F(BlockDir, BlockFileSplitUpdate)
 
    auto bdvID = DBTestUtils::registerBDV(clients, Config::BitcoinSettings::getMagicBytes());
    DBTestUtils::registerWallet(clients, bdvID, scraddrs, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients, bdvID);
 
    DBTestUtils::goOnline(clients, bdvID);
@@ -402,7 +402,7 @@ TEST_F(BlockDir, DISABLED_FixBlockDataOffsets)
 
    auto bdvID = DBTestUtils::registerBDV(clients, Config::BitcoinSettings::getMagicBytes());
    DBTestUtils::registerWallet(clients, bdvID, scraddrs, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients, bdvID);
 
    DBTestUtils::goOnline(clients, bdvID);
@@ -458,7 +458,7 @@ TEST_F(BlockDir, DISABLED_FixBlockDataOffsets)
    scraddrs.emplace_back(TestChain::scrAddrD);
    auto bdvID2 = DBTestUtils::registerBDV(clients, Config::BitcoinSettings::getMagicBytes());
    DBTestUtils::registerWallet(clients, bdvID2, scraddrs, "wallet2",
-      false, false);
+      false);
 
    auto bdvPtr2 = DBTestUtils::getBDV(clients, bdvID2);
    DBTestUtils::goOnline(clients, bdvID2);
@@ -488,7 +488,7 @@ TEST_F(BlockDir, DISABLED_FixBlockDataOffsets)
    scraddrs.emplace_back(TestChain::scrAddrD);
    auto bdvID3 = DBTestUtils::registerBDV(clients, Config::BitcoinSettings::getMagicBytes());
    DBTestUtils::registerWallet(clients, bdvID3, scraddrs, "wallet3",
-      false, false);
+      false);
 
    auto bdvPtr3 = DBTestUtils::getBDV(clients, bdvID3);
    DBTestUtils::goOnline(clients, bdvID3);
@@ -537,7 +537,7 @@ TEST_F(BlockDir, StartAtBlkFile1)
    auto bdvID = DBTestUtils::registerBDV(clients, Config::BitcoinSettings::getMagicBytes());
    auto bdvPtr = DBTestUtils::getBDV(clients, bdvID);
    DBTestUtils::registerWallet(clients, bdvID, scraddrs, "wallet1",
-      false, false);
+      false);
 
    BDMt->start(BdmInitMode::RESUME);
    DBTestUtils::goOnline(clients, bdvID);
@@ -669,13 +669,13 @@ TEST_F(BlockUtilsBare, Load5Blocks)
    };
 
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    DBTestUtils::registerWallet(
       clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID,
-      true, false);
+      false);
    DBTestUtils::registerWallet(
       clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID,
-      true, false);
+      false);
 
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
@@ -721,7 +721,7 @@ TEST_F(BlockUtilsBare, Load5Blocks_DamagedBlkFile)
       TestChain::scrAddrC
    };
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -770,13 +770,13 @@ TEST_F(BlockUtilsBare, Load4Blocks_Plus2)
    };
 
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    DBTestUtils::registerWallet(
       clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID,
-      true, false);
+      false);
    DBTestUtils::registerWallet(
       clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID,
-      true, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -851,27 +851,27 @@ TEST_F(BlockUtilsBare, Load5Blocks_FullReorg)
       TestChain::scrAddrB,
       TestChain::scrAddrC
       }, "wallet1",
-      false, false);
+      false);
 
    DBTestUtils::registerWallet(clients_, bdvID, {
       TestChain::scrAddrD,
       TestChain::scrAddrE,
       TestChain::scrAddrF
       }, "wallet2",
-      false, false);
+      false);
 
    DBTestUtils::registerWallet(
       clients_, bdvID, {
          TestChain::lb1ScrAddr,
          TestChain::lb1ScrAddrP2SH
       }, TestChain::lb1B58ID,
-      true, false);
+      false);
    DBTestUtils::registerWallet(
       clients_, bdvID, {
          TestChain::lb2ScrAddr,
          TestChain::lb2ScrAddrP2SH
       }, TestChain::lb2B58ID,
-      true, false);
+      false);
 
    DBTestUtils::waitOnWalletRefresh(clients_, bdvID, "wallet1");
    DBTestUtils::waitOnWalletRefresh(clients_, bdvID, "wallet2");
@@ -943,25 +943,25 @@ TEST_F(BlockUtilsBare, Load5Blocks_DoubleReorg)
       TestChain::scrAddrB,
       TestChain::scrAddrC},
       "wallet1",
-      false, false);
+      false);
 
    DBTestUtils::registerWallet(clients_, bdvID, {
       TestChain::scrAddrD,
       TestChain::scrAddrE,
       TestChain::scrAddrF},
       "wallet2",
-      false, false);
+      false);
 
    DBTestUtils::registerWallet(clients_, bdvID, {
       TestChain::lb1ScrAddr,
       TestChain::lb1ScrAddrP2SH},
       TestChain::lb1B58ID,
-      true, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, {
       TestChain::lb2ScrAddr,
       TestChain::lb2ScrAddrP2SH},
       TestChain::lb2B58ID,
-      true, false);
+      false);
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
@@ -1031,25 +1031,25 @@ TEST_F(BlockUtilsBare, Load5Blocks_ReloadBDM_Reorg)
       TestChain::scrAddrB,
       TestChain::scrAddrC},
       "wallet1",
-      false, false);
+      false);
 
    DBTestUtils::registerWallet(clients_, bdvID, {
       TestChain::scrAddrD,
       TestChain::scrAddrE,
       TestChain::scrAddrF},
       "wallet2",
-      false, false);
+      false);
 
    DBTestUtils::registerWallet(clients_, bdvID, {
       TestChain::lb1ScrAddr,
       TestChain::lb1ScrAddrP2SH},
       TestChain::lb1B58ID,
-      true, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, {
       TestChain::lb2ScrAddr,
       TestChain::lb2ScrAddrP2SH},
       TestChain::lb2B58ID,
-      true, false);
+      false);
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
@@ -1080,25 +1080,25 @@ TEST_F(BlockUtilsBare, Load5Blocks_ReloadBDM_Reorg)
       TestChain::scrAddrB,
       TestChain::scrAddrC},
       "wallet1",
-      false, false);
+      false);
 
    DBTestUtils::registerWallet(clients_, bdvID, {
       TestChain::scrAddrD,
       TestChain::scrAddrE,
       TestChain::scrAddrF},
       "wallet2",
-      false, false);
+      false);
 
    DBTestUtils::registerWallet(clients_, bdvID, {
       TestChain::lb1ScrAddr,
       TestChain::lb1ScrAddrP2SH},
       TestChain::lb1B58ID,
-      true, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, {
       TestChain::lb2ScrAddr,
       TestChain::lb2ScrAddrP2SH},
       TestChain::lb2B58ID,
-      true, false);
+      false);
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
@@ -1146,7 +1146,7 @@ TEST_F(BlockUtilsBare, DISABLED_CorruptedBlock)
       TestChain::scrAddrC
    };
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
 
    const std::vector<BinaryData> lb1ScrAddrs{
       TestChain::lb1ScrAddr,
@@ -1159,10 +1159,10 @@ TEST_F(BlockUtilsBare, DISABLED_CorruptedBlock)
 
    DBTestUtils::registerWallet(
       clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID,
-      true, false);
+      false);
    DBTestUtils::registerWallet(
       clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID,
-      true, false);
+      false);
 
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
@@ -1215,17 +1215,17 @@ TEST_F(BlockUtilsBare, Load5Blocks_RescanOps)
             TestChain::scrAddrE,
             TestChain::scrAddrF},
          "wallet1",
-         false, false);
+         false);
       DBTestUtils::registerWallet(clients_, bdvID, {
             TestChain::lb1ScrAddr,
             TestChain::lb1ScrAddrP2SH},
          TestChain::lb1B58ID,
-         true, false);
+         false);
       DBTestUtils::registerWallet(clients_, bdvID, {
             TestChain::lb2ScrAddr,
             TestChain::lb2ScrAddrP2SH},
          TestChain::lb2B58ID,
-         true, false);
+         false);
 
       auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
@@ -1330,13 +1330,13 @@ TEST_F(BlockUtilsBare, Load5Blocks_RescanEmptyDB)
       };
 
       DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-         false, false);
+         false);
       DBTestUtils::registerWallet(
          clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID,
-         true, false);
+         false);
       DBTestUtils::registerWallet(
          clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID,
-         true, false);
+         false);
 
       auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
@@ -1396,13 +1396,13 @@ TEST_F(BlockUtilsBare, Load5Blocks_RebuildEmptyDB)
       };
 
       DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-         false, false);
+         false);
       DBTestUtils::registerWallet(
          clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID,
-         true, false);
+         false);
       DBTestUtils::registerWallet(
          clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID,
-         true, false);
+         false);
 
       auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
@@ -1460,13 +1460,13 @@ TEST_F(BlockUtilsBare, Load5Blocks_SideScan)
    };
 
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    DBTestUtils::registerWallet(
       clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID,
-      true, false);
+      false);
    DBTestUtils::registerWallet(
       clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID,
-      true, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -1491,7 +1491,7 @@ TEST_F(BlockUtilsBare, Load5Blocks_SideScan)
    scrAddrVec.clear();
    scrAddrVec.push_back(TestChain::scrAddrD);
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, true);
+      true);
 
    EXPECT_EQ(getBal(TestChain::scrAddrA), 50 * COIN);
    EXPECT_EQ(getBal(TestChain::scrAddrB), 70 * COIN);
@@ -1565,13 +1565,13 @@ TEST_F(BlockUtilsBare, BlockXor)
    };
 
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    DBTestUtils::registerWallet(
       clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID,
-      true, false);
+      false);
    DBTestUtils::registerWallet(
       clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID,
-      true, false);
+      false);
 
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 

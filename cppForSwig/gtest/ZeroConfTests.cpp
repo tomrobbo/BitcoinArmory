@@ -1470,13 +1470,13 @@ TEST_F(ZeroConfTests_FullNode, Load4Blocks_ReloadBDM_ZC_Plus2)
    };
 
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    DBTestUtils::registerWallet(
       clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID,
-      true, false);
+      false);
    DBTestUtils::registerWallet(
       clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID,
-      true, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -1510,13 +1510,13 @@ TEST_F(ZeroConfTests_FullNode, Load4Blocks_ReloadBDM_ZC_Plus2)
    bdvID = DBTestUtils::registerBDV(clients_, Config::BitcoinSettings::getMagicBytes());
 
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    DBTestUtils::registerWallet(
       clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID,
-      true, false);
+      false);
    DBTestUtils::registerWallet(
       clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID,
-      true, false);
+      false);
    bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -1602,7 +1602,7 @@ TEST_F(ZeroConfTests_FullNode, Load3Blocks_ZC_Plus3)
    };
 
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -1670,7 +1670,7 @@ TEST_F(ZeroConfTests_FullNode, Load3Blocks_ZC_Plus3)
 
    scrAddrVec.pop_back();
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -1765,13 +1765,13 @@ TEST_F(ZeroConfTests_FullNode, Load3Blocks_ZCchain)
    };
 
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    DBTestUtils::registerWallet(
       clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID,
-      true, false);
+      false);
    DBTestUtils::registerWallet(
       clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID,
-      true, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -1941,13 +1941,13 @@ TEST_F(ZeroConfTests_FullNode, Load3Blocks_RBF)
    };
 
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    DBTestUtils::registerWallet(
       clients_, bdvID, lb1ScrAddrs, TestChain::lb1B58ID,
-      true, false);
+      false);
    DBTestUtils::registerWallet(
       clients_, bdvID, lb2ScrAddrs, TestChain::lb2B58ID,
-      true, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -2028,9 +2028,9 @@ TEST_F(ZeroConfTests_FullNode, Replace_ZC_Test)
    hashVec.insert(hashVec.begin(), hashSet.begin(), hashSet.end());
 
    DBTestUtils::registerWallet(clients_, bdvID, hashVec, assetWlt->getID(),
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -2493,16 +2493,14 @@ TEST_F(ZeroConfTests_FullNode, ChainZC_RBFchild_Test)
    hashVec.insert(hashVec.begin(), hashSet.begin(), hashSet.end());
 
    DBTestUtils::registerWallet(clients_, bdvID, hashVec, assetWlt->getID(),
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
    DBTestUtils::waitOnBDVReady(clients_, bdvID);
-   auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
-   auto dbAssetWlt = bdvPtr->getWalletOrLockbox(assetWlt->getID());
 
    //check balances
    auto bdm = theBDMt_->bdm();
@@ -2894,7 +2892,7 @@ TEST_F(ZeroConfTests_FullNode, ZC_InOut_SameBlock)
    };
 
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -3041,13 +3039,12 @@ TEST_F(ZeroConfTests_Supernode, ZeroConfUpdate)
    theBDMt_->start(Config::DBSettings::initMode());
    auto bdvID = DBTestUtils::registerBDV(clients_, Config::BitcoinSettings::getMagicBytes());
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
    DBTestUtils::waitOnBDVReady(clients_, bdvID);
-   auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
 
    BinaryData ZChash;
    {
@@ -3155,7 +3152,7 @@ TEST_F(ZeroConfTests_Supernode, UnrelatedZC_CheckLedgers)
    };
 
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -3312,7 +3309,7 @@ TEST_F(ZeroConfTests_Supernode, RegisterAfterZC)
    };
 
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -3386,7 +3383,7 @@ TEST_F(ZeroConfTests_Supernode, RegisterAfterZC)
    //Register scrAddrD with the wallet. It should have the ZC balance
    scrAddrVec.push_back(TestChain::scrAddrD);
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, true);
+      true);
 
    scrObj = wlt->getScrAddrObjByKey(TestChain::scrAddrD);
    EXPECT_EQ(scrObj->getFullBalance(), 65 * COIN);
@@ -3441,9 +3438,9 @@ TEST_F(ZeroConfTests_Supernode, ZC_Reorg)
    }
 
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, wltVec, assetWlt->getID(),
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -3613,9 +3610,9 @@ TEST_F(ZeroConfTests_Supernode, ChainZC_RBFchild_Test)
    hashVec.insert(hashVec.begin(), hashSet.begin(), hashSet.end());
 
    DBTestUtils::registerWallet(clients_, bdvID, hashVec, assetWlt->getID(),
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -3993,7 +3990,7 @@ TEST_F(ZeroConfTests_Supernode, ZC_InOut_SameBlock)
    };
 
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -4067,7 +4064,7 @@ TEST_F(ZeroConfTests_Supernode, ZC_MineAfter1Block)
    auto bdvID = DBTestUtils::registerBDV(clients_, Config::BitcoinSettings::getMagicBytes());
 
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals

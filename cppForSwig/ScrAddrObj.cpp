@@ -30,9 +30,8 @@ using namespace Armory;
 
 ////////////////////////////////////////////////////////////////////////////////
 // ScrAddrObj Methods
-ScrAddrObj::ScrAddrObj(const Types::ScrAddr& addr,
-   Types::ScrAddrId id, LMDBBlockDatabase *db) :
-   scrAddr_(addr), id_(id), db_(db)
+ScrAddrObj::ScrAddrObj(const Types::ScrAddr& addr, Types::ScrAddrId id) :
+   scrAddr_(addr), id_(id)
 {}
 
 ////////
@@ -43,26 +42,22 @@ const Types::ScrAddr& ScrAddrObj::getScrAddr() const
 
 ////////
 std::map<Types::TxIOKey, TxIOPairUint> ScrAddrObj::getTxios(
-   Types::BlockId start, Types::BlockId end) const
+   LMDBBlockDatabase* db, Types::BlockId start, Types::BlockId end) const
 {
    //TODO: cache keys for unspent txouts so that we
    //      don't have to fetch them every time
 
    //grab txio range
-   auto txOutData = db_->getTxOutHistoryForScrAddrKey(id_, 0, UINT32_MAX);
-   auto txInKeys = db_->getTxInHistoryForTxOutHistory(txOutData);
-
-   std::map<Types::TxIOKey, TxIOPairUint> result;
-   auto addTxio = [this, &result](
-      const std::pair<Types::TxIOKey, TxOutData>& txopair,
-      Types::TxIOKey txInKey)
-   {
-      auto emplaceResult = result.emplace(txopair.first,
-         TxIOPairUint{scrAddr_, txopair.first, txopair.second.amount});
-      emplaceResult.first->second.setTxIn(txInKey);
-   };
+   auto txOutData = db->getTxOutHistoryForScrAddrKey(id_, 0, UINT32_MAX);
+   std::vector<Types::TxIOKey> txOutKeys;
+   txOutKeys.reserve(txOutData.size());
+   for (const auto& txout : txOutData) {
+      txOutKeys.emplace_back(txout.first);
+   }
+   auto txInKeys = db->getTxInHistoryForTxOutHistory(txOutKeys);
 
    //create txios
+   std::map<Types::TxIOKey, TxIOPairUint> result;
    for (const auto& txopair : txOutData) {
       //check txout does not go over end range
       if (txopair.second.blockID > end) {
@@ -87,7 +82,9 @@ std::map<Types::TxIOKey, TxIOPairUint> ScrAddrObj::getTxios(
       }
 
       //if we got this far, this is an eligible txio
-      addTxio(txopair, txInKey);
+      auto emplaceResult = result.emplace(txopair.first, TxIOPairUint{
+         txopair.first, txopair.second.amount, scrAddr_, txInKey
+      });
    }
    return result;
 }

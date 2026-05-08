@@ -319,7 +319,7 @@ TEST_F(SignerTest, Signer_Test)
    };
 
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -410,9 +410,9 @@ TEST_F(SignerTest, SpendTest_SizeEstimates)
    hashVec.insert(hashVec.begin(), hashSet.begin(), hashSet.end());
 
    DBTestUtils::registerWallet(clients_, bdvID, hashVec, assetWlt->getID(),
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -777,16 +777,14 @@ TEST_F(SignerTest, SpendTest_P2WPKH)
    }
 
    DBTestUtils::registerWallet(clients_, bdvID, hashVec, assetWlt->getID(),
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
    DBTestUtils::waitOnBDVReady(clients_, bdvID);
-   auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
-   auto dbAssetWlt = bdvPtr->getWalletOrLockbox(assetWlt->getID());
 
    //check balances
    EXPECT_EQ(DBTestUtils::getScrAddrBalance(TestChain::scrAddrA, bdm), 50 * COIN);
@@ -1032,16 +1030,14 @@ TEST_F(SignerTest, SpendTest_MixedInputTypes)
       hashVec.push_back(addrPtr->getPrefixedHash());
    }
    DBTestUtils::registerWallet(clients_, bdvID, hashVec, assetWlt->getID(),
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
    DBTestUtils::waitOnBDVReady(clients_, bdvID);
-   auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
-   auto dbAssetWlt = bdvPtr->getWalletOrLockbox(assetWlt->getID());
 
    //check balances
    EXPECT_EQ(DBTestUtils::getScrAddrBalance(TestChain::scrAddrA, bdm), 50 * COIN);
@@ -1294,9 +1290,9 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_1of3)
    addrVec.push_back(addr_ms->getPrefixedHash());
 
    DBTestUtils::registerWallet(clients_, bdvID, addrVec, "ms_entry",
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -1569,11 +1565,11 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_2of3_NativeP2WSH)
       addrVec_singleSig.push_back(addr);
    }
    DBTestUtils::registerWallet(clients_, bdvID, addrVec, "ms_entry",
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, addrVec_singleSig, assetWlt_2->getID(),
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -1913,11 +1909,11 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs)
    }
 
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, hashVec_1, assetWlt_1->getID(),
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, hashVec_2, assetWlt_2->getID(),
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -2181,11 +2177,11 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs_Strings)
    }
 
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, hashVec_1, assetWlt_1->getID(),
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, hashVec_2, assetWlt_2->getID(),
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -2448,11 +2444,11 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs_StringsLegacy)
    }
 
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, hashVec_1, assetWlt_1->getID(),
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, hashVec_2, assetWlt_2->getID(),
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -2732,11 +2728,11 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning)
    }
 
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, hashVec_1, assetWlt_1->getID(),
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, hashVec_2, assetWlt_2->getID(),
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -3032,11 +3028,11 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning_GetUnsignedTx)
    }
 
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, hashVec_1, assetWlt_1->getID(),
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, hashVec_2, assetWlt_2->getID(),
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -3371,11 +3367,11 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning_GetUnsignedTx_Neste
    }
 
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, hashVec_1, assetWlt_1->getID(),
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, hashVec_2, assetWlt_2->getID(),
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -3764,11 +3760,11 @@ TEST_F(SignerTest, GetUnsignedTxId)
    }
 
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, hashVec_1, assetWlt_1->getID(),
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, hashVec_2, assetWlt_2->getID(),
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -4108,9 +4104,9 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2WPKH)
    hashVec.insert(hashVec.begin(), hashSet.begin(), hashSet.end());
 
    DBTestUtils::registerWallet(clients_, bdvID, hashVec, assetWlt->getID(),
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
 
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
@@ -4376,9 +4372,9 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2WPKH_WOResolution_fromWOCopy)
    hashVec.insert(hashVec.begin(), hashSet.begin(), hashSet.end());
 
    DBTestUtils::registerWallet(clients_, bdvID, hashVec, wltWO->getID(),
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -4636,9 +4632,9 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2WPKH_WOResolution_fromXPub)
    hashVec.insert(hashVec.begin(), hashSet.begin(), hashSet.end());
 
    DBTestUtils::registerWallet(clients_, bdvID, hashVec, wltWO->getID(),
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -4860,9 +4856,9 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2PK)
    hashVec.insert(hashVec.begin(), hashSet.begin(), hashSet.end());
 
    DBTestUtils::registerWallet(clients_, bdvID, hashVec, assetWlt->getID(),
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -5096,9 +5092,9 @@ TEST_F(SignerTest, SpendTest_FromAccount_Reload)
    }
 
    DBTestUtils::registerWallet(clients_, bdvID, hashVec, assetWlt->getID(),
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -5279,7 +5275,7 @@ TEST_F(SignerTest, SpendTest_FromAccount_Reload)
 
    //register new change address
    DBTestUtils::registerWallet(clients_, bdvID, hashVec, assetWlt->getID(),
-      false, true);
+      true);
 
    //bare/full node cannot track zc prior to address registration, balance will
    //show after the zc mines
@@ -5447,7 +5443,7 @@ TEST_F(SignerTest, SpendTest_BIP32_Accounts)
 
    //register with db
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -5547,7 +5543,7 @@ TEST_F(SignerTest, SpendTest_BIP32_Accounts)
    hashVec.push_back(newAddr3->getPrefixedHash());
 
    DBTestUtils::registerWallet(clients_, bdvID, hashVec, assetWlt->getID(),
-      false, false);
+      false);
 
    //mine some blocks
    DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrC, 2);
@@ -5673,7 +5669,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Armory135)
 
    //register with db
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -5778,7 +5774,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Armory135)
    hashVec.push_back(newAddr2->getPrefixedHash());
 
    DBTestUtils::registerWallet(clients_, bdvID, hashVec, assetWlt->getID(),
-      false, false);
+      false);
 
    //mine some blocks
    DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrC, 2);
@@ -5904,7 +5900,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_BIP32)
 
    //register with db
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -6011,8 +6007,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_BIP32)
    hashVec.push_back(newAddr2->getPrefixedHash());
 
    DBTestUtils::registerWallet(clients_, bdvID, hashVec, assetWlt->getID(),
-      false, false);
-   auto dbAssetWlt = bdvPtr->getWalletOrLockbox(assetWlt->getID());
+      false);
 
    //mine some blocks
    DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrC, 2);
@@ -6160,13 +6155,12 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Salted)
 
    //register with db
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
    DBTestUtils::waitOnBDVReady(clients_, bdvID);
-   auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
    EXPECT_EQ(TestUtils::getTopBlockHeightInDB(
       theBDMt_->bdm().get(), DB_SELECT::HEADERS), 3U);
 
@@ -6267,7 +6261,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Salted)
    hashVec.push_back(newAddr2->getPrefixedHash());
 
    DBTestUtils::registerWallet(clients_, bdvID, hashVec, assetWlt->getID(),
-      false, false);
+      false);
 
    //mine some blocks
    DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrC, 2);
@@ -6415,7 +6409,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_ECDH)
 
    //register with db
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
@@ -6528,7 +6522,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_ECDH)
    hashVec.push_back(addrVec[1]->getPrefixedHash());
 
    DBTestUtils::registerWallet(clients_, bdvID, hashVec, assetWlt->getID(),
-      false, false);
+      false);
 
    //mine some blocks
    DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrC, 2);
@@ -6662,16 +6656,14 @@ TEST_F(SignerTest, SpendTest_InjectSignature)
       hashVec.push_back(addrPtr->getPrefixedHash());
    }
    DBTestUtils::registerWallet(clients_, bdvID, hashVec, assetWlt->getID(),
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals
    DBTestUtils::goOnline(clients_, bdvID);
    DBTestUtils::waitOnBDVReady(clients_, bdvID);
-   auto wlt = bdvPtr->getWalletOrLockbox(wallet1id);
-   auto dbAssetWlt = bdvPtr->getWalletOrLockbox(assetWlt->getID());
 
    //check balances
    EXPECT_EQ(DBTestUtils::getScrAddrBalance(TestChain::scrAddrA, bdm), 50 * COIN);
@@ -7039,11 +7031,11 @@ TEST_F(SignerTest, SpendTest_InjectSignature_Multisig)
       addrVec_singleSig.push_back(addr);
    }
    DBTestUtils::registerWallet(clients_, bdvID, addrVec, "ms_entry",
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, scrAddrVec, "wallet1",
-      false, false);
+      false);
    DBTestUtils::registerWallet(clients_, bdvID, addrVec_singleSig, assetWlt_2->getID(),
-      false, false);
+      false);
    auto bdvPtr = DBTestUtils::getBDV(clients_, bdvID);
 
    //wait on signals

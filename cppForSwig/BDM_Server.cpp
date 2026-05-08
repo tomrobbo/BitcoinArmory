@@ -39,58 +39,6 @@ using namespace std::chrono_literals;
 namespace {
    using namespace Armory::Codec::BDV;
 
-   void utxoToCapn(const UTXO& utxo,
-      Codec::Types::Output::Builder& result)
-   {
-      result.setValue(utxo.getAmount());
-      result.setTxHeight(utxo.getHeight());
-      result.setTxIndex(utxo.getTxIndex());
-      result.setTxOutIndex(utxo.getTxOutIndex());
-
-      const auto& script = utxo.getScript();
-      result.setScript(capnp::Data::Builder(
-         (uint8_t*)script.getPtr(), script.getSize()
-      ));
-
-      const auto& hash = utxo.getTxHash();
-      result.setTxHash(capnp::Data::Builder(
-         (uint8_t*)hash.getPtr(), hash.getSize()
-      ));
-   }
-
-   void outputToCapn(const Output& output,
-      Codec::Types::Output::Builder& result)
-   {
-      utxoToCapn(output, result);
-      if (output.isSpent()) {
-         result.setSpenderHash(capnp::Data::Builder(
-            (uint8_t*)output.spenderHash.getPtr(),
-            output.spenderHash.getSize()
-         ));
-      }
-   }
-
-   void stxoToCapn(const StoredTxOut& output,
-      Codec::Types::Output::Builder& result)
-   {
-      result.setValue(output.getValue());
-      result.setTxHeight(output.blockHeight);
-      result.setTxIndex(output.txIndex);
-      result.setTxOutIndex(output.txOutIndex);
-
-      auto script = output.getScriptRef();
-      result.setScript(capnp::Data::Builder(
-         (uint8_t*)script.getPtr(), script.getSize()
-      ));
-
-      if (!output.spenderHash.empty()) {
-         result.setSpenderHash(capnp::Data::Builder(
-            (uint8_t*)output.spenderHash.getPtr(),
-            output.spenderHash.getSize()
-         ));
-      }
-   }
-
    void txioToCapn(const TxIOPairUint& txio,
       Codec::Types::TxioPair::Builder& capnTxio)
    {
@@ -172,9 +120,8 @@ namespace {
                   Types::ScrAddr{addrBody.begin(), addrBody.end()});
             }
 
-            auto walletType = WalletRegType(walletRequest.getWalletType());
             WalletRegistrationRequest regReq(walletId,
-               addresses, walletRequest.getIsNew(), walletType
+               addresses, walletRequest.getIsNew()
             );
             bdv->registerWallet(regReq);
             auto builder = ReplyBuilder::getNew(bdv);
@@ -341,7 +288,7 @@ namespace {
 
       //get the wallet ptr, doubles as a sanity check
       std::string walletId(request.getWalletId());
-      auto wltPtr = bdv->getWalletOrLockbox(walletId);
+      auto wltPtr = bdv->getWallet(walletId);
       if (wltPtr == nullptr) {
          auto builder = ReplyBuilder::getNew(bdv);
          prepareReply(builder);
@@ -830,11 +777,8 @@ void BDV_Server_Object::init()
       //finality callback
       auto prom = std::make_shared<std::promise<bool>>();
       auto fut = prom->get_future();
-      auto callback = [promPtr=prom]
-      (const std::vector<std::shared_ptr<AddrAndHash>>&, bool success)
-      {
-         promPtr->set_value(success);
-      };
+      auto callback = [promPtr=prom] (bool success)
+      { promPtr->set_value(success); };
 
       //push one big batch to scraddr filter
       auto batch = std::make_shared<RegistrationBatch>(
@@ -851,7 +795,23 @@ void BDV_Server_Object::init()
       }
 
       //addresses are now registered, populate the wallet maps
-      populateWallets(regQueue);
+      auto prom2 = std::make_shared<std::promise<bool>>();
+      auto fut2 = prom2->get_future();
+      size_t count = 0; bool success = true;
+      auto regCallback = [prom2, &count, &success, total=regQueue.size()](bool s)
+      {
+         success |= s;
+         if (++count == total) {
+            prom2->set_value(success);
+         }
+      };
+      for (const auto& regRequest : regQueue) {
+         registerAWallet(regRequest, regCallback);
+      }
+
+      //wait on address population process
+      //TODO: notify on failure
+      fut2.get();
    }
 
    //mark bdv object as ready
@@ -1109,49 +1069,6 @@ void BDV_Server_Object::registerWallet(WalletRegistrationRequest& regReq)
    registerAWallet(regReq, [this, wId=regReq.walletId](bool success){
       if (success) { flagRefresh(BDV_registrationCompleted, wId); }
    });
-}
-
-///////////////////////////////////////////////////////////////////////////////
-void BDV_Server_Object::populateWallets(
-   std::deque<WalletRegistrationRequest>& wltQueue)
-{
-   auto safPtr = getSAF();
-   auto addrMap = safPtr->getScanFilterAddrMap();
-
-   for (const auto& wlt : wltQueue) {
-      std::shared_ptr<BtcWallet> theWallet;
-      if (wlt.type == WalletRegType::WALLET) {
-         theWallet = wallets_.getOrSetWallet(wlt.walletId);
-      } else {
-         theWallet = lockboxes_.getOrSetWallet(wlt.walletId);
-      }
-
-      if (theWallet == nullptr) {
-         LOGERR << "failed to get or set wallet";
-         continue;
-      }
-
-      std::map<Types::ScrAddr, std::shared_ptr<ScrAddrObj>> newAddrMap;
-      for (const auto& addr : wlt.addresses) {
-         if (theWallet->hasScrAddress(addr)) {
-            continue;
-         }
-
-         auto iter = addrMap->find(addr);
-         if (iter == addrMap->end()) {
-            throw std::runtime_error("address missing from saf");
-         }
-
-         const auto& aahObj = iter->second;
-         newAddrMap.emplace(aahObj->scrAddr,
-            std::make_shared<ScrAddrObj>(aahObj->scrAddr, aahObj->id, db_));
-      }
-
-      if (newAddrMap.empty()) {
-         continue;
-      }
-      theWallet->scrAddrMap_.update(newAddrMap);
-   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

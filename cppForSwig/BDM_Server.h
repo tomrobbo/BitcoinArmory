@@ -141,7 +141,6 @@ public:
 
 private:
    BDV_Server_Object(BDV_Server_Object&) = delete; //no copies
-   void populateWallets(std::deque<WalletRegistrationRequest>&);
    void setup(void);
    WebSocketMessagePartial preparePayload(std::shared_ptr<BDV_Payload>);
    std::unique_ptr<BDV_Notification_ZC> createZcNotification(

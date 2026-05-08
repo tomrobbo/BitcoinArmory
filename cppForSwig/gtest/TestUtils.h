@@ -108,8 +108,7 @@ namespace DBTestUtils
    void goOnline(Clients*, Armory::Types::BdvId);
    const std::shared_ptr<BDV_Server_Object> getBDV(Clients*, Armory::Types::BdvId);
    void registerWallet(Clients*, Armory::Types::BdvId,
-      const std::vector<BinaryData>&, const std::string&,
-      bool, bool);
+      const std::vector<BinaryData>&, const std::string&, bool);
 
    std::map<Armory::Types::TxIOKey, TxOutData> getTxOutHistory(
       const  Armory::Types::ScrAddr&, std::shared_ptr<BlockDataManager>);
@@ -147,7 +146,6 @@ namespace DBTestUtils
       {
          Tx zctx(rawZc);
          zctx.setTxTime(zcTime);
-
          zcVec_.push_back(std::move(std::make_pair(zctx, blocksToMine)));
       }
 

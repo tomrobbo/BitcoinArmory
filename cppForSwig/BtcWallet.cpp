@@ -83,11 +83,12 @@ void BtcWallet::reset()
 map<Types::TxIOKey, TxIOPairUint> BtcWallet::getTxioForRange(
    uint32_t start, uint32_t end) const
 {
+   auto db = bdvPtr_->getDB();
    map<Types::TxIOKey, TxIOPairUint> outMap;
    auto addrMap = scrAddrMap_.get();
 
    for (const auto& scrAddrPair : *addrMap) {
-      auto saTxioMap = scrAddrPair.second->getTxios(start, end);
+      auto saTxioMap = scrAddrPair.second->getTxios(db, start, end);
       outMap.insert(saTxioMap.begin(), saTxioMap.end());
    }
    return outMap;

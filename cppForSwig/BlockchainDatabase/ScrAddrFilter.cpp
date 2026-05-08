@@ -127,7 +127,7 @@ ScrAddrFilter::AddrMap ScrAddrFilter::prepareRegistrationBatch(
 {
    if (Config::DBSettings::getDbType() == ARMORY_DB_TYPE::Super) {
       //this class currently serves no purpose in supernode
-      batch->callback({}, true);
+      batch->callback(true);
       return {};
    }
 
@@ -135,22 +135,22 @@ ScrAddrFilter::AddrMap ScrAddrFilter::prepareRegistrationBatch(
    auto newScrAddrMap = assignScrAddrKeys(batch->scrAddrVec);
    if (newScrAddrMap.empty()) {
       //all addresses are already registered
-      batch->callback({}, true);
+      batch->callback(true);
       return {};
    }
 
    if (batch->isNew) {
       //batch is flagged as new, all addresses within it are assumed
       //clean of history. Update the map and continue
-      auto scaSet = mergeAddresses(std::move(newScrAddrMap), true);
-      batch->callback(scaSet, true);
+      mergeAddresses(std::move(newScrAddrMap), true);
+      batch->callback(true);
       return {};
    } else if (!bdmIsRunning()) {
       //BDM isn't running, merge address set but do not update addr
       //merkle root. This will trigger a rescan of all addresses once
       //BDM is up.
-      auto scaSet = mergeAddresses(std::move(newScrAddrMap), false);
-      batch->callback(scaSet, true);
+      mergeAddresses(std::move(newScrAddrMap), false);
+      batch->callback(true);
       return {};
    }
    return newScrAddrMap;
@@ -197,14 +197,8 @@ ScrAddrFilter::AddrMap ScrAddrFilter::assignScrAddrKeys(
    return result;
 }
 
-std::vector<std::shared_ptr<AddrAndHash>> ScrAddrFilter::mergeAddresses(
-   AddrMap addrMap, bool updateMerkleRoot)
+void ScrAddrFilter::mergeAddresses(AddrMap addrMap, bool updateMerkleRoot)
 {
-   std::vector<std::shared_ptr<AddrAndHash>> result;
-   for (const auto& aaPair : addrMap) {
-      result.emplace_back(aaPair.second);
-   }
-
    bool wasEmpty = scanFilterAddrMap_->empty();
    scanFilterAddrMap_->update(std::move(addrMap));
    if (!updateMerkleRoot) {
@@ -219,7 +213,6 @@ std::vector<std::shared_ptr<AddrAndHash>> ScrAddrFilter::mergeAddresses(
       merkleRoot_ = computeMerkleRoot();
       updateAddressMerkle();
    }
-   return result;
 }
 
 Hash32 ScrAddrFilter::headerHashToScanFrom()
@@ -352,7 +345,6 @@ void ScrAddrFilter::run(std::shared_future<bool> bdmReadyFut)
             saf->mergeAddresses(newScrAddrMap, false);
             auto scanFromHeader = blockchain()->getGenesisHeader();
             Hash32 scannedHash;
-            std::vector<std::shared_ptr<AddrAndHash>> scaVec;
 
             while (true) {
                //run the side scan
@@ -374,7 +366,7 @@ void ScrAddrFilter::run(std::shared_future<bool> bdmReadyFut)
                   lmdb_->putStoredDBInfo(DB_SELECT::SCRADDR, sdbi, sdbiKey_);
                }
                if (sdbi.topScannedBlkHash == scannedHash) {
-                  scaVec = mergeAddresses(std::move(newScrAddrMap), true);
+                  mergeAddresses(std::move(newScrAddrMap), true);
                   break;
                } else {
                   //main scrAddr set is scanned up to a different block,
@@ -395,7 +387,7 @@ void ScrAddrFilter::run(std::shared_future<bool> bdmReadyFut)
             //was the scan successful?
             if (!scannedHash.valid()) {
                //no, fire callback and exit thread
-               batchPtr->callback({}, false);
+               batchPtr->callback(false);
                break;
             }
 
@@ -403,7 +395,7 @@ void ScrAddrFilter::run(std::shared_future<bool> bdmReadyFut)
             for (const auto& wID : batchPtr->walletIDs) {
                LOGINFO << "Completed scan of wallet " << wID;
             }
-            batchPtr->callback(scaVec, true);
+            batchPtr->callback(true);
             break;
          }
 
@@ -415,7 +407,7 @@ void ScrAddrFilter::run(std::shared_future<bool> bdmReadyFut)
             }
 
             /*
-            NOTE: is there actually anything to do here?
+            TODO: need to remove unregistered addresses from filter fed to zc parser
 
             std::set<BinaryData> scrAddrSet;
             scrAddrSet.insert(

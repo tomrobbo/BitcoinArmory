@@ -50,15 +50,13 @@ class ScrAddrObj
    friend class BtcWallet;
 
 public:
-   ScrAddrObj(const Armory::Types::ScrAddr&, Armory::Types::ScrAddrId,
-      LMDBBlockDatabase*);
+   ScrAddrObj(const Armory::Types::ScrAddr&, Armory::Types::ScrAddrId);
 
    const Armory::Types::ScrAddr& getScrAddr(void) const;
-   std::map<Armory::Types::TxIOKey, TxIOPairUint> getTxios(
+   std::map<Armory::Types::TxIOKey, TxIOPairUint> getTxios(LMDBBlockDatabase*,
       Armory::Types::BlockId, Armory::Types::BlockId) const;
 
 private:
    const Armory::Types::ScrAddr scrAddr_; //includes the prefix byte!
    const Armory::Types::ScrAddrId id_;
-   LMDBBlockDatabase* db_;
 };

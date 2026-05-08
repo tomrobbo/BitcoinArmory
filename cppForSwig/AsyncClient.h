@@ -169,28 +169,6 @@ namespace AsyncClient
    };
 
    /////////////////////////////////////////////////////////////////////////////
-   class Lockbox : public BtcWallet
-   {
-   private:
-      uint64_t fullBalance_ = 0;
-      uint64_t spendableBalance_ = 0;
-      uint64_t unconfirmedBalance_ = 0;
-
-      uint64_t txnCount_ = 0;
-
-   public:
-
-      Lockbox(const BlockDataViewer& bdv, const std::string& id) :
-         BtcWallet(bdv, id)
-      {}
-
-      uint64_t getFullBalance(void) const { return fullBalance_; }
-      uint64_t getSpendableBalance(void) const { return spendableBalance_; }
-      uint64_t getUnconfirmedBalance(void) const { return unconfirmedBalance_; }
-      uint64_t getWltTotalTxnCount(void) const { return txnCount_; }
-   };
-
-   /////////////////////////////////////////////////////////////////////////////
    using HeaderVec = std::vector<std::shared_ptr<DBClientClasses::BlockHeader>>;
    class Blockchain
    {
@@ -228,7 +206,6 @@ namespace AsyncClient
       ~BlockDataViewer(void);
       bool isValid(void) const;
       BtcWallet getWalletObj(const std::string& id);
-      Lockbox getLockboxObj(const std::string& id);
 
       //BIP15x
       std::pair<unsigned, unsigned> getRekeyCount(void) const;

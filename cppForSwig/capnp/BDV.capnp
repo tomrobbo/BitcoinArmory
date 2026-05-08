@@ -39,17 +39,10 @@ struct StaticReply {
 
 ##### bdv #####
 struct BdvRequest {
-   enum WalletType {
-      unset    @0;
-      wallet   @1;
-      lockbox  @2;
-   }
-
    struct RegisterWalletRequest {
       walletId                   @0 : Types.WalletId;
       isNew                      @1 : Bool;
       addresses                  @2 : List(Address);
-      walletType                 @3 : WalletType;
    }
 
    struct OutpointRequest {

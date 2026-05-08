@@ -23,7 +23,6 @@
 #include "bdmenums.h"
 #include "TxClasses.h"
 
-class BlockDataManager;
 class BlockDataViewer;
 
 struct ScanWalletStruct
@@ -41,12 +40,10 @@ struct ScanWalletStruct
 // BtcWallet
 //
 ////////////////////////////////////////////////////////////////////////////////
+
 class BtcWallet
 {
-   friend class WalletGroup;
-   friend class BDV_Server_Object;
-
-   static const uint32_t MIN_UTXO_PER_TXN = 100;
+   friend class BlockDataViewer;
 
 private:
    BtcWallet(const BtcWallet&) = delete;
@@ -64,18 +61,9 @@ public:
    void clearBlkData(void);
    void reset(void);
    const ScrAddrObj* getScrAddrObjByKey(const BinaryData& key) const;
-
-   void setWalletID(const std::string &wltId) { walletID_ = wltId; }
    const std::string& walletID() const { return walletID_; }
 
    void needsRefresh(bool refresh);
-   bool hasBdvPtr(void) const { return bdvPtr_ != nullptr; }
-
-   void setRegistrationCallback(std::function<void(void)> lbd)
-   {
-      doneRegisteringCallback_ = lbd;
-   }
-
    void setConfTarget(unsigned);
 
    std::shared_ptr<const std::map<
@@ -86,23 +74,20 @@ public:
 private:
    void setRegistered(bool isTrue = true) { isRegistered_ = isTrue; }
 
-   BlockDataViewer* getBdvPtr(void) const
-   { return bdvPtr_; }
-
    std::map<Armory::Types::TxIOKey, TxIOPairUint> getTxioForRange(
       uint32_t, uint32_t) const;
    void unregister(void) { isRegistered_ = false; }
    void resetCounters(void);
 
 private:
+   const std::string walletID_;
+
    BlockDataViewer* const bdvPtr_;
    Armory::Threading::TransactionalMap<
       Armory::Types::ScrAddr, std::shared_ptr<ScrAddrObj>> scrAddrMap_;
 
    bool isRegistered_ = false;
 
-   //wallet id
-   std::string walletID_;
 
    //call this lambda once a wallet is done registering and scanning
    //for the first time

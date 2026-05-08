@@ -356,13 +356,7 @@ AsyncClient::BtcWallet BlockDataViewer::getWalletObj(const std::string& id)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-Lockbox BlockDataViewer::getLockboxObj(const std::string& id)
-{
-   return std::move(Lockbox(*this, id));
-}
-
-///////////////////////////////////////////////////////////////////////////////
-AsyncClient::Blockchain BlockDataViewer::blockchain(void)
+AsyncClient::Blockchain BlockDataViewer::blockchain()
 {
    return Blockchain(*this);
 }
@@ -391,7 +385,6 @@ void BlockDataViewer::broadcastZC(const std::vector<BinaryData>& rawTxVec)
    sock_->pushPayload(std::move(write_payload), nullptr);
 }
 
-///////////////////////////////////////////////////////////////////////////////
 void BlockDataViewer::broadcastThroughRPC(const BinaryData& rawTx)
 {
    auto tx = std::make_shared<Tx>(rawTx);
@@ -459,8 +452,9 @@ void BlockDataViewer::getTxios(uint32_t from,
                auto capnAddr = capnTxio.getScrAddr();
                BinaryDataRef scrAddr{capnAddr.begin(), capnAddr.end()};
 
-               TxIOPairUint txio{scrAddr, capnTxio.getTxOut(), capnTxio.getAmount()};
-               txio.setTxIn(capnTxio.getTxIn());
+               TxIOPairUint txio{
+                  capnTxio.getTxOut(), capnTxio.getAmount(),
+                  scrAddr, capnTxio.getTxIn()};
 
                txio.setRBF(capnTxio.getRbf());
                txio.setChained(capnTxio.getChained());
@@ -477,6 +471,7 @@ void BlockDataViewer::getTxios(uint32_t from,
    sock_->pushPayload(std::move(write_payload), read_payload);
 }
 
+////////
 void BlockDataViewer::getTxsByHash(
    const std::set<BinaryData>& hashes, const TxBatchCallback& callback)
 {
@@ -736,8 +731,6 @@ bool AsyncClient::BtcWallet::registerAddresses(
    auto addrReq = bdvRequest.initRegisterWallet();
    addrReq.setWalletId(walletID_);
    addrReq.setIsNew(isNew);
-   //TODO: set wallet type based on caller (wallet or lockbox)
-   addrReq.setWalletType(Codec::BDV::BdvRequest::WalletType::WALLET);
 
    addrReq.initAddresses(addrVec.size());
    auto capnAddresses = addrReq.getAddresses();

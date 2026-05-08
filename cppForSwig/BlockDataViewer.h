@@ -27,39 +27,23 @@ typedef enum
    order_descending
 } HistoryOrdering;
 
-enum class WalletRegType : int
-{
-   UNSET    = 0,
-   WALLET   = 1,
-   LOCKBOX  = 2
-};
-
 struct WalletRegistrationRequest
 {
    std::string walletId;
    std::vector<Armory::Types::ScrAddr> addresses;
    bool isNew;
-   WalletRegType type;
 
    WalletRegistrationRequest(const std::string& wId,
       std::vector<Armory::Types::ScrAddr>& addrs,
-      bool isnew, WalletRegType wType) :
+      bool isnew) :
       walletId(wId), addresses(std::move(addrs)),
-      isNew(isnew), type(wType)
+      isNew(isnew)
    {}
 };
 
 class ScrAddrFilter;
 class BtcWallet;
 class BlockDataManager;
-struct StoredHeader;
-class Tx;
-class TxOut;
-class TxIn;
-struct StoredTxOut;
-struct ScanWalletStruct;
-struct UTXO;
-struct Output;
 
 namespace Armory
 {
@@ -144,7 +128,7 @@ public:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-class BlockDataViewer;
+/*class BlockDataViewer;
 struct WalletGroup
 {
    std::map<std::string, std::shared_ptr<BtcWallet>> wallets;
@@ -180,7 +164,7 @@ public:
 
    uint32_t getBlockInVicinity(uint32_t) const;
    uint32_t getPageIdForBlockHeight(uint32_t) const;
-};
+};*/
 
 ////////////////////////////////////////////////////////////////////////////////
 class BlockDataViewer
@@ -190,19 +174,13 @@ public:
    ~BlockDataViewer(void);
    void reset(void);
 
-   /////////////////////////////////////////////////////////////////////////////
-   // If you register you wallet with the BDM, it will automatically maintain
-   // tx lists relevant to that wallet.  You can get away without registering
-   // your wallet objects (using scanBlockchainForTx), but without the full
-   // blockchain in RAM, each scan will take 30-120 seconds.  Registering makes
-   // sure that the intial blockchain scan picks up wallet-relevant stuff as
-   // it goes, and does a full [re-]scan of the blockchain only if necessary.
-   void registerAWallet(WalletRegistrationRequest&,
+   std::shared_ptr<BtcWallet> getOrSetWallet(const std::string&);
+   void registerAWallet(const WalletRegistrationRequest&,
       const std::function<void(bool)>&);
-   void unregisterWallet(const std::string&);
+   bool unregisterWallet(const std::string&);
 
    bool hasWallet(const std::string&) const;
-   std::shared_ptr<BtcWallet> getWalletOrLockbox(const std::string&) const;
+   std::shared_ptr<BtcWallet> getWallet(const std::string&) const;
 
    bool scrAddressIsRegistered(const Armory::Types::ScrAddr&) const;
    bool hasScrAddress(const Armory::Types::ScrAddr&) const;
@@ -232,6 +210,8 @@ protected:
       std::set<BinaryData>, const std::function<void(void)>&);
 
 protected:
+   std::map<std::string, std::shared_ptr<BtcWallet>> wallets_;
+
    std::atomic<bool> rescanZC_;
 
    std::shared_ptr<BlockDataManager> bdm_;
@@ -242,7 +222,4 @@ protected:
    uint32_t lastScanned_ = 0;
    const std::shared_ptr<Armory::ZeroConf::ZeroConfContainer> zeroConfCont_;
    int32_t updateID_ = 0;
-
-   WalletGroup wallets_;
-   WalletGroup lockboxes_;
 };
