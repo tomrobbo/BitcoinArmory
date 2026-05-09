@@ -364,8 +364,8 @@ std::shared_ptr<BtcWallet> BlockDataViewer::getOrSetWallet(const std::string& id
 std::map<Types::TxIOKey, TxIOPairUint> BlockDataViewer::getTxioForRange(
    uint32_t fromHeight) const
 {
-   //convert height to blockId
    try {
+      //convert height to blockId
       auto header = bc_->getHeaderByHeight(fromHeight);
       std::map<Types::TxIOKey, TxIOPairUint> result;
       for (const auto& wlt : wallets_) {

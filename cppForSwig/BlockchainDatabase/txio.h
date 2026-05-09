@@ -131,12 +131,11 @@ public:
    TxIOPairUint(Armory::Types::TxIOKey, Armory::Types::Amount,
       const Armory::Types::ScrAddr&, Armory::Types::TxIOKey);
 
-   bool hasTxIn(void) const;
    bool hasTxOutZC(void) const;
+   bool hasTxIn(void) const;
    bool hasTxInZC(void) const;
 
    Armory::Types::Amount getAmount(void) const;
-   uint32_t getTxTime(void) const;
    const Armory::Types::ScrAddr& getScrAddr(void) const;
    Armory::Types::TxKey getTxKeyOfOutput(void) const;
    Armory::Types::TxKey getTxKeyOfInput(void) const;
@@ -153,6 +152,7 @@ public:
    void setRBF(bool);
    void setChained(bool);
 
+   uint32_t getTxTime(void) const;
    bool isRBF(void) const;
    bool isChained(void) const;
 
@@ -160,10 +160,10 @@ private:
    const Armory::Types::ScrAddr scrAddr_;
    const Armory::Types::Amount amount_;
    const Armory::Types::TxIOKey txIOKeyOfOutput_;
-
    Armory::Types::TxIOKey txIOKeyOfInput_ = Armory::Types::INVALID_TXIO_KEY;
-   uint32_t txTime_ = UINT32_MAX;
 
+   //ZC only members
+   uint32_t txTime_ = UINT32_MAX;
    bool isRBF_ = false;
    bool isZCChained_ = false;
 };

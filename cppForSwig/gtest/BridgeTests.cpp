@@ -11872,14 +11872,6 @@ TEST_F(BridgeChainDataTests, ZeroConf_SpendNew)
    EXPECT_EQ(wltBal[3], 2);
 }
 
-//TODO:
-// possible SNAFU: review reorg code, it yields a different output when it
-// goes 4A, 4, 5, 5A vs 4, 5, 4A, 5A.
-// could be the test chain is weird too, it seems too big to have been
-// missing for so long
-//
-// test adding blocks where blockId are wildly out of order
-
 ////////////////////////////////////////////////////////////////////////////////
 // BridgeBlocksAutoDBTests
 class BridgeBlocksAutoDBTests : public ::testing::Test
@@ -12712,3 +12704,12 @@ GTEST_API_ int main(int argc, char **argv)
    Cryptography::ECDSA::shutdown();
    return exitCode;
 }
+
+//TODO:
+// 1. possible SNAFU: review reorg code, it yields a different output when it
+// goes 4A, 4, 5, 5A vs 4, 5, 4A, 5A.
+// could be the test chain is weird too, it seems too big to have been
+// missing for so long
+//
+// 2. test adding blocks where blockId are wildly out of order
+// 3. test spender replacement in reorg. output has to be exist before branch point

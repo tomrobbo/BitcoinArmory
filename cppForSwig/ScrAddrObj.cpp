@@ -41,49 +41,104 @@ const Types::ScrAddr& ScrAddrObj::getScrAddr() const
 }
 
 ////////
-std::map<Types::TxIOKey, TxIOPairUint> ScrAddrObj::getTxios(
-   LMDBBlockDatabase* db, Types::BlockId start, Types::BlockId end) const
+void ScrAddrObj::updateTxIOCache(
+   LMDBBlockDatabase* db, Types::BlockId start, Types::BlockId end)
 {
-   //TODO: cache keys for unspent txouts so that we
-   //      don't have to fetch them every time
+   /* NOTE:
+      We can't simply clamp TxOut history search to requested range and
+      call it a day.
+      This is because TxIns are keyed by TxOuts, not by ScrAddr. We cannot
+      know which spender to lookup without knowing the TxOuts, yet a TxIn
+      can spend from any TxOut, regardless of age. Therefor, filtering TxOuts
+      by request range is not enough, we have to check all unspent TxOuts
+      every pass.
+   */
 
    //grab txio range
-   auto txOutData = db->getTxOutHistoryForScrAddrKey(id_, 0, UINT32_MAX);
+   auto txOutData = db->getTxOutHistoryForScrAddrKey(id_, start, end);
+
+   //gather set of txio keys to check for spenders
    std::vector<Types::TxIOKey> txOutKeys;
-   txOutKeys.reserve(txOutData.size());
+   txOutKeys.reserve(txOutData.size() + txioCache_.size());
    for (const auto& txout : txOutData) {
       txOutKeys.emplace_back(txout.first);
    }
+
+   //add in cache entries
+   for (const auto& txioPair : txioCache_) {
+      const auto& txio = txioPair.second;
+      if (txio.hasTxIn()) {
+         //has spender, ignore
+         continue;
+      }
+
+      auto outBlockId = Types::getBlockIDFromTxKey(txio.getTxIOKeyOfOutput());
+      if (outBlockId > end) {
+         //txout goes over end range, ignore
+         continue;
+      }
+
+      auto iter = txOutData.find(txioPair.first);
+      if (iter != txOutData.end()) {
+         //already aware of this key, skip
+         continue;
+      }
+
+      //add output key to spender lookup
+      txOutKeys.emplace_back(txioPair.first);
+   }
+
+   //add new TxOuts to cache right away
+   for (const auto& txopair : txOutData) {
+      //emplace blindly, TxOut keys are unique
+      txioCache_.emplace(txopair.first, TxIOPairUint{
+         txopair.first, txopair.second.amount, scrAddr_});
+   }
+
+   //lookup spenders
    auto txInKeys = db->getTxInHistoryForTxOutHistory(txOutKeys);
 
-   //create txios
+   //update spenders in cache
+   for (const auto& keyPair : txInKeys) {
+      auto& txio = txioCache_.at(keyPair.first);
+      txio.setTxIn(keyPair.second);
+   }
+}
+
+std::map<Types::TxIOKey, TxIOPairUint> ScrAddrObj::getTxios(
+   LMDBBlockDatabase* db, Types::BlockId start, Types::BlockId end)
+{
+   //we build the reply from the txio cache, so we update that first
+   updateTxIOCache(db, start, end);
+
    std::map<Types::TxIOKey, TxIOPairUint> result;
-   for (const auto& txopair : txOutData) {
-      //check txout does not go over end range
-      if (txopair.second.blockID > end) {
+   for (const auto& txioPair : txioCache_) {
+      const auto& txio = txioPair.second;
+      auto outBlockId = Types::getBlockIDFromTxKey(txio.getTxIOKeyOfOutput());
+      if (outBlockId > end) {
+         //txout goes over end range, skip
          continue;
       }
 
       //if we have a spender, check it vs start and end range
-      Types::TxIOKey txInKey = Types::INVALID_TXIO_KEY;
-      auto txInIter = txInKeys.find(txopair.first);
-      if (txInIter != txInKeys.end()) {
-         auto inBlockId = Types::getBlockIDFromTxKey(txInIter->second);
+      if (txio.hasTxIn()) {
+         auto inBlockId = Types::getBlockIDFromTxKey(txio.getTxIOKeyOfInput());
          if (inBlockId >= start && inBlockId <= end) {
-            txInKey = txInIter->second;
-         }
-      }
-
-      //finally, if txout is unspent, check it vs start range
-      if (!Types::isTxIOKeyValid(txInKey)) {
-         if (txopair.second.blockID < start) {
+            //spender is within range, take txio as is
+            result.emplace(txioPair);
             continue;
          }
       }
 
-      //if we got this far, this is an eligible txio
-      auto emplaceResult = result.emplace(txopair.first, TxIOPairUint{
-         txopair.first, txopair.second.amount, scrAddr_, txInKey
+      //if we got this far, either the txio is unspent or
+      //the spender is out of range, check output vs start range
+      if (outBlockId < start) {
+         continue;
+      }
+
+      //only the txout for this txio is eligible
+      result.emplace(txioPair.first, TxIOPairUint{
+         txioPair.first, txio.getAmount(), scrAddr_
       });
    }
    return result;
