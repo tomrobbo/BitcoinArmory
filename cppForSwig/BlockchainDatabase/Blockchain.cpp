@@ -315,11 +315,8 @@ HeaderPtr Blockchain::organizeChain(
    //cleanup helper containers
    orphans.clear();
 
-   // Force a full rebuild to make sure everything is marked properly
-   // On a full rebuild, prevChainStillValid should ALWAYS be true
    if (!prevChainStillValid) {
-      // force-rebuild blockchain (takes less than 1s)
-      LOGWARN << "Reorg detected! Forcing a rebuild of the header chain";
+      LOGWARN << "Reorg detected!";
 
       //reset calculation flag on lesser chain
       auto prevHeadPtr = prevTopBlock;
@@ -373,6 +370,10 @@ double Blockchain::traceChainDown(std::shared_ptr<BlockHeader> bhpStart)
          auto hPtr = thisPtr->nextPtr_;
          hPtr->blockHeight_ = thisPtr->blockHeight_ + 1;
          hPtr->difficultySum_ = thisPtr->difficultySum_ + hPtr->difficultyDbl_;
+         if (hPtr->isOrphan_) {
+            //if this block previously was orphaned, reset the finished calc flag
+            hPtr->isFinishedCalc_ = false;
+         }
          hPtr->isOrphan_ = false;
          thisPtr = hPtr;
       }

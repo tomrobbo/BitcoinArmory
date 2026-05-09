@@ -198,6 +198,50 @@ TEST_F(BlockDir, HeadersFirstUpdate)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+TEST_F(BlockDir, HeadersFirstForwardUpdate)
+{
+   // Put the first 5 blocks out of order
+   TestUtils::setBlocks({ "0", "1", "2", "4", "5", "4A" }, blk0dat_);
+
+   BlockDataManagerThread* BDMt = new BlockDataManagerThread();
+   auto clients = new Clients(BDMt->bdm());
+   clients->init();
+
+   BDMt->start(BdmInitMode::RESUME);
+   const std::vector<BinaryData> scraddrs {
+      TestChain::scrAddrA,
+      TestChain::scrAddrB,
+      TestChain::scrAddrC
+   };
+
+   auto bdvID = DBTestUtils::registerBDV(clients, Config::BitcoinSettings::getMagicBytes());
+   DBTestUtils::registerWallet(clients, bdvID, scraddrs, "wallet1",
+      false);
+   auto bdvPtr = DBTestUtils::getBDV(clients, bdvID);
+
+   DBTestUtils::goOnline(clients, bdvID);
+   DBTestUtils::waitOnBDVReady(clients, bdvID);
+
+   TestUtils::appendBlocks({ "3" }, blk0dat_);
+   DBTestUtils::triggerNewBlockNotification(BDMt);
+   DBTestUtils::waitOnNewBlockSignal(clients, bdvID);
+
+   // check balance from SSH
+   EXPECT_EQ(DBTestUtils::getScrAddrBalance(TestChain::scrAddrA, BDMt->bdm()), 50 * COIN);
+   EXPECT_EQ(DBTestUtils::getScrAddrBalance(TestChain::scrAddrB, BDMt->bdm()), 70 * COIN);
+   EXPECT_EQ(DBTestUtils::getScrAddrBalance(TestChain::scrAddrC, BDMt->bdm()), 20 * COIN);
+
+   //cleanup
+   bdvPtr.reset();
+   clients->shutdown();
+   BDMt->shutdown();
+
+   delete clients;
+   delete BDMt;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
 TEST_F(BlockDir, HeadersFirstReorg)
 {
    TestUtils::setBlocks({ "0", "1" }, blk0dat_);
