@@ -758,24 +758,6 @@ bool AsyncClient::BtcWallet::registerAddresses(
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-void AsyncClient::BtcWallet::setUnconfirmedTarget(unsigned confTarget)
-{
-   //create capnp request
-   capnp::MallocMessageBuilder message;
-   auto payload = message.initRoot<Codec::BDV::Request>();
-
-   auto walletRequest = payload.initWallet();
-   walletRequest.setWalletId(walletID_);
-   walletRequest.setSetConfTarget(confTarget);
-
-   //serialize and add to payload
-   auto write_payload = toWritePayload(message);
-
-   //push to server
-   sock_->pushPayload(move(write_payload), nullptr);
-}
-
-///////////////////////////////////////////////////////////////////////////////
 void AsyncClient::BtcWallet::unregisterAddresses(
    const std::set<BinaryData>& addrSet)
 {

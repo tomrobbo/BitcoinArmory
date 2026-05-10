@@ -256,25 +256,25 @@ private:
 struct UTXO
 {
 public:
-   Armory::Types::Amount amount = 0;
+   Armory::Types::Amount amount = UINT64_MAX;
    uint32_t txHeight = UINT32_MAX;
    Armory::Types::TxId txIndex = UINT16_MAX;
    Armory::Types::TxIOId txOutIndex = UINT16_MAX;
    Armory::Types::TxHash txHash;
    BinaryData script;
 
-   bool       isMultisigRef = false;
-   unsigned   preferredSequence = UINT32_MAX;
+   bool     isMultisigRef = false;
+   unsigned preferredSequence = UINT32_MAX;
 
    //for coin selection
-   bool isInputSW = false;
+   bool     isInputSW = false;
    unsigned txinRedeemSizeBytes = UINT32_MAX;
    unsigned witnessDataSizeBytes = UINT32_MAX;
 
 public:
+   UTXO(void);
    UTXO(Armory::Types::Amount, uint32_t, Armory::Types::TxId,
       Armory::Types::TxIOId, Armory::Types::TxHash, BinaryData);
-   UTXO(void);
 
    bool operator==(const UTXO&) const;
    bool operator!=(const UTXO&) const;

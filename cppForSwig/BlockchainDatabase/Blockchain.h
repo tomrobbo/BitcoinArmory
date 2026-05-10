@@ -87,12 +87,14 @@ namespace Armory
       std::map<Types::FileId, std::set<Types::BlockId>> mapIDsPerBlockFile(void) const;
       void flagBlockHeader(std::shared_ptr<BlockHeader>, LMDBBlockDatabase*);
       const std::vector<HeaderPtr>& headersById(void) const;
+      const std::set<Types::BlockId>& getInvalidBlockIds(void) const;
 
    private:
       const Hash32 genesisHash_;
       HeaderSet headerSet_;
       std::vector<HeaderPtr> headersById_;
       std::vector<HeaderPtr> headersByHeight_;
+      std::set<Types::BlockId> invalidBlockIds_;
 
       std::vector<HeaderPtr> newlyParsedHeaders_;
       std::atomic<HeaderPtr> topBlockPtr_;

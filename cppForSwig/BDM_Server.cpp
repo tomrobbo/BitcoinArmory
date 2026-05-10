@@ -299,15 +299,6 @@ namespace {
       //switch on the method
       switch (request.which())
       {
-         case WalletRequest::Which::SET_CONF_TARGET:
-         {
-            wltPtr->setConfTarget(request.getSetConfTarget());
-
-            //push refersh notif for the wallet
-            bdv->flagRefresh(BDV_refreshSkipRescan, walletId);
-            break;
-         }
-
          case WalletRequest::Which::UNREGISTER_ADDRESSES:
          {
             auto capnAddrs = request.getUnregisterAddresses();
@@ -1940,7 +1931,7 @@ void Clients::p2pBroadcast(Types::BdvId bdvId, std::vector<BinaryDataRef>& rawZC
 
    //broadcast
    bdm_->zeroConfCont_->broadcastZC(
-      rawZCs, 5000, errorCallback, bdvId);
+      rawZCs, 5000000, errorCallback, bdvId);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

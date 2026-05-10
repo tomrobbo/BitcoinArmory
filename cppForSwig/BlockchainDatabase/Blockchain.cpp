@@ -53,6 +53,7 @@ void Blockchain::clear()
 
    //block ids start at 1, genesis block is assigned id 1
    highestBlockID_.store(2, std::memory_order_relaxed);
+   invalidBlockIds_.clear();
 }
 
 ////////
@@ -373,6 +374,7 @@ double Blockchain::traceChainDown(std::shared_ptr<BlockHeader> bhpStart)
          if (hPtr->isOrphan_) {
             //if this block previously was orphaned, reset the finished calc flag
             hPtr->isFinishedCalc_ = false;
+            invalidBlockIds_.erase(hPtr->getUniqueID());
          }
          hPtr->isOrphan_ = false;
          thisPtr = hPtr;
@@ -399,6 +401,7 @@ double Blockchain::traceChainDown(std::shared_ptr<BlockHeader> bhpStart)
          auto hPtr = thisPtr->nextPtr_;
          hPtr->isOrphan_ = true;
          hPtr->isFinishedCalc_ = true;
+         invalidBlockIds_.emplace(hPtr->getUniqueID());
          orphanIter->second.emplace(hPtr->getThisHash());
          thisPtr = hPtr;
       }
@@ -620,4 +623,10 @@ const std::vector<HeaderPtr>& Blockchain::headersById() const
 {
    std::unique_lock<std::mutex> lock(mu_);
    return headersById_;
+}
+
+const std::set<Types::BlockId>& Blockchain::getInvalidBlockIds() const
+{
+   std::unique_lock<std::mutex> lock(mu_);
+   return invalidBlockIds_;
 }

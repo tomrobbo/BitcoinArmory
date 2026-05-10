@@ -10,8 +10,6 @@
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
-#include <algorithm>
-#include <cstring>
 
 #include "BlockDataViewer.h"
 #include <BlockchainDatabase/BlockUtils.h>
@@ -22,20 +20,27 @@
 #include <ZeroConf/Parser.h>
 #include <ZeroConf/Utils.h>
 #include <ZeroConf/Notifications.h>
-#include <Ledgers/LedgerEntry.h>
 #include "BtcWallet.h"
 
 using namespace Armory;
 
 /////////////////////////////////////////////////////////////////////////////
+// WalletRegistrationRequest
+WalletRegistrationRequest::WalletRegistrationRequest(
+   const std::string& wId, std::vector<Armory::Types::ScrAddr>& addrs,
+   bool isnew) :
+   walletId(wId), addresses(std::move(addrs)),
+   isNew(isnew)
+{}
+
+/////////////////////////////////////////////////////////////////////////////
 // BlockDataViewer
 BlockDataViewer::BlockDataViewer(std::shared_ptr<BlockDataManager> bdm) :
-   bdm_(bdm), rescanZC_(false), zeroConfCont_(bdm->zeroConfCont()),
+   bdm_(bdm), zeroConfCont_(bdm->zeroConfCont()),
    saf_{bdm->getScrAddrFilter()}
 {
    db_ = bdm->getIFace();
    bc_ = bdm->blockchain();
-   flagRescanZC(false);
 }
 
 BlockDataViewer::~BlockDataViewer()
@@ -44,8 +49,6 @@ BlockDataViewer::~BlockDataViewer()
 void BlockDataViewer::reset()
 {
    wallets_.clear();
-   rescanZC_   = false;
-   lastScanned_ = 0;
 }
 
 ////////
@@ -88,25 +91,6 @@ ZeroConf::ZeroConfContainer* BlockDataViewer::zcContainer() const
 std::shared_ptr<ScrAddrFilter> BlockDataViewer::getSAF() const
 {
    return saf_;
-}
-
-////////
-bool BlockDataViewer::isZcEnabled() const
-{
-   if (bdm_ == nullptr) {
-      return false;
-   }
-   return bdm_->isZcEnabled();
-}
-
-void BlockDataViewer::flagRescanZC(bool flag)
-{
-   rescanZC_.store(flag, std::memory_order_release);
-}
-
-bool BlockDataViewer::getZCflag() const
-{
-   return rescanZC_.load(std::memory_order_acquire);
 }
 
 ////////
@@ -173,7 +157,6 @@ void BlockDataViewer::registerAWallet(
          theWallet->scrAddrMap_.update(saMap);
       }
 
-      theWallet->setRegistered();
       if (callback) {
          callback(true);
       }
@@ -183,7 +166,6 @@ void BlockDataViewer::registerAWallet(
       std::vector<std::string>{request.walletId}, std::move(scrAddrVec),
       request.isNew, registrationCompleteCB);
    saf_->pushAddressBatch(batch);
-   theWallet->resetCounters();
 }
 
 bool BlockDataViewer::unregisterWallet(const std::string& walletID)
@@ -197,7 +179,7 @@ bool BlockDataViewer::unregisterWallet(const std::string& walletID)
 }
 
 ////////
-bool BlockDataViewer::scrAddressIsRegistered(const BinaryData& scrAddr) const
+bool BlockDataViewer::scrAddressIsRegistered(const Types::ScrAddr& scrAddr) const
 {
    auto scrAddrMap = saf_->getScanFilterAddrMap();
    auto saIter = scrAddrMap->find(scrAddr);
@@ -239,123 +221,16 @@ std::shared_ptr<BtcWallet> BlockDataViewer::getWallet(
    }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// ReadWriteLock
-void ReadWriteLock::lockRead()
-{
-   std::unique_lock<std::mutex> rl(all_lock);
-   std::thread::id this_thread_id = std::this_thread::get_id();
-   auto idIter = thread_ids_.find(this_thread_id);
-
-   if (idIter != thread_ids_.end()) {
-      idIter->second++;
-   }
-
-   if (idIter == thread_ids_.end()) {
-      while (has_writer) {
-         no_writers.wait(rl);
-      }
-      thread_ids_.emplace(this_thread_id, 1);
-   }
-
-   num_readers++;
-}
-
-void ReadWriteLock::unlockRead()
-{
-   std::unique_lock<std::mutex> rl(all_lock);
-   std::thread::id this_thread_id = std::this_thread::get_id();
-   auto idIter = thread_ids_.find(this_thread_id);
-
-   if (idIter == thread_ids_.end()) {
-      throw std::runtime_error("unregistered thread attempted to release a lock");
-   }
-
-   idIter->second--;
-   if (idIter->second == 0) {
-      thread_ids_.erase(idIter);
-   }
-   num_readers--;
-   if (num_readers == 0) {
-      no_readers.notify_all();
-   }
-}
-
-void ReadWriteLock::lockWrite()
-{
-   std::unique_lock<std::mutex> rl(all_lock);
-   std::thread::id this_thread_id = std::this_thread::get_id();
-
-   auto idIter = thread_ids_.find(this_thread_id);
-   if (idIter != thread_ids_.end()) {
-      throw std::runtime_error("ReadWriteLock deadlock: requested write lock"
-         "within a thread already holding a read lock");
-   }
-
-   has_writer = true;
-   while (num_readers > 0) {
-      no_readers.wait(rl);
-   }
-
-   rl.release();
-}
-
-void ReadWriteLock::unlockWrite()
-{
-   has_writer = false;
-   no_writers.notify_all();
-   all_lock.unlock();
-}
-
 ////////
-ReadWriteLock::ReadLock::ReadLock(ReadWriteLock& rwl) :
-   l(&rwl)
-{
-   l->lockRead();
-}
-
-ReadWriteLock::ReadLock::~ReadLock()
-{
-   if (locked) {
-      l->unlockRead();
-   }
-}
-
-void ReadWriteLock::ReadLock::unlock()
-{
-   locked=false;
-   l->unlockRead();
-}
-
-////////
-ReadWriteLock::WriteLock::WriteLock(ReadWriteLock &rwl) :
-   l(&rwl)
-{
-   l->lockWrite();
-}
-
-ReadWriteLock::WriteLock::~WriteLock()
-{
-   if (locked) {
-      l->unlockWrite();
-   }
-}
-
-void ReadWriteLock::WriteLock::unlock()
-{
-   locked=false;
-   l->unlockRead();
-}
-
-////////
-std::shared_ptr<BtcWallet> BlockDataViewer::getOrSetWallet(const std::string& id)
+std::shared_ptr<BtcWallet> BlockDataViewer::getOrSetWallet(
+   const std::string& id)
 {
    auto wltIter = wallets_.find(id);
    if (wltIter != wallets_.end()) {
       return wltIter->second;
    } else {
       auto insertResult = wallets_.emplace(id,
-         std::make_shared<BtcWallet>(this, id));
+         std::make_shared<BtcWallet>(id));
       return insertResult.first->second;
    }
 }
@@ -367,9 +242,11 @@ std::map<Types::TxIOKey, TxIOPairUint> BlockDataViewer::getTxioForRange(
    try {
       //convert height to blockId
       auto header = bc_->getHeaderByHeight(fromHeight);
+      auto invalidBlockIds = bc_->getInvalidBlockIds();
       std::map<Types::TxIOKey, TxIOPairUint> result;
       for (const auto& wlt : wallets_) {
          auto txioRange = wlt.second->getTxioForRange(
+            db_, invalidBlockIds,
             header->getBlockHeight(), UINT32_MAX);
          result.insert(txioRange.begin(), txioRange.end());
       }

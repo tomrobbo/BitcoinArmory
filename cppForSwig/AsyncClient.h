@@ -11,7 +11,8 @@
 #include <thread>
 #include <list>
 
-#include "Utils/ReentrantLock.h"
+#include <Utils/ReentrantLock.h>
+#include <Utils/Types.h>
 #include "StringSockets.h"
 #include "WebSocketClient.h"
 #include "SocketWritePayload.h"
@@ -103,7 +104,7 @@ namespace AsyncClient
 
    private:
       const std::string walletID_;
-      const BinaryData scrAddr_;
+      const Armory::Types::ScrAddr scrAddr_;
       const std::shared_ptr<SocketPrototype> sock_;
 
       const uint64_t fullBalance_;
@@ -115,7 +116,7 @@ namespace AsyncClient
       std::string comment_;
 
    private:
-      ScrAddrObj(const BinaryData& scrAddr, int index) :
+      ScrAddrObj(const Armory::Types::ScrAddr& scrAddr, int index) :
          walletID_({}),
          scrAddr_(scrAddr),
          sock_(nullptr),
@@ -124,10 +125,10 @@ namespace AsyncClient
       {}
 
    public:
-      ScrAddrObj(BtcWallet*, const BinaryData&, int index,
+      ScrAddrObj(BtcWallet*, const Armory::Types::ScrAddr&, int index,
          uint64_t, uint64_t, uint64_t, uint32_t);
       ScrAddrObj(std::shared_ptr<SocketPrototype>,
-         const std::string&, const BinaryData&, int index,
+         const std::string&, const Armory::Types::ScrAddr&, int index,
          uint64_t, uint64_t, uint64_t, uint32_t);
 
       uint64_t getFullBalance(void) const { return fullBalance_; }
@@ -136,7 +137,7 @@ namespace AsyncClient
 
       uint64_t getTxioCount(void) const { return count_; }
 
-      const BinaryData& getScrAddr(void) const { return scrAddr_; }
+      const Armory::Types::ScrAddr& getScrAddr(void) const { return scrAddr_; }
 
       void setComment(const std::string& comment) { comment_ = comment; }
       const std::string& getComment(void) const { return comment_; }
@@ -156,15 +157,14 @@ namespace AsyncClient
    public:
       BtcWallet(const BlockDataViewer&, const std::string&);
 
-      ScrAddrObj getScrAddrObj(const BinaryData&,
+      ScrAddrObj getScrAddrObj(const Armory::Types::ScrAddr&,
          uint64_t, uint64_t, uint64_t, uint32_t);
 
       bool registerAddresses(
-         const std::vector<BinaryData>& addrVec, bool isNew);
-      void unregisterAddresses(const std::set<BinaryData>&);
+         const std::vector<Armory::Types::ScrAddr>& addrVec, bool isNew);
+      void unregisterAddresses(const std::set<Armory::Types::ScrAddr>&);
       void unregister(void);
 
-      void setUnconfirmedTarget(unsigned);
       std::string walletID(void) const { return walletID_; }
    };
 

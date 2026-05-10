@@ -116,18 +116,14 @@ struct WalletRequest {
 
    union {
       unset                @1 : Void;
-
-      setConfTarget        @2 : UInt32;
-      unregisterAddresses  @3 : List(Address);
+      unregisterAddresses  @2 : List(Address);
    }
 }
 
 struct WalletReply {
    union {
       unset                @0 : Void;
-
-      setConfTarget        @1 : Void;
-      unregisterAddresses  @2 : Void;
+      unregisterAddresses  @1 : Void;
    }
 }
 

@@ -42,7 +42,8 @@ const Types::ScrAddr& ScrAddrObj::getScrAddr() const
 
 ////////
 void ScrAddrObj::updateTxIOCache(
-   LMDBBlockDatabase* db, Types::BlockId start, Types::BlockId end)
+   LMDBBlockDatabase* db, const std::set<Types::BlockId>& invalids,
+   Types::BlockId start, Types::BlockId end)
 {
    /* NOTE:
       We can't simply clamp TxOut history search to requested range and
@@ -65,11 +66,18 @@ void ScrAddrObj::updateTxIOCache(
    }
 
    //add in cache entries
-   for (const auto& txioPair : txioCache_) {
-      const auto& txio = txioPair.second;
+   for (auto& txioPair : txioCache_) {
+      auto& txio = txioPair.second;
       if (txio.hasTxIn()) {
-         //has spender, ignore
-         continue;
+         //txio has spender
+         auto blockId = Types::getBlockIDFromTxKey(txio.getTxIOKeyOfInput());
+         if (invalids.find(blockId) != invalids.end()) {
+            //spender is invalid, clear it and proceed
+            txio.setTxIn(Types::INVALID_TXIO_KEY);
+         } else {
+            //spender is valid, skip
+            continue;
+         }
       }
 
       auto outBlockId = Types::getBlockIDFromTxKey(txio.getTxIOKeyOfOutput());
@@ -106,10 +114,11 @@ void ScrAddrObj::updateTxIOCache(
 }
 
 std::map<Types::TxIOKey, TxIOPairUint> ScrAddrObj::getTxios(
-   LMDBBlockDatabase* db, Types::BlockId start, Types::BlockId end)
+   LMDBBlockDatabase* db, const std::set<Types::BlockId>& invalids,
+   Types::BlockId start, Types::BlockId end)
 {
    //we build the reply from the txio cache, so we update that first
-   updateTxIOCache(db, start, end);
+   updateTxIOCache(db, invalids, start, end);
 
    std::map<Types::TxIOKey, TxIOPairUint> result;
    for (const auto& txioPair : txioCache_) {

@@ -6605,6 +6605,11 @@ TEST_F(BridgeChainDataTests, Check5Blocks_BCDE)
 
 TEST_F(BridgeChainDataTests, BlocksOutOfOrder_BCDE)
 {
+   /*
+   This implements the same test conditions as
+   BlockDir.HeadersFirstForwardUpdate
+   */
+
    loadWallets({walletId_BCDE_});
 
    TestUtils::setBlocks({ "0", "1", "2", "4", "5", "4A" }, blk0dat_);
@@ -8616,6 +8621,167 @@ TEST_F(BridgeChainDataTests, Reorg_BCDE_AFLB)
       EXPECT_TRUE(
          checkLedgers(ledgersAtBlocks[i],
             TestChain::ledgersLB2_P2SH_Reorg[i]));
+   }
+}
+
+TEST_F(BridgeChainDataTests, Reorg_SpendBeforeBranchPoint)
+{
+   /*
+   Amazingly enough, our test chain does not provide a case of a reorg
+   where an output that lives before the branch point is spent across
+   both branches. This test covers that.
+   */
+
+   /* start with classic 6 blocks */
+   loadWallets({walletId_BCDE_});
+
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
+   WebSocketServer::initAuthPeers({
+      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+   WebSocketServer::start(theBDMt_->bdm(), true);
+
+   ASSERT_TRUE(connectToIp(bridge_, "127.0.0.1", "9001", serverPubkey_));
+   ASSERT_TRUE(registerWallets(bridge_));
+
+   //start db, go online and wait on ready notif
+   theBDMt_->start(Config::DBSettings::initMode());
+   ASSERT_EQ(goOnline(bridge_), 5);
+
+   //check wallet balance
+   auto wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3]);
+
+   //check address balances
+   auto balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   checkBalances(balances, 5, false);
+
+   //check ledgers
+   auto delegateId = getLedgerDelegateId(bridge_);
+   ASSERT_FALSE(delegateId.empty());
+
+   auto pageCount = getLedgersPageCount(bridge_, delegateId);
+   EXPECT_EQ(pageCount, 1);
+
+   auto ledgers = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgers.size(), 15);
+
+   for (unsigned i = 0; i < ledgers.size(); i++) {
+      EXPECT_TRUE(checkLedgers(ledgers[i], TestChain::ledgersBCDE[i])) << i;
+   }
+
+   /* create 2 txs that spends the same output */
+   auto utxos = getUTXOs(bridge_, walletId_BCDE_, accountId_BCDE_, 0);
+
+   //look for output 4|2:0
+   UTXO theUtxo;
+   for (const auto& utxo : utxos) {
+      if (utxo.txHash == TestChain::hash42) {
+         theUtxo = utxo;
+         break;
+      }
+   }
+   ASSERT_TRUE(theUtxo.isInitialized());
+
+   //txA
+   auto recipientPrivKeyA = Cryptography::ECDSA::createNewPrivateKey();
+   auto recipientPubKeyA = Cryptography::ECDSA::computePublicKey(
+      recipientPrivKeyA, true);
+   auto hash160A =  BtcUtils::getHash160(recipientPubKeyA);
+   auto recipientAddrA = BtcUtils::scrAddrToSegWitAddress(hash160A);
+
+   auto txA = createAndSignTx(
+      bridge_, walletId_BCDE_, accountId_BCDE_,
+      { theUtxo }, {{ recipientAddrA, 3 * COIN }},
+      TestChain::scrAddrB, 2, false,
+      "privPass1"
+   );
+   ASSERT_FALSE(txA.empty());
+   Tx txAObj{txA};
+
+   //txB
+   auto recipientPrivKeyB = Cryptography::ECDSA::createNewPrivateKey();
+   auto recipientPubKeyB = Cryptography::ECDSA::computePublicKey(
+      recipientPrivKeyB, true);
+   auto hash160B =  BtcUtils::getHash160(recipientPubKeyB);
+   auto recipientAddrB = BtcUtils::scrAddrToSegWitAddress(hash160B);
+
+   auto txB = createAndSignTx(
+      bridge_, walletId_BCDE_, accountId_BCDE_,
+      { theUtxo }, {{ recipientAddrB, 4 * COIN }},
+      TestChain::scrAddrB, 2, false,
+      "privPass1"
+   );
+   ASSERT_FALSE(txB.empty());
+   Tx txBObj{txB};
+   ASSERT_NE(txAObj.getThisHash(), txBObj.getThisHash());
+
+   //broadcast and mine txA
+   broadcastTx(bridge_, txA);
+   waitOnZc();
+
+   DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrA, 1);
+   ASSERT_EQ(waitOnNewBlock(), 6);
+
+   //check effect of txA
+   ledgers = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgers.size(), 16);
+
+   auto ledger0 = ledgers[0];
+   ASSERT_EQ(ledger0.getTxHash(), txAObj.getThisHash());
+   ASSERT_EQ(ledger0.getBlockNum(), 6);
+   EXPECT_EQ(ledger0.getValue(), -3L * COIN - 2L);
+
+   for (unsigned i = 0; i < TestChain::ledgersBCDE.size(); i++) {
+      EXPECT_TRUE(checkLedgers(ledgers[i + 1], TestChain::ledgersBCDE[i])) << i;
+   }
+
+   /* reorg from block 5 */
+   auto branchPoint = theBDMt_->bdm()->blockchain()->getHeaderByHeight(5);
+   auto topA = theBDMt_->bdm()->blockchain()->top();
+   ASSERT_EQ(branchPoint->getUniqueID(), 6);
+   nodePtr_->setReorgBranchPoint(branchPoint);
+   nodePtr_->mineNewBlock(theBDMt_->bdm(), 1, TestChain::addrA, 100.0);
+   ASSERT_EQ(waitOnNewBlock(), 6);
+
+   auto topB = theBDMt_->bdm()->blockchain()->top();
+   ASSERT_NE(topA->getThisHash(), topB->getThisHash());
+   ASSERT_EQ(topA->getPrevHash(), branchPoint->getThisHash());
+   ASSERT_EQ(topB->getPrevHash(), branchPoint->getThisHash());
+   ASSERT_FALSE(topA->isMainBranch());
+
+   //check ledgers
+   ledgers = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgers.size(), 15);
+
+   for (unsigned i = 0; i < ledgers.size(); i++) {
+      EXPECT_TRUE(checkLedgers(ledgers[i], TestChain::ledgersBCDE[i])) << i;
+   }
+
+   //broadcast txB
+   broadcastTx(bridge_, txB);
+   auto zcLedgers = waitOnZc();
+   ASSERT_EQ(zcLedgers.size(), 1);
+   ASSERT_EQ(zcLedgers[0].getTxHash(), txBObj.getThisHash());
+   ASSERT_EQ(zcLedgers[0].getValue(), -4L * COIN - 2L);
+
+   DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrA, 1);
+   ASSERT_EQ(waitOnNewBlock(), 7);
+
+   ledgers = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgers.size(), 16);
+
+   ledger0 = ledgers[0];
+   ASSERT_EQ(ledger0.getTxHash(), txBObj.getThisHash());
+   ASSERT_EQ(ledger0.getBlockNum(), 7);
+   EXPECT_EQ(ledger0.getValue(), -4L * COIN - 2L);
+
+   for (unsigned i = 0; i < TestChain::ledgersBCDE.size(); i++) {
+      EXPECT_TRUE(checkLedgers(ledgers[i + 1], TestChain::ledgersBCDE[i])) << i;
    }
 }
 
@@ -12780,6 +12946,3 @@ GTEST_API_ int main(int argc, char **argv)
 // goes 4A, 4, 5, 5A vs 4, 5, 4A, 5A.
 // could be the test chain is weird too, it seems too big to have been
 // missing for so long
-//
-// 2. test adding blocks where blockId are wildly out of order
-// 3. test spender replacement in reorg. output has to be exist before branch point

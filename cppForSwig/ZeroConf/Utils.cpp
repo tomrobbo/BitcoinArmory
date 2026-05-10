@@ -232,7 +232,7 @@ void ZeroConf::preprocessTx(ParsedTx& tx, LMDBBlockDatabase* db,
 
       //check outpoint spentness
       auto txInKey = db->getTxInHistoryForTxOutKey(opRef.getDbKey());
-      if (Types::isTxIOKeyValid(txInKey)) {
+      if (Types::isTxIOKeyValid(txInKey) && bd->isTxKeyOnMainBranch(txInKey)) {
          //txout has mined spender, mark zc as invalid
          tx.state = ParsedTxStatus::Invalid;
          return;

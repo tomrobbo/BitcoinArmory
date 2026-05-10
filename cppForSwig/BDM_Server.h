@@ -136,7 +136,6 @@ private:
    std::vector<uint8_t> scratchPad_;
 
 public:
-   std::map<std::string, Armory::Ledgers::Delegate> delegateMap_;
    std::unique_ptr<Callback> notifications_;
 
 private:

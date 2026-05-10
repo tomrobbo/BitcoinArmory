@@ -109,3 +109,13 @@ Hash32 BlockchainData::getTxHashForTxKey(const Types::TxKey& txKey) const
    auto tx = getTx(txKey);
    return Hash32{tx.getThisHash()};
 }
+
+bool BlockchainData::isTxKeyOnMainBranch(const Types::TxKey& txKey) const
+{
+   auto blockID = Types::getBlockIDFromTxKey(txKey);
+   auto header = blockchain_->getHeaderById(blockID);
+   if (header == nullptr) {
+      return false;
+   }
+   return header->isMainBranch();
+}

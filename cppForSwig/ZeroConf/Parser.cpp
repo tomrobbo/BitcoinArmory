@@ -1986,7 +1986,7 @@ ProcessPayloadTxPacket::ProcessPayloadTxPacket(const BinaryData& hash) :
    ZcGetPacket(ZcGetPacketType::Payload), txHash(hash)
 {}
 
-void ProcessPayloadTxPacket::incrementCounter(void)
+void ProcessPayloadTxPacket::incrementCounter()
 {
    if (batchCtr == nullptr) {
       LOGERR << "null batch ptr";

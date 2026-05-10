@@ -750,7 +750,7 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   void mineNewBlock(BlockDataManagerThread* bdmt, const BinaryData& h160, 
+   void mineNewBlock(BlockDataManagerThread* bdmt, const BinaryData& h160,
       unsigned count)
    {
       auto nodePtr = bdmt->bdm()->processNode_;

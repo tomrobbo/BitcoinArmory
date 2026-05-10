@@ -40,6 +40,7 @@ namespace Armory
       Tx getTx(const Types::BlockId&, Types::TxId) const;
 
       Hash32 getTxHashForTxKey(const Types::TxKey&) const;
+      bool isTxKeyOnMainBranch(const Types::TxKey&) const;
       BinaryData getRawBlockForId(Types::BlockId) const;
    };
 }

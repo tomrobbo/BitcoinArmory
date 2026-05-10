@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <set>
 #include <map>
 #include <Utils/BinaryData.h>
 #include <Utils/Types.h>
@@ -54,13 +55,15 @@ private:
    std::map<Armory::Types::TxIOKey, TxIOPairUint> txioCache_;
 
 private:
-   void updateTxIOCache(LMDBBlockDatabase*,
+   void updateTxIOCache(
+      LMDBBlockDatabase*, const std::set<Armory::Types::BlockId>&,
       Armory::Types::BlockId, Armory::Types::BlockId);
 
 public:
    ScrAddrObj(const Armory::Types::ScrAddr&, Armory::Types::ScrAddrId);
 
    const Armory::Types::ScrAddr& getScrAddr(void) const;
-   std::map<Armory::Types::TxIOKey, TxIOPairUint> getTxios(LMDBBlockDatabase*,
+   std::map<Armory::Types::TxIOKey, TxIOPairUint> getTxios(
+      LMDBBlockDatabase*, const std::set<Armory::Types::BlockId>&,
       Armory::Types::BlockId, Armory::Types::BlockId);
 };

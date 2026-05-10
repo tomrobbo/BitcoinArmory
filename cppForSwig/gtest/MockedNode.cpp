@@ -353,7 +353,7 @@ std::map<unsigned, BinaryData> NodeUnitTest::mineNewBlock(
 
    if (stagedZc && !mempool_.empty()) {
       /*
-      We have staged zc, need to push them. Have to wait for the mining to 
+      We have staged zc, need to push them. Have to wait for the mining to
       complete first however, or the staged zc will most likely be rejected
       as invalid.
       */
@@ -515,7 +515,7 @@ void NodeUnitTest::pushZC(
 
    /*
    Do not push the tx to the db if it is flagged for staging. It will get
-   pushed after the next mining call. This is mostly useful for reorgs 
+   pushed after the next mining call. This is mostly useful for reorgs
    (where you can't push zc that conflicts with the still valid branch)
    */
    if (stage || invVec.empty()) {
