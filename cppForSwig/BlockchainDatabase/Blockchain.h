@@ -54,7 +54,7 @@ namespace Armory
       // Start from a node, trace down to the highest solved block, accumulate
       // difficulties and difficultySum values.  Return the difficultySum of 
       // this block.
-      double traceChainDown(std::shared_ptr<BlockHeader>);
+      void traceChainDown(std::shared_ptr<BlockHeader>);
       Types::BlockId getNewUniqueID(void);
 
    public:

@@ -233,18 +233,17 @@ HeaderPtr Blockchain::organizeChain(
       //     fill in the difficulty-sum values (do not set next-
       //     hash ptrs, as we don't know if this is the main branch)
       //     Method returns instantly if block is already "solved"
-      if (header->difficultySum_ > 0.0) {
-         continue;
+      if (header->difficultySum_ <= 0.0) {
+         traceChainDown(header);
       }
 
-      double thisDiffSum = traceChainDown(header);
       if (header->isOrphan_) {
          // disregard this block
          continue;
-      } else if (thisDiffSum > maxDiffSum) {
+      } else if (header->difficultySum_ > maxDiffSum) {
          // Determine if this is the top block.  If it's the same diffsum
          // as the prev top block, don't do anything
-         maxDiffSum  = thisDiffSum;
+         maxDiffSum  = header->difficultySum_;
          newTopBlock = header;
       }
    }
@@ -323,7 +322,10 @@ HeaderPtr Blockchain::organizeChain(
       auto prevHeadPtr = prevTopBlock;
       while (prevHeadPtr->thisHash_ != thisHeaderPtr->thisHash_) {
          prevHeadPtr->isFinishedCalc_ = false;
+         prevHeadPtr->difficultySum_ = -1.0;
          prevHeadPtr->isMainBranch_ = false;
+         prevHeadPtr->isOrphan_ = true;
+         invalidBlockIds_.emplace(prevHeadPtr->getUniqueID());
          prevHeadPtr = *headerSet_.find(prevHeadPtr->prevHash_);
       }
       return thisHeaderPtr;
@@ -341,7 +343,7 @@ HeaderPtr Blockchain::organizeChain(
 // Start from a node, trace down to the highest solved block, accumulate
 // difficulties and difficultySum values. Return the difficultySum of
 // this block.
-double Blockchain::traceChainDown(std::shared_ptr<BlockHeader> bhpStart)
+void Blockchain::traceChainDown(std::shared_ptr<BlockHeader> bhpStart)
 {
    /*
    NOTE: caller is responsible for locking the mutex
@@ -397,19 +399,18 @@ double Blockchain::traceChainDown(std::shared_ptr<BlockHeader> bhpStart)
       }
 
       //mark all blocks in that chain as orphans and track them
-      while (thisPtr->nextPtr_ != nullptr) {
-         auto hPtr = thisPtr->nextPtr_;
-         hPtr->isOrphan_ = true;
-         hPtr->isFinishedCalc_ = true;
-         invalidBlockIds_.emplace(hPtr->getUniqueID());
-         orphanIter->second.emplace(hPtr->getThisHash());
-         thisPtr = hPtr;
-      }
-      return 0.0;
-   }
+      while (true) {
+         thisPtr->isOrphan_ = true;
+         thisPtr->isFinishedCalc_ = true;
+         invalidBlockIds_.emplace(thisPtr->getUniqueID());
+         orphanIter->second.emplace(thisPtr->getThisHash());
 
-   // Finally, we have all the difficulty sums calculated, return this one
-   return bhpStart->difficultySum_;
+         if (thisPtr->nextPtr_ == nullptr) {
+            break;
+         }
+         thisPtr = thisPtr->nextPtr_;
+      }
+   }
 }
 
 void Blockchain::putNewHeaders(LMDBBlockDatabase *db)

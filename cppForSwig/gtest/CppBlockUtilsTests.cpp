@@ -268,14 +268,63 @@ TEST_F(BlockDir, HeadersFirstReorg)
    TestUtils::appendBlocks({ "3" }, blk0dat_);
    DBTestUtils::triggerNewBlockNotification(BDMt);
 
+   std::this_thread::sleep_for(1s);
+   auto blockchain = BDMt->bdm()->blockchain();
+   auto top = blockchain->top();
+   ASSERT_EQ(top->getBlockHeight(), 1);
+   ASSERT_EQ(top->getThisHash(), TestChain::blkHash1);
+
+   //3 and 4A should be invalid
+   {
+      auto invalidBlockIds = blockchain->getInvalidBlockIds();
+      ASSERT_EQ(invalidBlockIds.size(), 2);
+      auto blockIdIter = invalidBlockIds.begin();
+
+      auto header4A = blockchain->getHeaderById(*blockIdIter++);
+      EXPECT_EQ(header4A->getThisHash(), TestChain::blkHash4A);
+      EXPECT_FALSE(header4A->isMainBranch());
+
+      auto header3 = blockchain->getHeaderById(*blockIdIter);
+      EXPECT_EQ(header3->getThisHash(), TestChain::blkHash3);
+      EXPECT_FALSE(header3->isMainBranch());
+   }
+
    TestUtils::appendBlocks({ "2" }, blk0dat_);
    TestUtils::appendBlocks({ "5" }, blk0dat_);
    DBTestUtils::triggerNewBlockNotification(BDMt);
    DBTestUtils::waitOnNewBlockSignal(clients, bdvID);
+   top = blockchain->top();
+   ASSERT_EQ(top->getBlockHeight(), 4);
+   ASSERT_EQ(top->getThisHash(), TestChain::blkHash4A);
+
+   //5 should be invalid
+   {
+      auto invalidBlockIds = blockchain->getInvalidBlockIds();
+      ASSERT_EQ(invalidBlockIds.size(), 1);
+      auto blockIdIter = invalidBlockIds.begin();
+
+      auto header5 = blockchain->getHeaderById(*blockIdIter);
+      EXPECT_EQ(header5->getThisHash(), TestChain::blkHash5);
+      EXPECT_FALSE(header5->isMainBranch());
+   }
 
    TestUtils::appendBlocks({ "4" }, blk0dat_);
    DBTestUtils::triggerNewBlockNotification(BDMt);
    DBTestUtils::waitOnNewBlockSignal(clients, bdvID);
+   top = blockchain->top();
+   ASSERT_EQ(top->getBlockHeight(), 5);
+   ASSERT_EQ(top->getThisHash(), TestChain::blkHash5);
+
+   //4A should be invalid
+   {
+      auto invalidBlockIds = blockchain->getInvalidBlockIds();
+      ASSERT_EQ(invalidBlockIds.size(), 1);
+      auto blockIdIter = invalidBlockIds.begin();
+
+      auto header4A = blockchain->getHeaderById(*blockIdIter);
+      EXPECT_EQ(header4A->getThisHash(), TestChain::blkHash4A);
+      EXPECT_FALSE(header4A->isMainBranch());
+   }
 
    // check balance from SSH
    EXPECT_EQ(DBTestUtils::getScrAddrBalance(TestChain::scrAddrA, BDMt->bdm()), 50 * COIN);
@@ -285,6 +334,24 @@ TEST_F(BlockDir, HeadersFirstReorg)
    TestUtils::appendBlocks({ "5A" }, blk0dat_);
    DBTestUtils::triggerNewBlockNotification(BDMt);
    DBTestUtils::waitOnNewBlockSignal(clients, bdvID);
+   top = blockchain->top();
+   ASSERT_EQ(top->getBlockHeight(), 5);
+   ASSERT_EQ(top->getThisHash(), TestChain::blkHash5A);
+
+   //4 and 5 should be invalid
+   {
+      auto invalidBlockIds = blockchain->getInvalidBlockIds();
+      ASSERT_EQ(invalidBlockIds.size(), 2);
+      auto blockIdIter = invalidBlockIds.begin();
+
+      auto header5 = blockchain->getHeaderById(*blockIdIter++);
+      EXPECT_EQ(header5->getThisHash(), TestChain::blkHash5);
+      EXPECT_FALSE(header5->isMainBranch());
+
+      auto header4 = blockchain->getHeaderById(*blockIdIter);
+      EXPECT_EQ(header4->getThisHash(), TestChain::blkHash4);
+      EXPECT_FALSE(header4->isMainBranch());
+   }
 
    // check balance from SSH
    EXPECT_EQ(DBTestUtils::getScrAddrBalance(TestChain::scrAddrA, BDMt->bdm()), 50 * COIN);

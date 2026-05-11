@@ -1931,7 +1931,7 @@ void Clients::p2pBroadcast(Types::BdvId bdvId, std::vector<BinaryDataRef>& rawZC
 
    //broadcast
    bdm_->zeroConfCont_->broadcastZC(
-      rawZCs, 5000000, errorCallback, bdvId);
+      rawZCs, 5000, errorCallback, bdvId);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
