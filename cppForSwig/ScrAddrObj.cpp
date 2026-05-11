@@ -99,7 +99,7 @@ void ScrAddrObj::updateTxIOCache(
    //add new TxOuts to cache right away
    for (const auto& txopair : txOutData) {
       //emplace blindly, TxOut keys are unique
-      txioCache_.emplace(txopair.first, TxIOPairUint{
+      txioCache_.emplace(txopair.first, TxIOPair{
          txopair.first, txopair.second.amount, scrAddr_});
    }
 
@@ -113,14 +113,14 @@ void ScrAddrObj::updateTxIOCache(
    }
 }
 
-std::map<Types::TxIOKey, TxIOPairUint> ScrAddrObj::getTxios(
+std::map<Types::TxIOKey, TxIOPair> ScrAddrObj::getTxios(
    LMDBBlockDatabase* db, const std::set<Types::BlockId>& invalids,
    Types::BlockId start, Types::BlockId end)
 {
    //we build the reply from the txio cache, so we update that first
    updateTxIOCache(db, invalids, start, end);
 
-   std::map<Types::TxIOKey, TxIOPairUint> result;
+   std::map<Types::TxIOKey, TxIOPair> result;
    for (const auto& txioPair : txioCache_) {
       const auto& txio = txioPair.second;
       auto outBlockId = Types::getBlockIDFromTxKey(txio.getTxIOKeyOfOutput());
@@ -146,7 +146,7 @@ std::map<Types::TxIOKey, TxIOPairUint> ScrAddrObj::getTxios(
       }
 
       //only the txout for this txio is eligible
-      result.emplace(txioPair.first, TxIOPairUint{
+      result.emplace(txioPair.first, TxIOPair{
          txioPair.first, txio.getAmount(), scrAddr_
       });
    }

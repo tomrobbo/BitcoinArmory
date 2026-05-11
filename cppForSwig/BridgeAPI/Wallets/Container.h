@@ -24,7 +24,7 @@ template<class U> class ReturnMessage;
 class AddressEntry;
 class AddressBookEntry;
 struct UTXO;
-class TxIOPairUint;
+class TxIOPair;
 
 namespace Armory
 {
@@ -114,7 +114,7 @@ namespace Armory
          bool hasAddress(const std::string&) const;
 
          std::vector<AddressBookEntry> getAddressBook(void) const;
-         const std::map<Types::TxIOKey, TxIOPairUint> getTxioMap(void) const;
+         const std::map<Types::TxIOKey, TxIOPair> getTxioMap(void) const;
          void resolveTxios(uint32_t);
          void resolveZcTxios(void);
          std::vector<UTXO> getUTXOs(Types::Amount, bool, bool);

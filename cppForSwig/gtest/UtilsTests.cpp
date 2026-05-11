@@ -2421,14 +2421,10 @@ TEST_F(StoredBlockObjTest, StoredObjNoInit)
    StoredHeader        sbh;
    StoredTx            stx;
    StoredTxOut         stxo;
-   StoredScriptHistory ssh;
-   StoredTxHints       sths;
 
    EXPECT_FALSE( sbh.isInitialized() );
    EXPECT_FALSE( stx.isInitialized() );
    EXPECT_FALSE( stxo.isInitialized() );
-   EXPECT_FALSE( ssh.isInitialized() );
-   EXPECT_FALSE( sths.isInitialized() );
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2437,9 +2433,6 @@ TEST_F(StoredBlockObjTest, GetDBKeys)
    StoredHeader        sbh;
    StoredTx            stx;
    StoredTxOut         stxo;
-   StoredScriptHistory ssh1;
-   StoredScriptHistory ssh2;
-   StoredTxHints       sths;
 
    BinaryData key    = READHEX("aaaaffff");
    uint32_t   hgt    = 123000;
@@ -2461,9 +2454,6 @@ TEST_F(StoredBlockObjTest, GetDBKeys)
    stxo.txIndex     = txi;
    stxo.txOutIndex  = txo;
 
-   ssh1.uniqueKey   = key;
-   ssh2.uniqueKey   = key;
-   sths.txHashPrefix= key;
 
    BinaryData TXB = PREFBYTE(DbPrefix::TXDATA);
    BinaryData SSB = PREFBYTE(DbPrefix::SCRIPT);
@@ -2473,16 +2463,10 @@ TEST_F(StoredBlockObjTest, GetDBKeys)
    EXPECT_EQ(sbh.getDBKey(  true ),   TXB + hgtx);
    EXPECT_EQ(stx.getDBKey(  true ),   TXB + hgtx + txidx);
    EXPECT_EQ(stxo.getDBKey( true ),   TXB + hgtx + txidx + txoidx);
-   EXPECT_EQ(ssh1.getDBKey( true ),   SSB + key);
-   EXPECT_EQ(ssh2.getDBKey( true ),   SSB + key);
-   EXPECT_EQ(sths.getDBKey( true ),   THB + key);
 
    EXPECT_EQ(sbh.getDBKey(  false ),        hgtx);
    EXPECT_EQ(stx.getDBKey(  false ),        hgtx + txidx);
    EXPECT_EQ(stxo.getDBKey( false ),        hgtx + txidx + txoidx);
-   EXPECT_EQ(ssh1.getDBKey( false ),        key);
-   EXPECT_EQ(ssh2.getDBKey( false ),        key);
-   EXPECT_EQ(sths.getDBKey( false ),        key);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -3197,302 +3181,6 @@ TEST_F(StoredBlockObjTest, SHeaderFullBlock)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(StoredBlockObjTest, STxHintsSer)
-{
-   BinaryData hint0 = DBUtils::getBlkDataKeyNoPrefix(123000,  7, 255);
-   BinaryData hint1 = DBUtils::getBlkDataKeyNoPrefix(123000, 15, 127);
-   BinaryData hint2 = DBUtils::getBlkDataKeyNoPrefix(183922, 15,   3);
-
-   StoredTxHints sths;
-   sths.txHashPrefix = READHEX("aaaaffff");
-   sths.dbKeyList.clear();
-
-   /////
-   BinaryWriter ans0;
-   ans0.put_var_int(0);
-   EXPECT_EQ(sths.serializeDBValue(), ans0.getData());
-
-   /////
-   sths.dbKeyList.push_back(hint0);
-   sths.preferredDBKey = hint0;
-   BinaryWriter ans1;
-   ans1.put_var_int(1);
-   ans1.put_BinaryData(hint0);
-   EXPECT_EQ(sths.dbKeyList.size(), 1ULL);
-   EXPECT_EQ(sths.preferredDBKey, hint0);
-   EXPECT_EQ(sths.serializeDBValue(), ans1.getData());
-
-   /////
-   sths.dbKeyList.push_back(hint1);
-   sths.dbKeyList.push_back(hint2);
-   BinaryWriter ans3;
-   ans3.put_var_int(3);
-   ans3.put_BinaryData(hint0);
-   ans3.put_BinaryData(hint1);
-   ans3.put_BinaryData(hint2);
-   EXPECT_EQ(sths.dbKeyList.size(), 3ULL);
-   EXPECT_EQ(sths.preferredDBKey, hint0);
-   EXPECT_EQ(sths.serializeDBValue(), ans3.getData());
-}
-
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(StoredBlockObjTest, STxHintsReorder)
-{
-   BinaryData hint0 = DBUtils::getBlkDataKeyNoPrefix(123000,  7, 255);
-   BinaryData hint1 = DBUtils::getBlkDataKeyNoPrefix(123000, 15, 127);
-   BinaryData hint2 = DBUtils::getBlkDataKeyNoPrefix(183922, 15,   3);
-
-   StoredTxHints sths;
-   sths.txHashPrefix = READHEX("aaaaffff");
-   sths.dbKeyList.clear();
-   sths.dbKeyList.push_back(hint0);
-   sths.dbKeyList.push_back(hint1);
-   sths.dbKeyList.push_back(hint2);
-   sths.preferredDBKey = hint1;
-
-   BinaryWriter expectedOut;
-   expectedOut.put_var_int(3);
-   expectedOut.put_BinaryData(hint1);
-   expectedOut.put_BinaryData(hint0);
-   expectedOut.put_BinaryData(hint2);
-
-   EXPECT_EQ(sths.serializeDBValue(), expectedOut.getData());
-}
-
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(StoredBlockObjTest, STxHintsUnser)
-{
-   BinaryData hint0 = DBUtils::getBlkDataKeyNoPrefix(123000,  7, 255);
-   BinaryData hint1 = DBUtils::getBlkDataKeyNoPrefix(123000, 15, 127);
-   BinaryData hint2 = DBUtils::getBlkDataKeyNoPrefix(183922, 15,   3);
-
-   BinaryData in0 = READHEX("00");
-   BinaryData in1 = READHEX("01""01e0780700ff");
-   BinaryData in3 = READHEX("03""01e0780700ff""01e0780f007f""02ce720f0003");
-
-   StoredTxHints sths0, sths1, sths3;
-
-   sths0.unserializeDBValue(in0);
-
-   EXPECT_EQ(sths0.dbKeyList.size(),  0ULL);
-   EXPECT_TRUE(sths0.preferredDBKey.empty());
-
-   sths1.unserializeDBValue(in1);
-
-   EXPECT_EQ(sths1.dbKeyList.size(),  1ULL);
-   EXPECT_EQ(sths1.dbKeyList[0],      hint0);
-   EXPECT_EQ(sths1.preferredDBKey,    hint0);
-
-   sths3.unserializeDBValue(in3);
-   EXPECT_EQ(sths3.dbKeyList.size(),  3ULL);
-   EXPECT_EQ(sths3.dbKeyList[0],      hint0);
-   EXPECT_EQ(sths3.dbKeyList[1],      hint1);
-   EXPECT_EQ(sths3.dbKeyList[2],      hint2);
-   EXPECT_EQ(sths3.preferredDBKey,    hint0);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(StoredBlockObjTest, SScriptHistorySer)
-{
-   StoredScriptHistory ssh;
-   ssh.uniqueKey = READHEX("00""1234abcde1234abcde1234abcdefff1234abcdef");
-   ssh.version = 1;
-   ssh.scanHeight = 65535;
-
-   /////////////////////////////////////////////////////////////////////////////
-   // Empty ssh (shouldn't be written in supernode, should be in full node)
-   BinaryData expect, expSub1, expSub2;
-   expect = READHEX("0000""ffff0000ffffffff""00""0000000000000000""00000000");
-   EXPECT_EQ(serializeDBValue(ssh, ARMORY_DB_TYPE::Bare), expect);
-
-   /////////////////////////////////////////////////////////////////////////////
-   // With a single TxIO
-   TxIOPair txio0(READHEX("0000ff00""0001""0001"), READ_UINT64_HEX_LE("0100000000000000"));
-   txio0.setFromCoinbase(false);
-   txio0.setTxOutFromSelf(false);
-   txio0.setMultisig(false);
-   ssh.insertTxio(txio0);
-
-   expect = READHEX("0000""ffff0000ffffffff""01""0100000000000000""00000000");
-   EXPECT_EQ(serializeDBValue(ssh, ARMORY_DB_TYPE::Bare), expect);
-
-   /////////////////////////////////////////////////////////////////////////////
-   // Added a second one, different subSSH
-   TxIOPair txio1(READHEX("00010000""0002""0002"), READ_UINT64_HEX_LE("0002000000000000"));
-   ssh.insertTxio(txio1);
-   expect  = READHEX("0000""ffff0000ffffffff""02""0102000000000000""00000000");
-   expSub1 = READHEX("01""00""0100000000000000""0001""0001");
-   expSub2 = READHEX("01""00""0002000000000000""0002""0002");
-   EXPECT_EQ(serializeDBValue(ssh, ARMORY_DB_TYPE::Bare), expect);
-   EXPECT_EQ(serializeDBValue(ssh.subHistMap[READHEX("0000ff00")]), expSub1);
-   EXPECT_EQ(serializeDBValue(ssh.subHistMap[READHEX("00010000")]), expSub2);
-
-   /////////////////////////////////////////////////////////////////////////////
-   // Added another TxIO to the second subSSH
-   TxIOPair txio2(READHEX("00010000""0004""0004"), READ_UINT64_HEX_LE("0000030000000000"));
-   ssh.insertTxio(txio2);
-   expect  = READHEX("0000""ffff0000ffffffff""03""0102030000000000""00000000");
-   expSub1 = READHEX("01"
-                       "00""0100000000000000""0001""0001");
-   expSub2 = READHEX("02"
-                       "00""0002000000000000""0002""0002"
-                       "00""0000030000000000""0004""0004");
-   EXPECT_EQ(serializeDBValue(ssh, ARMORY_DB_TYPE::Bare), expect);
-   EXPECT_EQ(serializeDBValue(ssh.subHistMap[READHEX("0000ff00")]), expSub1);
-   EXPECT_EQ(serializeDBValue(ssh.subHistMap[READHEX("00010000")]), expSub2);
-
-   /////////////////////////////////////////////////////////////////////////////
-   // Now we explicitly delete a TxIO (with pruning, this should be basically
-   // equivalent to marking it spent, but we are DB-mode-agnostic here, testing
-   // just the base insert/erase operations)
-   ssh.eraseTxio(txio1);
-   expect  = READHEX("0000""ffff0000ffffffff""02""0100030000000000""00000000");
-   expSub1 = READHEX("01"
-                       "00""0100000000000000""0001""0001");
-   expSub2 = READHEX("01"
-                       "00""0000030000000000""0004""0004");
-   EXPECT_EQ(serializeDBValue(ssh, ARMORY_DB_TYPE::Bare), expect);
-   EXPECT_EQ(serializeDBValue(ssh.subHistMap[READHEX("0000ff00")]), expSub1);
-   EXPECT_EQ(serializeDBValue(ssh.subHistMap[READHEX("00010000")]), expSub2);
-   
-   /////////////////////////////////////////////////////////////////////////////
-   // Insert a multisig TxIO -- this should increment totalTxioCount_, but not 
-   // the value 
-   TxIOPair txio3(READHEX("00010000""0006""0006"), READ_UINT64_HEX_LE("0000000400000000"));
-   txio3.setMultisig(true);
-   ssh.insertTxio(txio3);
-   expect  = READHEX("0000""ffff0000ffffffff""03""0100030000000000""00000000");
-   expSub1 = READHEX("01"
-                       "00""0100000000000000""0001""0001");
-   expSub2 = READHEX("02"
-                       "00""0000030000000000""0004""0004"
-                       "10""0000000400000000""0006""0006");
-   EXPECT_EQ(serializeDBValue(ssh, ARMORY_DB_TYPE::Bare), expect);
-   EXPECT_EQ(serializeDBValue(ssh.subHistMap[READHEX("0000ff00")]), expSub1);
-   EXPECT_EQ(serializeDBValue(ssh.subHistMap[READHEX("00010000")]), expSub2);
-   
-   /////////////////////////////////////////////////////////////////////////////
-   // Remove the multisig
-   ssh.eraseTxio(txio3);
-   expect  = READHEX("0000""ffff0000ffffffff""02""0100030000000000""00000000");
-   expSub1 = READHEX("01"
-                       "00""0100000000000000""0001""0001");
-   expSub2 = READHEX("01"
-                       "00""0000030000000000""0004""0004");
-   EXPECT_EQ(serializeDBValue(ssh, ARMORY_DB_TYPE::Bare), expect);
-   EXPECT_EQ(serializeDBValue(ssh.subHistMap[READHEX("0000ff00")]), expSub1);
-   EXPECT_EQ(serializeDBValue(ssh.subHistMap[READHEX("00010000")]), expSub2);
-
-   /////////////////////////////////////////////////////////////////////////////
-   // Remove a full subSSH (it shouldn't be deleted, though, that will be done
-   // by BlockUtils in a post-processing step
-   ssh.eraseTxio(txio0);
-   expect  = READHEX("0000""ffff0000ffffffff""01""0000030000000000""00000000");
-   expSub1 = READHEX("00");
-   expSub2 = READHEX("01"
-                       "00""0000030000000000""0004""0004");
-   EXPECT_EQ(serializeDBValue(ssh, ARMORY_DB_TYPE::Bare), expect);
-   EXPECT_EQ(serializeDBValue(ssh.subHistMap[READHEX("0000ff00")]), expSub1);
-   EXPECT_EQ(serializeDBValue(ssh.subHistMap[READHEX("00010000")]), expSub2);
-   
-}
-
-////////////////////////////////////////////////////////////////////////////////
-TEST_F(StoredBlockObjTest, SScriptHistoryUnser)
-{
-   StoredScriptHistory ssh, sshorig;
-   StoredSubHistory subssh1, subssh2;
-   BinaryData toUnser;
-   BinaryData hgtX0 = READHEX("0000ff00");
-   BinaryData hgtX1 = READHEX("00010000");
-   BinaryData uniq  = READHEX("00""0000ffff0000ffff0000ffff0000ffff0000ffff");
-
-   sshorig.uniqueKey = uniq;
-   sshorig.version = 1;
-
-   BinaryWriter bw;
-   bw.put_uint8_t((uint8_t)DbPrefix::SCRIPT);
-   BinaryData DBPREF = bw.getData();
-
-   /////////////////////////////////////////////////////////////////////////////
-   ssh = sshorig;
-   toUnser = READHEX("0400""ffff0000ffffffff""00""00000000");
-   ssh.unserializeDBKey(DBPREF + uniq);
-   ssh.unserializeDBValue(toUnser);
-
-   EXPECT_EQ(ssh.subHistMap.size(), 0ULL);
-   EXPECT_EQ(ssh.scanHeight, 65535);
-   EXPECT_EQ(ssh.tallyHeight, -1);
-   EXPECT_EQ(ssh.totalTxioCount, 0ULL);
-   EXPECT_EQ(ssh.totalUnspent, 0ULL);
-
-   /////////////////////////////////////////////////////////////////////////////
-   ssh = sshorig;
-   toUnser = READHEX("0400""ffff0000ffffffff""01""0100000000000000""00000000");
-   ssh.unserializeDBKey(DBPREF + uniq);
-   ssh.unserializeDBValue(toUnser);
-   BinaryData txioKey = hgtX0 + READHEX("00010001");
-
-   EXPECT_EQ(ssh.scanHeight, 65535);
-   EXPECT_EQ(ssh.tallyHeight, -1);
-   EXPECT_EQ(ssh.totalTxioCount, 1ULL);
-   EXPECT_EQ(ssh.totalUnspent, READ_UINT64_HEX_LE("0100000000000000"));
-
-   /////////////////////////////////////////////////////////////////////////////
-   // Test reading a subSSH and merging it with the regular ssh
-   ssh = sshorig;
-   subssh1 = StoredSubHistory();
-
-   ssh.unserializeDBKey(DBPREF + uniq);
-   ssh.unserializeDBValue(READHEX(
-      "0400""ffff0000ffffffff""02""0000030400000000""00000000"));
-   subssh1.unserializeDBKey(DBPREF + uniq + hgtX0);
-   subssh1.unserializeDBValue(READHEX("02"
-      "00""0000030000000000""0004""0004"
-      "00""0000000400000000""0006""0006"));
-
-   BinaryData last4_0 = READHEX("0004""0004");
-   BinaryData last4_1 = READHEX("0006""0006");
-   BinaryData txio0key = hgtX0 + last4_0;
-   BinaryData txio1key = hgtX0 + last4_1;
-   uint64_t val0 = READ_UINT64_HEX_LE("0000030000000000");
-   uint64_t val1 = READ_UINT64_HEX_LE("0000000400000000");
-
-   // Unmerged, so ssh doesn't have the subSSH as part of it yet.
-   EXPECT_EQ(ssh.subHistMap.size(), 0ULL);
-   EXPECT_EQ(ssh.scanHeight, 65535);
-   EXPECT_EQ(ssh.totalTxioCount, 2ULL);
-   EXPECT_EQ(ssh.totalUnspent, READ_UINT64_HEX_LE("0000030400000000"));
-
-   EXPECT_EQ(subssh1.hgtX,       hgtX0);
-   EXPECT_EQ(subssh1.txioMap.size(), 2ULL);
-   auto txio0Iter = subssh1.txioMap.find(txio0key);
-   auto txio1Iter = subssh1.txioMap.find(txio1key);
-   ASSERT_NE(txio0Iter, subssh1.txioMap.end());
-   ASSERT_NE(txio1Iter, subssh1.txioMap.end());
-   EXPECT_EQ(txio0Iter->second.getValue(), val0);
-   EXPECT_EQ(txio1Iter->second.getValue(), val1);
-   EXPECT_EQ(txio0Iter->second.getDBKeyOfOutput(), txio0key);
-   EXPECT_EQ(txio1Iter->second.getDBKeyOfOutput(), txio1key);
-
-   ssh.mergeSubHistory(subssh1);
-   EXPECT_EQ(ssh.subHistMap.size(), 1ULL);
-   ASSERT_NE(ssh.subHistMap.find(hgtX0), ssh.subHistMap.end());
-
-   StoredSubHistory& subref = ssh.subHistMap[hgtX0];
-   EXPECT_EQ(subref.hgtX,      hgtX0);
-   EXPECT_EQ(subref.txioMap.size(), 2ULL);
-   auto txioRef0Iter = subref.txioMap.find(txio0key);
-   auto txioRef1Iter = subref.txioMap.find(txio1key);
-   ASSERT_NE(txioRef0Iter, subref.txioMap.end());
-   ASSERT_NE(txioRef1Iter, subref.txioMap.end());
-   EXPECT_EQ(txioRef0Iter->second.getValue(), val0);
-   EXPECT_EQ(txioRef1Iter->second.getValue(), val1);
-   EXPECT_EQ(txioRef0Iter->second.getDBKeyOfOutput(), txio0key);
-   EXPECT_EQ(txioRef1Iter->second.getDBKeyOfOutput(), txio1key);
-}
-
-////////////////////////////////////////////////////////////////////////////////
 class LMDBTest : public ::testing::Test
 {
 protected:
@@ -3749,7 +3437,7 @@ protected:
    /////
    bool compareKVListRange(uint32_t startH, uint32_t endplus1H,
                            uint32_t startB, uint32_t endplus1B,
-                           DB_SELECT db2 = DB_SELECT::SSH)
+                           DB_SELECT db2 = DB_SELECT::TXOUTS)
    {
       KVLIST fromDB = iface_->getAllDatabaseEntries(DB_SELECT::HEADERS);
 
@@ -3848,20 +3536,20 @@ TEST_F(LMDBTest, OpenClose)
    EXPECT_FALSE(topHash.valid());
 
    KVLIST HList = iface_->getAllDatabaseEntries(DB_SELECT::HEADERS);
-   KVLIST BList = iface_->getAllDatabaseEntries(DB_SELECT::SSH);
+   KVLIST BList = iface_->getAllDatabaseEntries(DB_SELECT::TXOUTS);
 
    // 0123 4567 0123 4567
    // 0000 0010 0001 ---- ---- ---- ---- ----
    BinaryData flags = READHEX("97011000");
    BinaryData ff = READHEX("ffffffffffffffff");
 
-   for(uint32_t i=0; i<HList.size(); i++) {
+   for (uint32_t i=0; i<HList.size(); i++) {
       EXPECT_EQ(HList[i].first,  READHEX("000000"));
       EXPECT_EQ(BList[i].second, magic_ + flags + zeros_ + zeros_ +
          BtcUtils::EmptyHash + BtcUtils::EmptyHash + ff);
    }
 
-   for(uint32_t i=0; i<BList.size(); i++) {
+   for (uint32_t i=0; i<BList.size(); i++) {
       EXPECT_EQ(HList[i].first,  READHEX("000000"));
       EXPECT_EQ(BList[i].second, magic_ + flags + zeros_ + zeros_ +
          BtcUtils::EmptyHash + BtcUtils::EmptyHash + ff);
@@ -3884,7 +3572,7 @@ TEST_F(LMDBTest, OpenCloseOpenNominal)
    ASSERT_TRUE(iface_->databasesAreOpen());
 
    KVLIST HList = iface_->getAllDatabaseEntries(DB_SELECT::HEADERS);
-   KVLIST BList = iface_->getAllDatabaseEntries(DB_SELECT::SSH);
+   KVLIST BList = iface_->getAllDatabaseEntries(DB_SELECT::TXOUTS);
 
    for(uint32_t i=0; i<HList.size(); i++)
    {
@@ -3913,7 +3601,7 @@ TEST_F(LMDBTest, PutGetDelete)
    ASSERT_TRUE(iface_->databasesAreOpen());
 
    auto txh = iface_->beginTransaction(DB_SELECT::HEADERS, LMDB::Mode::ReadWrite);
-   auto txH = iface_->beginTransaction(DB_SELECT::SSH, LMDB::Mode::ReadWrite);
+   auto txH = iface_->beginTransaction(DB_SELECT::TXOUTS, LMDB::Mode::ReadWrite);
 
    auto getDBVal = [dbtx=txH.get()](BinaryData key)->BinaryDataRef
    {

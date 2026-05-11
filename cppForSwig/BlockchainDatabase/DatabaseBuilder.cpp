@@ -899,6 +899,8 @@ Hash32 Builder::scanHistory(const ReorganizationState& reorgState,
       );
       return bcs.getTopScannedBlockHash();
    } else {
+      throw std::runtime_error("supernode scanner disabled for now");
+      /*
       BlockchainScanner_Super bcs(
          blockchain_, db_,
          blockFiles_, init,
@@ -913,6 +915,7 @@ Hash32 Builder::scanHistory(const ReorganizationState& reorgState,
          bcs.getTopScannedBlockHash()
       );
       return bcs.getTopScannedBlockHash();
+      */
    }
 }
 

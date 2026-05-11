@@ -57,7 +57,7 @@ public:
    void unregisterAddresses(const std::set<BinaryDataRef>&);
 
 private:
-   std::map<Armory::Types::TxIOKey, TxIOPairUint> getTxioForRange(
+   std::map<Armory::Types::TxIOKey, TxIOPair> getTxioForRange(
       LMDBBlockDatabase*, const std::set<Armory::Types::BlockId>&,
       Armory::Types::BlockId, Armory::Types::BlockId) const;
 

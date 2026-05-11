@@ -163,7 +163,6 @@ BLOCKCHAINDB_SOURCE_FILES = BlockchainDatabase/Blockchain.cpp \
 	BlockchainDatabase/DatabaseBuilder.cpp \
 	BlockchainDatabase/lmdb_wrapper.cpp \
 	BlockchainDatabase/ScrAddrFilter.cpp \
-	BlockchainDatabase/SshParser.cpp \
 	BlockchainDatabase/StoredBlockObj.cpp \
 	BlockchainDatabase/TxHashFilters.cpp \
 	BlockchainDatabase/txio.cpp

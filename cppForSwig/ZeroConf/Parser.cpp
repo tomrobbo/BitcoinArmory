@@ -812,7 +812,7 @@ bool ZeroConfContainer::isTxOutSpentByZC(const Types::TxKey& dbKey) const
    return ss->isTxOutSpentByZC(dbKey);
 }
 
-std::map<Types::TxIOKey, std::shared_ptr<const TxIOPairUint>>
+std::map<Types::TxIOKey, std::shared_ptr<const TxIOPair>>
 ZeroConfContainer::getUnspentZCforScrAddr(const Types::ScrAddr& scrAddr) const
 {
    auto ss = getSnapshot();
@@ -821,7 +821,7 @@ ZeroConfContainer::getUnspentZCforScrAddr(const Types::ScrAddr& scrAddr) const
    }
 
    auto txioMap = ss->getTxioMapForScrAddr(scrAddr);
-   std::map<Types::TxIOKey, std::shared_ptr<const TxIOPairUint>> returnMap;
+   std::map<Types::TxIOKey, std::shared_ptr<const TxIOPair>> returnMap;
    for (const auto& zcPair : txioMap) {
       if (zcPair.second->hasTxIn()) {
          continue;
@@ -831,7 +831,7 @@ ZeroConfContainer::getUnspentZCforScrAddr(const Types::ScrAddr& scrAddr) const
    return returnMap;
 }
 
-std::map<Types::TxIOKey, std::shared_ptr<const TxIOPairUint>>
+std::map<Types::TxIOKey, std::shared_ptr<const TxIOPair>>
 ZeroConfContainer::getRBFTxIOsforScrAddr(const Types::ScrAddr& scrAddr) const
 {
    auto ss = getSnapshot();
@@ -840,7 +840,7 @@ ZeroConfContainer::getRBFTxIOsforScrAddr(const Types::ScrAddr& scrAddr) const
    }
 
    auto txioMap = ss->getTxioMapForScrAddr(scrAddr);
-   std::map<Types::TxIOKey, std::shared_ptr<const TxIOPairUint>> returnMap;
+   std::map<Types::TxIOKey, std::shared_ptr<const TxIOPair>> returnMap;
 
    for (auto& zcPair : txioMap) {
       if (!zcPair.second->hasTxIn()) {
@@ -871,36 +871,6 @@ std::vector<TxOut> ZeroConfContainer::getZcTxOutsForKey(
       }
       auto outId = Types::getTxIOIndexFromTxIOKey(key);
       result.emplace_back(theTx->getTxObj().getTxOutCopy(outId));
-   }
-   return result;
-}
-
-std::vector<UTXO> ZeroConfContainer::getZcUTXOsForKey(
-   const std::set<Types::TxIOKey>& keys) const
-{
-   auto ss = getSnapshot();
-   if (ss == nullptr) {
-      return {};
-   }
-
-   std::vector<UTXO> result;
-   result.reserve(keys.size());
-   for (const auto& key : keys) {
-      auto zcKey = Types::getTxKeyFromTxIOKey(key);
-      auto theTx = ss->getTxByKey(zcKey);
-      if (theTx == nullptr) {
-         continue;
-      }
-
-      auto zcId = Types::getZcIdFromTxKey(zcKey);
-      auto outId = Types::getTxIOIndexFromTxIOKey(key);
-
-      auto txout = theTx->getTxObj().getTxOutCopy(outId);
-      result.emplace_back(UTXO{
-         txout.getAmount(), UINT32_MAX,
-         UINT16_MAX, outId,
-         theTx->getTxHash(), txout.getScript()
-      });
    }
    return result;
 }

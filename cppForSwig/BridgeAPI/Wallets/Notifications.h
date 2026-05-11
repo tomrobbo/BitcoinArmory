@@ -68,13 +68,13 @@ namespace Armory
 
       struct NotifStruct_ZC : public NotifStruct
       {
-         std::vector<TxIOPairUint> txios;
+         std::vector<TxIOPair> txios;
          std::set<BinaryData> invalidatedZCHashes;
          const std::function<void(
             const std::vector<Ledgers::Entry>&,
             const std::set<BinaryData>&)> callback;
 
-         NotifStruct_ZC(std::vector<TxIOPairUint>, std::set<BinaryData>,
+         NotifStruct_ZC(std::vector<TxIOPair>, std::set<BinaryData>,
             const std::function<void(
                const std::vector<Ledgers::Entry>&,
                const std::set<BinaryData>&)>&

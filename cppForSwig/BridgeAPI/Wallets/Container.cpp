@@ -449,7 +449,7 @@ std::vector<UTXO> WalletContainer::getUTXOs(Types::Amount val, bool zc, bool rbf
 }
 
 ////////
-const std::map<Types::TxIOKey, TxIOPairUint> WalletContainer::getTxioMap() const
+const std::map<Types::TxIOKey, TxIOPair> WalletContainer::getTxioMap() const
 {
    if (chainDataMain_ == nullptr) {
       return {};

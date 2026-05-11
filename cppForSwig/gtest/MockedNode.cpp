@@ -1010,17 +1010,12 @@ int NodeRPC_UnitTest::broadcastTx(const BinaryDataRef& rawTx, std::string&)
    Tx tx(rawTx);
    auto dbKey = iface->getDBKeyForHash(tx.getThisHash());
    if (Types::isTxKeyValid(dbKey)) {
-      StoredTxOut stxo;
-      auto blockId = Types::getBlockIDFromTxKey(dbKey);
-      auto headerPtr = nodeUT->bdm_->blockchain()->getHeaderById(blockId);
-      stxo.blockHeight = headerPtr->getBlockHeight();
-
       //are any of its outpouts spent?
       unsigned spentCount = 0;
-      for (unsigned i = 0; i < tx.getNumTxOut(); i++) {
-         stxo.txOutIndex = i;
-         iface->getSpentness(stxo);
-         if (stxo.isSpent()) {
+      for (Types::TxIOId i = 0; i < tx.getNumTxOut(); i++) {
+         auto txOutKey = Types::constructTxIOKeyFromTxKey(dbKey, i);
+         auto txInKey = iface->getTxInHistoryForTxOutKey(txOutKey);
+         if (Types::isTxIOKeyValid(txInKey)) {
             spentCount++;
          }
       }
@@ -1082,14 +1077,10 @@ int NodeRPC_UnitTest::broadcastTx(const BinaryDataRef& rawTx, std::string&)
       }
 
       //is this outpoint spent?
-      StoredTxOut stxo;
-      auto blockid = Types::getBlockIDFromTxKey(dbKeyInput);
-      auto headerPtr = nodeUT->bdm_->blockchain()->getHeaderById(blockid);
-      stxo.blockHeight = headerPtr->getBlockHeight();
-      stxo.txOutIndex = outpoint.getTxOutIndex();
-
-      iface->getSpentness(stxo);
-      if (stxo.isSpent()) {
+      auto txOutKey = Types::constructTxIOKeyFromTxKey(
+         dbKeyInput, outpoint.getTxOutIndex());
+      auto txInKey = iface->getTxInHistoryForTxOutKey(txOutKey);
+      if (Types::isTxIOKeyValid(txInKey)) {
          return (int)ArmoryErrorCodes::ZcBroadcast_Error;
       }
    }

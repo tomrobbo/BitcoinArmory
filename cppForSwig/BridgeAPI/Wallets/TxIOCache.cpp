@@ -218,11 +218,11 @@ uint32_t TxIOCache::update(
    }
 
    //1. txios
-   auto promTxios = std::make_shared<std::promise<std::vector<TxIOPairUint>>>();
+   auto promTxios = std::make_shared<std::promise<std::vector<TxIOPair>>>();
    auto futTxios = promTxios->get_future();
 
    bdvPtr->getTxios(fromHeight, [prom = promTxios]
-      (ReturnMessage<std::vector<TxIOPairUint>> result) {
+      (ReturnMessage<std::vector<TxIOPair>> result) {
          prom->set_value(result.get());
    });
    auto txios = std::move(futTxios.get());
@@ -283,7 +283,7 @@ uint32_t TxIOCache::update(
 
 std::set<Types::TxKey> TxIOCache::updateZC(
    std::shared_ptr<AsyncClient::BlockDataViewer> bdvPtr,
-   const std::vector<TxIOPairUint>& zcTxios,
+   const std::vector<TxIOPair>& zcTxios,
    const std::set<BinaryData>& invalidatedZC, bool append)
 {
    ReentrantLock lock(this);
@@ -374,7 +374,7 @@ std::set<Types::TxKey> TxIOCache::updateZC(
 ////////
 std::pair<std::set<Types::TxKey>, std::set<Types::BlockId>>
 TxIOCache::addTxios(
-   std::vector<TxIOPairUint>& txios, uint32_t fetchedHeight)
+   std::vector<TxIOPair>& txios, uint32_t fetchedHeight)
 {
    std::set<Types::TxKey> missingTxKeys;
    std::set<Types::BlockId> missingBlocks;
@@ -390,7 +390,7 @@ TxIOCache::addTxios(
       }
    };
 
-   std::vector<TxIOPairUint> zcTxios;
+   std::vector<TxIOPair> zcTxios;
    zcTxios.reserve(5);
    ReentrantLock lock(this);
    for (auto& txio : txios) {
@@ -477,7 +477,7 @@ std::vector<UTXO> TxIOCache::getZcUTXOs(bool rbf,
    const AddressFilter& filter) const
 {
    std::vector<UTXO> result;
-   auto addTxio = [this, &result, filter](const TxIOPairUint& txio, const Tx& tx)
+   auto addTxio = [this, &result, filter](const TxIOPair& txio, const Tx& tx)
    {
       const auto& scrAddr = txio.getScrAddr();
       if (!filter(scrAddr)) {
@@ -579,11 +579,11 @@ std::vector<UTXO> TxIOCache::getUTXOs(
 }
 
 ////////
-std::map<Types::TxIOKey, TxIOPairUint> TxIOCache::getZcTxios(
+std::map<Types::TxIOKey, TxIOPair> TxIOCache::getZcTxios(
    const AddressFilter& filter) const
 {
    ReentrantLock lock(this);
-   std::map<Types::TxIOKey, TxIOPairUint> result;
+   std::map<Types::TxIOKey, TxIOPair> result;
    for (const auto& txioPair : zcTxios_) {
       const auto& txio = txioPair.second;
       if (filter(txio.getScrAddr())) {
@@ -601,7 +601,7 @@ CacheResolveResult::CacheResolveResult(uint32_t height, bool iszc,
 {}
 
 void CacheResolveResult::addTxio(const Types::TxIOKey& key,
-   const TxIOPairUint& txio,
+   const TxIOPair& txio,
    const Types::ScrAddr& addr)
 {
    auto emplaceResult = txioMap.emplace(key, txio);
@@ -611,7 +611,7 @@ void CacheResolveResult::addTxio(const Types::TxIOKey& key,
    auto addrIter = addrTxioMap.find(addr);
    if (addrIter == addrTxioMap.end()) {
       addrIter = addrTxioMap.emplace(
-         addr, std::vector<TxIOPairUint*>{}).first;
+         addr, std::vector<TxIOPair*>{}).first;
    }
    addrIter->second.emplace_back(&emplaceResult.first->second);
 }

@@ -69,7 +69,7 @@ BDV_Action BDV_Notification_NewBlock::actionType() const
 // BDV_Notification_ZC
 BDV_Notification_ZC::BDV_Notification_ZC(
    std::shared_ptr<Armory::ZeroConf::ZcNotificationPacket> zcPacketPtr,
-   std::vector<std::shared_ptr<const TxIOPairUint>> txioV) :
+   std::vector<std::shared_ptr<const TxIOPair>> txioV) :
    BDV_Notification(zcPacketPtr->bdvID),
    packet(zcPacketPtr), txios(std::move(txioV))
 {}

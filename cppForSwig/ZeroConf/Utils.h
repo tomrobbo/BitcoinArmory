@@ -18,7 +18,7 @@
 class LMDBBlockDatabase;
 class Tx;
 class TxOut;
-class TxIOPairUint;
+class TxIOPair;
 
 namespace Armory
 {
@@ -139,7 +139,7 @@ namespace Armory
       ////
       struct FilteredZeroConfData
       {
-         std::map<Types::ScrAddr, std::map<Types::TxIOKey, std::shared_ptr<TxIOPairUint>>> scrAddrTxioMap;
+         std::map<Types::ScrAddr, std::map<Types::TxIOKey, std::shared_ptr<TxIOPair>>> scrAddrTxioMap;
          std::map<Types::TxHash, std::map<unsigned, Types::TxKey>> outPointsSpentByKey;
          TxIOKeys txOutsSpentByZC;
          std::map<Types::TxKey, std::shared_ptr<std::set<Types::ScrAddr>>> keyToSpentScrAddr;
@@ -202,7 +202,7 @@ namespace Armory
          std::map<Types::ScrAddr, TxIOKeys> scrAddrMap_;
 
          //<zcKey/txKey, txio>>
-         std::map<Types::TxIOKey, std::shared_ptr<TxIOPairUint>> txioMap_;
+         std::map<Types::TxIOKey, std::shared_ptr<TxIOPair>> txioMap_;
 
          std::shared_ptr<MempoolData> parent_;
 
@@ -216,7 +216,7 @@ namespace Armory
          void copyFrom(const MempoolData&);
 
          std::shared_ptr<ParsedTx> getTx(Types::TxKey) const;
-         std::shared_ptr<const TxIOPairUint> getTxio(Types::TxIOKey) const;
+         std::shared_ptr<const TxIOPair> getTxio(Types::TxIOKey) const;
          Types::TxKey getKeyForHash(const Types::TxHash&) const;
          bool isTxOutSpentByZC(Types::TxIOKey) const;
 
@@ -257,9 +257,9 @@ namespace Armory
             unsigned, unsigned);
 
          const TxIOKeys& getTxioKeysForScrAddr(const Types::ScrAddr&) const;
-         std::map<Types::TxIOKey, std::shared_ptr<const TxIOPairUint>>
+         std::map<Types::TxIOKey, std::shared_ptr<const TxIOPair>>
             getTxioMapForScrAddr(const Types::ScrAddr&) const;
-         std::shared_ptr<const TxIOPairUint> getTxioByKey(Types::TxIOKey) const;
+         std::shared_ptr<const TxIOPair> getTxioByKey(Types::TxIOKey) const;
 
          std::shared_ptr<const ParsedTx> getTxByKey(Types::TxKey) const;
          std::shared_ptr<const ParsedTx> getTxByHash(const Types::TxHash&) const;

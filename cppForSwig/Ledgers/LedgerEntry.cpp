@@ -33,11 +33,11 @@ namespace
       Types::TxId txIndex;
       Types::ZcId zcIndex = UINT32_MAX;
       Types::TxHash txHash;
-      std::map<Types::TxIOKey, const TxIOPairUint*> txios;
+      std::map<Types::TxIOKey, const TxIOPair*> txios;
    };
 
    std::map<Types::TxKey, TxData> sortByTx(
-      const std::map<Types::TxIOKey, TxIOPairUint>& txioMap,
+      const std::map<Types::TxIOKey, TxIOPair>& txioMap,
       const Context& ctx)
    {
       std::map<Types::TxKey, TxData> txnTxIOMap;
@@ -250,7 +250,7 @@ void Entry::pprintOneLine() const
 
 //////////////////////////////////////////////////////////////////////////////
 std::map<Types::TxKey, Entry> Ledgers::computeLedgerMap(
-   const std::map<Types::TxIOKey, TxIOPairUint>& txioMap,
+   const std::map<Types::TxIOKey, TxIOPair>& txioMap,
    uint32_t startBlock, uint32_t endBlock, const std::string& id,
    const Context& ctx)
 {

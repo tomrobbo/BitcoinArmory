@@ -236,14 +236,14 @@ std::shared_ptr<BtcWallet> BlockDataViewer::getOrSetWallet(
 }
 
 ////////
-std::map<Types::TxIOKey, TxIOPairUint> BlockDataViewer::getTxioForRange(
+std::map<Types::TxIOKey, TxIOPair> BlockDataViewer::getTxioForRange(
    uint32_t fromHeight) const
 {
    try {
       //convert height to blockId
       auto header = bc_->getHeaderByHeight(fromHeight);
       auto invalidBlockIds = bc_->getInvalidBlockIds();
-      std::map<Types::TxIOKey, TxIOPairUint> result;
+      std::map<Types::TxIOKey, TxIOPair> result;
       for (const auto& wlt : wallets_) {
          auto txioRange = wlt.second->getTxioForRange(
             db_, invalidBlockIds,
@@ -256,7 +256,7 @@ std::map<Types::TxIOKey, TxIOPairUint> BlockDataViewer::getTxioForRange(
    }
 }
 
-std::map<Types::TxIOKey, std::shared_ptr<const TxIOPairUint>>
+std::map<Types::TxIOKey, std::shared_ptr<const TxIOPair>>
 BlockDataViewer::getZcTxios() const
 {
    auto snapshot = zcContainer()->getSnapshot();
@@ -264,7 +264,7 @@ BlockDataViewer::getZcTxios() const
       return {};
    }
 
-   std::map<Types::TxIOKey, std::shared_ptr<const TxIOPairUint>> result;
+   std::map<Types::TxIOKey, std::shared_ptr<const TxIOPair>> result;
    auto addrSet = getAddrSet();
 
    for (const auto& addr : addrSet) {

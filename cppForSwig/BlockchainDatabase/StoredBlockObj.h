@@ -29,15 +29,11 @@ enum class DB_SELECT : int
 {
    HEADERS,
    SCRADDR,
-   SSH,
-   SUBSSH,
-   SUBSSH_META,
    TXOUTS,
    TXINS,
    TXHINTS,
    TXFILTERS,
    KNOWNHASHES,
-   SPENTNESS,
    ZERO_CONF,
 };
 
@@ -304,120 +300,4 @@ struct StoredHeader : public DBBlock
 
 public:
    std::map<uint16_t, StoredTx> stxMap;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-// We must break out script histories into isolated sub-histories, to
-// accommodate thoroughly re-used addresses like 1VayNert* and 1dice*. If
-// we didn't do it, those DB entries would be many megabytes, and those many
-// MB would be updated multiple times per block.   So we break them into
-// subhistories by block.  This is exceptionally well-suited for SatoshiDice
-// addresses since transactions in one block tend to be related to
-// transactions in the previous few blocks before it.
-struct StoredSubHistory
-{
-   StoredSubHistory(void);
-   StoredSubHistory(const StoredSubHistory&);
-
-   bool isInitialized(void) const;
-   StoredSubHistory& operator=(const StoredSubHistory&);
-
-   void unserializeDBValue(BinaryRefReader&);
-   void serializeDBValue(BinaryWriter&) const;
-   void unserializeDBValue(BinaryDataRef);
-   void unserializeDBKey(BinaryDataRef, bool = true);
-
-   uint64_t getSubHistoryBalance(bool = false) const;
-   uint64_t getSubHistoryReceived(bool = false) const;
-
-   static void compressMany(
-      const std::map<BinaryDataRef, StoredSubHistory*>&,
-      unsigned, unsigned, BinaryWriter&);
-
-public:
-   //track all TxIOs for this ScrAddr at given block
-   BinaryData hgtX;
-   std::map<BinaryData, TxIOPair> txioMap;
-   uint32_t height;
-   //uint8_t  dupID;
-   uint32_t txioCount;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-// TODO:  I just realized that this should probably hold a "first-born-block"
-//        field for each address in the summary entry.  Though, maybe it's 
-//        sufficient to just look at the first subSSH entry to get that info...
-struct StoredScriptHistory
-{
-   StoredScriptHistory(void);
-
-   bool isInitialized(void) const;
-   void unserializeDBValue(BinaryRefReader&);
-   void serializeDBValue(BinaryWriter&, ARMORY_DB_TYPE) const;
-   void unserializeDBValue(const BinaryData&);
-   void unserializeDBValue(BinaryDataRef);
-   void unserializeDBKey(BinaryDataRef, bool = true);
-   void decompressManySubssh(BinaryDataRef,
-      unsigned, unsigned, unsigned, unsigned);
-
-   void addSummary(const StoredScriptHistory&);
-   void substractSummary(const StoredScriptHistory&);
-
-   BinaryData getDBKey(bool = true) const;
-   Armory::ScriptPrefix getScriptType(void) const;
-
-   uint64_t getScriptReceived(bool = false) const;
-   uint64_t getScriptBalance(bool = false) const;
-
-   bool haveFullHistoryLoaded(void) const;
-   bool getFullTxioMap(std::map<BinaryData, TxIOPair>&,
-      bool = false) const;
-
-   void mergeSubHistory(const StoredSubHistory&);
-   void insertTxio(const TxIOPair&);
-   void eraseTxio(const TxIOPair&);
-   void clear(void);
-
-public:
-   BinaryData uniqueKey;  // includes the prefix byte!
-   uint32_t version;
-   int32_t scanHeight = -1;
-   int32_t tallyHeight = -1;
-   uint64_t totalTxioCount;
-   uint64_t totalUnspent;
-   std::map<unsigned, unsigned> subsshSummary;
-
-   // If this ssh has only one TxIO (most of them), then we don't bother
-   // with supplemental entries just to hold that one TxIO in the DB.
-   // We always stored them in RAM using the StoredSubHistory 
-   // objects which will have the per-block lists of TxIOs.  But when
-   // it gets serialized to disk, we will store single-Txio SSHs in
-   // the base entry and forego extra DB entries.
-   std::map<BinaryData, StoredSubHistory> subHistMap;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-struct StoredTxHints
-{
-   StoredTxHints(void);
-
-   bool isInitialized(void) const;
-   size_t getNumHints(void) const;
-   BinaryDataRef getHint(uint32_t) const;
-
-   void setPreferredTx(uint32_t, uint8_t, uint16_t);
-   void setPreferredTx(BinaryData);
-
-   void unserializeDBValue(BinaryRefReader&);
-   void serializeDBValue(BinaryWriter&) const;
-   void unserializeDBValue(const BinaryData&);
-   void unserializeDBValue(BinaryDataRef);
-   BinaryData serializeDBValue(void) const;
-   void unserializeDBKey(BinaryDataRef, bool = true);
-   BinaryData getDBKey(bool = true) const;
-
-public:
-   BinaryData txHashPrefix;
-   std::vector<BinaryData> dbKeyList;
-   BinaryData preferredDBKey;
 };

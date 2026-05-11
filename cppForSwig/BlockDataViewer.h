@@ -37,7 +37,7 @@ class ScrAddrFilter;
 class BtcWallet;
 class BlockDataManager;
 class LMDBBlockDatabase;
-class TxIOPairUint;
+class TxIOPair;
 
 namespace Armory
 {
@@ -79,9 +79,9 @@ public:
    void blockUntilBDMisReady(void) const;
 
    //txios
-   std::map<Armory::Types::TxIOKey, TxIOPairUint>
+   std::map<Armory::Types::TxIOKey, TxIOPair>
    getTxioForRange(uint32_t) const;
-   std::map<Armory::Types::TxIOKey, std::shared_ptr<const TxIOPairUint>>
+   std::map<Armory::Types::TxIOKey, std::shared_ptr<const TxIOPair>>
    getZcTxios(void) const;
 
 protected:

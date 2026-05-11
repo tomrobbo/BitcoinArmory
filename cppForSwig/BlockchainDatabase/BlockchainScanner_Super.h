@@ -73,12 +73,8 @@ struct BlockDataBatch
    std::shared_ptr<Armory::Blockchain> blockchain_;
 
    BlockDataBatch(int start, int end, std::set<unsigned>& ids,
-      BLOCKDATA_ORDER order,
-      std::shared_ptr<BlockFiles> bfl, std::shared_ptr<Armory::Blockchain> bcPtr) :
-      order_(order),
-      start_(start), end_(end), blockDataFileIDs_(std::move(ids)),
-      blockFiles_(bfl), blockchain_(bcPtr)
-   {}
+      BLOCKDATA_ORDER,
+      std::shared_ptr<BlockFiles>, std::shared_ptr<Armory::Blockchain>);
 
    void populateFileMap(void);
    std::shared_ptr<BlockData> getBlockData(unsigned);
@@ -122,11 +118,8 @@ public:
    std::chrono::system_clock::time_point insertToCommitQueue_;
 
 public:
-   ParserBatch_Ssh(std::unique_ptr<BlockDataBatch> blockDataBatch) :
-      bdb_(std::move(blockDataBatch))
-   {}
-
-   void resetCounter(void) { bdb_->resetCounter(); }
+   ParserBatch_Ssh(std::unique_ptr<BlockDataBatch>);
+   void resetCounter(void);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -179,8 +172,8 @@ private:
    LMDBBlockDatabase* db_;
    std::shared_ptr<BlockFiles> blockFiles_;
 
-   Armory::Threading::BlockingQueue<
-      std::unique_ptr<ParserBatch_Ssh>> commitQueue_;
+   /*Armory::Threading::BlockingQueue<
+      std::unique_ptr<ParserBatch_Ssh>> commitQueue_;*/
    Armory::Threading::BlockingQueue<
       std::pair<BinaryData, BinaryData>> sshBoundsQueue_;
    Armory::Threading::BlockingQueue<

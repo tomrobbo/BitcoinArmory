@@ -50,16 +50,16 @@ namespace {
       }
    }
 
-   std::vector<TxIOPairUint> capnToTxios(
+   std::vector<TxIOPair> capnToTxios(
       const capnp::List<Codec::Types::TxioPair, capnp::Kind::STRUCT>::Reader& capnTxios)
    {
-      std::vector<TxIOPairUint> txios;
+      std::vector<TxIOPair> txios;
       txios.reserve(capnTxios.size());
 
       for (auto capnTxio : capnTxios) {
          auto capnAddr = capnTxio.getScrAddr();
          BinaryDataRef scrAddr{capnAddr.begin(), capnAddr.end()};
-         TxIOPairUint txio{
+         TxIOPair txio{
             capnTxio.getTxOut(), capnTxio.getAmount(),
             scrAddr, capnTxio.getTxIn()
          };

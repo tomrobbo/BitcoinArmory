@@ -232,7 +232,7 @@ namespace AsyncClient
 
       //ledgers
       void getTxios(uint32_t,
-         std::function<void(ReturnMessage<std::vector<TxIOPairUint>>)>);
+         std::function<void(ReturnMessage<std::vector<TxIOPair>>)>);
 
       //header data
       Blockchain blockchain(void);

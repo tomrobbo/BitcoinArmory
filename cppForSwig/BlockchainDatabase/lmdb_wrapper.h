@@ -15,30 +15,17 @@
 
 #include <list>
 #include <vector>
+#include <functional>
 #include <filesystem>
 
 #include <Utils/BinaryData.h>
-#include <Utils/ThreadSafeClasses.h>
 #include <Utils/Types.h>
 #include "lmdbpp.h"
 
-#define META_SHARD_ID               0xFFFFFFFF
-#define SHARD_COUNTER_KEY           0xA76B6C00
-#define SHARD_TOPHASH_ID            0xFFAAAA
-
 #define SHARD_FILTER_DBKEY          0xAC28337D
-
-#ifndef UNIT_TESTS
-#define SHARD_FILTER_SCRADDR_STEP   1500
-#define SHARD_FILTER_SPENTNESS_STEP 5000
-#else
-#define SHARD_FILTER_SCRADDR_STEP   2
-#define SHARD_FILTER_SPENTNESS_STEP 2
-#endif
 
 class TxFilterPoolWriter;
 struct StoredDBInfo;
-struct StoredSubHistory;
 struct TxOutData;
 
 enum class DB_SELECT : int;
@@ -71,17 +58,8 @@ class TxRef;
 struct StoredHeader;
 struct StoredTx;
 struct StoredTxOut;
-struct StoredScriptHistory;
-struct StoredTxHints;
-struct StoredHeadHgtList;
 
 enum class DbPrefix : uint8_t;
-
-enum ShardFilterType
-{
-   ShardFilterType_ScrAddr = 0,
-   ShardFilterType_Spentness
-};
 
 namespace Armory
 {
@@ -210,55 +188,8 @@ public:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-struct ShardFilter
-{
-   virtual ~ShardFilter(void) = 0;
-   virtual unsigned keyToId(BinaryDataRef) const = 0;
-   virtual unsigned getHeightForId(unsigned) const = 0;
-   virtual BinaryData serialize(void) const = 0;
-
-   static std::unique_ptr<ShardFilter> deserialize(BinaryDataRef);
-   static BinaryData getDbKey(void);
-};
-
-////////
-struct ShardFilter_ScrAddr : public ShardFilter
-{
-   const unsigned step_;
-   unsigned thresholdId_;
-   unsigned thresholdValue_;
-
-   ShardFilter_ScrAddr(unsigned);
-
-   unsigned keyToId(BinaryDataRef) const override;
-   unsigned getHeightForId(unsigned) const override;
-   BinaryData serialize(void) const override;
-
-   static std::unique_ptr<ShardFilter> deserialize(BinaryDataRef);
-};
-
-////////
-struct ShardFilter_Spentness : public ShardFilter
-{
-   const unsigned step_;
-   unsigned thresholdId_;
-   unsigned thresholdValue_;
-
-   ShardFilter_Spentness(unsigned);
-
-   unsigned keyToId(BinaryDataRef) const override;
-   unsigned getHeightForId(unsigned) const override;
-   BinaryData serialize(void) const override;
-
-   static std::unique_ptr<ShardFilter> deserialize(BinaryDataRef);
-};
-
-////////////////////////////////////////////////////////////////////////////////
 class LMDBBlockDatabase
 {
-   friend class ShardedSshParser;
-   friend class BlockchainScanner_Super;
-
 private:
    const std::filesystem::path dbDir_;
 
@@ -286,8 +217,6 @@ public:
 
    /////////////////////////////////////////////////////////////////////////////
    uint64_t getDBKeyForHash(const Armory::Types::TxHash&) const;
-   void readAllHeaders(
-      const std::function<void(std::shared_ptr<Armory::BlockHeader>)>&);
 
    /////////////////////////////////////////////////////////////////////////////
    // Interface to translate Stored* objects to/from persistent DB storage
@@ -297,6 +226,8 @@ public:
 
    /////////////////////////////////////////////////////////////////////////////
    // BareHeaders are those in the HEADERS DB with no blockdta associated
+   void readAllHeaders(
+      const std::function<void(std::shared_ptr<Armory::BlockHeader>)>&);
    void putBareHeader(const StoredHeader&);
    bool getStoredHeader(StoredHeader&,
       std::shared_ptr<Armory::BlockHeader>, bool=true) const;
@@ -305,54 +236,7 @@ public:
    // StoredTx Accessors
    void putStoredZC(StoredTx&, const Armory::Types::TxKey&);
    bool getStoredZC(StoredTx&, const Armory::Types::TxKey&) const;
-
-   /////////////////////////////////////////////////////////////////////////////
-   // StoredTxOut Accessors
    void putStoredZcTxOut(const StoredTxOut&, const Armory::Types::TxIOKey&);
-
-   bool getStoredTxOut(StoredTxOut&,
-      uint32_t,
-      uint8_t,
-      uint16_t,
-      uint16_t) const;
-
-   bool getStoredTxOut(StoredTxOut&,
-      uint32_t,
-      uint16_t,
-      uint16_t) const;
-
-   bool getStoredTxOut(
-      StoredTxOut&, const BinaryData&) const;
-   bool getStoredTxOut(
-      StoredTxOut&, const BinaryData&, uint16_t) const;
-   bool getStoredTxOut(
-      StoredTxOut&, const std::shared_ptr<Armory::BlockHeader>, uint16_t, uint16_t) const;
-   void getSpentness(StoredTxOut&);
-
-   /////////////////////////////////////////////////////////////////////////////
-   // StoredScriptHistory Accessors
-   std::map<uint32_t, uint32_t> getSSHSummary(BinaryDataRef);
-   bool getStoredScriptHistory(StoredScriptHistory&,
-      BinaryDataRef,
-      uint32_t = 0,
-      uint32_t = UINT32_MAX) const;
-
-   bool getStoredSubHistoryAtHgtX(StoredSubHistory&,
-      const BinaryDataRef, const BinaryData&) const;
-   bool getStoredSubHistoryAtHgtX(StoredSubHistory&,
-      const BinaryData&) const;
-   bool getStoredScriptHistorySummary(StoredScriptHistory&,
-      BinaryDataRef) const;
-   void getStoredScriptHistoryByRawScript(
-      StoredScriptHistory&,
-      BinaryDataRef) const;
-   
-   bool fillStoredSubHistory(StoredScriptHistory&, unsigned, unsigned) const;
-   bool fillStoredSubHistory_Super(StoredScriptHistory&, unsigned, unsigned) const;
-
-   /////////////////////////////////////////////////////////////////////////////
-   // tx hints
-   bool getStoredTxHints(StoredTxHints&, BinaryDataRef) const;
 
    /////////////////////////////////////////////////////////////////////////////
    // TxOut/In history stuff
@@ -373,7 +257,6 @@ public:
 
    void closeDB(DB_SELECT);
    void openDB(DB_SELECT);
-   void resetSSHdb_Super(void);
 
    ////
    TxFilterPoolWriter getFilterPoolWriter(uint32_t) const;
@@ -382,12 +265,6 @@ public:
 
    void putMissingHashes(const std::set<BinaryData>&, uint32_t);
    std::set<BinaryData> getMissingHashes(uint32_t) const;
-
-   ////
-   void updateHeightToIdMap(std::map<unsigned, unsigned>&);
-   void loadHeightToIdMap();
-   unsigned getShardIdForHeight(unsigned) const;
-   unsigned getNextShardIdForHeight(unsigned) const;
 
    //// block files flagged for reparsing
    bool getOrSetFlaggedBlockFile(uint32_t);
@@ -401,9 +278,4 @@ public:
 private:
    bool     dbIsOpen_;
    uint32_t ldbBlockSize_;
-
-   // In this case, a address is any TxOut script, which is usually
-   // just a 25-byte script.  But this generically captures all types
-   // of addresses including pubkey-only, P2SH
-   Armory::Threading::TransactionalMap<unsigned, unsigned> heightToBatchId_;
 };

@@ -57,11 +57,11 @@ std::set<BinaryDataRef> BtcWallet::getAddrSet() const
 }
 
 ////////
-std::map<Types::TxIOKey, TxIOPairUint> BtcWallet::getTxioForRange(
+std::map<Types::TxIOKey, TxIOPair> BtcWallet::getTxioForRange(
    LMDBBlockDatabase* db, const std::set<Types::BlockId>& invalids,
    Types::BlockId start, Types::BlockId end) const
 {
-   std::map<Types::TxIOKey, TxIOPairUint> outMap;
+   std::map<Types::TxIOKey, TxIOPair> outMap;
    auto addrMap = scrAddrMap_.get();
 
    for (const auto& scrAddrPair : *addrMap) {

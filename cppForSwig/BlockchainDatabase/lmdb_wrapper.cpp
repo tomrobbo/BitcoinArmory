@@ -66,12 +66,8 @@ extern const std::vector<DB_SELECT> BARENODEDBS{
 extern const std::map<DB_SELECT, size_t> MAPSIZES{
    { DB_SELECT::HEADERS,         10 * 1024 * 1024 * 1024ULL },
    { DB_SELECT::TXHINTS,          5 * 1024 * 1024 * 1024ULL },
-   { DB_SELECT::SSH,           2000 * 1024 * 1024 * 1024ULL },
-   { DB_SELECT::SUBSSH,        2000 * 1024 * 1024 * 1024ULL },
-   { DB_SELECT::SUBSSH_META,      1 * 1024 * 1024 * 1024ULL },
    { DB_SELECT::ZERO_CONF,       10 * 1024 * 1024 * 1024ULL },
    { DB_SELECT::TXFILTERS,      100 * 1024 * 1024 * 1024ULL },
-   { DB_SELECT::SPENTNESS,     2000 * 1024 * 1024 * 1024ULL },
    { DB_SELECT::SCRADDR,        500 * 1024 * 1024 * 1024ULL },
    { DB_SELECT::TXOUTS,        2000 * 1024 * 1024 * 1024ULL },
    { DB_SELECT::TXINS,         2000 * 1024 * 1024 * 1024ULL },
@@ -546,10 +542,6 @@ void LMDBBlockDatabase::openDatabases()
       auto tx = beginTransaction(DB_SELECT::HEADERS, LMDB::Mode::ReadWrite);
       putStoredDBInfo(DB_SELECT::HEADERS, sdbi, 0xFFFF);
    }
-
-   if (Config::DBSettings::getDbType() == ARMORY_DB_TYPE::Super) {
-      loadHeightToIdMap();
-   }
    dbIsOpen_ = true;
 }
 
@@ -594,17 +586,6 @@ void LMDBBlockDatabase::resetHistoryDatabases()
       dbTxins->eraseOnDisk();
       dbHints->eraseOnDisk();
       dbHashes->eraseOnDisk();
-   } else {
-      auto db_subssh = getDbPtr(DB_SELECT::SUBSSH);
-      auto db_subssh_meta = getDbPtr(DB_SELECT::SUBSSH_META);
-      auto db_ssh = getDbPtr(DB_SELECT::SSH);
-      auto db_spentness = getDbPtr(DB_SELECT::SPENTNESS);
-      closeDatabases();
-
-      db_subssh->eraseOnDisk();
-      db_subssh_meta->eraseOnDisk();
-      db_ssh->eraseOnDisk();
-      db_spentness->eraseOnDisk();
    }
    openDatabases();
 }
@@ -710,230 +691,7 @@ Types::TxKey LMDBBlockDatabase::getDBKeyForHash(
    }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-bool LMDBBlockDatabase::fillStoredSubHistory(StoredScriptHistory& ssh,
-   unsigned start, unsigned end) const
-{
-   if (Config::DBSettings::getDbType() == ARMORY_DB_TYPE::Super) {
-      return fillStoredSubHistory_Super(ssh, start, end);
-   } else {
-      auto subsshtx = beginTransaction(DB_SELECT::SUBSSH, LMDB::Mode::ReadOnly);
-      auto subsshIter = subsshtx->getIterator();
-
-      BinaryWriter dbkey_withHgtX;
-      dbkey_withHgtX.put_uint8_t((uint8_t)DbPrefix::SCRIPT);
-      dbkey_withHgtX.put_BinaryData(ssh.uniqueKey);
-
-      if (start != 0) {
-         dbkey_withHgtX.put_BinaryData(DBUtils::heightAndDupToHgtx(start, 0));
-      }
-
-      if (!subsshIter.seekTo(dbkey_withHgtX.getDataRef())) {
-         return false;
-      }
-
-      // Now start iterating over the sub histories
-      std::map<BinaryData, StoredSubHistory>::iterator iter;
-      size_t numTxioRead = 0;
-      do {
-         size_t _sz = subsshIter.getKeyRef().getSize();
-         BinaryDataRef keyNoPrefix = subsshIter.getKeyRef().getSliceRef(1, _sz - 1);
-         if (!keyNoPrefix.startsWith(ssh.uniqueKey)) {
-            break;
-         }
-         std::pair<BinaryData, StoredSubHistory> keyValPair;
-         keyValPair.first = keyNoPrefix.getSliceCopy(_sz - 5, 4);
-         keyValPair.second.unserializeDBKey(subsshIter.getKeyRef());
-
-         //iter is at the right ssh, make sure hgtX <= endBlock
-         if (keyValPair.second.height > end) {
-            break;
-         }
-         //skip invalid dupIDs
-         keyValPair.second.unserializeDBValue(subsshIter.getValueReader());
-         iter = ssh.subHistMap.emplace(keyValPair).first;
-         numTxioRead += iter->second.txioMap.size();
-      } while (subsshIter.advanceAndRead(DbPrefix::SCRIPT));
-      return true;
-   }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-unsigned LMDBBlockDatabase::getShardIdForHeight(unsigned height) const
-{
-   auto hiMap = heightToBatchId_.get();
-   if (hiMap->empty()) {
-      return UINT32_MAX;
-   }
-   auto height_iter = hiMap->lower_bound(height);
-   if (height_iter == hiMap->end()) {
-      return hiMap->rbegin()->second;
-   }
-   if (height_iter->first > height && height_iter != hiMap->begin()) {
-      --height_iter;
-   }
-   return height_iter->second;
-}
-
-unsigned LMDBBlockDatabase::getNextShardIdForHeight(unsigned height) const
-{
-   auto hiMap = heightToBatchId_.get();
-   auto height_iter = hiMap->upper_bound(height);
-   if (height_iter == hiMap->end()) {
-      return UINT32_MAX;
-   }
-   return height_iter->second;
-}
-
-bool LMDBBlockDatabase::fillStoredSubHistory_Super(
-   StoredScriptHistory& ssh, unsigned start, unsigned end) const
-{
-   auto meta_tx = beginTransaction(DB_SELECT::SUBSSH_META, LMDB::Mode::ReadOnly);
-
-   //convert height range to batch id range
-   auto start_id = getShardIdForHeight(start);
-   if (start_id == UINT32_MAX) {
-      return true;
-   }
-   auto end_id = getNextShardIdForHeight(end);
-
-   //prepare for subssh db parsing
-   BinaryWriter bwKey(4 + ssh.uniqueKey.getSize());
-   bwKey.put_uint32_t(0);
-   bwKey.put_BinaryData(ssh.uniqueKey);
-
-   auto keyRef = bwKey.getDataRef();
-   auto ptr = (uint8_t*)keyRef.getPtr();
-
-   //get subssh summary iterator positioned at <= start_id
-   auto ssh_lower_bound = ssh.subsshSummary.lower_bound(start_id);
-   if (ssh_lower_bound == ssh.subsshSummary.end()) {
-      return true;
-   }
-   if (ssh_lower_bound->first > start_id &&
-      ssh_lower_bound != ssh.subsshSummary.begin()) {
-      --ssh_lower_bound;
-   }
-
-   //grab db iterator
-   auto subsshtx = beginTransaction(DB_SELECT::SUBSSH, LMDB::Mode::ReadOnly);
-   auto dbIter = subsshtx->getIterator();
-
-   while (ssh_lower_bound != ssh.subsshSummary.end()) {
-      //break if iterator is past end_id
-      if (ssh_lower_bound->first > end_id) {
-         break;
-      }
-
-      //grab meta entry for batch id
-      BinaryWriter bw_meta(8);
-      bw_meta.put_uint32_t(ssh_lower_bound->first, BE);
-      bw_meta.put_uint32_t(0);
-      LMDB::DataRef keyCAR{8, bw_meta.getDataRef().getPtr()};
-      auto meta_value = subsshtx->get(keyCAR);
-      if (meta_value.len == 0) {
-         LOGWARN << "missing meta entry at batch id " << ssh_lower_bound->first;
-         ++ssh_lower_bound;
-         continue;
-      }
-
-      //grab height offsets
-      BinaryRefReader meta_refreader{
-         (const uint8_t*)meta_value.data, meta_value.len};
-      auto height_offset = meta_refreader.get_uint32_t();
-      auto spent_offset = meta_refreader.get_uint32_t();
-
-      //set batch id in subssh key
-      auto id_ptr = (uint8_t*)&ssh_lower_bound->first;
-      ptr[0] = id_ptr[3];
-      ptr[1] = id_ptr[2];
-      ptr[2] = id_ptr[1];
-      ptr[3] = id_ptr[0];
-
-      //set iterator at subssh key
-      if (!dbIter.seekToExact(keyRef)) {
-         LOGWARN << "missing subssh expected batch id";
-         ++ssh_lower_bound;
-         continue;
-      }
-
-      ssh.decompressManySubssh(dbIter.getValueRef(),
-         height_offset, spent_offset,
-         start, end);
-      ++ssh_lower_bound;
-   }
-   return true;
-}
-
-////////
-bool LMDBBlockDatabase::getStoredScriptHistorySummary(StoredScriptHistory& ssh,
-   BinaryDataRef scrAddr) const
-{
-   ssh.clear();
-   auto tx = beginTransaction(DB_SELECT::SSH, LMDB::Mode::ReadOnly);
-   auto ldbIter = tx->getIterator();
-   bool has = false;
-
-   if (ldbIter.seekToExact(DbPrefix::SCRIPT, scrAddr)) {
-      ssh.unserializeDBKey(ldbIter.getKeyRef());
-      ssh.unserializeDBValue(ldbIter.getValueRef());
-      has = true;
-   }
-   return has;
-}
-
-bool LMDBBlockDatabase::getStoredScriptHistory(StoredScriptHistory& ssh,
-   BinaryDataRef scrAddr, uint32_t startBlock, uint32_t endBlock) const
-{
-   ssh.uniqueKey = scrAddr;
-   if (!fillStoredSubHistory(ssh, startBlock, endBlock)) {
-      return false;
-   }
-   return true;
-}
-
-bool LMDBBlockDatabase::getStoredSubHistoryAtHgtX(StoredSubHistory& subssh,
-   const BinaryDataRef scrAddrStr, const BinaryData& hgtX) const
-{
-   BinaryWriter bw(scrAddrStr.getSize() + hgtX.getSize());
-   bw.put_BinaryData(scrAddrStr);
-   bw.put_BinaryData(hgtX);
-   return getStoredSubHistoryAtHgtX(subssh, bw.getDataRef());
-}
-
-bool LMDBBlockDatabase::getStoredSubHistoryAtHgtX(StoredSubHistory& subssh,
-   const BinaryData& dbkey) const
-{
-   if (Config::DBSettings::getDbType() == ARMORY_DB_TYPE::Super) {
-      LOGERR << "deprecated in supernode";
-      throw std::runtime_error("deprecated in supernode");
-   }
-
-   auto tx = beginTransaction(DB_SELECT::SUBSSH, LMDB::Mode::ReadOnly);
-   LMDB::DataRef keyRef{dbkey.getSize(), dbkey.getPtr()};
-   auto valRef = tx->get(keyRef);
-   BinaryDataRef value{(const uint8_t*)valRef.data, valRef.len};
-   if (value.empty()) {
-      return false;
-   }
-
-   subssh.hgtX = dbkey.getSliceRef(-4, 4);
-   subssh.unserializeDBValue(value);
-   return true;
-}
-
-void LMDBBlockDatabase::getStoredScriptHistoryByRawScript(
-   StoredScriptHistory& ssh, BinaryDataRef script) const
-{
-   BinaryData uniqueKey = BtcUtils::getTxOutScrAddr(script);
-   getStoredScriptHistory(ssh, uniqueKey);
-}
-
 /////////////////////////////////////////////////////////////////////////////
-// TODO: We should also read the HeaderHgtList entries to get the blockchain
-//       sorting that is saved in the DB.  But right now, I'm not sure what
-//       that would get us since we are reading all the headers and doing
-//       a fresh organize/sort anyway.
 void LMDBBlockDatabase::readAllHeaders(
    const std::function<void(std::shared_ptr<BlockHeader>)>& callback)
 {
@@ -1122,197 +880,6 @@ void LMDBBlockDatabase::putStoredZcTxOut(const StoredTxOut& stxo,
    tx->insert(keyRef, valRef);
 }
 
-////////
-bool LMDBBlockDatabase::getStoredTxOut(StoredTxOut&,
-   const BinaryData&, uint16_t) const
-{
-   throw std::runtime_error("[LMDBBlockDatabase::getStoredTxOut] deprecated");
-   #if 0
-   if (getDbType() != ARMORY_DB_TYPE::Super) {
-      throw LmdbWrapperException("supernode only call");
-   }
-
-   auto txKey = getDBKeyForHash(txHash);
-   if (txKey.empty()) {
-      return false;
-   }
-
-   unsigned id;
-   uint8_t dup;
-   uint16_t txIdx;
-   BinaryRefReader brrKey(txKey);
-   DBUtils::readBlkDataKeyNoPrefix(brrKey, id, dup, txIdx);
-
-   //grab header
-   BinaryWriter bw;
-   bw.put_BinaryData(txKey);
-   bw.put_uint16_t(txoutid, BE);
-
-   //grab tx
-   auto stxo_tx = beginTransaction(DB_SELECT::STXO, LMDB::Mode::ReadOnly);
-   auto data = getValueNoCopy(DB_SELECT::STXO, bw.getDataRef());
-   if (data.empty()) {
-      LOGWARN << "no txout for key: " << txKey.toHexStr();
-      return false;
-   }
-
-   //convert to stxo
-   stxo.unserializeDBValue(data);
-   stxo.parentHash = txHash;
-   stxo.txIndex = txIdx;
-   stxo.txOutIndex = txoutid;
-   stxo.isCoinbase = (txIdx == 0);
-   return true;
-   #endif
-}
-
-bool LMDBBlockDatabase::getStoredTxOut(StoredTxOut&,
-   const BinaryData&) const
-{
-   throw std::runtime_error("[LMDBBlockDatabase::getStoredTxOut] deprecated");
-   #if 0
-   if (dbKey.getSize() != 8) {
-      LOGERR << "Tried to get StoredTxOut, but the provided key is not of the "
-         "proper size. Expect size is 8, this key is: " << dbKey.getSize();
-      return false;
-   }
-
-   unsigned id;
-   uint8_t dup;
-   uint16_t txIdx, txoutid;
-
-   BinaryRefReader txout_key(dbKey);
-   DBUtils::readBlkDataKeyNoPrefix(txout_key, id, dup, txIdx, txoutid);
-
-   if (getDbType() != ARMORY_DB_TYPE::Super) {
-      //Let's look in the db first. Stxos are fetched mostly to spend coins,
-      //so there is a high chance we wont need to pull the stxo from the raw
-      //block, since fullnode keeps track of all relevant stxos
-      auto tx = beginTransaction(DB_SELECT::STXO, LMDB::Mode::ReadOnly);
-      BinaryRefReader brr = getValueReader(DB_SELECT::STXO, DbPrefix::TXDATA, dbKey);
-
-      if (!brr.empty()) {
-         stxo.blockHeight = id;
-         stxo.txIndex = txIdx;
-         stxo.txOutIndex = txoutid;
-         stxo.unserializeDBValue(brr);
-         return true;
-      }
-   } else {
-      throw std::runtime_error("invalid call for supernode db");
-   }
-   return false;
-   #endif
-}
-
-bool LMDBBlockDatabase::getStoredTxOut(StoredTxOut&,
-   std::shared_ptr<BlockHeader>, uint16_t, uint16_t) const
-{
-   throw std::runtime_error("[LMDBBlockDatabase::getStoredTxOut] deprecated");
-   #if 0
-   if (getDbType() != ARMORY_DB_TYPE::Super) {
-      throw std::runtime_error("supernode only");
-   }
-
-   auto txKey = DBUtils::getBlkDataKeyNoPrefix(
-      header->getUniqueID(), 0xFF, txId, txOutId);
-
-   auto stxo_tx = beginTransaction(DB_SELECT::STXO, LMDB::Mode::ReadOnly);
-   auto data = getValueNoCopy(DB_SELECT::STXO, txKey);
-   if (data.empty()) {
-      LOGWARN << "no txout for key: " << txKey.toHexStr();
-         return false;
-      }
-
-   stxo.unserializeDBValue(data);
-   stxo.blockHeight = header->getBlockHeight();
-   stxo.txIndex = txId;
-   stxo.txOutIndex = txOutId;
-   stxo.isCoinbase = txId == 0;
-
-   //get spentness
-   auto spentness_tx = beginTransaction(
-      DB_SELECT::SPENTNESS, LMDB::Mode::ReadOnly);
-   auto spentnessVal = getValueNoCopy(
-      DB_SELECT::SPENTNESS, stxo.getSpentnessKey());
-   if (!spentnessVal.empty()) {
-      stxo.spentByTxInKey = spentnessVal;
-      stxo.spentness = TXOUT_SPENT;
-   } else {
-      stxo.spentness = TXOUT_UNSPENT;
-   }
-   return true;
-   #endif
-}
-
-bool LMDBBlockDatabase::getStoredTxOut(StoredTxOut&,
-   uint32_t, uint8_t, uint16_t,
-   uint16_t) const
-{
-   throw std::runtime_error("[LMDBBlockDatabase::getStoredTxOut] deprecated");
-   #if 0
-   auto blkKey = DBUtils::getBlkDataKeyNoPrefix(
-      blockHeight, dupID, txIndex, txOutIndex);
-   return getStoredTxOut(stxo, blkKey);
-   #endif
-}
-
-bool LMDBBlockDatabase::getStoredTxOut(StoredTxOut&,
-   uint32_t, uint16_t, uint16_t) const
-{
-   throw std::runtime_error("[LMDBBlockDatabase::getStoredTxOut] deprecated");
-   #if 0
-   return getStoredTxOut(stxo, blockHeight, 0, txIndex, txOutIndex);
-   #endif
-}
-
-////////
-void LMDBBlockDatabase::getSpentness(StoredTxOut& stxo)
-{
-   if (Config::DBSettings::getDbType() != ARMORY_DB_TYPE::Super) {
-      throw LmdbWrapperException("need to implement this for full node");
-   }
-
-   auto key = stxo.getSpentnessKey();
-   LMDB::DataRef keyRef{key.getSize(), key.getPtr()};
-
-   auto spentness_tx = beginTransaction(DB_SELECT::SPENTNESS, LMDB::Mode::ReadOnly);
-   auto val = spentness_tx->get(keyRef);
-   BinaryDataRef spentnessVal{(const uint8_t*)val.data, val.len};
-   if (!spentnessVal.empty()) {
-      stxo.spentByTxInKey = spentnessVal;
-      stxo.spentness = SPENTNESS::SPENT;
-   } else {
-      stxo.spentness = SPENTNESS::UNSPENT;
-   }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-bool LMDBBlockDatabase::getStoredTxHints(StoredTxHints& sths,
-   BinaryDataRef hashPrefix) const
-{
-   throw std::runtime_error(
-      "[LMDBBlockDatabase::getStoredTxHints] this is cooked, redesign me");
-   #if 0
-   if(hashPrefix.getSize() < 4) {
-      LOGERR << "Cannot get hints without at least 4-byte prefix";
-      return false;
-   }
-   BinaryDataRef prefix4 = hashPrefix.getSliceRef(0,4);
-   sths.txHashPrefix = prefix4.copy();
-
-   auto bdr = getValueRef(DB_SELECT::TXHINTS, DbPrefix::TXHINTS, prefix4);
-   if (!bdr.empty()) {
-      sths.unserializeDBValue(bdr);
-      return true;
-   } else {
-      sths.dbKeyList.resize(0);
-      sths.preferredDBKey.resize(0);
-      return false;
-   }
-   #endif
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 // This is used only for debugging and testing with small database sizes.
 // For intance, the reorg unit test only has a couple blocks, a couple 
@@ -1352,36 +919,6 @@ void LMDBBlockDatabase::printAllDatabaseEntries(DB_SELECT db)
       std::cout << "   \"" << dbList[i].first.toHexStr() << "\"  ";
       std::cout << "   \"" << dbList[i].second.toHexStr() << "\"  " << std::endl;
    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-std::map<uint32_t, uint32_t> LMDBBlockDatabase::getSSHSummary(
-   BinaryDataRef scrAddrStr)
-{
-   std::map<uint32_t, uint32_t> SSHsummary;
-   auto tx = beginTransaction(DB_SELECT::SSH, LMDB::Mode::ReadOnly);
-   auto ldbIter = tx->getIterator();
-   if (!ldbIter.seekToExact(DbPrefix::SCRIPT, scrAddrStr)) {
-      return SSHsummary;
-   }
-
-   StoredScriptHistory ssh;
-   BinaryDataRef sshKey = ldbIter.getKeyRef();
-   ssh.unserializeDBKey(sshKey, true);
-   ssh.unserializeDBValue(ldbIter.getValueReader());
-   return ssh.subsshSummary;
-}
-
-/////////////////////////////////////////////////////////////////////////////
-void LMDBBlockDatabase::resetSSHdb_Super()
-{
-   //delete checkpoint and ssh db
-   {
-      auto db_ssh = getDbPtr(DB_SELECT::SSH);
-      closeDatabases();
-      db_ssh->eraseOnDisk();
-   }
-   openDatabases();
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -1499,32 +1036,6 @@ void LMDBBlockDatabase::closeDB(DB_SELECT db)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void LMDBBlockDatabase::loadHeightToIdMap()
-{
-   auto tx = beginTransaction(DB_SELECT::SUBSSH_META, LMDB::Mode::ReadOnly);
-   auto dbIter = tx->getIterator();
-
-   std::map<unsigned, unsigned> heightToIdMap;
-   BinaryWriter bw_key(8);
-   bw_key.put_uint64_t(0);
-   if (!dbIter.seekToExact(bw_key.getDataRef())) {
-      return;
-   }
-
-   do {
-      auto brr_value = dbIter.getValueReader();
-      auto height = brr_value.get_uint32_t();
-
-      auto brr_key = dbIter.getKeyReader();
-      auto ctr = brr_key.get_uint32_t(BE);
-
-      heightToIdMap.emplace(height, ctr);
-      ++ctr;
-   } while (dbIter.advanceAndRead());
-   heightToBatchId_.update(std::move(heightToIdMap));
-}
-
-////////////////////////////////////////////////////////////////////////////////
 bool LMDBBlockDatabase::getOrSetFlaggedBlockFile(uint32_t fileNum)
 {
    BinaryWriter bw_key(5);
@@ -1584,12 +1095,6 @@ void LMDBBlockDatabase::clearFlaggedFileNums()
    for (const auto& key : keysToDelete) {
       tx->erase(LMDB::DataRef{key.getSize(), key.getPtr()});
    }
-}
-
-////////
-void LMDBBlockDatabase::updateHeightToIdMap(std::map<unsigned, unsigned>& idmap)
-{
-   heightToBatchId_.update(std::move(idmap));
 }
 
 ////////
@@ -1698,15 +1203,6 @@ std::string DatabaseContainer::getDbName(DB_SELECT db)
    case DB_SELECT::SCRADDR:
       return "scraddr";
 
-   case DB_SELECT::SSH:
-      return "ssh";
-
-   case DB_SELECT::SUBSSH:
-      return "subssh";
-
-   case DB_SELECT::SUBSSH_META:
-      return "subssh_meta";
-
    case DB_SELECT::TXOUTS:
       return "txouts";
 
@@ -1724,9 +1220,6 @@ std::string DatabaseContainer::getDbName(DB_SELECT db)
 
    case DB_SELECT::ZERO_CONF:
       return "zeroconf";
-
-   case DB_SELECT::SPENTNESS:
-      return "spentness";
 
    default:
       throw LmdbWrapperException("unknown db");
@@ -1831,173 +1324,4 @@ bool DBPair::isOpen() const
 LMDB::Transaction DBPair::beginTransaction(LMDB::Mode mode)
 {
    return LMDB::Transaction{&env_, db_.dbi(), mode};
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// ShardFilter
-ShardFilter::~ShardFilter()
-{}
-
-BinaryData ShardFilter::getDbKey()
-{
-   return WRITE_UINT32_BE(SHARD_FILTER_DBKEY);
-}
-
-std::unique_ptr<ShardFilter> ShardFilter::deserialize(BinaryDataRef dataRef)
-{
-   BinaryRefReader brr(dataRef);
-   auto type = brr.get_uint8_t();
-   switch (type)
-   {
-      case ShardFilterType_ScrAddr:
-         return ShardFilter_ScrAddr::deserialize(dataRef);
-
-      case ShardFilterType_Spentness:
-         return ShardFilter_Spentness::deserialize(dataRef);
-
-      default:
-         throw FilterException("unexpected shard filter type");
-   }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// ShardFilter_ScrAddr
-ShardFilter_ScrAddr::ShardFilter_ScrAddr(unsigned step) :
-   step_(step)
-{
-#ifndef UNIT_TESTS
-   //x < -exp(step * 1.6 / 50k) / (1 - exp(step * 1.6 / 50k))
-   auto eVal = expf(step * 1.6f / 50000.0f);
-   thresholdId_ = unsigned(-eVal / (1.0f - eVal));
-
-   //height = (ln(id) / 1.6 + 4) * 50k
-   thresholdValue_ = unsigned((logf(thresholdId_) / 1.6f + 4.0f) * 50000.0f);
-#else
-   thresholdId_ = 0;
-   thresholdValue_ = 0;
-#endif
-}
-
-////////
-BinaryData ShardFilter_ScrAddr::serialize() const
-{
-   BinaryWriter bw;
-   bw.put_uint8_t(ShardFilterType_ScrAddr);
-   bw.put_uint32_t(step_);
-
-   return bw.getData();
-}
-
-std::unique_ptr<ShardFilter> ShardFilter_ScrAddr::deserialize(
-   BinaryDataRef dataRef)
-{
-   BinaryRefReader brr(dataRef);
-   auto type = brr.get_uint8_t();
-   if (type != (uint8_t)ShardFilterType_ScrAddr) {
-      throw FilterException("shard filter type mismatch");
-   }
-   auto step = brr.get_uint32_t();
-   return std::make_unique<ShardFilter_ScrAddr>(step);
-}
-
-////////
-unsigned ShardFilter_ScrAddr::keyToId(BinaryDataRef keyRef) const
-{
-   auto size = keyRef.getSize();
-   if (size < 4) {
-      throw FilterException("key is too short for scrAddr shard filter");
-   }
-   BinaryRefReader brr(keyRef);
-   brr.advance(size - 4);
-   auto height = DBUtils::hgtxToHeight(brr.get_BinaryDataRef(4));
-
-   if (height >= thresholdValue_) {
-      auto diff = height - thresholdValue_;
-      return thresholdId_ + (diff / step_);
-   } else {
-      //id = exp((height/50k - 4)*1.6)
-      auto val = (float(height) / 50000.0f - 4.0f) * 1.6f;
-      return expl(val);
-   }
-}
-
-unsigned ShardFilter_ScrAddr::getHeightForId(unsigned id) const
-{
-   if (id == 0) {
-      return 0;
-   } else if (id <= thresholdId_) {
-      return unsigned((logf(id) / 1.6f + 4.0f) * 50000.0f);
-   } else {
-      return thresholdValue_ + (id - thresholdId_) * step_;
-   }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// ShardFilter_Spentness
-ShardFilter_Spentness::ShardFilter_Spentness(unsigned step) :
-   step_(step)
-{
-#ifndef UNIT_TESTS
-   //x < -exp(step / 50k) / (1 - exp(step / 50k))
-   auto eVal = expf(step / 50000.0f);
-   thresholdId_ = unsigned(-eVal / (1.0f - eVal));
-
-   //height = (ln(id) + 4) * 50k
-   thresholdValue_ = unsigned((logf(thresholdId_) + 4.0f) * 50000.0f);
-#else 
-   thresholdId_ = 0;
-   thresholdValue_ = 0;
-#endif
-}
-
-////////
-BinaryData ShardFilter_Spentness::serialize() const
-{
-   BinaryWriter bw;
-   bw.put_uint8_t(ShardFilterType_Spentness);
-   bw.put_uint32_t(step_);
-   return bw.getData();
-}
-
-std::unique_ptr<ShardFilter> ShardFilter_Spentness::deserialize(
-   BinaryDataRef dataRef)
-{
-   BinaryRefReader brr(dataRef);
-   auto type = brr.get_uint8_t();
-   if (type != (uint8_t)ShardFilterType_Spentness) {
-      throw FilterException("shard filter type mismatch");
-   }
-   auto step = brr.get_uint32_t();
-   return std::make_unique<ShardFilter_Spentness>(step);
-}
-
-////////
-unsigned ShardFilter_Spentness::keyToId(BinaryDataRef keyRef) const
-{
-   auto size = keyRef.getSize();
-   if (size < 4) {
-      throw FilterException("key is too short for scrAddr shard filter");
-   }
-   BinaryRefReader brr(keyRef);
-   auto height = DBUtils::hgtxToHeight(brr.get_BinaryDataRef(4));
-
-   if (height >= thresholdValue_) {
-      auto diff = height - thresholdValue_;
-      return thresholdId_ + (diff / step_);
-   } else {
-      //id = exp((height/50k - 4))
-      auto val = (float(height) / 50000.0f - 4.0f);
-      return expl(val);
-   }
-}
-
-unsigned ShardFilter_Spentness::getHeightForId(unsigned id) const
-{
-   if (id == 0) {
-      return 0;
-   } else if (id <= thresholdId_) {
-      return unsigned((logf(id) + 4.0f) * 50000.0f);
-   } else {
-      return thresholdValue_ + (id - thresholdId_) * step_;
-   }
 }

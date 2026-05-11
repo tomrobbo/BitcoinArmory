@@ -111,301 +111,47 @@ BinaryData TxRef::getDBKeyOfChild(uint16_t i) const
    return dbKey6B_ + WRITE_UINT16_BE(i);
 }
 
-//////////////////////////////////////////////////////////////////////////////
-// TxIOPair
-TxIOPair::TxIOPair(const BinaryData& txOutKey8B, uint64_t val) :
-   amount_(val),
-   txRefOfOutput_{txOutKey8B.getSliceRef(0, 6)},
-   indexOfOutput_(getTxIndex(txOutKey8B)),
-   indexOfInput_(0)
-{}
-
-TxIOPair::TxIOPair(const TxRef& txRef, uint16_t outputId, uint64_t val) :
-   amount_(val),
-   txRefOfOutput_{txRef},
-   indexOfOutput_(outputId),
-   indexOfInput_(0)
-{}
-
-////////
-bool TxIOPair::hasTxIn() const
-{
-   return txRefOfInput_.isInitialized();
-}
-
-bool TxIOPair::hasTxOutZC() const
-{
-   return txRefOfOutput_.getDBKey().startsWith(DBUtils::ZCPrefix);
-}
-
-bool TxIOPair::hasTxInZC() const
-{
-   return txRefOfInput_.getDBKey().startsWith(DBUtils::ZCPrefix);
-}
-
-////////
-uint64_t TxIOPair::getValue() const
-{
-   return amount_;
-}
-
-const TxRef& TxIOPair::getTxRefOfOutput() const
-{
-   return txRefOfOutput_;
-}
-
-const TxRef& TxIOPair::getTxRefOfInput() const
-{
-   return txRefOfInput_;
-}
-
-BinaryData TxIOPair::getDBKeyOfOutput() const
-{
-   return txRefOfOutput_.getDBKeyOfChild(indexOfOutput_);
-}
-
-BinaryData TxIOPair::getDBKeyOfInput() const
-{
-   return txRefOfInput_.getDBKeyOfChild(indexOfInput_);
-}
-
-////////
-uint32_t TxIOPair::getIndexOfOutput() const
-{
-   return indexOfOutput_;
-}
-
-uint32_t TxIOPair::getIndexOfInput() const
-{
-   return indexOfInput_;
-}
-
-////////
-bool TxIOPair::isTxOutFromSelf() const
-{
-   return isTxOutFromSelf_;
-}
-
-void TxIOPair::setTxOutFromSelf(bool isTrue)
-{
-   isTxOutFromSelf_ = isTrue;
-}
-
-bool TxIOPair::isFromCoinbase() const
-{
-   return isFromCoinbase_;
-}
-
-void TxIOPair::setFromCoinbase(bool isTrue)
-{
-   isFromCoinbase_ = isTrue;
-}
-
-bool TxIOPair::isMultisig() const
-{
-   return isMultisig_;
-}
-
-void TxIOPair::setMultisig(bool isTrue)
-{
-   isMultisig_ = isTrue;
-}
-
-bool TxIOPair::isRBF() const
-{
-   return isRBF_;
-}
-
-void TxIOPair::setRBF(bool isTrue)
-{
-   isRBF_ = isTrue;
-}
-
-void TxIOPair::setChained(bool isTrue)
-{
-   isZCChained_ = isTrue;
-}
-
-bool TxIOPair::isChainedZC() const
-{
-   return isZCChained_;
-}
-
-////////
-bool TxIOPair::isSpendable(uint32_t currBlk) const
-{
-   // spendable TxOuts are ones with at least 1 confirmation
-   if (hasTxIn() || hasTxOutZC()) {
-      return false;
-   }
-
-   uint32_t nConf = currBlk - txRefOfOutput_.getBlockHeight() + 1;
-   if (isFromCoinbase_ && nConf < COINBASE_MATURITY) {
-      return false;
-   } else {
-      return true;
-   }
-}
-
-bool TxIOPair::isUnconfirmed(uint32_t currBlk, unsigned confTarget) const
-{
-   if (hasTxOutZC()) {
-      return true;
-   }
-
-   uint32_t nConf = currBlk - txRefOfOutput_.getBlockHeight() + 1;
-   if (isFromCoinbase_) {
-      return nConf < COINBASE_MATURITY;
-   } else {
-      return nConf < confTarget;
-   }
-}
-
-////////
-void TxIOPair::setTxTime(uint32_t t)
-{
-   txtime_ = t;
-}
-
-uint32_t TxIOPair::getTxTime() const
-{
-   return txtime_;
-}
-
-bool TxIOPair::isUTXO() const
-{
-   return isUTXO_;
-}
-
-void TxIOPair::setUTXO(bool val)
-{
-   isUTXO_ = val;
-}
-
-////////
-bool TxIOPair::operator<(const TxIOPair& t2) const
-{
-   auto check = std::memcmp(
-      txRefOfOutput_.getDBKey().getPtr(),
-      t2.txRefOfOutput_.getDBKey().getPtr(),
-      6);
-   if (check == 0) {
-      return indexOfOutput_ < t2.indexOfOutput_;
-   } else {
-      return check < 0 ? true : false;
-   }
-}
-
-bool TxIOPair::operator==(const TxIOPair& t2) const
-{
-   auto check = std::memcmp(
-      txRefOfOutput_.getDBKey().getPtr(),
-      t2.txRefOfOutput_.getDBKey().getPtr(),
-      6);
-   if (check != 0) {
-      return false;
-   } else {
-      return indexOfOutput_ == t2.indexOfOutput_;
-   }
-}
-
-bool TxIOPair::operator>=(const BinaryData& dbKey) const
-{
-   if (txRefOfOutput_ >= dbKey) {
-      return true;
-   }
-   if (txRefOfInput_ >= dbKey) {
-      return true;
-   }
-   return false;
-}
-
-////////
-bool TxIOPair::setTxIn(const TxRef& txref, uint32_t index)
-{
-   txRefOfInput_ = txref;
-   indexOfInput_ = index;
-   return true;
-}
-
-bool TxIOPair::setTxIn(const BinaryData& dbKey8B)
-{
-   if (dbKey8B.getSize() == 8) {
-      BinaryRefReader brr(dbKey8B);
-      BinaryDataRef txKey6B = brr.get_BinaryDataRef(6);
-      uint16_t      txInIdx = brr.get_uint16_t(BE);
-      return setTxIn(TxRef{txKey6B}, (uint32_t)txInIdx);
-   } else {
-      //pass a 0 byte dbkey to reset the txin
-      setTxIn({}, 0);
-      return false;
-   }
-}
-
-void TxIOPair::merge(const TxIOPair& rhs)
-{
-   setTxIn(rhs.txRefOfInput_, rhs.indexOfInput_);
-
-   isTxOutFromSelf_  = rhs.isTxOutFromSelf_;
-   isFromCoinbase_   = rhs.isFromCoinbase_;
-   isMultisig_       = rhs.isMultisig_;
-   isRBF_            = rhs.isRBF_;
-   isZCChained_      = rhs.isZCChained_;
-   isUTXO_           = rhs.isUTXO_;
-   txtime_           = rhs.txtime_;
-}
-
-////////
-void TxIOPair::pprint() const
-{
-   std::cout << "  TxOut: " << getDBKeyOfOutput().toHexStr() << std::endl;
-   if (hasTxIn()) {
-      std::cout << "  TxIn: " << getDBKeyOfInput().toHexStr() << std::endl;
-   }
-   std::cout << "  amount: " << amount_ << std::endl;
-}
-
 ////////////////////////////////////////////////////////////////////////////////
-// TxIOPairUint
-TxIOPairUint::TxIOPairUint(Types::TxIOKey txOutKey, uint64_t amount,
+// TxIOPair
+TxIOPair::TxIOPair(Types::TxIOKey txOutKey, uint64_t amount,
    const Types::ScrAddr& scrAddr) :
    txIOKeyOfOutput_(txOutKey), amount_{amount}, scrAddr_{scrAddr}
 {}
 
-TxIOPairUint::TxIOPairUint(Types::TxIOKey txOutKey, uint64_t amount,
+TxIOPair::TxIOPair(Types::TxIOKey txOutKey, uint64_t amount,
    const Types::ScrAddr& scrAddr, Types::TxIOKey txInKey) :
    txIOKeyOfOutput_(txOutKey), amount_{amount}, scrAddr_{scrAddr},
    txIOKeyOfInput_(txInKey)
 {}
 
 ////////
-Types::Amount TxIOPairUint::getAmount() const
+Types::Amount TxIOPair::getAmount() const
 {
    return amount_;
 }
 
-uint32_t TxIOPairUint::getTxTime() const
+uint32_t TxIOPair::getTxTime() const
 {
    return txTime_;
 }
 
-const Types::ScrAddr& TxIOPairUint::getScrAddr() const
+const Types::ScrAddr& TxIOPair::getScrAddr() const
 {
    return scrAddr_;
 }
 
 ////////
-bool TxIOPairUint::hasTxIn() const
+bool TxIOPair::hasTxIn() const
 {
    return Types::isTxKeyValid(txIOKeyOfInput_);
 }
 
-bool TxIOPairUint::hasTxOutZC() const
+bool TxIOPair::hasTxOutZC() const
 {
    return Types::isThisAZCKey(txIOKeyOfOutput_);
 }
 
-bool TxIOPairUint::hasTxInZC() const
+bool TxIOPair::hasTxInZC() const
 {
    if (!hasTxIn()) {
       return false;
@@ -414,12 +160,12 @@ bool TxIOPairUint::hasTxInZC() const
 }
 
 ////////
-Types::TxKey TxIOPairUint::getTxKeyOfOutput() const
+Types::TxKey TxIOPair::getTxKeyOfOutput() const
 {
    return Types::getTxKeyFromTxIOKey(txIOKeyOfOutput_);
 }
 
-Types::TxKey TxIOPairUint::getTxKeyOfInput() const
+Types::TxKey TxIOPair::getTxKeyOfInput() const
 {
    if (!hasTxIn()) {
       return Types::INVALID_TX_KEY;
@@ -428,22 +174,22 @@ Types::TxKey TxIOPairUint::getTxKeyOfInput() const
 }
 
 ////////
-Types::TxIOKey TxIOPairUint::getTxIOKeyOfOutput() const
+Types::TxIOKey TxIOPair::getTxIOKeyOfOutput() const
 {
    return txIOKeyOfOutput_;
 }
 
-Types::TxIOKey TxIOPairUint::getTxIOKeyOfInput() const
+Types::TxIOKey TxIOPair::getTxIOKeyOfInput() const
 {
    return txIOKeyOfInput_;
 }
 
-Types::TxIOId TxIOPairUint::getIndexOfOutput() const
+Types::TxIOId TxIOPair::getIndexOfOutput() const
 {
    return Types::getTxIOIndexFromTxIOKey(txIOKeyOfOutput_);
 }
 
-Types::TxIOId TxIOPairUint::getIndexOfInput() const
+Types::TxIOId TxIOPair::getIndexOfInput() const
 {
    if (!hasTxIn()) {
       return UINT16_MAX;
@@ -452,46 +198,46 @@ Types::TxIOId TxIOPairUint::getIndexOfInput() const
 }
 
 ////////
-void TxIOPairUint::setTxIn(
+void TxIOPair::setTxIn(
    Types::TxKey keyOfInput, Types::TxId indexOfInput)
 {
    txIOKeyOfInput_ = Types::constructTxIOKeyFromTxKey(
       keyOfInput, indexOfInput);
 }
 
-void TxIOPairUint::setTxIn(Types::TxIOKey txInKey)
+void TxIOPair::setTxIn(Types::TxIOKey txInKey)
 {
    txIOKeyOfInput_ = txInKey;
 }
 
 ////////
-void TxIOPairUint::setTxTime(uint32_t txtime)
+void TxIOPair::setTxTime(uint32_t txtime)
 {
    txTime_ = txtime;
 }
 
-void TxIOPairUint::setRBF(bool rbf)
+void TxIOPair::setRBF(bool rbf)
 {
    isRBF_ = rbf;
 }
 
-void TxIOPairUint::setChained(bool chained)
+void TxIOPair::setChained(bool chained)
 {
    isZCChained_ = chained;
 }
 
-bool TxIOPairUint::isRBF() const
+bool TxIOPair::isRBF() const
 {
    return isRBF_;
 }
 
-bool TxIOPairUint::isChained() const
+bool TxIOPair::isChained() const
 {
    return isZCChained_;
 }
 
 ////////
-void TxIOPairUint::merge(const TxIOPairUint& rhs)
+void TxIOPair::merge(const TxIOPair& rhs)
 {
    setTxIn(rhs.txIOKeyOfInput_);
 

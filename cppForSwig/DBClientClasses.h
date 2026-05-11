@@ -157,7 +157,7 @@ struct BdmNotification
 
    NewBlockNotif newBlock{UINT32_MAX, UINT32_MAX, {}, {}};
 
-   std::vector<TxIOPairUint> txios;
+   std::vector<TxIOPair> txios;
    std::set<Armory::Types::TxHash> invalidatedZcHashes;
    std::set<std::string> ids;
 

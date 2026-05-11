@@ -62,7 +62,7 @@ FilteredZeroConfData ZeroConf::filterParsedTx(
       return flaggedBDVs;
    };
 
-   auto insertNewZc = [&result](std::shared_ptr<TxIOPairUint> txio,
+   auto insertNewZc = [&result](std::shared_ptr<TxIOPair> txio,
       std::set<Types::BdvId> flaggedBDVs, bool consumesTxOut)->void
    {
       auto txioKey = txio->getTxIOKeyOfOutput();
@@ -113,7 +113,7 @@ FilteredZeroConfData ZeroConf::filterParsedTx(
          continue;
       }
 
-      auto txio = std::make_shared<TxIOPairUint>(
+      auto txio = std::make_shared<TxIOPair>(
          Types::constructTxIOKeyFromTxKey(
             input.opRef.getDbKey(), input.opRef.getIndex()),
          input.value, input.scrAddr
@@ -151,7 +151,7 @@ FilteredZeroConfData ZeroConf::filterParsedTx(
       auto flaggedBDVs = filter(output.scrAddr);
       if (flaggedBDVs.first) {
          auto zcOutputKey = Types::constructTxIOKeyFromTxKey(zcKey, iout);
-         auto txio = std::make_shared<TxIOPairUint>(
+         auto txio = std::make_shared<TxIOPair>(
             zcOutputKey, output.value, output.scrAddr);
          txio->setTxTime(timeFromTx);
          txio->setRBF(parsedTxPtr->isRBF);
@@ -754,7 +754,7 @@ const TxIOKeys& MempoolData::getTxioKeysForScrAddr(
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-std::shared_ptr<const TxIOPairUint> MempoolData::getTxio(Types::TxIOKey key) const
+std::shared_ptr<const TxIOPair> MempoolData::getTxio(Types::TxIOKey key) const
 {
    auto iter = txioMap_.find(key);
    if (iter == txioMap_.end()) {
@@ -763,7 +763,7 @@ std::shared_ptr<const TxIOPairUint> MempoolData::getTxio(Types::TxIOKey key) con
       }
       return nullptr;
    }
-   return std::const_pointer_cast<TxIOPairUint>(iter->second);
+   return std::const_pointer_cast<TxIOPair>(iter->second);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -883,7 +883,7 @@ void MempoolData::dropTxioInputs(Types::TxKey zcKey,
          copy the txio, remove the txin and replace it in the map
          (so as to not disrupt the potential readers)
          */
-         auto newTxio = std::make_shared<TxIOPairUint>(*(txioPtr));
+         auto newTxio = std::make_shared<TxIOPair>(*(txioPtr));
          newTxio->setTxIn(Types::INVALID_TX_KEY, UINT16_MAX);
          txioMap_[spentTxoutKey] = newTxio;
       }
@@ -1086,7 +1086,7 @@ TxOut MempoolSnapshot::getTxOutCopy(Types::TxKey key, Types::TxIOId outputId) co
    return txPtr->getTxObj().getTxOutCopy(outputId);
 }
 
-std::shared_ptr<const TxIOPairUint> MempoolSnapshot::getTxioByKey(
+std::shared_ptr<const TxIOPair> MempoolSnapshot::getTxioByKey(
    Types::TxIOKey txioKey) const
 {
    return data_->getTxio(txioKey);
@@ -1129,12 +1129,12 @@ const TxIOKeys& MempoolSnapshot::getTxioKeysForScrAddr(
    return data_->getTxioKeysForScrAddr(scrAddr);
 }
 
-std::map<Types::TxIOKey, std::shared_ptr<const TxIOPairUint>>
+std::map<Types::TxIOKey, std::shared_ptr<const TxIOPair>>
    MempoolSnapshot::getTxioMapForScrAddr(const Types::ScrAddr& scrAddr) const
 {
    try {
       const auto& txioKeys = getTxioKeysForScrAddr(scrAddr);
-      std::map<Types::TxIOKey, std::shared_ptr<const TxIOPairUint>> result;
+      std::map<Types::TxIOKey, std::shared_ptr<const TxIOPair>> result;
 
       for (const auto& txioKey : txioKeys) {
          auto txioPtr = getTxioByKey(txioKey);

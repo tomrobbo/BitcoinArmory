@@ -68,7 +68,7 @@ const Tx& Context::getTx(Types::TxKey key) const
    return txMap_.at(key);
 }
 
-bool Context::filterTxio(const TxIOPairUint& txio) const
+bool Context::filterTxio(const TxIOPair& txio) const
 {
    if (scrAddrSet_.empty()) {
       return true;
@@ -103,7 +103,7 @@ HeaderPtr DBCache::getHeaderForHeight(uint32_t bheight) const
 ////////////////////////////////////////////////////////////////////////////////
 // namespace Ledgers functions
 Context Ledgers::prepareContext(
-   const std::map<Types::TxIOKey, TxIOPairUint>& txioMap,
+   const std::map<Types::TxIOKey, TxIOPair>& txioMap,
    std::shared_ptr<const DBCache> dbCache,
    std::set<Types::ScrAddr> scrAddrSet)
 {

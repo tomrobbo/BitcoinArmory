@@ -112,7 +112,7 @@ namespace DBTestUtils
 
    std::map<Armory::Types::TxIOKey, TxOutData> getTxOutHistory(
       const  Armory::Types::ScrAddr&, std::shared_ptr<BlockDataManager>);
-   std::map< Armory::Types::TxIOKey, std::shared_ptr<const TxIOPairUint>> getZcHistory(
+   std::map< Armory::Types::TxIOKey, std::shared_ptr<const TxIOPair>> getZcHistory(
       const  Armory::Types::ScrAddr&, std::shared_ptr<BlockDataManager>);
    Armory::Types::Amount getScrAddrBalance(const  Armory::Types::ScrAddr&,
       std::shared_ptr<BlockDataManager>);
@@ -131,7 +131,7 @@ namespace DBTestUtils
    void waitOnBDMError(std::shared_ptr<BlockDataManager>);
 
    std::tuple<BinaryData, unsigned> waitOnNewBlockSignal(Clients*, Armory::Types::BdvId);
-   std::pair<std::vector<TxIOPairUint>, std::set<Armory::Types::TxHash>>
+   std::pair<std::vector<TxIOPair>, std::set<Armory::Types::TxHash>>
    waitOnNewZcSignal(Clients*, Armory::Types::BdvId);
    void waitOnWalletRefresh(Clients*, Armory::Types::BdvId, const std::string&);
    void triggerNewBlockNotification(BlockDataManagerThread*);
@@ -177,7 +177,7 @@ namespace DBTestUtils
       {
          BDMAction action;
          std::set<std::string> idSet;
-         std::vector<TxIOPairUint> txios;
+         std::vector<TxIOPair> txios;
          unsigned reorgHeight = UINT32_MAX;
          BDV_Error_Struct error;
          std::string requestID;

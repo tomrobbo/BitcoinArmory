@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2020-2025, goatpig                                          //
+//  Copyright (C) 2020-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -11,7 +11,6 @@
 #include "Notifications.h"
 #include <BlockchainDatabase/txio.h>
 #include <WebSocketMessage.h>
-#include <Ledgers/LedgerEntry.h>
 #include <BDM_Server.h>
 
 #include "Utils.h"
@@ -132,7 +131,7 @@ void ZeroConfCallbacks_BDV::processNotifRequests()
                notifPacket->ssPtr = reqPtr->ssPtr;
 
                //set txio map
-               std::vector<std::shared_ptr<const TxIOPairUint>> txioVec;
+               std::vector<std::shared_ptr<const TxIOPair>> txioVec;
                txioVec.reserve(5);
                for (const auto& sa : bdvObj.second.scrAddrs) {
                   auto txioMap = reqPtr->ssPtr->getTxioMapForScrAddr(sa);

@@ -39,7 +39,7 @@ using namespace std::chrono_literals;
 namespace {
    using namespace Armory::Codec::BDV;
 
-   void txioToCapn(const TxIOPairUint& txio,
+   void txioToCapn(const TxIOPair& txio,
       Codec::Types::TxioPair::Builder& capnTxio)
    {
       capnTxio.setAmount(txio.getAmount());
@@ -1164,7 +1164,7 @@ std::unique_ptr<BDV_Notification_ZC> BDV_Server_Object::createZcNotification(
 
    //grab zc map
    auto ss = zeroConfCont_->getSnapshot();
-   std::vector<std::shared_ptr<const TxIOPairUint>> txios;
+   std::vector<std::shared_ptr<const TxIOPair>> txios;
    if (ss != nullptr) {
       for (auto& addr : addrSet) {
          auto txioMap = ss->getTxioMapForScrAddr(addr);

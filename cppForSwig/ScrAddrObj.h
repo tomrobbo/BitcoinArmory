@@ -19,7 +19,7 @@
 #include <Utils/Types.h>
 
 class LMDBBlockDatabase;
-class TxIOPairUint;
+class TxIOPair;
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -52,7 +52,7 @@ private:
    const Armory::Types::ScrAddr scrAddr_; //includes the prefix byte!
    const Armory::Types::ScrAddrId id_;
 
-   std::map<Armory::Types::TxIOKey, TxIOPairUint> txioCache_;
+   std::map<Armory::Types::TxIOKey, TxIOPair> txioCache_;
 
 private:
    void updateTxIOCache(
@@ -63,7 +63,7 @@ public:
    ScrAddrObj(const Armory::Types::ScrAddr&, Armory::Types::ScrAddrId);
 
    const Armory::Types::ScrAddr& getScrAddr(void) const;
-   std::map<Armory::Types::TxIOKey, TxIOPairUint> getTxios(
+   std::map<Armory::Types::TxIOKey, TxIOPair> getTxios(
       LMDBBlockDatabase*, const std::set<Armory::Types::BlockId>&,
       Armory::Types::BlockId, Armory::Types::BlockId);
 };

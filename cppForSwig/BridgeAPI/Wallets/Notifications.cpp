@@ -378,7 +378,7 @@ NotifStruct_Disconnected::NotifStruct_Disconnected(BinaryData data) :
 
 ////////
 NotifStruct_ZC::NotifStruct_ZC(
-   std::vector<TxIOPairUint> txioVec, std::set<BinaryData> invalidatedZc,
+   std::vector<TxIOPair> txioVec, std::set<BinaryData> invalidatedZc,
    const std::function<void(
       const std::vector<Ledgers::Entry>&,
       const std::set<BinaryData>&)>& lbd) :

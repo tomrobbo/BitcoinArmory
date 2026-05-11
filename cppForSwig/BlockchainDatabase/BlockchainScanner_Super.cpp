@@ -8,6 +8,9 @@
 
 #include <cstring>
 
+//disable db_super scanner until redesign
+#if 0
+
 #include "BlockchainScanner_Super.h"
 #include <Utils/BtcUtils.h>
 #include <Utils/DBUtils.h>
@@ -21,7 +24,6 @@
 #include "lmdb_wrapper.h"
 #include "Blockchain.h"
 #include "txio.h"
-#include "SshParser.h"
 #include "StoredBlockObj.h"
 
 using namespace std;
@@ -1369,3 +1371,5 @@ shared_ptr<BlockData> BlockDataBatch::getNext()
 
    return getBlockData(height);
 }
+
+#endif

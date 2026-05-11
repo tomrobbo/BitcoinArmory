@@ -45,9 +45,8 @@
 class AddrAndHash;
 class ScrAddrFilter;
 class Tx;
-class TxIOPairUint;
+class TxIOPair;
 class TxOut;
-struct UTXO;
 
 namespace Armory
 {
@@ -433,13 +432,12 @@ namespace Armory
          Tx getTxByHash(const Types::TxHash&) const;
          bool isTxOutSpentByZC(const Types::TxKey&) const;
 
-         std::map<Types::TxIOKey, std::shared_ptr<const TxIOPairUint>>
+         std::map<Types::TxIOKey, std::shared_ptr<const TxIOPair>>
             getUnspentZCforScrAddr(const Types::ScrAddr&) const;
-         std::map<Types::TxIOKey, std::shared_ptr<const TxIOPairUint>>
+         std::map<Types::TxIOKey, std::shared_ptr<const TxIOPair>>
             getRBFTxIOsforScrAddr(const Types::ScrAddr&) const;
 
          std::vector<TxOut> getZcTxOutsForKey(const std::set<Types::TxIOKey>&) const;
-         std::vector<UTXO> getZcUTXOsForKey(const std::set<Types::TxIOKey>&) const;
          std::shared_ptr<const MempoolSnapshot> getSnapshot(void) const;
 
          //for unit tests

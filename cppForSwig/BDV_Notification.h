@@ -78,11 +78,11 @@ struct BDV_Notification_NewBlock : public BDV_Notification
 struct BDV_Notification_ZC : public BDV_Notification
 {
    const std::shared_ptr<Armory::ZeroConf::ZcNotificationPacket> packet;
-   const std::vector<std::shared_ptr<const TxIOPairUint>> txios;
+   const std::vector<std::shared_ptr<const TxIOPair>> txios;
 
    BDV_Notification_ZC(
       std::shared_ptr<Armory::ZeroConf::ZcNotificationPacket>,
-      std::vector<std::shared_ptr<const TxIOPairUint>>);
+      std::vector<std::shared_ptr<const TxIOPair>>);
    BDV_Action actionType(void) const override;
 };
 

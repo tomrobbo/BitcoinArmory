@@ -36,16 +36,16 @@ namespace {
       return BinaryData(bytes.begin(), bytes.end());
    }
 
-   std::vector<TxIOPairUint> capnToTxios(
+   std::vector<TxIOPair> capnToTxios(
       const capnp::List<Codec::Types::TxioPair, capnp::Kind::STRUCT>::Reader& capnTxios)
    {
-      std::vector<TxIOPairUint> txios;
+      std::vector<TxIOPair> txios;
       txios.reserve(capnTxios.size());
 
       for (auto capnTxio : capnTxios) {
          auto capnScrAddr = capnTxio.getScrAddr();
          BinaryDataRef scrAddr{capnScrAddr.begin(), capnScrAddr.end()};
-         TxIOPairUint txio{capnTxio.getTxOut(), capnTxio.getAmount(), scrAddr};
+         TxIOPair txio{capnTxio.getTxOut(), capnTxio.getAmount(), scrAddr};
          txio.setTxIn(capnTxio.getTxIn());
 
          txio.setTxTime(capnTxio.getTxTime());
@@ -355,7 +355,7 @@ namespace DBTestUtils
          uniqueID, 0, UINT32_MAX);
    }
 
-   std::map<Types::TxIOKey, std::shared_ptr<const TxIOPairUint>> getZcHistory(
+   std::map<Types::TxIOKey, std::shared_ptr<const TxIOPair>> getZcHistory(
       const Types::ScrAddr& scrAddr, std::shared_ptr<BlockDataManager> bdm)
    {
       auto ss = bdm->zeroConfCont()->getSnapshot();
@@ -668,7 +668,7 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   std::pair<vector<TxIOPairUint>, std::set<Types::TxHash>> waitOnNewZcSignal(
+   std::pair<vector<TxIOPair>, std::set<Types::TxHash>> waitOnNewZcSignal(
       Clients* clients, Types::BdvId bdvId)
    {
       auto result = waitOnSignal(clients, bdvId,
@@ -692,7 +692,7 @@ namespace DBTestUtils
 
       auto capnZcs = zcNotif.getZc();
 
-      std::pair<vector<TxIOPairUint>, std::set<Types::TxHash>> txioData;
+      std::pair<vector<TxIOPair>, std::set<Types::TxHash>> txioData;
       txioData.first = capnToTxios(capnZcs);
 
       if (notifList.size() >= (int)index + 2) {

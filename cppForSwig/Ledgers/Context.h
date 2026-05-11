@@ -15,7 +15,7 @@
 
 #include <Utils/Types.h>
 
-class TxIOPairUint;
+class TxIOPair;
 class Tx;
 
 
@@ -57,11 +57,11 @@ namespace Armory
          const Types::ScrAddr& getTxHash(Types::TxKey) const;
          size_t getTxOutCount(Types::TxKey) const;
          const Tx& getTx(Types::TxKey) const;
-         bool filterTxio(const TxIOPairUint&) const;
+         bool filterTxio(const TxIOPair&) const;
       };
 
       Context prepareContext(
-         const std::map<Types::TxIOKey, TxIOPairUint>&,
+         const std::map<Types::TxIOKey, TxIOPair>&,
          std::shared_ptr<const DBCache>,
          std::set<Types::ScrAddr>
       );

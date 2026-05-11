@@ -406,7 +406,7 @@ void BlockDataViewer::broadcastThroughRPC(const BinaryData& rawTx)
 
 ///////////////////////////////////////////////////////////////////////////////
 void BlockDataViewer::getTxios(uint32_t from,
-   std::function<void(ReturnMessage<std::vector<TxIOPairUint>>)> callback)
+   std::function<void(ReturnMessage<std::vector<TxIOPair>>)> callback)
 {
    //create capnp request
    capnp::MallocMessageBuilder message;
@@ -445,14 +445,14 @@ void BlockDataViewer::getTxios(uint32_t from,
 
             //convert to txio vector and fire callback
             auto capnTxios = bdvReply.getGetTxios();
-            std::vector<TxIOPairUint> txios;
+            std::vector<TxIOPair> txios;
             txios.reserve(capnTxios.size());
 
             for (auto capnTxio : capnTxios) {
                auto capnAddr = capnTxio.getScrAddr();
                BinaryDataRef scrAddr{capnAddr.begin(), capnAddr.end()};
 
-               TxIOPairUint txio{
+               TxIOPair txio{
                   capnTxio.getTxOut(), capnTxio.getAmount(),
                   scrAddr, capnTxio.getTxIn()};
 
@@ -460,10 +460,10 @@ void BlockDataViewer::getTxios(uint32_t from,
                txio.setChained(capnTxio.getChained());
                txios.emplace_back(std::move(txio));
             }
-            callback(ReturnMessage<std::vector<TxIOPairUint>>(txios));
+            callback(ReturnMessage<std::vector<TxIOPair>>(txios));
          } catch (ClientMessageError& e) {
             //something went wrong, set error message and fire callback
-            callback(ReturnMessage<std::vector<TxIOPairUint>>(e));
+            callback(ReturnMessage<std::vector<TxIOPair>>(e));
          }
       });
 

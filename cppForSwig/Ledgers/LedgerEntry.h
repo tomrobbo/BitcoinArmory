@@ -20,7 +20,7 @@
 #include <Utils/BinaryData.h>
 #include <Utils/Types.h>
 
-class TxIOPairUint;
+class TxIOPair;
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -145,7 +145,7 @@ namespace Armory
       };
 
       std::map<Types::TxKey, Entry> computeLedgerMap(
-         const std::map<Types::TxIOKey, TxIOPairUint>&,
+         const std::map<Types::TxIOKey, TxIOPair>&,
          uint32_t, uint32_t, const std::string&,
          const Context&);
    } //namespace Ledgers
