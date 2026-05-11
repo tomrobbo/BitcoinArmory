@@ -7675,6 +7675,116 @@ TEST_F(BridgeChainDataTests, Reorg_BCDE)
    }
 }
 
+TEST_F(BridgeChainDataTests, Reorg_BCDE_DifferentOrder)
+{
+   loadWallets({walletId_BCDE_});
+
+   //connect to db
+   WebSocketServer::initAuthPeers({
+      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+   WebSocketServer::start(theBDMt_->bdm(), true);
+
+   ASSERT_TRUE(connectToIp(bridge_, "127.0.0.1", "9001", serverPubkey_));
+   ASSERT_TRUE(registerWallets(bridge_));
+
+   //start db, go online and wait on ready notif
+   theBDMt_->start(Config::DBSettings::initMode());
+   ASSERT_EQ(goOnline(bridge_), 3);
+
+   /* block 3 */
+
+   //wlt balance
+   auto wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[3][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[3][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[3][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[3][3]);
+
+   //addr balances
+   auto balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   checkBalances(balances, 3, false);
+
+   //ledgers
+   auto delegateId = getLedgerDelegateId(bridge_);
+   ASSERT_FALSE(delegateId.empty());
+
+   auto pageCount = getLedgersPageCount(bridge_, delegateId);
+   EXPECT_EQ(pageCount, 1);
+
+   auto ledgersAt3Blocks = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgersAt3Blocks.size(), 9);
+
+   for (unsigned i = 0; i < ledgersAt3Blocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAt3Blocks[i],
+         TestChain::ledgersBCDE[i + 6]));
+   }
+
+   /* block 4, 5 */
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
+   nodePtr_->notifyNewBlock();
+   ASSERT_EQ(waitOnNewBlock(), 5);
+
+   //wlt balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3]);
+
+   //addr balances
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   checkBalances(balances, 5, false);
+
+   //ledgers
+   pageCount = getLedgersPageCount(bridge_, delegateId);
+   EXPECT_EQ(pageCount, 1);
+
+   auto ledgersAt5Blocks = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgersAt5Blocks.size(), 15);
+
+   for (unsigned i = 0; i < ledgersAt5Blocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAt5Blocks[i],
+         TestChain::ledgersBCDE[i]));
+   }
+
+   /* block 4A, 5A */
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5", "4A", "5A" }, blk0dat_);
+   nodePtr_->notifyNewBlock();
+   ASSERT_EQ(waitOnNewBlock(), 5);
+
+   //wlt balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE_Reorg[5][0]);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE_Reorg[5][1]);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE_Reorg[5][2]);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE_Reorg[5][3]);
+
+   //addr balances
+   balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(balances.size(), 4);
+   checkBalances(balances, 5, true);
+
+   //ledgers
+   pageCount = getLedgersPageCount(bridge_, delegateId);
+   EXPECT_EQ(pageCount, 1);
+
+   ledgersAt5Blocks = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgersAt5Blocks.size(), 11);
+
+   for (unsigned i = 0; i < ledgersAt5Blocks.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgersAt5Blocks[i],
+         TestChain::ledgersBCDE_Reorg[i]));
+   }
+}
+
 TEST_F(BridgeChainDataTests, Reorg_BC_DE)
 {
    loadWallets({walletId_BC_, walletId_DE_});
@@ -8720,27 +8830,90 @@ TEST_F(BridgeChainDataTests, Reorg_SpendBeforeBranchPoint)
    Tx txBObj{txB};
    ASSERT_NE(txAObj.getThisHash(), txBObj.getThisHash());
 
-   //broadcast and mine txA
+   //broadcast txA
    broadcastTx(bridge_, txA);
    waitOnZc();
 
-   DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrA, 1);
-   ASSERT_EQ(waitOnNewBlock(), 6);
+   /* validate effect of zc txA */
 
-   //check effect of txA
+   //check wallet balance
+   Types::Amount txAAmount = 3UL * COIN + 2UL;
+
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0] - txAAmount);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1] - 5 * COIN);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2] - txAAmount);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3] + 1);
+
+   //check address balances
+   try {
+      auto balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+      auto scrAddrDBal = balances.at(TestChain::scrAddrD);
+      auto testAddrDBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrD);
+      EXPECT_EQ(scrAddrDBal[0], testAddrDBal[0] - 5UL * COIN);
+      EXPECT_EQ(scrAddrDBal[1], testAddrDBal[1] - 5UL * COIN);
+      EXPECT_EQ(scrAddrDBal[2], testAddrDBal[2] - 5UL * COIN);
+      EXPECT_EQ(scrAddrDBal[3], testAddrDBal[3] + 1);
+   } catch (const std::out_of_range&) {
+      ASSERT_TRUE(false);
+   }
+
+   //check ledgers
    ledgers = getLedgersPage(bridge_, delegateId, 0);
    ASSERT_EQ(ledgers.size(), 16);
 
    auto ledger0 = ledgers[0];
    ASSERT_EQ(ledger0.getTxHash(), txAObj.getThisHash());
+   ASSERT_EQ(ledger0.getBlockNum(), UINT32_MAX);
+   EXPECT_EQ(ledger0.getValue(), Types::Value(txAAmount) * -1L);
+
+   for (unsigned i = 0; i < TestChain::ledgersBCDE.size(); i++) {
+      EXPECT_TRUE(checkLedgers(ledgers[i + 1], TestChain::ledgersBCDE[i])) << i;
+   }
+
+   //mine txA
+   DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrA, 1);
+   ASSERT_EQ(waitOnNewBlock(), 6);
+
+   /* validate effect of mined txA */
+
+   //check wallet balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0] - txAAmount);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1] - txAAmount);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2] - txAAmount);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3] + 1);
+
+   //check address balances
+   try {
+      auto balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+      auto scrAddrDBal = balances.at(TestChain::scrAddrD);
+      auto testAddrDBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrD);
+      EXPECT_EQ(scrAddrDBal[0], testAddrDBal[0] - 5UL * COIN);
+      EXPECT_EQ(scrAddrDBal[1], testAddrDBal[1] - 5UL * COIN);
+      EXPECT_EQ(scrAddrDBal[2], testAddrDBal[2] - 5UL * COIN);
+      EXPECT_EQ(scrAddrDBal[3], testAddrDBal[3] + 1);
+   } catch (const std::out_of_range&) {
+      ASSERT_TRUE(false);
+   }
+
+   //check ledgers
+   ledgers = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgers.size(), 16);
+
+   ledger0 = ledgers[0];
+   ASSERT_EQ(ledger0.getTxHash(), txAObj.getThisHash());
    ASSERT_EQ(ledger0.getBlockNum(), 6);
-   EXPECT_EQ(ledger0.getValue(), -3L * COIN - 2L);
+   EXPECT_EQ(ledger0.getValue(), Types::Value(txAAmount) * -1L);
 
    for (unsigned i = 0; i < TestChain::ledgersBCDE.size(); i++) {
       EXPECT_TRUE(checkLedgers(ledgers[i + 1], TestChain::ledgersBCDE[i])) << i;
    }
 
    /* reorg from block 5 */
+
    auto branchPoint = theBDMt_->bdm()->blockchain()->getHeaderByHeight(5);
    auto topA = theBDMt_->bdm()->blockchain()->top();
    ASSERT_EQ(branchPoint->getUniqueID(), 6);
@@ -8763,22 +8936,84 @@ TEST_F(BridgeChainDataTests, Reorg_SpendBeforeBranchPoint)
    }
 
    //broadcast txB
+   Types::Amount txBAmount = 4UL * COIN + 2UL;
    broadcastTx(bridge_, txB);
    auto zcLedgers = waitOnZc();
    ASSERT_EQ(zcLedgers.size(), 1);
    ASSERT_EQ(zcLedgers[0].getTxHash(), txBObj.getThisHash());
-   ASSERT_EQ(zcLedgers[0].getValue(), -4L * COIN - 2L);
+   ASSERT_EQ(zcLedgers[0].getValue(), Types::Value(txBAmount) * -1L);
 
+   /* validate effect of zc txB */
+
+   //check wallet balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0] - txBAmount);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1] - 5 * COIN);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2] - txBAmount);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3] + 1);
+
+   //check address balances
+   try {
+      auto balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+      auto scrAddrDBal = balances.at(TestChain::scrAddrD);
+      auto testAddrDBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrD);
+      EXPECT_EQ(scrAddrDBal[0], testAddrDBal[0] - 5UL * COIN);
+      EXPECT_EQ(scrAddrDBal[1], testAddrDBal[1] - 5UL * COIN);
+      EXPECT_EQ(scrAddrDBal[2], testAddrDBal[2] - 5UL * COIN);
+      EXPECT_EQ(scrAddrDBal[3], testAddrDBal[3] + 1);
+   } catch (const std::out_of_range&) {
+      ASSERT_TRUE(false);
+   }
+
+   //ledgers
+   ledgers = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgers.size(), 16);
+
+   ledger0 = ledgers[0];
+   ASSERT_EQ(ledger0.getTxHash(), txBObj.getThisHash());
+   ASSERT_EQ(ledger0.getBlockNum(), UINT32_MAX);
+   EXPECT_EQ(ledger0.getValue(), Types::Value(txBAmount) * -1L);
+
+   for (unsigned i = 0; i < TestChain::ledgersBCDE.size(); i++) {
+      EXPECT_TRUE(checkLedgers(ledgers[i + 1], TestChain::ledgersBCDE[i])) << i;
+   }
+
+   //mine txB
    DBTestUtils::mineNewBlock(theBDMt_, TestChain::addrA, 1);
    ASSERT_EQ(waitOnNewBlock(), 7);
 
+   /* validate effect of mined txB */
+
+   //check wallet balance
+   wltBal = getWalletBalance(bridge_, walletId_BCDE_, accountId_BCDE_);
+   ASSERT_EQ(wltBal.size(), 4);
+   EXPECT_EQ(wltBal[0], TestChain::wltBal_BCDE[5][0] - txBAmount);
+   EXPECT_EQ(wltBal[1], TestChain::wltBal_BCDE[5][1] - txBAmount);
+   EXPECT_EQ(wltBal[2], TestChain::wltBal_BCDE[5][2] - txBAmount);
+   EXPECT_EQ(wltBal[3], TestChain::wltBal_BCDE[5][3] + 1);
+
+   //check address balances
+   try {
+      auto balances = getAddrBalances(bridge_, walletId_BCDE_, accountId_BCDE_);
+      auto scrAddrDBal = balances.at(TestChain::scrAddrD);
+      auto testAddrDBal = TestChain::testAddrBalances[5].at(TestChain::scrAddrD);
+      EXPECT_EQ(scrAddrDBal[0], testAddrDBal[0] - 5UL * COIN);
+      EXPECT_EQ(scrAddrDBal[1], testAddrDBal[1] - 5UL * COIN);
+      EXPECT_EQ(scrAddrDBal[2], testAddrDBal[2] - 5UL * COIN);
+      EXPECT_EQ(scrAddrDBal[3], testAddrDBal[3] + 1);
+   } catch (const std::out_of_range&) {
+      ASSERT_TRUE(false);
+   }
+
+   //ledgers
    ledgers = getLedgersPage(bridge_, delegateId, 0);
    ASSERT_EQ(ledgers.size(), 16);
 
    ledger0 = ledgers[0];
    ASSERT_EQ(ledger0.getTxHash(), txBObj.getThisHash());
    ASSERT_EQ(ledger0.getBlockNum(), 7);
-   EXPECT_EQ(ledger0.getValue(), -4L * COIN - 2L);
+   EXPECT_EQ(ledger0.getValue(), Types::Value(txBAmount) * -1L);
 
    for (unsigned i = 0; i < TestChain::ledgersBCDE.size(); i++) {
       EXPECT_TRUE(checkLedgers(ledgers[i + 1], TestChain::ledgersBCDE[i])) << i;
@@ -12940,9 +13175,3 @@ GTEST_API_ int main(int argc, char **argv)
    Cryptography::ECDSA::shutdown();
    return exitCode;
 }
-
-//TODO:
-// 1. possible SNAFU: review reorg code, it yields a different output when it
-// goes 4A, 4, 5, 5A vs 4, 5, 4A, 5A.
-// could be the test chain is weird too, it seems too big to have been
-// missing for so long

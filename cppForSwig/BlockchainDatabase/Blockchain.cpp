@@ -293,6 +293,7 @@ HeaderPtr Blockchain::organizeChain(
       thisHeaderPtr->isMainBranch_   = true;
       thisHeaderPtr->isOrphan_       = false;
       headersByHeight_[thisHeaderPtr->getBlockHeight()] = thisHeaderPtr;
+      invalidBlockIds_.erase(thisHeaderPtr->getUniqueID());
 
       auto childIter = headerSet_.find(thisHeaderPtr->getPrevHash());
       if (childIter == headerSet_.end()) {
@@ -376,7 +377,6 @@ void Blockchain::traceChainDown(std::shared_ptr<BlockHeader> bhpStart)
          if (hPtr->isOrphan_) {
             //if this block previously was orphaned, reset the finished calc flag
             hPtr->isFinishedCalc_ = false;
-            invalidBlockIds_.erase(hPtr->getUniqueID());
          }
          hPtr->isOrphan_ = false;
          thisPtr = hPtr;
