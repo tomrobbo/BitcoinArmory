@@ -841,7 +841,7 @@ void Payload_Inv::deserialize(const uint8_t* dataptr, size_t len)
       if (remaining < INV_ENTRY_LEN) {
          throw PayloadDeserError("inv deser size mismatch");
       }
-      auto entrytype = (uint32_t*)ptr;
+      //auto entrytype = (uint32_t*)ptr;
       memcpy(&entry.invtype, ptr, 4);
       if (entry.invtype > Inv_Msg_Filtered_Block) {
          throw PayloadDeserError("invalid inv entry type");
@@ -1105,7 +1105,7 @@ void Payload_Reject::deserialize(const uint8_t* dataptr, size_t len)
    ptr += typeLen;
 
    //reject code as integer
-   code_ = (const char)*ptr;
+   //code_ = (const char)*ptr;
    ptr++;
 
    auto reasonOffset = typeLen + varintlen + 1;
@@ -1446,7 +1446,7 @@ void BitcoinP2P::processDataStackThread()
          auto prevPacket = packetPtr;
          packetPtr.reset();
 
-         auto data = std::move(dataStack_->pop_front());
+         auto data = dataStack_->pop_front();
          auto processedPacket = Payload::deserialize(
             data, getMagicWord(), prevPacket);
 
@@ -1679,7 +1679,6 @@ void BitcoinP2P::shutdown()
    run_.store(false, std::memory_order_relaxed);
 
    if (socket_ != nullptr) {
-      auto start = std::chrono::system_clock::now();
       socket_->shutdown();
       shutdownFuture_.wait();
    }

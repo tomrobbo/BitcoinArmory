@@ -19,17 +19,6 @@
 
 using namespace Armory;
 
-namespace
-{
-   uint16_t getTxIndex(const BinaryData& key)
-   {
-      auto sliceRef = key.getSliceRef(6, 2);
-      uint16_t result = (uint16_t(sliceRef.getPtr()[0]) << 8) +
-         sliceRef.getPtr()[1];
-      return result;
-   }
-}
-
 /////////////////////////////////////////////////////////////////////////////
 // TxRef methods
 TxRef::TxRef() :

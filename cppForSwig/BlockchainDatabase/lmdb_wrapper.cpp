@@ -16,7 +16,6 @@
 #include <set>
 #include <cmath>
 #include <cstring>
-#include <arpa/inet.h>
 
 #include "lmdb_wrapper.h"
 #include <Utils/BtcUtils.h>
@@ -710,14 +709,14 @@ void LMDBBlockDatabase::readAllHeaders(
          continue;
       }
 
-      //key is uniqueID
-      uint32_t uniqueID;
-      std::memcpy(&uniqueID, keyRef.getPtr(), 4);
-      if (uniqueID == 0xFFFFFFFF) {
+      //key is uniqueID in BE
+      Types::BlockKey blockKey;
+      std::memcpy(&blockKey, keyRef.getPtr(), sizeof(Types::BlockKey));
+      if (blockKey == 0xFFFFFFFF) {
          //we've hit the SDBI entry, we are done
          return;
       }
-      uniqueID = ntohl(uniqueID);
+      Types::BlockId uniqueID = Types::getBlockIdFromKey(blockKey);
 
       //header data
       auto brrVal = ldbIter.getValueReader();
@@ -752,8 +751,8 @@ void LMDBBlockDatabase::putBareHeader(const StoredHeader& sbh)
       throw LmdbWrapperException("Attempted to put a header with no ID");
    }
 
-   uint32_t keyBE = htonl(sbh.uniqueID);
-   LMDB::DataRef keyRef{4, (const char*)&keyBE};
+   Types::BlockKey blockKey = Types::getBlockKeyFromId(sbh.uniqueID);
+   LMDB::DataRef keyRef{4, (const char*)&blockKey};
 
    BinaryWriter bwData;
    sbh.serializeDBValue(bwData);

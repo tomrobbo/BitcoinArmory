@@ -1,11 +1,16 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
 //                                                                            //
-//  Copyright (C) 2016-2025, goatpig                                          //
+//  Copyright (C) 2016-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
+
+#ifdef _WIN32
+   #include <winsock2.h>
+   #include <windows.h>
+#endif
 
 #include "TestUtils.h"
 #include <reorgTest/blkdata.h>
@@ -5589,9 +5594,7 @@ TEST_F(SignerTest, SpendTest_BIP32_Accounts)
       }
 
       //create script spender objects
-      uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -5820,9 +5823,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Armory135)
       }
 
       //create script spender objects
-      uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -6051,9 +6052,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_BIP32)
       }
 
       //create script spender objects
-      uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -6305,9 +6304,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Salted)
       }
 
       //create script spender objects
-      uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -6568,9 +6565,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_ECDH)
       }
 
       //create script spender objects
-      uint64_t total = 0;
       for (auto& utxo : utxoVec) {
-         total += utxo.getAmount();
          signer.addSpender(getSpenderPtr(utxo));
       }
 
@@ -8621,7 +8616,7 @@ TEST_F(ExtrasTest, PSBT)
 
       UTXO utxo(
          txOut.getAmount(),
-         UINT32_MAX, UINT32_MAX, index,
+         UINT16_MAX, UINT16_MAX, index,
          hash, txOut.getScript());
 
       return utxo;
@@ -9219,9 +9214,7 @@ TEST_F(ExtrasTest_Mainnet, Bip32PathDiscovery)
 ////////////////////////////////////////////////////////////////////////////////
 GTEST_API_ int main(int argc, char **argv)
 {
-#ifdef _MSC_VER
-   _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-
+#ifdef _WIN32
    WSADATA wsaData;
    WORD wVersion = MAKEWORD(2, 0);
    WSAStartup(wVersion, &wsaData);

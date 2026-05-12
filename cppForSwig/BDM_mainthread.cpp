@@ -133,7 +133,6 @@ try {
       bdm->notificationStack_.push_back(std::move(notifPtr));
    };
 
-   bool success = false;
    if (!bdm->doInitialSyncOnLoad(pimpl->mode, loadProgress)) {
       //db init failed, exit
       return;

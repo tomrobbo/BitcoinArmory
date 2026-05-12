@@ -11,7 +11,7 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#if defined(__MINGW32__) || defined(_MSC_VER)
+#ifdef _WIN32
    #include <windows.h>
 #else
    #include <sys/mman.h>
@@ -442,7 +442,7 @@ FileUtils::FileCopy::FileCopy(const fs::path& path, size_t offset)
          throw std::runtime_error("failed to open file");
       }
 
-      auto size = _lseek(fd, 0, SEEK_END);
+      size_t size = _lseek(fd, 0, SEEK_END);
       if (size == 0) {
          throw std::runtime_error("empty file");
       }
@@ -454,7 +454,7 @@ FileUtils::FileCopy::FileCopy(const fs::path& path, size_t offset)
          throw std::runtime_error("failed to open");
       }
 
-      auto size = lseek(fd, 0, SEEK_END);
+      size_t size = lseek(fd, 0, SEEK_END);
       if (size == 0) {
          throw std::runtime_error("empty file");
       }

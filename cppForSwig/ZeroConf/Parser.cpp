@@ -531,7 +531,7 @@ void ZeroConfContainer::parseNewZC(ZcActionStruct zcAction)
       case ZcAction::NewTx:
       {
          try {
-            auto batchTxMap = std::move(getBatchTxMap(zcAction.batch, ss));
+            auto batchTxMap = getBatchTxMap(zcAction.batch, ss);
             zcMap = std::move(batchTxMap.txMap_);
             watcherMap = std::move(batchTxMap.watcherMap_);
             requestor = std::move(batchTxMap.requestor_);
@@ -1904,7 +1904,7 @@ void ZcActionQueue::getDataToBatchMatcherThread()
       //queue of hashes to purge from the local map
       while (true) {
          try {
-            auto hashSet = std::move(hashesToClear_.pop_front());
+            auto hashSet = hashesToClear_.pop_front();
             for (const auto& hash : hashSet) {
                hashToBatchMap.erase(hash);
             }

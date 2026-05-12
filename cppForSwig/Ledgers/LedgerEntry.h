@@ -108,14 +108,15 @@ namespace Armory
          Types::TxHash txHash_;
          uint32_t    index_; // either a tx or a zc index
          uint32_t    txTime_ = 0;
+
+         //for matching scrAddr comments to LedgerEntries on the Python side
+         std::set<Types::ScrAddr> scrAddrSet_;
+
          bool        isCoinbase_ = false;
          bool        isSentToSelf_ = false;
          bool        isChangeBack_ = false;
          bool        isOptInRBF_ = false;
          bool        isChainedZC_ = false;
-
-         //for matching scrAddr comments to LedgerEntries on the Python side
-         std::set<Types::ScrAddr> scrAddrSet_;
       };
 
       struct DescendingOrder

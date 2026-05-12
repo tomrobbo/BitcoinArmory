@@ -49,7 +49,7 @@ void Blockchain::clear()
    auto genesisBlock = std::shared_ptr<BlockHeader>(new BlockHeader(
       genHash, emptyPrev, emptyMerkle, 1, 0, 0));
    genesisBlock->setUniqueID(1);
-   auto emplaceIter = headerSet_.emplace(genesisBlock);
+   headerSet_.emplace(genesisBlock);
 
    //block ids start at 1, genesis block is assigned id 1
    highestBlockID_.store(2, std::memory_order_relaxed);
@@ -267,7 +267,7 @@ HeaderPtr Blockchain::organizeChain(
 
       //reset finishedCalc flag on all orphans
       for (const auto& headerHash : orphanChain.second) {
-         auto headerIter = headerSet_.find(orphanChain.first);
+         auto headerIter = headerSet_.find(headerHash);
          if (headerIter == headerSet_.end()) {
             LOGERR << "Could not find an orphan by hash! This is a fatal error!";
             throw std::runtime_error("could not find orphan");

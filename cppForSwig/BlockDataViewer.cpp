@@ -36,12 +36,9 @@ WalletRegistrationRequest::WalletRegistrationRequest(
 /////////////////////////////////////////////////////////////////////////////
 // BlockDataViewer
 BlockDataViewer::BlockDataViewer(std::shared_ptr<BlockDataManager> bdm) :
-   bdm_(bdm), zeroConfCont_(bdm->zeroConfCont()),
-   saf_{bdm->getScrAddrFilter()}
-{
-   db_ = bdm->getIFace();
-   bc_ = bdm->blockchain();
-}
+   bdm_(bdm), db_(bdm->getIFace()), bc_(bdm->blockchain()),
+   saf_{bdm->getScrAddrFilter()}, zeroConfCont_(bdm->zeroConfCont())
+{}
 
 BlockDataViewer::~BlockDataViewer()
 {}

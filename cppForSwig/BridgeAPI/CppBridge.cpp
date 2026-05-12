@@ -70,8 +70,7 @@ namespace
 
    void addressToCapnp(WalletData::AddressData::Builder& capnAddress,
       std::shared_ptr<AddressEntry> addrPtr,
-      std::shared_ptr<Accounts::AddressAccount> addrAcc,
-      const Wallets::EncryptionKeyId& keyId)
+      std::shared_ptr<Accounts::AddressAccount> addrAcc)
    {
       if (addrAcc == nullptr) {
          throw std::runtime_error("[addressToCapnp] null acc ptr");
@@ -145,22 +144,12 @@ namespace
       capnAddress.setIsChange(addrAcc->isAssetChange(addrPtr->getID()));
 
       //priv key & encryption status
-      bool isLocked = false;
       bool hasPrivKey = false;
       if (addrWithAssetPtr != nullptr) {
          auto theAsset = addrWithAssetPtr->getAsset();
          if (theAsset != nullptr) {
             if (theAsset->hasPrivateKey()) {
                hasPrivKey = true;
-               try {
-                  //the privkey is considered locked if it's encrypted by
-                  //something else than the default encryption key, which
-                  //lays in clear text in the wallet header
-                  auto encryptionKeyId = theAsset->getPrivateEncryptionKeyId();
-                  isLocked = (encryptionKeyId != keyId);
-               } catch (const std::runtime_error&) {
-                  //nothing to do, address has no encryption key
-               }
             }
          }
       }
@@ -233,9 +222,7 @@ namespace
       for (const auto& addrPair : addrMap) {
          auto capnAddress = capnAddresses[i++];
          addressToCapnp(capnAddress,
-            addrPair.second, accPtr,
-            wallet->getDefaultEncryptionKeyId()
-         );
+            addrPair.second, accPtr);
       }
 
       /* encryption info */
@@ -473,7 +460,7 @@ namespace
          bridgePtr->callbackWriter(wrapper);
 
          //wait on reply
-         auto reply = std::move(fut.get());
+         auto reply = fut.get();
          if (!reply.success) {
             return std::make_unique<Passphrase::Params>();
          }
@@ -1128,7 +1115,7 @@ void CppBridge::connectToIp(const std::string& ip, const std::string& port,
       callbackWriter(wrapper);
 
       //wait on reply
-      auto reply = std::move(fut.get());
+      auto reply = fut.get();
       return reply.success;
    };
 
@@ -1653,7 +1640,7 @@ void CppBridge::restoreWallet(
             auto message = createCallbackMessage(prompt, 0);
             ServerPushWrapper wrapper{0, nullptr, std::move(message)};
             callbackWriter(wrapper);
-            return {false};
+            return {false, false, {}};
          }
       };
 
@@ -2074,13 +2061,9 @@ BinaryData CppBridge::getAddrCombinedList(const Wallets::WalletId& wltId,
 
    auto addrDataReply = combinedReply.initUpdatedAssets(updatedMap.size());
    i=0;
-   const auto& keyId = wltContainer->getDefaultEncryptionKeyId();
    for (const auto& addrPair : updatedMap) {
       auto capnAddr = addrDataReply[i++];
-      addressToCapnp(capnAddr,
-         addrPair.second, accPtr,
-         keyId
-      );
+      addressToCapnp(capnAddr, addrPair.second, accPtr);
    }
 
    reply.setSuccess(true);
@@ -2279,12 +2262,6 @@ void CppBridge::getAddress(const Wallets::WalletId& wltId,
    uint32_t addrType, uint32_t addrKind,
    MessageId msgId)
 {
-   bool wasExtended = false;
-   auto progFunc = [&wasExtended](int)
-   {
-      wasExtended = true;
-   };
-
    capnp::MallocMessageBuilder message;
    auto fromBridge = message.initRoot<FromBridge>();
    auto reply = fromBridge.initReply();
@@ -2298,8 +2275,7 @@ void CppBridge::getAddress(const Wallets::WalletId& wltId,
 
       auto walletReply = reply.initWallet();
       auto capnAddr = walletReply.initGetAddress();
-      addressToCapnp(capnAddr, addrPtr, accPtr,
-         wltContainer->getDefaultEncryptionKeyId());
+      addressToCapnp(capnAddr, addrPtr, accPtr);
       reply.setSuccess(true);
    } else {
       reply.setSuccess(false);
@@ -2543,8 +2519,7 @@ BinaryData CppBridge::setAddressTypeFor(const Wallets::WalletId& wltId,
 
    auto walletReply = reply.initWallet();
    auto capnAddr = walletReply.initSetAddressTypeFor();
-   addressToCapnp(capnAddr, addrPtr, accPtr,
-      wltContainer->getDefaultEncryptionKeyId());
+   addressToCapnp(capnAddr, addrPtr, accPtr);
    return serializeCapnp(message);
 }
 
@@ -2928,7 +2903,7 @@ void CppBridgeSignerStruct::signTx(const Wallets::WalletId& wltId,
       capnp::MallocMessageBuilder message;
       auto fromBridge = message.initRoot<FromBridge>();
       auto reply = fromBridge.initReply();
-      reply.setSuccess(true);
+      reply.setSuccess(success);
       reply.setReferenceId(referenceId);
 
       ServerPushWrapper wrapper{ 0, nullptr, serializeCapnp(message) };

@@ -45,6 +45,9 @@ namespace Armory
       //ScrAddrId | BlockID (BE)
       using ScrAddrKey  = uint64_t;
 
+      //BlockID (BE)
+      using BlockKey    = uint32_t;
+
       //////////////////////////////////////////////////////////////////////////
       // validity checks
       constexpr static TxKey INVALID_TX_KEY = UINT64_MAX;
@@ -86,6 +89,9 @@ namespace Armory
       BlockId     getBlockIDFromScrAddrKey(ScrAddrKey);
       BlockId     getBlockIDFromTxKey(TxKey);
       ScrAddrId   getScrAddrIdFromScrAddrKey(ScrAddrKey);
+
+      BlockKey    getBlockKeyFromId(BlockId);
+      BlockId     getBlockIdFromKey(BlockKey);
 
       bool        isThisATxIOKey(TxIOKey);
       bool        isThisAZCKey(TxKey);

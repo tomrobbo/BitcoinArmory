@@ -71,11 +71,11 @@ namespace LMDB
 
    private:
       Env *env_;
-      bool began_ = false;
+      DbIndex dbi_;
       Mode mode_;
       MDB_txn *mdbTxn_ = nullptr;
-      DbIndex dbi_;
       std::thread::id tid_;
+      bool began_ = false;
 
    public:
       Transaction(Env*, DbIndex, Mode = Mode::ReadWrite);
@@ -118,8 +118,8 @@ namespace LMDB
       friend class Transaction;
 
    private:
-      MDB_cursor* csr_ = nullptr;
       const Transaction* txPtr_;
+      MDB_cursor* csr_ = nullptr;
 
       bool has_ = false;
       MDB_val key_, val_;

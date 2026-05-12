@@ -5,6 +5,11 @@
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
+
+#ifdef _WIN32
+   #include <winsock2.h>
+#endif
+
 #include "TestUtils.h"
 
 #include <stdexcept>
@@ -1637,9 +1642,7 @@ TEST_F(BIP151RekeyTest, rekeyRequired)
 ////////////////////////////////////////////////////////////////////////////////
 GTEST_API_ int main(int argc, char **argv)
 {
-#ifdef _MSC_VER
-   _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-
+#ifdef _WIN32
    WSADATA wsaData;
    WORD wVersion = MAKEWORD(2, 0);
    WSAStartup(wVersion, &wsaData);

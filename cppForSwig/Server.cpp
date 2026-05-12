@@ -316,10 +316,6 @@ void WebSocketServer::start(std::shared_ptr<BlockDataManager> bdm, bool async)
    instance->clients_->init();
 
    //start command threads
-   auto commandThr = [instance](void)->void
-   {
-      instance->commandThread();
-   };
    instance->threads_.push_back(std::thread(
       [instance]{ instance->commandThread(); }));
 
@@ -721,7 +717,7 @@ void WebSocketServer::updateWriteMap()
 {
    try {
       while (true) {
-         auto packetList = std::move(writeQueue_.pop_front());
+         auto packetList = writeQueue_.pop_front();
          auto iter = writeMap_.find(packetList.first);
          if (iter == writeMap_.end()) {
             continue;
@@ -960,7 +956,7 @@ bool ClientConnection::isMaster() const
 {
    if (!bip151Connection_ || bip151Connection_->isOneWayAuth() ||
       bip151Connection_->getBIP150State() != BIP150State::SUCCESS) {
-      false;
+      return false;
    }
    return WebSocketServer::isMasterKey(bip151Connection_->getChosenAuthPeerKey());
 }

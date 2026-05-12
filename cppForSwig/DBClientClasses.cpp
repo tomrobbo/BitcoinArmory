@@ -81,11 +81,13 @@ void initLibrary()
 ///////////////////////////////////////////////////////////////////////////////
 // BlockHeader
 BlockHeader::BlockHeader(BinaryDataRef thishash, BinaryDataRef prevhash,
-   Types::BlockId blockId, bool ismain, uint32_t height,
-   uint32_t time, uint32_t size, uint32_t ntx) :
+   Types::BlockId blockId, uint32_t height,
+   uint32_t time, uint32_t size, uint32_t ntx,
+   bool ismain) :
    thisHash{thishash}, prevHash{prevhash},
-   blockId{blockId}, isMainBranch(ismain), blockHeight{height},
-   timestamp{time}, blockSize{size}, numTxs{ntx}
+   blockId{blockId}, blockHeight{height},
+   timestamp{time}, blockSize{size}, numTxs{ntx},
+   isMainBranch{ismain}
 {}
 
 ///////////////////////////////////////////////////////////////////////////////

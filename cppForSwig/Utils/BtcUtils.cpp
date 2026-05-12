@@ -352,10 +352,10 @@ void BtcUtils::TxInCalcLength(const uint8_t* ptr, size_t size,
    brr.advance(4);
 
    // TxIn List
-   auto nIn = brr.get_var_int();
+   size_t nIn = brr.get_var_int();
    if (offsetsIn != nullptr) {
       offsetsIn->resize(nIn + 1);
-      for (auto i = 0; i<nIn; i++) {
+      for (size_t i = 0; i < nIn; i++) {
          (*offsetsIn)[i] = brr.getPosition();
          brr.advance(TxInCalcLength(brr.getCurrPtr(), brr.getSizeRemaining()));
       }
@@ -396,7 +396,7 @@ size_t BtcUtils::TxWitnessCalcLength(const uint8_t* ptr, size_t size)
    uint8_t viStackLen;
    size_t stackLen = readVarInt(ptr, size, viStackLen);
    witLen += viStackLen;
-   for (auto i = 0; i < stackLen; i++) {
+   for (size_t i = 0; i < stackLen; i++) {
       if (witLen >= size) {
          throw BtcUtils::BlockDeserializingException();
       }
@@ -439,7 +439,7 @@ size_t BtcUtils::TxCalcLength(const uint8_t* ptr, size_t size,
    size_t nIn = brr.get_var_int();
    if (offsetsIn != nullptr) {
       offsetsIn->resize(nIn+1);
-      for (auto i=0; i < nIn; i++) {
+      for (size_t i = 0; i < nIn; i++) {
          (*offsetsIn)[i] = brr.getPosition();
          brr.advance(TxInCalcLength(
             brr.getCurrPtr(),
@@ -449,7 +449,7 @@ size_t BtcUtils::TxCalcLength(const uint8_t* ptr, size_t size,
       (*offsetsIn)[nIn] = brr.getPosition(); // Get the end of the last
    } else {
       // Don't need to track the offsets, just leap over everything
-      for (auto i=0; i < nIn; i++) {
+      for (size_t i = 0; i < nIn; i++) {
          brr.advance(TxInCalcLength(
             brr.getCurrPtr(),
             brr.getSizeRemaining())
@@ -461,7 +461,7 @@ size_t BtcUtils::TxCalcLength(const uint8_t* ptr, size_t size,
    size_t nOut = brr.get_var_int();
    if (offsetsOut != nullptr) {
       offsetsOut->resize(nOut+1);
-      for (auto i=0; i<nOut; i++) {
+      for (size_t i = 0; i<nOut; i++) {
          (*offsetsOut)[i] = brr.getPosition();
          brr.advance(TxOutCalcLength(
             brr.getCurrPtr(),
@@ -470,7 +470,7 @@ size_t BtcUtils::TxCalcLength(const uint8_t* ptr, size_t size,
       }
       (*offsetsOut)[nOut] = brr.getPosition();
    } else {
-      for (size_t i=0; i<nOut; i++) {
+      for (size_t i = 0; i<nOut; i++) {
          brr.advance(TxOutCalcLength(
             brr.getCurrPtr(),
             brr.getSizeRemaining())
@@ -482,7 +482,7 @@ size_t BtcUtils::TxCalcLength(const uint8_t* ptr, size_t size,
    if (usesWitness) {
       if (offsetsWitness != nullptr) {
          offsetsWitness->resize(nIn + 1);
-         for (uint32_t i = 0; i < nIn; i++) {
+         for (size_t i = 0; i < nIn; i++) {
             (*offsetsWitness)[i] = brr.getPosition();
             brr.advance(TxWitnessCalcLength(
                brr.getCurrPtr(),
@@ -491,7 +491,7 @@ size_t BtcUtils::TxCalcLength(const uint8_t* ptr, size_t size,
          }
          (*offsetsWitness)[nIn] = brr.getPosition();
       } else {
-         for (uint32_t i = 0; i < nIn; i++) {
+         for (size_t i = 0; i < nIn; i++) {
             brr.advance(TxWitnessCalcLength(
                brr.getCurrPtr(),
                brr.getSizeRemaining())
@@ -530,7 +530,7 @@ size_t BtcUtils::StoredTxCalcLength(const uint8_t* ptr,
    size_t nIn = brr.get_var_int();
    if (offsetsIn != nullptr) {
       offsetsIn->resize(nIn+1);
-      for (auto i=0; i<nIn; i++) {
+      for (size_t i = 0; i < nIn; i++) {
          (*offsetsIn)[i] = brr.getPosition();
          brr.advance(TxInCalcLength(
             brr.getCurrPtr(),
@@ -540,7 +540,7 @@ size_t BtcUtils::StoredTxCalcLength(const uint8_t* ptr,
       (*offsetsIn)[nIn] = brr.getPosition(); // Get the end of the last
    } else {
       // Don't need to track the offsets, just leap over everything
-      for (auto i=0; i<nIn; i++) {
+      for (size_t i = 0; i < nIn; i++) {
          brr.advance(TxInCalcLength(
             brr.getCurrPtr(),
             brr.getSizeRemaining())
@@ -552,14 +552,14 @@ size_t BtcUtils::StoredTxCalcLength(const uint8_t* ptr,
    size_t nOut = brr.get_var_int();
    if (fragged) {
       offsetsOut->resize(nOut+1);
-      for (uint32_t i=0; i<nOut+1; i++) {
+      for (size_t i = 0; i < nOut + 1; i++) {
          (*offsetsOut)[i] = brr.getPosition();
       }
    } else {
       // Now extract the TxOut list
       if (offsetsOut != nullptr) {
          offsetsOut->resize(nOut+1);
-         for (auto i=0; i<nOut; i++) {
+         for (size_t i = 0; i < nOut; i++) {
             (*offsetsOut)[i] = brr.getPosition();
             brr.advance(TxOutCalcLength(
                brr.getCurrPtr(),
@@ -568,7 +568,7 @@ size_t BtcUtils::StoredTxCalcLength(const uint8_t* ptr,
          }
          (*offsetsOut)[nOut] = brr.getPosition();
       } else {
-         for (auto i=0; i<nOut; i++) {
+         for (size_t i = 0;  i < nOut; i++) {
             brr.advance(TxOutCalcLength(
                brr.getCurrPtr(),
                brr.getSizeRemaining())
@@ -581,13 +581,13 @@ size_t BtcUtils::StoredTxCalcLength(const uint8_t* ptr,
    if (usesWitness) {
       if (offsetsWitness != nullptr) {
          offsetsWitness->resize(nIn + 1);
-         for (auto i = 0; i < nIn; i++) {
+         for (size_t i = 0; i < nIn; i++) {
             (*offsetsWitness)[i] = brr.getPosition();
             brr.advance(TxWitnessCalcLength(brr.getCurrPtr(), brr.getSizeRemaining()));
          }
          (*offsetsWitness)[nIn] = brr.getPosition();
       } else {
-         for (auto i = 0; i < nIn; i++) {
+         for (size_t i = 0; i < nIn; i++) {
             brr.advance(TxWitnessCalcLength(brr.getCurrPtr(), brr.getSizeRemaining()));
          }
       }
@@ -827,7 +827,7 @@ BinaryData BtcUtils::getMultisigUniqueKey(const BinaryData& script)
    bw.put_uint8_t((uint8_t)N);
 
    std::sort(a160List.begin(), a160List.end());
-   for (auto i=0; i<a160List.size(); i++) {
+   for (size_t i = 0; i < a160List.size(); i++) {
       bw.put_BinaryData(a160List[i]);
    }
    return bw.getData();

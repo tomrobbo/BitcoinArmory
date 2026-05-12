@@ -195,6 +195,9 @@ namespace
                labelReq.getKey(), labelReq.getLabel(), referenceId);
             return true;
          }
+
+         default:
+            throw std::runtime_error("invalid db setup command");
       }
 
       if (!response.empty()) {
@@ -278,6 +281,10 @@ namespace
             bridge->getBlockTimeByHeight(height, referenceId);
             break;
          }
+
+         default:
+            throw std::runtime_error("unhandled blockchain service command");
+            break;
       }
 
       if (!response.empty()) {
@@ -409,7 +416,6 @@ namespace
             capnp::MallocMessageBuilder message;
             auto fromBridge = message.initRoot<FromBridge>();
             auto reply = fromBridge.initReply();
-            auto walletReply = reply.initWalletManager();
             reply.setSuccess(false);
             reply.setReferenceId(referenceId);
             reply.setError("invalid WalletManager request");
@@ -921,6 +927,9 @@ namespace
             response = serializeCapnp(message);
             break;
          }
+
+         default:
+            throw std::runtime_error("invalid coin selection command");
       }
 
       if (!response.empty()) {
@@ -1169,6 +1178,10 @@ namespace
             replySuccess(result);
             break;
          }
+
+         default:
+            throw std::runtime_error("invalid signer command");
+            break;
       }
 
       if (!response.empty()) {
@@ -1312,6 +1325,9 @@ namespace
             response = serializeCapnp(message);
             break;
          }
+
+         default:
+            throw std::runtime_error("invalid utils command");
       }
 
       if (!response.empty()) {
@@ -1381,6 +1397,9 @@ namespace
                request.getGetScrAddrForAddrStr(), referenceId);
             break;
          }
+
+         default:
+            throw std::runtime_error("invalid script utils command");
       }
 
       if (!response.empty()) {
@@ -1411,6 +1430,9 @@ namespace
             bridge->getPageCountForDelegate(delegateId, referenceId);
             break;
          }
+
+         default:
+            throw std::runtime_error("invalid delegate command");
       }
       return true;
    }
@@ -1464,14 +1486,15 @@ namespace
                      });
                   }
                }
+               break;
             }
 
             case NotificationReply::RESTORE:
             {
+               bool restore = notif.getRestore() ==
+                  NotificationReply::RestoreMode::MERGE ? true : false;
                return handler(Seeds::PromptReply{
-                  notif.getSuccess(),
-                  notif.getRestore() == NotificationReply::RestoreMode::MERGE ?
-                     true : false
+                  notif.getSuccess(), restore, {}
                });
             }
 

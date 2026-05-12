@@ -36,6 +36,7 @@ using namespace Armory;
 using namespace Armory::Database;
 
 namespace {
+   /*
    void dumpBlock(
       LMDBBlockDatabase* db,
       std::shared_ptr<BlockHeader> bh)
@@ -70,7 +71,7 @@ namespace {
    {
       auto bh = bcPtr->getHeaderById(blockId);
       dumpBlock(db, bh);
-   }
+   }*/
 
    /////////////////////////////////////////////////////////////////////////////
    struct TxHint
@@ -119,7 +120,7 @@ namespace {
 
             //create txKey
             std::memcpy(&txHintKey, hashData, 8);
-            txHintKey = txHintKey & blockIDMask | blockID;
+            txHintKey = (txHintKey & blockIDMask) | blockID;
 
             //add to map
             auto emplaceResult = tableIter->second.emplace(
@@ -281,8 +282,8 @@ bool Builder::init()
    blockchain_->putNewHeaders(db_);
 
    //is there something to repair?
-   bool chainIsSain = true;
    /*
+   bool chainIsSain = true;
    auto flaggedFileNums = db_->getFlaggedFileNums();
    if (!flaggedFileNums.empty()) {
       LOGWARN << "the following block files are flagged for reparsing:";
@@ -882,8 +883,8 @@ Hash32 Builder::scanHistory(const ReorganizationState& reorgState,
          return Hash32{};
       }
 
-      unsigned count = 0;
       /*
+      unsigned count = 0;
       while (!bcs.resolveTxHashes()) {
          ++count;
          if (count > 5) {

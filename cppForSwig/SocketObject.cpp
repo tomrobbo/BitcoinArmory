@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2016-2025, goatpig.                                         //
+//  Copyright (C) 2016-2026, goatpig.                                         //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -20,7 +20,7 @@ using namespace std::chrono_literals;
 
 #ifdef _WIN32
 //i dont know how to get linkage for this with MSYS2 halp T_T
-char *gai_strerrorA(int errcode) { return nullptr; }
+char *gai_strerrorA(int) { return nullptr; }
 #endif
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -113,7 +113,7 @@ SOCKET SocketPrototype::openSocket(bool blocking)
    SOCKET sockfd = SOCK_MAX;
    try {
       sockfd = socket(serv_addr_.sa_family, SOCK_STREAM, 0);
-      if (sockfd < 0) {
+      if (sockfd == SOCK_MAX) {
          throw SocketError("failed to create socket");
       }
       auto result = connect(sockfd, &serv_addr_, sizeof(serv_addr_));
@@ -161,7 +161,7 @@ bool SocketPrototype::testConnection(void)
 ////////////////////////////////////////////////////////////////////////////////
 void SocketPrototype::setBlocking(SOCKET sock, bool setblocking)
 {
-   if (sock < 0) {
+   if (sock == SOCK_MAX) {
       throw SocketError("invalid socket");
    }
 #ifdef WIN32
@@ -192,7 +192,7 @@ void SocketPrototype::listen(AcceptCallback callback, SOCKET& sockfd)
 {
    try {
       sockfd = socket(serv_addr_.sa_family, SOCK_STREAM, 0);
-      if (sockfd < 0) {
+      if (sockfd == SOCK_MAX) {
          throw SocketError("failed to create socket");
       }
 
@@ -560,7 +560,7 @@ void PersistentSocket::socketService_win()
             }
 
             totalread += readAmt;
-            if (readAmt < readIncrement) {
+            if ((size_t)readAmt < readIncrement) {
                break;
             }
             readdata.resize(totalread + readIncrement);
@@ -1150,7 +1150,7 @@ CallbackReturn_CloseBitcoinP2PSocket::CallbackReturn_CloseBitcoinP2PSocket(
    dataStack_(datastack)
 {}
 
-void CallbackReturn_CloseBitcoinP2PSocket::callback(const BinaryDataRef&)
+void CallbackReturn_CloseBitcoinP2PSocket::callback(BinaryDataRef)
 {
    dataStack_->terminate();
 }

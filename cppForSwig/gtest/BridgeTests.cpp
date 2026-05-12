@@ -184,7 +184,6 @@ namespace {
       std::vector<std::vector<Ledgers::Entry>> result;
       result.reserve(capnLedgers.size());
 
-      unsigned i=0;
       for (auto txLedgers : capnLedgers) {
          result.emplace_back(capnToLedgers(txLedgers));
       }
@@ -508,7 +507,6 @@ namespace {
 
             case Codec::Bridge::Notification::RESTORE:
             {
-               auto restoreNotif = notif.getRestore();
                throw std::runtime_error("got a restore notif in wallet creation progress!");
             }
 
@@ -533,14 +531,14 @@ namespace {
          {}, {}, masterId, {},
          {}, {},
          true, false, {}, 0, 0,
-         path
+         path, 0
       };
    }
 
    std::string createAWallet(std::shared_ptr<Bridge::CppBridge> bridge,
       std::chrono::milliseconds targetMs, uint32_t lookup, bool isBIP32)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
 
       capnp::MallocMessageBuilder message;
@@ -601,7 +599,7 @@ namespace {
       std::shared_ptr<Bridge::CppBridge> bridge, const std::string& walletId,
       const std::string& passphrase, Codec::Bridge::WalletBackup::Type backupType)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
 
       capnp::MallocMessageBuilder message;
@@ -725,7 +723,7 @@ namespace {
          backupType == Codec::Bridge::WalletBackup::Type::ARMORY200_B ? true : false;
 
       //restore the wallet
-      auto refId = rand();
+      uint64_t refId = rand();
       auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
 
       {
@@ -757,7 +755,6 @@ namespace {
       }
 
       //backup deser notifs
-      unsigned notifCount = 0;
       bool restoringBackup = true;
       while (restoringBackup) {
          auto result = waitOnReply();
@@ -850,7 +847,7 @@ namespace {
    std::map<std::string, WalletData> loadWallets(
       std::shared_ptr<Bridge::CppBridge> bridge)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
 
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
@@ -885,7 +882,7 @@ namespace {
    std::map<std::string, WltListEntry> listWallets(
       std::shared_ptr<Bridge::CppBridge> bridge)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
 
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
@@ -932,7 +929,7 @@ namespace {
       std::shared_ptr<Bridge::CppBridge> bridge,
       const std::string& walletId)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
 
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
@@ -967,7 +964,7 @@ namespace {
       std::shared_ptr<Bridge::CppBridge> bridge,
       const std::string& walletId, const std::string& accId)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
 
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
@@ -1001,7 +998,7 @@ namespace {
       const std::string& currentPass, const std::string& newPass)
    {
       auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
-      auto refId = rand();
+      uint64_t refId = rand();
 
       //start passphrase change sequence
       {
@@ -1135,7 +1132,7 @@ namespace {
       const std::string& dbId, unsigned count, bool isNew)
    {
       auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
-      auto refId = rand();
+      uint64_t refId = rand();
 
       //start chain extension sequence
       {
@@ -1156,8 +1153,8 @@ namespace {
       }
       bool run = true;
       MsgPtr rawReply;
-      int notifCount = 0;
-      int lastKnownCount = 0;
+      unsigned notifCount = 0;
+      unsigned lastKnownCount = 0;
       std::string refreshId;
       while (run) {
          auto rawPrompt = waitOnReply();
@@ -1306,7 +1303,7 @@ namespace {
       const std::string& accountId,
       uint32_t addressType=0)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -1350,7 +1347,7 @@ namespace {
       const std::string& walletId,
       bool stage)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
 
       //request staging change
       {
@@ -1427,6 +1424,10 @@ namespace {
                }
                return success;
             }
+
+            default:
+               EXPECT_TRUE(false);
+               break;
          }
       }
    }
@@ -1435,7 +1436,7 @@ namespace {
       const std::string& ip, const std::string& port,
       const std::string& expectedPubkey)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       auto callbackId = Cryptography::PRNG::fortuna.generateRandom(4).toHexStr();
       {
          capnp::MallocMessageBuilder message;
@@ -1488,7 +1489,7 @@ namespace {
    bool connectToPeer(std::shared_ptr<Bridge::CppBridge> bridge,
       const std::string& peerKey)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -1504,7 +1505,7 @@ namespace {
       const std::filesystem::path& satoshiDir,
       const std::filesystem::path& dbDir)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -1520,7 +1521,7 @@ namespace {
 
    bool registerWallets(std::shared_ptr<Bridge::CppBridge> bridge)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -1555,7 +1556,7 @@ namespace {
       const std::string& walletId, const std::string& accountId,
       const std::string& dbId)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -1610,7 +1611,7 @@ namespace {
 
    int goOnline(std::shared_ptr<Bridge::CppBridge> bridge)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -1691,7 +1692,7 @@ namespace {
       std::shared_ptr<Bridge::CppBridge> bridge,
       const std::string& wltId, const std::string& accId)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -1738,7 +1739,7 @@ namespace {
       std::shared_ptr<Bridge::CppBridge> bridge,
       const std::string& wltId, const std::string& accId)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -1794,7 +1795,7 @@ namespace {
    // ledger stuff
    std::string getLedgerDelegateId(std::shared_ptr<Bridge::CppBridge> bridge)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -1829,7 +1830,7 @@ namespace {
       std::shared_ptr<Bridge::CppBridge> bridge,
       const std::string& wltId, const std::string& accId)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -1867,7 +1868,7 @@ namespace {
       const std::string& wltId, const std::string& accId,
       const BinaryData& scrAddr)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -1904,7 +1905,7 @@ namespace {
    size_t getLedgersPageCount(std::shared_ptr<Bridge::CppBridge> bridge,
       const std::string& delegateId)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -1940,7 +1941,7 @@ namespace {
       std::shared_ptr<Bridge::CppBridge> bridge,
       const std::string& delegateId, uint32_t pageId)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -2026,7 +2027,7 @@ namespace {
       std::shared_ptr<Bridge::CppBridge> bridge,
       const std::string& walletId, const std::string& accountId)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -2077,7 +2078,7 @@ namespace {
       const std::string& walletId, const std::string& accountId,
       int mode)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -2154,7 +2155,7 @@ namespace {
       const std::string& walletId, const std::string& accountId,
       uint32_t height)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -2192,7 +2193,7 @@ namespace {
       std::shared_ptr<Bridge::CppBridge> bridge,
       const std::string& csId)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -2221,7 +2222,7 @@ namespace {
       const std::string& csId, unsigned recId,
       const std::string& addr, uint64_t amount)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -2251,7 +2252,7 @@ namespace {
    bool selectUtxos(std::shared_ptr<Bridge::CppBridge> bridge,
       const std::string& csId, uint32_t flags, float feeByte)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -2282,7 +2283,7 @@ namespace {
       const std::string& csId, const std::vector<UTXO>& utxos,
       uint32_t flags, uint64_t flatFee)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -2328,7 +2329,7 @@ namespace {
       std::shared_ptr<Bridge::CppBridge> bridge,
       const std::string& csId)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -2381,7 +2382,7 @@ namespace {
       std::shared_ptr<Bridge::CppBridge> bridge,
       const std::string& csId)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -2416,7 +2417,7 @@ namespace {
    // tx signing
    std::string getNewSigner(std::shared_ptr<Bridge::CppBridge> bridge)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -2452,7 +2453,7 @@ namespace {
       std::shared_ptr<Bridge::CppBridge> bridge, const std::string& signerId,
       uint32_t version)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -2481,7 +2482,7 @@ namespace {
       std::shared_ptr<Bridge::CppBridge> bridge,
       const std::set<BinaryData>& hashSet)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -2532,7 +2533,7 @@ namespace {
       std::shared_ptr<Bridge::CppBridge> bridge, const std::string& signerId,
       const BinaryData& hash, uint32_t index, uint32_t sequence)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -2567,7 +2568,7 @@ namespace {
       const BinaryData& hash, uint32_t index,
       uint64_t value, const BinaryData& script)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -2603,7 +2604,7 @@ namespace {
       std::shared_ptr<Bridge::CppBridge> bridge, const std::string& signerId,
       const BinaryData& rawTx)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -2633,7 +2634,7 @@ namespace {
       std::shared_ptr<Bridge::CppBridge> bridge, const std::string& signerId,
       const BinaryData& script, uint64_t value)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -2666,7 +2667,7 @@ namespace {
       std::shared_ptr<Bridge::CppBridge> bridge, const std::string& signerId,
       const std::string& walletId)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -2695,7 +2696,7 @@ namespace {
       std::shared_ptr<Bridge::CppBridge> bridge, const std::string& signerId,
       const std::string& walletId, const std::string& passphrase)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
@@ -2766,6 +2767,10 @@ namespace {
                hasReply = true;
                break;
             }
+
+            default:
+               EXPECT_TRUE(false);
+               break;
          }
       }
       return success;
@@ -2781,7 +2786,7 @@ namespace {
       std::shared_ptr<Bridge::CppBridge> bridge, const std::string& signerId,
       uint32_t inputId)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -2818,7 +2823,7 @@ namespace {
    BinaryData getSignedTx(
       std::shared_ptr<Bridge::CppBridge> bridge, const std::string& signerId)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -2855,7 +2860,7 @@ namespace {
    bool cleanupSigner(std::shared_ptr<Bridge::CppBridge> bridge,
       const std::string& signerId)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
@@ -3073,7 +3078,7 @@ namespace {
    void broadcastTx(std::shared_ptr<Bridge::CppBridge> bridge,
       const BinaryData& rawTx)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -3896,7 +3901,7 @@ protected:
    //helpers
    bool unlockWallet(const std::string& path, const std::string& passphrase)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
 
       //request unlock
@@ -3994,7 +3999,7 @@ protected:
 
    int failToUnlockWallet(const std::string& path, unsigned count)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
 
       //request unlock
@@ -4106,7 +4111,7 @@ protected:
 
    std::chrono::milliseconds testKDFUnlock(const std::string& walletId)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -4433,7 +4438,7 @@ TEST_F(BridgeWalletTests, ListWO)
 TEST_F(BridgeWalletTests, CreateWallet)
 {
    //create the wallet
-   auto refId = rand();
+   uint64_t refId = rand();
    auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
 
    capnp::MallocMessageBuilder message;
@@ -4511,7 +4516,7 @@ TEST_F(BridgeWalletTests, CreateWallet)
 TEST_F(BridgeWalletTests, CreateWallet_BIP32)
 {
    //create the wallet
-   auto refId = rand();
+   uint64_t refId = rand();
    auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
 
    capnp::MallocMessageBuilder message;
@@ -4594,7 +4599,7 @@ TEST_F(BridgeWalletTests, DeleteWallet)
 
    {
       //create the wallet
-      auto refId = rand();
+      uint64_t refId = rand();
       auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
 
       capnp::MallocMessageBuilder message;
@@ -4662,7 +4667,7 @@ TEST_F(BridgeWalletTests, DeleteWallet)
 
    //delete said wallet
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -4688,7 +4693,7 @@ TEST_F(BridgeWalletTests, DeleteWallet)
 TEST_F(BridgeWalletTests, CreateWallet_Reject)
 {
    //create the wallet
-   auto refId = rand();
+   uint64_t refId = rand();
    auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
 
    capnp::MallocMessageBuilder message;
@@ -4770,7 +4775,7 @@ TEST_F(BridgeWalletTests, RestoreWallet_Legacy)
 
    //grab backup strings via callback
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
 
       capnp::MallocMessageBuilder message;
@@ -4930,7 +4935,7 @@ TEST_F(BridgeWalletTests, RestoreWallet_LegacyWO)
 
    //grab backup strings
    {
-      auto refId = rand();
+      uint64_t refId = rand();
 
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
@@ -4978,7 +4983,7 @@ TEST_F(BridgeWalletTests, RestoreWallet_LegacyWO)
 TEST_F(BridgeWalletTests, RestoreMerge)
 {
    //create the wallet
-   auto refId = rand();
+   uint64_t refId = rand();
    auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
    std::string passphrase{"pass2"};
    std::string passphrase2{"pass3"};
@@ -5142,7 +5147,7 @@ TEST_F(BridgeWalletTests, Migrate_Legacy)
 
    //migrate it
    auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
-   auto refId = rand();
+   uint64_t refId = rand();
    {
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
@@ -5245,7 +5250,7 @@ TEST_F(BridgeWalletTests, ImportWallet_Legacy)
    const std::string walletId{"28m472Xbm"sv};
 
    /* import the wallet file */
-   auto refId = rand();
+   uint64_t refId = rand();
    capnp::MallocMessageBuilder message;
    auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
    toBridge.setReferenceId(refId);
@@ -5624,7 +5629,7 @@ TEST_F(BridgeWalletTests, ForkWO)
    }
 
    /* 3. fork it */
-   auto refId = rand();
+   uint64_t refId = rand();
    {
       auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
 
@@ -5711,7 +5716,7 @@ TEST_F(BridgeWalletTests, ForkWO)
 
    /* unload full wallet */
    {
-      auto msgId = rand();
+      uint64_t msgId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(msgId);
@@ -6091,7 +6096,7 @@ TEST_F(BridgeWalletsWithDBTests, DeleteWallet)
    ASSERT_TRUE(FileUtils::pathExists(wltPath, 0));
 
    //delete said wallet
-   auto refId = rand();
+   uint64_t refId = rand();
    capnp::MallocMessageBuilder message;
    auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
    toBridge.setReferenceId(refId);
@@ -6127,6 +6132,10 @@ TEST_F(BridgeWalletsWithDBTests, DeleteWallet)
             ++count;
             break;
          }
+
+         default:
+            ASSERT_TRUE(false);
+            break;
       }
    }
    ASSERT_FALSE(FileUtils::pathExists(wltPath, 0));
@@ -6286,7 +6295,7 @@ TEST_F(BridgeWalletsWithDBTests, AddNewAddress)
 
    /* request a new address, it should trigger address creation */
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -6335,6 +6344,10 @@ TEST_F(BridgeWalletsWithDBTests, AddNewAddress)
                }
                break;
             }
+
+            default:
+               ASSERT_TRUE(false);
+               break;
          }
       }
    }
@@ -9726,7 +9739,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_Chain)
    //grab amount for change output
    Tx tx(signedTx);
    auto changeOutput = tx.getTxOutCopy(1);
-   int64_t changeAmount = changeOutput.getAmount();
+   uint64_t changeAmount = changeOutput.getAmount();
    EXPECT_TRUE(changeAmount > 8 * COIN);
    EXPECT_TRUE(changeAmount < 9 * COIN);
 
@@ -9797,7 +9810,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_Chain)
 
    Tx tx2(signedTx2);
    auto changeOutput2 = tx2.getTxOutCopy(1);
-   int64_t changeAmount2 = changeOutput2.getAmount();
+   uint64_t changeAmount2 = changeOutput2.getAmount();
    EXPECT_TRUE(changeAmount2 > 3 * COIN);
    EXPECT_TRUE(changeAmount2 < 4 * COIN);
 
@@ -10019,7 +10032,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_StaggeredChain)
    //grab amount for change output
    Tx tx(signedTx);
    auto changeOutput = tx.getTxOutCopy(1);
-   int64_t changeAmount = changeOutput.getAmount();
+   uint64_t changeAmount = changeOutput.getAmount();
    EXPECT_TRUE(changeAmount > 8 * COIN);
    EXPECT_TRUE(changeAmount < 9 * COIN);
 
@@ -10131,7 +10144,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_StaggeredChain)
 
    Tx tx2(signedTx2);
    auto changeOutput2 = tx2.getTxOutCopy(1);
-   int64_t changeAmount2 = changeOutput2.getAmount();
+   uint64_t changeAmount2 = changeOutput2.getAmount();
    EXPECT_TRUE(changeAmount2 > 3 * COIN);
    EXPECT_TRUE(changeAmount2 < 4 * COIN);
 
@@ -10533,7 +10546,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_ChainRBF)
    //grab amount for change output
    Tx tx(signedTx);
    auto changeOutput = tx.getTxOutCopy(1);
-   int64_t changeAmount = changeOutput.getAmount();
+   uint64_t changeAmount = changeOutput.getAmount();
    EXPECT_TRUE(changeAmount > 8 * COIN);
    EXPECT_TRUE(changeAmount < 9 * COIN);
 
@@ -10650,7 +10663,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_ChainRBF)
 
    Tx tx2(signedTx2);
    auto changeOutput2 = tx2.getTxOutCopy(1);
-   int64_t changeAmount2 = changeOutput2.getAmount();
+   uint64_t changeAmount2 = changeOutput2.getAmount();
    EXPECT_TRUE(changeAmount2 > 3 * COIN);
    EXPECT_TRUE(changeAmount2 < 4 * COIN);
 
@@ -10790,7 +10803,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_ChainRBF)
 
    Tx tx3(txRbf);
    auto changeOutput3 = tx3.getTxOutCopy(1);
-   int64_t changeAmountRbf = changeOutput3.getAmount();
+   uint64_t changeAmountRbf = changeOutput3.getAmount();
    EXPECT_EQ(changeAmountRbf, 12 * COIN - rbfFee);
 
    //broadcast it
@@ -10966,7 +10979,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_Reload)
    //grab amount for change output
    Tx tx(signedTx);
    auto changeOutput = tx.getTxOutCopy(1);
-   int64_t changeAmount = changeOutput.getAmount();
+   uint64_t changeAmount = changeOutput.getAmount();
    EXPECT_TRUE(changeAmount > 8 * COIN);
    EXPECT_TRUE(changeAmount < 9 * COIN);
 
@@ -11037,7 +11050,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_Reload)
 
    Tx tx2(signedTx2);
    auto changeOutput2 = tx2.getTxOutCopy(1);
-   int64_t changeAmount2 = changeOutput2.getAmount();
+   uint64_t changeAmount2 = changeOutput2.getAmount();
    EXPECT_TRUE(changeAmount2 > 3 * COIN);
    EXPECT_TRUE(changeAmount2 < 4 * COIN);
 
@@ -11328,7 +11341,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_Reorg)
    //grab amount for change output
    Tx tx(signedTx);
    auto changeOutput = tx.getTxOutCopy(1);
-   int64_t changeAmount = changeOutput.getAmount();
+   uint64_t changeAmount = changeOutput.getAmount();
    EXPECT_TRUE(changeAmount > 2 * COIN);
    EXPECT_TRUE(changeAmount < 3 * COIN);
 
@@ -11779,7 +11792,7 @@ TEST_F(BridgeChainDataTests, RestoreSynchronize)
    //grab amount for change output
    Tx tx(signedTx);
    auto changeOutput = tx.getTxOutCopy(4);
-   int64_t changeAmount = changeOutput.getAmount();
+   uint64_t changeAmount = changeOutput.getAmount();
    EXPECT_TRUE(changeAmount > 9 * COIN);
    EXPECT_TRUE(changeAmount < 10 * COIN);
 
@@ -11849,7 +11862,7 @@ TEST_F(BridgeChainDataTests, RestoreSynchronize)
 
    //delete bip32 wlt
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -11879,7 +11892,7 @@ TEST_F(BridgeChainDataTests, RestoreSynchronize)
 
    //delete legacy wlt
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -12153,7 +12166,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_SpendNew)
    //grab amount for change output
    Tx tx(signedTx);
    auto changeOutput = tx.getTxOutCopy(1);
-   int64_t changeAmount = changeOutput.getAmount();
+   uint64_t changeAmount = changeOutput.getAmount();
    EXPECT_TRUE(changeAmount > 8 * COIN);
    EXPECT_TRUE(changeAmount < 9 * COIN);
 
@@ -12318,7 +12331,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_SpendNew)
    //grab amount for change output
    Tx tx2(signedTx2);
    auto changeOutput2 = tx2.getTxOutCopy(1);
-   int64_t changeAmount2 = changeOutput2.getAmount();
+   uint64_t changeAmount2 = changeOutput2.getAmount();
    EXPECT_TRUE(changeAmount2 > 5 * COIN);
    EXPECT_TRUE(changeAmount2 < 6 * COIN);
 
@@ -12415,7 +12428,7 @@ protected:
    {
       if (cleanup) {
          //command db to shutdown
-         auto refId = rand();
+         uint64_t refId = rand();
          capnp::MallocMessageBuilder message;
          auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
          toBridge.setReferenceId(refId);
@@ -12442,7 +12455,7 @@ protected:
          }
       } else {
          //only disconnect client from db
-         auto refId = rand();
+         uint64_t refId = rand();
          capnp::MallocMessageBuilder message;
          auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
          toBridge.setReferenceId(refId);
@@ -12590,7 +12603,7 @@ protected:
 
    bool loadPeersDb(bool succeed)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       auto callbackId = Cryptography::PRNG::fortuna.generateRandom(4).toHexStr();
       {
          capnp::MallocMessageBuilder message;
@@ -12656,7 +12669,7 @@ protected:
 
    bool createPeersDb(const std::string& passphrase)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       auto callbackId = Cryptography::PRNG::fortuna.generateRandom(4).toHexStr();
       {
          capnp::MallocMessageBuilder message;
@@ -12727,7 +12740,7 @@ protected:
 
    std::vector<PeerData> listPeers()
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -12774,7 +12787,7 @@ protected:
    {
       Wallets::PeerKey peer{key.getRef(), true, true};
 
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -12807,7 +12820,7 @@ protected:
 
    void removePeer(const std::string& key)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
@@ -12834,7 +12847,7 @@ protected:
 
    void setLabel(const std::string& key, const std::string& label)
    {
-      auto refId = rand();
+      uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);

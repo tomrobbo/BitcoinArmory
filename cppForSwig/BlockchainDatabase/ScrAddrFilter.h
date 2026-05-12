@@ -58,10 +58,10 @@ struct RegistrationBatch : public AddressBatch
 {
    using Callback = std::function<void(bool)>;
 
-   const Callback callback;
-   const bool isNew;
-   const std::vector<Armory::Types::ScrAddr> scrAddrVec;
    const std::vector<std::string> walletIDs;
+   const std::vector<Armory::Types::ScrAddr> scrAddrVec;
+   const bool isNew;
+   const Callback callback;
 
    RegistrationBatch(const std::vector<std::string>&,
       std::vector<Armory::Types::ScrAddr>, bool, const Callback&);

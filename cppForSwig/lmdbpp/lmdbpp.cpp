@@ -263,7 +263,7 @@ Iterator::Iterator(const Transaction* tx)
 }
 
 Iterator::Iterator(const Iterator &copy)
-   : csr_(nullptr), has_(copy.has_), txPtr_(copy.txPtr_)
+   : txPtr_(copy.txPtr_), csr_(nullptr), has_(copy.has_)
 {
    if (copy.txPtr_ == nullptr) {
       throw Exception("Iterator must be created within Transaction");

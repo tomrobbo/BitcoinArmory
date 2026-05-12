@@ -48,7 +48,7 @@ public:
    CallbackReturn_CloseBitcoinP2PSocket(
       std::shared_ptr<Armory::Threading::BlockingQueue<std::vector<uint8_t>>>);
 
-   void callback(const BinaryDataRef&);
+   void callback(BinaryDataRef) override;
 };
 
 ///////////////////////////////////////////////////////////////////////////////

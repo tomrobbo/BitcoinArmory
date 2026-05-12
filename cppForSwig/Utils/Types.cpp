@@ -7,7 +7,12 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "Types.h"
-#include <arpa/inet.h>
+
+#ifdef _WIN32
+   #include <winsock2.h>
+#else
+   #include <arpa/inet.h>
+#endif
 
 using namespace Armory;
 using namespace Armory::Types;
@@ -93,4 +98,15 @@ ScrAddrKey Types::constructScrAddrKey(ScrAddrId scrAddrId, BlockId blockId)
 ScrAddrId Types::getScrAddrIdFromScrAddrKey(ScrAddrKey key)
 {
    return (uint32_t)key;
+}
+
+////////
+BlockKey Types::getBlockKeyFromId(BlockId blockId)
+{
+   return htonl(blockId);
+}
+
+BlockId Types::getBlockIdFromKey(BlockKey blockKey)
+{
+   return ntohl(blockKey);
 }

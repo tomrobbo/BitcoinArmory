@@ -175,8 +175,9 @@ class Tx
 {
 private:
    static Tx unserialize(const uint8_t*, size_t);
-   Tx(BinaryDataRef, uint32_t, bool, uint32_t,
-      std::vector<size_t>&, std::vector<size_t>&, std::vector<size_t>&);
+   Tx(BinaryDataRef,
+      std::vector<size_t>&, std::vector<size_t>&, std::vector<size_t>&,
+      uint32_t, uint32_t, bool);
 
 public:
    explicit Tx(const uint8_t*, size_t);
@@ -234,15 +235,15 @@ public:
 private:
    // Full copy of the serialized tx
    const BinaryData dataCopy_;
-   const bool usesWitness_;
-
-   const uint32_t version_;
-   const uint32_t lockTime_;
 
    // Will always create TxIns and TxOuts on-the-fly; only store the offsets
    const std::vector<size_t> offsetsTxIn_;
    const std::vector<size_t> offsetsTxOut_;
    const std::vector<size_t> offsetsWitness_;
+
+   const uint32_t version_;
+   const uint32_t lockTime_;
+   const bool usesWitness_;
 
    uint32_t txTime_{0};
    mutable Armory::Types::TxHash thisHash_;

@@ -498,7 +498,7 @@ namespace DBTestUtils
          auto notifs = reader.getRoot<Codec::BDV::Notifications>();
          auto capnNotifs = notifs.getNotifs();
 
-         for (int i = 0; i < capnNotifs.size(); i++) {
+         for (size_t i = 0; i < capnNotifs.size(); i++) {
             auto capnNotif = capnNotifs[i];
             if ((int)capnNotif.which() == signal) {
                return i;
@@ -515,7 +515,7 @@ namespace DBTestUtils
       }
 
       while (true) {
-         auto rawNotif = std::move(unittest_cbptr->getNotification());
+         auto rawNotif = unittest_cbptr->getNotification();
          auto index = processCallback(rawNotif);
          if (index > -1) {
             return std::make_tuple(rawNotif, index);
@@ -528,7 +528,7 @@ namespace DBTestUtils
    {
       while (true) {
          try {
-            auto notif = std::move(bdm->notificationStack_.pop_front());
+            auto notif = bdm->notificationStack_.pop_front();
             if (notif == nullptr) {
                continue;
             } else if (notif->actionType() == action) {
@@ -695,7 +695,7 @@ namespace DBTestUtils
       std::pair<vector<TxIOPair>, std::set<Types::TxHash>> txioData;
       txioData.first = capnToTxios(capnZcs);
 
-      if (notifList.size() >= (int)index + 2) {
+      if (notifList.size() >= index + 2) {
          auto invalidatedNotif = notifList[index + 1];
          auto invalidatedZCs = invalidatedNotif.getInvalidatedZc();
          for (auto zcHash : invalidatedZCs) {

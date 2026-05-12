@@ -1,10 +1,15 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2017-2025, goatpig                                          //
+//  Copyright (C) 2017-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
+
+#ifdef _WIN32
+   #include <winsock2.h>
+   #include <windows.h>
+#endif
 
 #include "TestUtils.h"
 #include <reorgTest/blkdata.h>
@@ -10445,11 +10450,11 @@ TEST_F(BackupTests, BackupStrings_Legacy)
          {
             EXPECT_EQ(prompt.walletId, backupData->getWalletId());
             EXPECT_EQ(prompt.backupType, Seeds::BackupType::Armory135c);
-            return Seeds::PromptReply{true};
+            return Seeds::PromptReply{ true, false, {} };
          }
 
          default:
-            return Seeds::PromptReply{false};
+            return Seeds::PromptReply{ false, false, {} };
       }
    };
 
@@ -10540,11 +10545,11 @@ TEST_F(BackupTests, BackupStrings_Legacy_Armory200a)
          {
             EXPECT_EQ(prompt.walletId, backupData->getWalletId());
             EXPECT_EQ(prompt.backupType, Seeds::BackupType::Armory200a);
-            return Seeds::PromptReply{true};
+            return Seeds::PromptReply{ true, false, {} };
          }
 
          default:
-            return Seeds::PromptReply{false};
+            return Seeds::PromptReply{ false, false, {} };
       }
    };
 
@@ -10636,11 +10641,12 @@ TEST_F(BackupTests, BackupStrings_Legacy_SecurePrint)
          case Seeds::RestorePromptType::Id:
          {
             EXPECT_EQ(prompt.backupType, Seeds::BackupType::Armory135c);
-            return Seeds::PromptReply{prompt.walletId == backupData->getWalletId()};
+            return Seeds::PromptReply{
+               prompt.walletId == backupData->getWalletId(), false, {} };
          }
 
          default:
-            return Seeds::PromptReply{false};
+            return Seeds::PromptReply{ false, true, {} };
       }
    };
 
@@ -10815,7 +10821,7 @@ TEST_F(BackupTests, Easy16_AutoRepair)
                {
                   EXPECT_EQ(prompt.checksumResult.at(0), decoded.checksumIndexes[0]);
                   EXPECT_EQ(prompt.checksumResult.at(1), decoded.checksumIndexes[1]);
-                  return Seeds::PromptReply{false};
+                  return Seeds::PromptReply{ false, false, {} };
                }
 
                case Seeds::RestorePromptType::Id:
@@ -10824,11 +10830,11 @@ TEST_F(BackupTests, Easy16_AutoRepair)
                   if (prompt.walletId == wltID) {
                      ++succesfulRepairs;
                   }
-                  return Seeds::PromptReply{false};
+                  return Seeds::PromptReply{ false, false, {} };
                }
 
                default:
-                  return Seeds::PromptReply{false};
+                  return Seeds::PromptReply{ false, false, {} };
             }
          };
 
@@ -10925,14 +10931,14 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode)
          case Seeds::RestorePromptType::Id:
          {
             EXPECT_EQ(prompt.backupType, Seeds::BackupType::Armory135a);
-            return Seeds::PromptReply{prompt.walletId == backupData->getWalletId()};
+            return Seeds::PromptReply{
+               prompt.walletId == backupData->getWalletId(), false, {} };
          }
 
          case Seeds::RestorePromptType::ChecksumError:
          {
             auto corruptedLines = corruptions[corruptionCounter++];
             auto iter = corruptedLines.begin();
-            unsigned y=0;
             for (const auto& linePair : prompt.checksumResult) {
                if (linePair.first == *iter) {
                   EXPECT_EQ(linePair.second, 255);
@@ -10941,11 +10947,11 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode)
                   EXPECT_EQ(linePair.second, 0);
                }
             }
-            return Seeds::PromptReply{false};
+            return Seeds::PromptReply{ false, false, {} };
          }
 
          default:
-            return Seeds::PromptReply{false};
+            return Seeds::PromptReply{ false, false, {} };
       }
    };
 
@@ -11083,11 +11089,12 @@ TEST_F(BackupTests, BackupStrings_LegacyWithChaincode_SecurePrint)
          case Seeds::RestorePromptType::Id:
          {
             EXPECT_EQ(prompt.backupType, Seeds::BackupType::Armory135a);
-            return Seeds::PromptReply{prompt.walletId == backupData->getWalletId()};
+            return Seeds::PromptReply{
+               prompt.walletId == backupData->getWalletId(), false, {} };
          }
 
          default:
-            return Seeds::PromptReply{false};
+            return Seeds::PromptReply{ false, false, {} };
       }
    };
 
@@ -11222,11 +11229,11 @@ TEST_F(BackupTests, BackupString_LegacyWO)
             {
                EXPECT_EQ(prompt.walletId, originalWalletId);
                EXPECT_EQ(prompt.backupType, Seeds::BackupType::Armory200a);
-               return Seeds::PromptReply{true};
+               return Seeds::PromptReply{ true, false, {} };
             }
 
             default:
-               return Seeds::PromptReply{false};
+               return Seeds::PromptReply{ false, false, {} };
          }
       };
 
@@ -11298,11 +11305,11 @@ TEST_F(BackupTests, BackupString_LegacyStatic)
          {
             EXPECT_EQ(prompt.walletId, walletId);
             EXPECT_EQ(prompt.backupType, Seeds::BackupType::Armory135a);
-            return Seeds::PromptReply{true};
+            return Seeds::PromptReply{ true, false, {} };
          }
 
          default:
-            return Seeds::PromptReply{false};
+            return Seeds::PromptReply{ false, false, {} };
       }
    };
 
@@ -11411,11 +11418,11 @@ TEST_F(BackupTests, BackupStrings_BIP32)
          {
             EXPECT_EQ(prompt.walletId, backupData->getWalletId());
             EXPECT_EQ(prompt.backupType, Seeds::BackupType::Armory200b);
-            return Seeds::PromptReply{true};
+            return Seeds::PromptReply{ true, false, {} };
          }
 
          default:
-            return Seeds::PromptReply{false};
+            return Seeds::PromptReply{ false, false, {} };
       }
    };
 
@@ -11510,11 +11517,11 @@ TEST_F(BackupTests, BackupStrings_BIP32_Virgin)
          {
             EXPECT_EQ(prompt.walletId, backupData->getWalletId());
             EXPECT_EQ(prompt.backupType, Seeds::BackupType::Armory200c);
-            return Seeds::PromptReply{true};
+            return Seeds::PromptReply{ true, false, {} };
          }
 
          default:
-            return Seeds::PromptReply{false};
+            return Seeds::PromptReply{ false, false, {} };
       }
    };
 
@@ -11588,11 +11595,11 @@ TEST_F(BackupTests, BackupStrings_BIP32_FromBase58)
          {
             EXPECT_EQ(prompt.walletId, "poUtmfmp");
             EXPECT_EQ(prompt.backupType, Seeds::BackupType::Base58);
-            return Seeds::PromptReply{true};
+            return Seeds::PromptReply{ true, false, {} };
          }
 
          default:
-            return Seeds::PromptReply{false};
+            return Seeds::PromptReply{ false, false, {} };
       }
    };
 
@@ -11702,11 +11709,11 @@ TEST_F(BackupTests, BackupStrings_BIP39)
          {
             EXPECT_EQ(prompt.walletId, walletId);
             EXPECT_EQ(prompt.backupType, Seeds::BackupType::Armory200d);
-            return Seeds::PromptReply{true};
+            return Seeds::PromptReply{ true, false, {} };
          }
 
          default:
-            return Seeds::PromptReply{false};
+            return Seeds::PromptReply{ false, false, {} };
       }
    };
 
@@ -11771,11 +11778,11 @@ TEST_F(BackupTests, BackupStrings_BIP39)
          {
             EXPECT_EQ(prompt.walletId, walletId);
             EXPECT_EQ(prompt.backupType, Seeds::BackupType::BIP39);
-            return Seeds::PromptReply{true};
+            return Seeds::PromptReply{ true, false, {} };
          }
 
          default:
-            return Seeds::PromptReply{false};
+            return Seeds::PromptReply{ false, false, {} };
       }
    };
 
@@ -11829,9 +11836,7 @@ TEST_F(BackupTests, BackupStrings_BIP39)
 ////////////////////////////////////////////////////////////////////////////////
 GTEST_API_ int main(int argc, char **argv)
 {
-#ifdef _MSC_VER
-   _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-
+#ifdef _WIN32
    WSADATA wsaData;
    WORD wVersion = MAKEWORD(2, 0);
    WSAStartup(wVersion, &wsaData);

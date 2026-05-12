@@ -10,6 +10,12 @@
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
+
+#ifdef _WIN32
+   #include <winsock2.h>
+   #include <windows.h>
+#endif
+
 #include <chrono>
 #include <filesystem>
 #include <cstring>
@@ -2112,7 +2118,6 @@ TEST_F(BlockObjTest, HeaderProperties)
    // The values are actually little-endian in the serialization, but
    // 0x____ notation requires big-endian
    uint32_t   timestamp =        0x4dc8c8d8;
-   uint32_t   nonce     =        0x5b034b33;
    BinaryData diffBits  = READHEX("b3936a1a");
 
    EXPECT_EQ(bh_->getPrevHash().getRef(), prevHash);
@@ -4653,7 +4658,6 @@ TEST_F(TypesTests, keys)
    Types::TxIOId txIOId1 = 30;
    Types::TxIOId txIOId2 = 31;
    Types::ZcId zcId1 = 40;
-   Types::ZcId zcId2 = 41;
 
    auto txKey = Types::constructTxKey(blockId1, txId1);
    ASSERT_TRUE(Types::isTxKeyValid(txKey));
@@ -4718,12 +4722,11 @@ TEST_F(TypesTests, keys)
 ////////////////////////////////////////////////////////////////////////////////
 GTEST_API_ int main(int argc, char **argv)
 {
-   #ifdef _MSC_VER
-      _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-      WSADATA wsaData;
-      WORD wVersion = MAKEWORD(2, 0);
-      WSAStartup(wVersion, &wsaData);
-   #endif
+#ifdef _WIN32
+   WSADATA wsaData;
+   WORD wVersion = MAKEWORD(2, 0);
+   WSAStartup(wVersion, &wsaData);
+#endif
 
    srand(time(0));
    std::cout << "Running main() from gtest_main.cc\n";

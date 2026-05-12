@@ -1299,7 +1299,7 @@ CoinSelectionInstance::createRecipient(
 {
    std::shared_ptr<Signing::ScriptRecipient> rec;
    try {
-      auto scrAddr = std::move(BtcUtils::base58toScrAddr(addrStr));
+      auto scrAddr = BtcUtils::base58toScrAddr(addrStr);
       uint8_t scrType = *scrAddr.getPtr();
 
       if (scrType == Config::BitcoinSettings::getPubkeyHashPrefix()) {
@@ -1310,7 +1310,7 @@ CoinSelectionInstance::createRecipient(
             scrAddr.getSliceRef(1, scrAddr.getSize() - 1), value);
       }
    } catch (const std::exception&) {
-      auto scrAddrPair = std::move(BtcUtils::segWitAddressToScrAddr(addrStr));
+      auto scrAddrPair = BtcUtils::segWitAddressToScrAddr(addrStr);
       if (scrAddrPair.second != 0) {
          throw std::runtime_error("[createRecipient] unsupported sw version");
       }

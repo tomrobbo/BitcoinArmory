@@ -24,7 +24,7 @@ using WordArray = kj::ArrayPtr<const capnp::word>;
 
 namespace
 {
-   ////
+   /*
    BinaryData reconstructFromFragments(
       const std::map<uint32_t, BinaryDataRef>& payloadMap)
    {
@@ -45,7 +45,6 @@ namespace
       return full;
    }
 
-   ////
    std::unique_ptr<capnp::MessageReader> getSegmentedReader(
       const std::map<uint32_t, BinaryDataRef>& payloadMap)
    {
@@ -71,6 +70,7 @@ namespace
             array.asPtr());
       return result;
    }
+   */
 }
 
 ////////////////////////////////////////////////////////////////////////////////

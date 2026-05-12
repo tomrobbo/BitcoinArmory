@@ -217,7 +217,7 @@ namespace
 
          //put legacy stack
          unsigned i=0;
-         for (const auto stackItem : legacyStack) {
+         for (const auto& stackItem : legacyStack) {
             auto capnStackEntry = capnStackEntries[i++];
             stackItemToCapn(stackItem.second, capnStackEntry);
          }
@@ -236,7 +236,7 @@ namespace
 
          //put witness stack
          unsigned i=0;
-         for (const auto stackItem : witnessStack) {
+         for (const auto& stackItem : witnessStack) {
             auto capnStackEntry = capnStackEntries[i++];
             stackItemToCapn(stackItem.second, capnStackEntry);
          }

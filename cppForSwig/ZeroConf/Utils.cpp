@@ -121,7 +121,7 @@ FilteredZeroConfData ZeroConf::filterParsedTx(
 
       txio->setTxIn(zcKey, inputId);
       auto txTime = input.opRef.getTime();
-      if (txTime == UINT64_MAX) {
+      if (txTime == UINT32_MAX) {
          txTime = timeFromTx;
       }
       txio->setTxTime(txTime);

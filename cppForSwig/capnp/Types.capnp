@@ -42,7 +42,7 @@ struct NewBlockNotif {
 struct Output {
    value       @0 : CoinAmount;
    txHeight    @1 : Height;
-   txIndex     @2 : UInt32;
+   txIndex     @2 : UInt16;
    txOutIndex  @3 : UInt16;
    txHash      @4 : Hash;
    script      @5 : Data;

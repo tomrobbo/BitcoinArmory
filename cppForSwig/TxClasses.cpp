@@ -557,15 +557,15 @@ Tx::Tx(BinaryRefReader& brr) :
 }
 
 Tx::Tx(BinaryDataRef data,
-   uint32_t version, bool useWitness, uint32_t lockTime,
    std::vector<size_t>& offsetsTxIn,
    std::vector<size_t>& offsetsTxOut,
-   std::vector<size_t>& offsetsWitness) :
+   std::vector<size_t>& offsetsWitness,
+   uint32_t version, uint32_t lockTime, bool useWitness) :
    dataCopy_(data),
-   version_{version}, usesWitness_{useWitness}, lockTime_{lockTime},
    offsetsTxIn_{std::move(offsetsTxIn)},
    offsetsTxOut_{std::move(offsetsTxOut)},
-   offsetsWitness_{std::move(offsetsWitness)}
+   offsetsWitness_{std::move(offsetsWitness)},
+   version_{version}, lockTime_{lockTime}, usesWitness_{useWitness}
 {}
 
 Tx Tx::unserialize(const uint8_t* ptr, size_t size)
@@ -586,8 +586,8 @@ Tx Tx::unserialize(const uint8_t* ptr, size_t size)
    }
    uint32_t lockTime = READ_UINT32_LE(ptr + witnesses[numWitness]);
 
-   return Tx{data, version, usesWitness, lockTime,
-      txins, txouts, witnesses};
+   return Tx{data, txins, txouts, witnesses,
+      version, lockTime, usesWitness};
 }
 
 ////////
@@ -841,9 +841,8 @@ Types::TxKey Tx::getDBKey() const
 // UTXO methods
 UTXO::UTXO(Types::Amount amt, uint32_t height, Types::TxId txid,
    Types::TxIOId txoutid, Types::TxHash txHash, BinaryData script) :
-   txHash(std::move(txHash)), txOutIndex(txoutid),
-   txHeight(height), txIndex(txid),
-   amount(amt), script(std::move(script))
+   amount(amt), txHeight(height), txIndex(txid), txOutIndex(txoutid),
+   txHash(std::move(txHash)), script(std::move(script))
 {}
 
 UTXO::UTXO()

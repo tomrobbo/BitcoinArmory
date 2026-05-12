@@ -686,7 +686,6 @@ struct UtilsRequest {
       legacy            @0;
       structuredBip32   @1;
       rawBip32          @2;
-      virgin            @3;
    }
 
    struct CreateWalletStruct {

@@ -225,7 +225,7 @@ uint32_t TxIOCache::update(
       (ReturnMessage<std::vector<TxIOPair>> result) {
          prom->set_value(result.get());
    });
-   auto txios = std::move(futTxios.get());
+   auto txios = futTxios.get();
 
    auto fetchedHeight = notif->type == NotifType::REFRESH ?
       UINT32_MAX : blockNotif.getHeight();
@@ -253,8 +253,8 @@ uint32_t TxIOCache::update(
    );
 
    //4. commit it all to the cache
-   auto txs = std::move(futTxs.get());
-   auto headers = std::move(futHeaders.get());
+   auto txs = futTxs.get();
+   auto headers = futHeaders.get();
    ReentrantLock lock(this);
 
    //5. prune mined tx from dbCache
@@ -360,7 +360,7 @@ std::set<Types::TxKey> TxIOCache::updateZC(
          (ReturnMessage<std::vector<Tx>> result) {
             prom->set_value(result.get());
       });
-      auto txs = std::move(futTxs.get());
+      auto txs = futTxs.get();
 
       for (auto& tx : txs) {
          txMap.emplace(tx.getDBKey(), std::move(tx));

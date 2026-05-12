@@ -80,7 +80,7 @@ AC_CONFIG_MACRO_DIR([build-aux/m4])
 m4_include([build-aux/m4/ax_check_compile_flag.m4])
 m4_include([build-aux/m4/ax_cxx_compile_stdcxx.m4])
 
-#check for c++17
+#check for c++20
 AX_CXX_COMPILE_STDCXX(20, [noext], [mandatory])
 
 # Make the compilation flags quiet unless V=1 is used.

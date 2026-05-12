@@ -632,7 +632,7 @@ std::set<BinaryData> AssetWallet::getAddrHashSet() const
 {
    ReentrantLock lock(this);
    std::set<BinaryData> addrHashSet;
-   for (const auto account : accounts_) {
+   for (const auto& account : accounts_) {
       const auto& hashes = account.second->getAddressHashMap();
       for (const auto& hashPair : hashes) {
          addrHashSet.emplace(hashPair.first);
@@ -666,9 +666,9 @@ const WalletId& AssetWallet::getMasterID() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-ReentrantLock AssetWallet::lockDecryptedContainer(void)
+ReentrantLock AssetWallet::lockDecryptedContainer()
 {
-   return std::move(ReentrantLock(decryptedData_.get()));
+   return ReentrantLock(decryptedData_.get());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

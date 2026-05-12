@@ -207,7 +207,7 @@ namespace DBTestUtils
          }
 
          while (true) {
-            auto action = std::move(actionStack_.pop_front());
+            auto action = actionStack_.pop_front();
             if (action->action == actionType) {
                return action;
             }
@@ -240,7 +240,7 @@ namespace DBTestUtils
       void waitOnSignal(BDMAction signal, std::string id = "")
       {
          while (true) {
-            auto action = std::move(actionStack_.pop_front());
+            auto action = actionStack_.pop_front();
             if (action->action == signal) {
                if (!id.empty()) {
                   for (const auto& notifId : action->idSet) {

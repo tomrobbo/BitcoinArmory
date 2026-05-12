@@ -72,8 +72,9 @@ namespace DBClientClasses
       bool           isMainBranch;
 
       BlockHeader(BinaryDataRef, BinaryDataRef,
-         Armory::Types::BlockId, bool,
-         uint32_t, uint32_t, uint32_t, uint32_t);
+         Armory::Types::BlockId,
+         uint32_t, uint32_t, uint32_t, uint32_t,
+         bool);
    };
 
    ////////////////////////////////////////////////////////////////////////////

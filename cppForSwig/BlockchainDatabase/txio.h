@@ -74,9 +74,9 @@ public:
    bool isChained(void) const;
 
 private:
-   const Armory::Types::ScrAddr scrAddr_;
-   const Armory::Types::Amount amount_;
    const Armory::Types::TxIOKey txIOKeyOfOutput_;
+   const Armory::Types::Amount amount_;
+   const Armory::Types::ScrAddr scrAddr_;
    Armory::Types::TxIOKey txIOKeyOfInput_ = Armory::Types::INVALID_TXIO_KEY;
 
    //ZC only members

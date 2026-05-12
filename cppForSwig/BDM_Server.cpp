@@ -125,7 +125,7 @@ namespace {
             );
             bdv->registerWallet(regReq);
             auto builder = ReplyBuilder::getNew(bdv);
-            auto bdvReply = prepareReply(builder);
+            prepareReply(builder);
             return builder;
          }
 
@@ -152,7 +152,7 @@ namespace {
             for (auto txHash : txHashList) {
                BinaryDataRef hashBdr(txHash.begin(), txHash.end());
                try {
-                  auto txKey = bdv->getDB()->getDBKeyForHash(hashBdr);
+                  auto txKey = db->getDBKeyForHash(hashBdr);
                   auto tx = bdv->bdm()->blockchainData()->getTx(txKey);
                   results.emplace(txKey, std::move(tx));
                } catch (const std::exception&) {
@@ -263,8 +263,7 @@ namespace {
 
          default:
             auto builder = ReplyBuilder::getNew(bdv);
-            auto bdvReply = prepareReply(builder);
-
+            prepareReply(builder);
             builder.setError("invalid bdv request");
             return builder;
       }
@@ -1957,11 +1956,10 @@ void UnitTest_Callback::push(std::unique_ptr<Socket_WritePayload> payload)
 BinaryData UnitTest_Callback::getNotification()
 {
    try {
-      auto notifPtr = std::move(notifQueue_.pop_front());
-
+      auto notifPtr = notifQueue_.pop_front();
       std::vector<uint8_t> flat;
       notifPtr->serialize(flat);
-      return BinaryData(flat.data(), flat.size());
+      return BinaryData{flat.data(), flat.size()};
    }
    catch (const Threading::StopBlockingLoop&) {}
    return {};

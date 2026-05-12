@@ -10,6 +10,12 @@
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
+
+#ifdef _WIN32
+   #include <winsock2.h>
+   #include <windows.h>
+#endif
+
 #include <cstring>
 
 #include "TestUtils.h"
@@ -1694,7 +1700,8 @@ TEST_F(BlockUtilsBare, BlockXor)
       xoredFile.open(xoredFilePath, std::ios::out | std::ios::binary);
       while (offset <= fileMap.size()) {
          uint64_t chunk;
-         memcpy(&chunk, fileMap.ptr() + offset, std::min(8ul, fileMap.size() - offset));
+         memcpy(&chunk, fileMap.ptr() + offset,
+            std::min(size_t{8}, fileMap.size() - offset));
          chunk ^= xorKey;
          xoredFile.write((const char*)&chunk, 8);
          offset += 8;
@@ -2048,8 +2055,7 @@ TODO:
 ////////////////////////////////////////////////////////////////////////////////
 GTEST_API_ int main(int argc, char **argv)
 {
-   #ifdef _MSC_VER
-      _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+   #ifdef _WIN32
       WSADATA wsaData;
       WORD wVersion = MAKEWORD(2, 0);
       WSAStartup(wVersion, &wsaData);

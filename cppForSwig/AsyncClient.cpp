@@ -161,9 +161,9 @@ namespace {
             std::make_shared<DBClientClasses::BlockHeader>(
             BinaryDataRef{thisHash.begin(), thisHash.end()},
             BinaryDataRef{prevHash.begin(), prevHash.end()},
-            capnHeader.getBlockId(), capnHeader.getMainBranch(),
-            capnHeader.getHeight(), capnHeader.getTimestamp(),
-            capnHeader.getBlockSize(), capnHeader.getNumTxs()
+            capnHeader.getBlockId(), capnHeader.getHeight(),
+            capnHeader.getTimestamp(), capnHeader.getBlockSize(),
+            capnHeader.getNumTxs(), capnHeader.getMainBranch()
          ));
       }
       return result;

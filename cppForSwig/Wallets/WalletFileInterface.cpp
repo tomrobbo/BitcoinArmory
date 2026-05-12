@@ -79,7 +79,6 @@ void WalletDBInterface::setupEnv(const ReadOnlyFileParams& params)
    openControlDb();
 
    //get control header
-   bool isNew = false;
    std::shared_ptr<WalletHeader_Control> controlHeader;
    controlHeader = std::dynamic_pointer_cast<WalletHeader_Control>(
       loadControlHeader());
@@ -815,10 +814,9 @@ void WalletDBInterface::compactFile()
 
    std::filesystem::path copyName;
    while (true) {
-      std::stringstream ss;
-      ss << COMPACT_FILE_COPY_NAME << "-" <<
-         fortuna.generateRandom(16).toHexStr();
-      auto fullpath = swapFolder / std::filesystem::path(ss.str());
+      auto fullpath = swapFolder / std::filesystem::path(std::format(
+         "{}-{}", COMPACT_FILE_COPY_NAME, fortuna.generateRandom(6).toHexStr()
+      ));
       if (!FileUtils::pathExists(fullpath, 0)) {
          copyName = fullpath;
          break;
@@ -834,10 +832,9 @@ void WalletDBInterface::compactFile()
    //swap files
    std::filesystem::path swapPath;
    while (true) {
-      std::stringstream ss;
-      ss << COMPACT_FILE_SWAP_NAME << "-" <<
-         fortuna.generateRandom(16).toHexStr();
-      auto fullpath = swapFolder / std::filesystem::path(ss.str());
+      auto fullpath = swapFolder / std::filesystem::path(std::format(
+         "{}-{}", COMPACT_FILE_SWAP_NAME, fortuna.generateRandom(6).toHexStr()
+      ));
       if (FileUtils::pathExists(fullpath, 0)) {
          continue;
       }
@@ -847,7 +844,8 @@ void WalletDBInterface::compactFile()
       try {
          std::filesystem::rename(fullDbPath, swapPath);
          std::filesystem::rename(copyName, fullDbPath);
-      } catch (const std::filesystem::filesystem_error&) {
+      } catch (const std::filesystem::filesystem_error& e) {
+         std::cout << e.what() << std::endl;
          throw WalletInterfaceException(
             "failed to swap file during wipe operation");
       }

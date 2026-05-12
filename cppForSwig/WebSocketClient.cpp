@@ -672,7 +672,7 @@ void WSClientWriteQueue::push_back(SerializedMessage& msg)
 
 SerializedMessage WSClientWriteQueue::pop_front()
 {
-   return std::move(writeQueue_.pop_front());
+   return writeQueue_.pop_front();
 }
 
 bool WSClientWriteQueue::empty() const

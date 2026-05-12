@@ -267,7 +267,6 @@ std::map<Types::TxKey, Entry> Ledgers::computeLedgerMap(
 
       bool isZc         = txnData.zcIndex == UINT32_MAX ? false : true;
       bool isRBF        = false;
-      bool usesWitness  = false;
       bool isChained    = false;
       bool isCoinbase   = isZc ? false : txnData.txIndex == 0;
 
@@ -322,8 +321,8 @@ std::map<Types::TxKey, Entry> Ledgers::computeLedgerMap(
       leMap.emplace(txnPair.first, Entry{
          id, value,
          txnData.height, txnData.txHash,
-         isZc ? txnData.zcIndex : txnData.txIndex,
-         txnData.txTime, scrAddrSet,
+         isZc ? txnData.zcIndex : txnData.txIndex, txnData.txTime,
+         scrAddrSet,
          isCoinbase, isSentToSelf, isChangeBack, isRBF, isChained}
       );
    }

@@ -1896,7 +1896,7 @@ void StackResolver::resolveStack()
                resolver.setFlags(flags_);
                resolver.isSW_ = isSW_;
 
-               auto stackptr = std::move(resolver.getResolvedStack());
+               auto stackptr = resolver.getResolvedStack();
                resolvedStack_ = stackptr;
             }
             break;
