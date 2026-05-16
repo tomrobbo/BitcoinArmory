@@ -23,13 +23,14 @@
 #include <BlockchainDatabase/ScrAddrFilter.h>
 #include <BlockchainDatabase/txio.h>
 #include <BlockchainDatabase/StoredBlockObj.h>
-#include <BitcoinP2P.h>
+#include <Node/BitcoinP2P.h>
 
 #include "Utils.h"
 #include "Notifications.h"
 
 using namespace Armory;
 using namespace Armory::ZeroConf;
+using namespace Node::Core;
 using namespace std::chrono_literals;
 
 #define ZC_GETDATA_TIMEOUT_MS 60000
@@ -132,7 +133,7 @@ bool RequestZcPacket::ready() const
 // ZeroConfContainer
 ZeroConfContainer::ZeroConfContainer(LMDBBlockDatabase* db,
    std::shared_ptr<Blockchain> bcPtr, std::shared_ptr<BlockchainData> bdPtr,
-   std::shared_ptr<Node::BitcoinNodeInterface> node, unsigned maxZcThread) :
+   std::shared_ptr<P2P::Iface> node, unsigned maxZcThread) :
    db_(db), bc_(bcPtr), bd_(bdPtr), networkNode_(node),
    maxZcThreadCount_(maxZcThread)
 {
@@ -141,7 +142,7 @@ ZeroConfContainer::ZeroConfContainer(LMDBBlockDatabase* db,
 
    //register ZC callbacks
    networkNode_->registerInvTxCallback(
-      [this](std::vector<Node::InvEntry> entryVec)
+      [this](std::vector<P2P::InvEntry> entryVec)
       {
          if (!zcEnabled_.load(std::memory_order_relaxed)) {
             return;
@@ -153,7 +154,7 @@ ZeroConfContainer::ZeroConfContainer(LMDBBlockDatabase* db,
    );
 
    networkNode_->registerGetTxCallback(
-      [this](std::unique_ptr<Node::Payload> payload)
+      [this](std::unique_ptr<P2P::Payload> payload)
       {
          this->processTxGetDataReply(std::move(payload));
       }
@@ -1204,14 +1205,14 @@ void ZeroConfContainer::handleZcProcessingStructThread()
 }
 
 void ZeroConfContainer::processTxGetDataReply(
-   std::unique_ptr<Node::Payload> payload)
+   std::unique_ptr<P2P::Payload> payload)
 {
    switch (payload->type())
    {
-      case Node::PayloadType::Tx:
+      case P2P::PayloadType::Tx:
       {
-         std::shared_ptr<Node::Payload> payload_sptr(std::move(payload));
-         auto payloadtx = std::dynamic_pointer_cast<Node::Payload_Tx>(
+         std::shared_ptr<P2P::Payload> payload_sptr(std::move(payload));
+         auto payloadtx = std::dynamic_pointer_cast<P2P::Payload_Tx>(
             payload_sptr);
          if (payloadtx == nullptr || payloadtx->empty()) {
             LOGERR << "invalid tx getdata payload";
@@ -1227,17 +1228,17 @@ void ZeroConfContainer::processTxGetDataReply(
          break;
       }
 
-      case Node::PayloadType::Reject:
+      case P2P::PayloadType::Reject:
       {
-         std::shared_ptr<Node::Payload> payload_sptr(std::move(payload));
-         auto payloadReject = std::dynamic_pointer_cast<Node::Payload_Reject>(
+         std::shared_ptr<P2P::Payload> payload_sptr(std::move(payload));
+         auto payloadReject = std::dynamic_pointer_cast<P2P::Payload_Reject>(
             payload_sptr);
          if (payloadReject == nullptr) {
             LOGERR << "invalid reject payload";
             return;
          }
 
-         if (payloadReject->rejectType() != Node::PayloadType::Tx) {
+         if (payloadReject->rejectType() != P2P::PayloadType::Tx) {
             //only handling payload_tx rejections
             return;
          }
@@ -1259,14 +1260,14 @@ void ZeroConfContainer::processTxGetDataReply(
 
 void ZeroConfContainer::requestTxFromNode(RequestZcPacket& packet)
 {
-   std::vector<Node::InvEntry> invVec;
+   std::vector<P2P::InvEntry> invVec;
    invVec.reserve(packet.hashes.size());
    for (const auto& hash : packet.hashes) {
       if (hash.getSize() != 32) {
          throw std::runtime_error("invalid inv hash length");
       }
-      Node::InvEntry inv;
-      inv.invtype = Node::Inv_Msg_Witness_Tx;
+      P2P::InvEntry inv;
+      inv.invtype = P2P::Inv_Msg_Witness_Tx;
       memcpy(inv.hash, hash.getPtr(), 32);
       invVec.emplace_back(std::move(inv));
    }
@@ -1422,9 +1423,9 @@ void ZeroConfContainer::pushZcPacketThroughP2P(ZcBroadcastPacket& packet)
    }
 
    //create inv payload
-   std::vector<Node::InvEntry> invVec;
+   std::vector<P2P::InvEntry> invVec;
    std::map<BinaryData,
-      std::shared_ptr<Node::BitcoinP2P::GetDataPayload>> getDataPair;
+      std::shared_ptr<P2P::Iface::GetDataPayload>> getDataPair;
 
    for (unsigned i=0; i < packet.hashes.size(); i++) {
       const auto& hash = packet.hashes[i];
@@ -1434,21 +1435,21 @@ void ZeroConfContainer::pushZcPacketThroughP2P(ZcBroadcastPacket& packet)
       const auto& rawZc = packet.zcVec[i];
 
       //create inv entry, this announces the zc by its hash to the node
-      Node::InvEntry entry;
-      entry.invtype = Node::Inv_Msg_Witness_Tx;
+      P2P::InvEntry entry;
+      entry.invtype = P2P::Inv_Msg_Witness_Tx;
       memcpy(entry.hash, hash.getPtr(), 32);
       invVec.push_back(entry);
 
       //create getData payload packet, this is the zc body for the node to
       //grab once it knows of the hash
-      auto payload = std::make_unique<Node::Payload_Tx>();
+      auto payload = std::make_unique<P2P::Payload_Tx>();
       std::vector<uint8_t> rawtx;
       rawtx.resize(rawZc->getSize());
       memcpy(&rawtx[0], rawZc->getPtr(), rawZc->getSize());
 
       payload->setRawTx(std::move(rawtx));
       auto getDataPayload =
-         std::make_shared<Node::BitcoinP2P::GetDataPayload>();
+         std::make_shared<P2P::Iface::GetDataPayload>();
       getDataPayload->payload_ = std::move(payload);
       getDataPair.emplace(hash, getDataPayload);
    }
@@ -1457,7 +1458,7 @@ void ZeroConfContainer::pushZcPacketThroughP2P(ZcBroadcastPacket& packet)
    networkNode_->getDataPayloadMap_.update(move(getDataPair));
 
    //send inv packet
-   auto payload_inv = std::make_unique<Node::Payload_Inv>();
+   auto payload_inv = std::make_unique<P2P::Payload_Inv>();
    payload_inv->setInvVector(invVec);
    networkNode_->sendMessage(std::move(payload_inv));
 }
@@ -1497,9 +1498,9 @@ void ZeroConfContainer::increaseParserThreadPool(unsigned count)
 }
 
 void ZeroConfContainer::setWatcherNode(
-   std::shared_ptr<Node::BitcoinNodeInterface> watcherNode)
+   std::shared_ptr<P2P::Iface> watcherNode)
 {
-   auto getTxLambda = [this](std::vector<Node::InvEntry> invVec)->void
+   auto getTxLambda = [this](std::vector<P2P::InvEntry> invVec)->void
    {
       if (!zcEnabled_.load(std::memory_order_relaxed)) {
          return;

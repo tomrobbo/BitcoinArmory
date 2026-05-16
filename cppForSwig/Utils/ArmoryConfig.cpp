@@ -6,17 +6,17 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
+#include <cstring>
+
 #include "ArmoryConfig.h"
+#include <Network/SocketObject.h>
+#include <Node/BitcoinP2P.h>
+#include <Node/nodeRPC.h>
+
 #include "ArmoryErrors.h"
-#include "BtcUtils.h"
 #include "DBUtils.h"
 #include "Cryptography.h"
-#include "JSON_codec.h"
-#include "SocketObject.h"
-#include "BIP150_151.h"
-#include "BitcoinP2P.h"
 #include "BitcoinSettings.h"
-#include "nodeRPC.h"
 
 #include "gtest/MockedNode.h"
 
@@ -333,7 +333,7 @@ std::string_view SettingsUtils::stripQuotes(const std::string_view& input)
 ////////////////////////////////////////////////////////////////////////////////
 bool SettingsUtils::testConnection(const std::string& ip, const std::string& port)
 {
-   SimpleSocket testSock(ip, port);
+   Network::SimpleSocket testSock(ip, port);
    return testSock.testConnection();
 }
 
@@ -912,17 +912,17 @@ void NetworkSettings::createNodes()
 {
    auto magicBytes = BitcoinSettings::getMagicBytes();
    if (DBSettings::getServiceType() == SERVICE_WEBSOCKET) {
-      bitcoinNodes_.first = std::make_shared<Node::BitcoinP2P>(
+      bitcoinNodes_.first = std::make_shared<Node::Core::P2P::Peer>(
          "127.0.0.1", btcPort_,
          *(uint32_t*)magicBytes.getPtr(), false
       );
 
-      bitcoinNodes_.second = std::make_shared<Node::BitcoinP2P>(
+      bitcoinNodes_.second = std::make_shared<Node::Core::P2P::Peer>(
          "127.0.0.1", btcPort_,
          *(uint32_t*)magicBytes.getPtr(), true
       );
 
-      rpcNode_ = std::make_shared<CoreRPC::NodeRPC>();
+      rpcNode_ = std::make_shared<Node::Core::RPC::Client>();
    } else {
       auto primary = std::make_shared<NodeUnitTest>(
          *(uint32_t*)magicBytes.getPtr(), false

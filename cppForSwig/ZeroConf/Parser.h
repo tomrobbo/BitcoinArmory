@@ -48,18 +48,24 @@ class Tx;
 class TxIOPair;
 class TxOut;
 
+namespace Node
+{
+   namespace Core
+   {
+      namespace P2P
+      {
+         class Iface;
+         class Payload;
+         struct InvEntry;
+      }
+   }
+}
+
 namespace Armory
 {
    class Blockchain;
    class BlockchainData;
    struct ReorganizationState;
-
-   namespace Node
-   {
-      class BitcoinNodeInterface;
-      class Payload;
-      struct InvEntry;
-   }
 
    namespace ZeroConf
    {
@@ -146,7 +152,7 @@ namespace Armory
       struct ZcInvPayload : public ZcPreprocessPacket
       {
          const bool watcher;
-         std::vector<Node::InvEntry> invVec;
+         std::vector<Node::Core::P2P::InvEntry> invVec;
 
          ZcInvPayload(bool);
       };
@@ -317,7 +323,7 @@ namespace Armory
          LMDBBlockDatabase* db_;
          std::shared_ptr<Blockchain> bc_;
          std::shared_ptr<BlockchainData> bd_;
-         std::shared_ptr<Node::BitcoinNodeInterface> networkNode_;
+         std::shared_ptr<Node::Core::P2P::Iface> networkNode_;
 
          std::shared_ptr<PreprocessQueue> zcPreprocessQueue_;
          Threading::TimedQueue<
@@ -359,7 +365,8 @@ namespace Armory
             const ReorganizationState&,
             std::shared_ptr<MempoolSnapshot>);
 
-         void processTxGetDataReply(std::unique_ptr<Node::Payload>);
+         void processTxGetDataReply(
+            std::unique_ptr<Node::Core::P2P::Payload>);
          void handleZcProcessingStructThread(void);
          void requestTxFromNode(RequestZcPacket&);
          void processPayloadTx(std::shared_ptr<ProcessPayloadTxPacket>);
@@ -396,7 +403,7 @@ namespace Armory
       public:
          ZeroConfContainer(LMDBBlockDatabase*,
             std::shared_ptr<Blockchain>, std::shared_ptr<BlockchainData>,
-            std::shared_ptr<Node::BitcoinNodeInterface>, unsigned);
+            std::shared_ptr<Node::Core::P2P::Iface>, unsigned);
 
          //action queue
          std::shared_future<std::shared_ptr<ZcPurgePacket>>
@@ -409,7 +416,7 @@ namespace Armory
          void clear(void);
          bool isEnabled(void) const;
 
-         void setWatcherNode(std::shared_ptr<Node::BitcoinNodeInterface>);
+         void setWatcherNode(std::shared_ptr<Node::Core::P2P::Iface>);
          void setZeroConfCallbacks(std::unique_ptr<ZeroConfCallbacks>);
 
          //broadcast

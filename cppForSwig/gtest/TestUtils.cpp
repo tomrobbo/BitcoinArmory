@@ -909,7 +909,7 @@ namespace DBTestUtils
    BinaryData processCommand(Clients* clients, Types::BdvId bdvId,
       BinaryData msg)
    {
-      auto bdVec = WebSocketMessageCodec::serialize(
+      auto bdVec = Network::WebSocketMessageCodec::serialize(
          msg, nullptr,
          ArmoryAEAD::BIP151_PayloadType::FragmentHeader, commandCtr_++);
 

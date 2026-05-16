@@ -17,7 +17,7 @@
 #include <BlockchainDatabase/BlockObj.h>
 #include <ZeroConf/Parser.h>
 
-#include "BitcoinP2P.h"
+#include <Node/BitcoinP2P.h>
 #include "BDV_Notification.h"
 
 using namespace Armory::Config;

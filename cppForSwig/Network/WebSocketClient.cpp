@@ -18,6 +18,7 @@
 #include "capnp/BDV.capnp.h"
 
 using namespace Armory;
+using namespace Armory::Network;
 
 ////////////////////////////////////////////////////////////////////////////////
 static struct lws_protocols protocols[] =

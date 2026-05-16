@@ -37,10 +37,6 @@ namespace Armory
       class ZeroConfCallbacks;
    }
 
-   namespace Node
-   {
-      class BitcoinNodeInterface;
-   }
    struct ReorganizationState;
 
    namespace Database
@@ -52,10 +48,21 @@ namespace Armory
    class BlockchainData;
 }
 
-namespace CoreRPC
+namespace Node
 {
-   struct NodeStatus;
-   class NodeRPCInterface;
+   struct Status;
+   namespace Core
+   {
+      namespace RPC
+      {
+         class Iface;
+      }
+
+      namespace P2P
+      {
+         class Iface;
+      }
+   }
 }
 
 enum class BDMState : int
@@ -107,9 +114,9 @@ private:
 
 public:
    typedef std::function<void(BDMPhase, double,unsigned, unsigned)> ProgressCallback;
-   std::shared_ptr<Armory::Node::BitcoinNodeInterface> processNode_, watchNode_;
+   std::shared_ptr<Node::Core::P2P::Iface> processNode_, watchNode_;
    std::shared_future<bool> isReadyFuture_;
-   mutable std::shared_ptr<CoreRPC::NodeRPCInterface> nodeRPC_;
+   mutable std::shared_ptr<Node::Core::RPC::Iface> nodeRPC_;
 
    Armory::Threading::TimedQueue<std::unique_ptr<BDV_Notification>> notificationStack_;
    std::shared_ptr<Armory::ZeroConf::ZeroConfContainer> zeroConfCont_;
@@ -154,7 +161,7 @@ public:
    void resetDatabases(BdmInitMode);
 
    unsigned getCheckedTxCount(void) const;
-   std::shared_ptr<CoreRPC::NodeStatus> getNodeStatus(void) const;
+   std::shared_ptr<Node::Status> getNodeStatus(void) const;
 
    void registerOneTimeHook(std::shared_ptr<BDVNotificationHook>);
    void triggerOneTimeHooks(BDV_Notification*);

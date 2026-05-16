@@ -1,75 +1,78 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2018, goatpig.                                              //
+//  Copyright (C) 2018-2026, goatpig.                                         //
 //  Distributed under the MIT license                                         //
-//  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //                                      
+//  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _H_SOCKETSERVICE
-#define _H_SOCKETSERVICE
+#pragma once
 
 #include <functional>
 #include "Utils/ThreadSafeClasses.h"
 #include "SocketIncludes.h"
 
-struct SocketStruct
+namespace Armory
 {
-   SOCKET sockfd_ = SOCK_MAX;
-   bool singleUse_ = false;
-
-   std::function<void(void)> serviceRead_;
-   std::function<void(void)> serviceClose_;
-};
-
-#ifdef _WIN32
-struct SocketService
-{
-private:
-   WSAEVENT event_;
-   std::thread thr_;
-   std::atomic<bool> run_;
-
-   Armory::Threading::Queue<SocketStruct> socketQueue_;
-
-private:
-   void serviceSockets(void);
-
-public:
-   SocketService(void)
+   namespace Network
    {
-      event_ = nullptr;
-      run_.store(true, std::memory_order_relaxed);
-   }
+      struct SocketStruct
+      {
+         SOCKET sockfd_ = SOCK_MAX;
+         bool singleUse_ = false;
 
-   void addSocket(SocketStruct&);
-   void startService(void);
-   void shutdown(void);
-};
+         std::function<void(void)> serviceRead_;
+         std::function<void(void)> serviceClose_;
+      };
 
-#else
-struct SocketService
-{
-private:
-   SOCKET pipes_[2];
-   std::thread thr_;
-   std::atomic<bool> run_;
+      #ifdef _WIN32
+      struct SocketService
+      {
+      private:
+         WSAEVENT event_;
+         std::thread thr_;
+         std::atomic<bool> run_;
 
-   Armory::Threading::Queue<SocketStruct> socketQueue_;
+         Threading::Queue<SocketStruct> socketQueue_;
 
-private:
-   void serviceSockets(void);
+      private:
+         void serviceSockets(void);
 
-public:
-   SocketService(void)
-   {
-      pipes_[0] = pipes_[1] = SOCK_MAX;
-   }
+      public:
+         SocketService(void)
+         {
+            event_ = nullptr;
+            run_.store(true, std::memory_order_relaxed);
+         }
 
-   void addSocket(SocketStruct&);
-   void startService(void);
-   void shutdown(void);
-};
-#endif
+         void addSocket(SocketStruct&);
+         void startService(void);
+         void shutdown(void);
+      };
 
-#endif
+      #else
+      struct SocketService
+      {
+      private:
+         SOCKET pipes_[2];
+         std::thread thr_;
+         std::atomic<bool> run_;
+
+         Threading::Queue<SocketStruct> socketQueue_;
+
+      private:
+         void serviceSockets(void);
+
+      public:
+         SocketService(void)
+         {
+            pipes_[0] = pipes_[1] = SOCK_MAX;
+         }
+
+         void addSocket(SocketStruct&);
+         void startService(void);
+         void shutdown(void);
+      };
+      #endif
+   } //namespace Network
+} //namespace Armory

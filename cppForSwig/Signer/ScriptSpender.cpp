@@ -1391,15 +1391,12 @@ bool ScriptSpender::isSegWit() const
    switch (legacyStatus_)
    {
       case SpenderStatus::Empty:
-         return true; //empty legacy input means sw
+         //empty legacy input means sw   
+         return true;
 
       case SpenderStatus::Resolved:
-      {
          //resolved legacy status could mean nested sw
-         if (segwitStatus_ >= SpenderStatus::Resolved) {
-            return true;
-         }
-      }
+         return segwitStatus_ >= SpenderStatus::Resolved;
 
       default:
          return false;

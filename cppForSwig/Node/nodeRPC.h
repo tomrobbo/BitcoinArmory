@@ -19,24 +19,22 @@
 #include <Utils/BinaryData.h>
 #include <Utils/ReentrantLock.h>
 
-class HttpSocket;
+namespace Armory
+{
+   namespace Network
+   {
+      class HttpSocket;
+   }
+}
 
 namespace JSON
 {
    class Object;
 }
 
-namespace CoreRPC
+////////
+namespace Node
 {
-   /***
-   NOTE:
-      "state" suffix is for enums
-      "status" suffix is for classes/structs
-   ***/
-
-   static constexpr std::string_view FEE_STRAT_CONSERVATIVE{"CONSERVATIVE"};
-   static constexpr std::string_view FEE_STRAT_ECONOMICAL{"ECONOMICAL"};
-
    enum class NodeState : int
    {
       Offline = 0,
@@ -68,20 +66,16 @@ namespace CoreRPC
    };
 
    ////////
-   struct FeeEstimateResult
+   namespace Core
    {
-      bool smartFee = false;
-      float feeByte = 0.0f;
-      std::string error;
-   };
-
-   using EstimateCache = std::map<std::string,
-      std::map<unsigned, FeeEstimateResult>>;
-
-   ////////
-   class NodeChainStatus
+      namespace RPC
+      {
+         class Client;
+      }
+   }
+   class ChainStatus
    {
-      friend class NodeRPC;
+      friend class Core::RPC::Client;
 
    private:
       std::list<std::tuple<unsigned, uint64_t, uint64_t>> heightTimeVec_;
@@ -108,87 +102,113 @@ namespace CoreRPC
    };
 
    ////////
-   struct NodeStatus
+   struct Status
    {
       NodeState state = NodeState::Offline;
       RpcState rpcState = RpcState::Disabled;
       bool segWitEnabled = false;
-      NodeChainStatus chainStatus;
+      ChainStatus chainStatus;
    };
 
    ////////
-   class NodeRPCInterface : public Lockable
+   namespace Core
    {
-   protected:
-      std::function<void(void)> nodeStatusLambda_;
-      NodeChainStatus nodeChainStatus_;
-      std::atomic<std::shared_ptr<EstimateCache>> currentEstimateCache_;
+      namespace RPC
+      {
+         /***
+         NOTE:
+            "state" suffix is for enums
+            "status" suffix is for classes/structs
+         ***/
 
-   private:
-      void initAfterLock(void) override {}
-      void cleanUpBeforeUnlock(void) override {}
+         static constexpr std::string_view FEE_STRAT_CONSERVATIVE{"CONSERVATIVE"};
+         static constexpr std::string_view FEE_STRAT_ECONOMICAL{"ECONOMICAL"};
 
-   protected:
-      void callback(void) const;
+         ////////
+         struct FeeEstimateResult
+         {
+            bool smartFee = false;
+            float feeByte = 0.0f;
+            std::string error;
+         };
 
-   public:
-      NodeRPCInterface(void);
-      virtual ~NodeRPCInterface(void) = 0;
-      virtual void shutdown(void) = 0;
+         using EstimateCache = std::map<std::string,
+            std::map<unsigned, FeeEstimateResult>>;
 
-      virtual int broadcastTx(const BinaryDataRef&, std::string&) = 0;
-      virtual bool canPoll(void) const = 0;
-      virtual RpcState testConnection() = 0;
-      virtual void waitOnChainSync(std::function<void(void)>) = 0;
-      virtual FeeEstimateResult getFeeByte(
-         unsigned, const std::string&) const = 0;
 
-      //locals
-      const NodeChainStatus& getChainStatus(void) const;
-      void registerNodeStatusLambda(const std::function<void(void)>&);
-      const std::map<unsigned, FeeEstimateResult>& getFeeSchedule(
-         const std::string&) const;
-   };
+         ////////
+         class Iface : public Lockable
+         {
+         protected:
+            std::function<void(void)> nodeStatusLambda_;
+            ChainStatus nodeChainStatus_;
+            std::atomic<std::shared_ptr<EstimateCache>> currentEstimateCache_;
 
-   ////////
-   class NodeRPC : public NodeRPCInterface
-   {
-   private:
-      std::string basicAuthString64_;
+         private:
+            void initAfterLock(void) override {}
+            void cleanUpBeforeUnlock(void) override {}
 
-      RpcState previousState_ = RpcState::Disabled;
-      std::condition_variable pollCondVar_;
-      std::vector<std::thread> thrVec_;
-      std::atomic<bool> run_ = { true };
+         protected:
+            void callback(void) const;
 
-   private:
-      std::string getAuthString(void);
-      std::filesystem::path getDatadir(void);
+         public:
+            Iface(void);
+            virtual ~Iface(void) = 0;
+            virtual void shutdown(void) = 0;
 
-      std::string queryRPC(JSON::Object&);
-      std::string queryRPC(HttpSocket&, JSON::Object&);
-      void pollThread(void);
-      
-      float queryFeeByte(HttpSocket&, unsigned);
-      FeeEstimateResult queryFeeByteSmart(
-         HttpSocket&, unsigned&, const std::string&);
-      void aggregateFeeEstimates(void);
-      void resetAuthString(void);
-      bool updateChainStatus(void);
+            virtual int broadcastTx(const BinaryDataRef&, std::string&) = 0;
+            virtual bool canPoll(void) const = 0;
+            virtual RpcState testConnection() = 0;
+            virtual void waitOnChainSync(std::function<void(void)>) = 0;
+            virtual FeeEstimateResult getFeeByte(
+               unsigned, const std::string&) const = 0;
 
-   public:
-      NodeRPC(void);
-      ~NodeRPC(void);
+            //locals
+            const ChainStatus& getChainStatus(void) const;
+            void registerNodeStatusLambda(const std::function<void(void)>&);
+            const std::map<unsigned, FeeEstimateResult>& getFeeSchedule(
+               const std::string&) const;
+         };
 
-      bool setupConnection(HttpSocket&);
+         ////////
+         class Client : public Iface
+         {
+         private:
+            std::string basicAuthString64_;
 
-      //virtuals
-      void shutdown(void) override;
-      RpcState testConnection(void) override;
-      bool canPoll(void) const override;
+            RpcState previousState_ = RpcState::Disabled;
+            std::condition_variable pollCondVar_;
+            std::vector<std::thread> thrVec_;
+            std::atomic<bool> run_ = { true };
 
-      FeeEstimateResult getFeeByte(unsigned, const std::string&) const override;
-      int broadcastTx(const BinaryDataRef&, std::string&) override;
-      void waitOnChainSync(std::function<void(void)>) override;
-   };
-} //namespace CoreRPC
+         private:
+            std::string getAuthString(void);
+            std::string queryRPC(JSON::Object&);
+            std::string queryRPC(Armory::Network::HttpSocket&, JSON::Object&);
+            void pollThread(void);
+            
+            float queryFeeByte(Armory::Network::HttpSocket&, unsigned);
+            FeeEstimateResult queryFeeByteSmart(
+               Armory::Network::HttpSocket&, unsigned&, const std::string&);
+            void aggregateFeeEstimates(void);
+            void resetAuthString(void);
+            bool updateChainStatus(void);
+
+         public:
+            Client(void);
+            ~Client(void);
+
+            bool setupConnection(Armory::Network::HttpSocket&);
+
+            //virtuals
+            void shutdown(void) override;
+            RpcState testConnection(void) override;
+            bool canPoll(void) const override;
+
+            FeeEstimateResult getFeeByte(unsigned, const std::string&) const override;
+            int broadcastTx(const BinaryDataRef&, std::string&) override;
+            void waitOnChainSync(std::function<void(void)>) override;
+         };
+      } //namespace RPC
+   } //namespace Core
+} //namespace Node

@@ -10,7 +10,7 @@
 
 #include "Notifications.h"
 #include <BlockchainDatabase/txio.h>
-#include <WebSocketMessage.h>
+#include <Network/WebSocketMessage.h>
 #include <BDM_Server.h>
 
 #include "Utils.h"

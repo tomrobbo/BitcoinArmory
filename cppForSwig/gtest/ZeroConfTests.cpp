@@ -23,17 +23,15 @@
 #include <Utils/DBUtils.h>
 #include <Utils/UniversalTimer.h>
 #include <Wallets/IOHeader.h>
-#include <Wallets/AuthorizedPeers.h>
 #include <Wallets/Seeds/Seeds.h>
 #include <Signer/ScriptSpender.h>
 #include <ZeroConf/Parser.h>
 #include <ZeroConf/Utils.h>
 #include <ZeroConf/Notifications.h>
-#include <Ledgers/LedgerEntry.h>
+#include <Network/WebSocketClient.h>
 
 #include "BDM_mainthread.h"
 #include "Server.h"
-#include "WebSocketClient.h"
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>

@@ -312,15 +312,15 @@ void BlockDataManager::disableZeroConf()
 }
 
 ////////
-std::shared_ptr<CoreRPC::NodeStatus> BlockDataManager::getNodeStatus() const
+std::shared_ptr<Node::Status> BlockDataManager::getNodeStatus() const
 {
    if (processNode_ == nullptr) {
       return nullptr;
    }
 
-   auto nss = std::make_shared<CoreRPC::NodeStatus>();
+   auto nss = std::make_shared<Node::Status>();
    if (processNode_->connected()) {
-      nss->state = CoreRPC::NodeState::Online;
+      nss->state = Node::NodeState::Online;
    }
 
    if (processNode_->isSegWit()) {
@@ -332,7 +332,7 @@ std::shared_ptr<CoreRPC::NodeStatus> BlockDataManager::getNodeStatus() const
    }
 
    nss->rpcState = nodeRPC_->testConnection();
-   if (nss->rpcState != CoreRPC::RpcState::Online) {
+   if (nss->rpcState != Node::RpcState::Online) {
       pollNodeStatus();
    }
    nss->chainStatus = nodeRPC_->getChainStatus();
@@ -357,7 +357,7 @@ void BlockDataManager::pollNodeStatus() const
       std::unique_lock<std::mutex> lock(*mutexPtr);
 
       unsigned count = 0;
-      while (nodeRPC->testConnection() != CoreRPC::RpcState::Online) {
+      while (nodeRPC->testConnection() != Node::RpcState::Online) {
          ++count;
          if (count > 10) {
             break; //give up after 20sec

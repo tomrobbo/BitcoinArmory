@@ -10,13 +10,15 @@
 #include <stdexcept>
 
 #include "SocketObject.h"
+#include <bdmenums.h>
 #include "SocketWritePayload.h"
-#include "bdmenums.h"
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
 
 using namespace std::chrono_literals;
+using namespace Armory;
+using namespace Armory::Network;
 
 #ifdef _WIN32
 //i dont know how to get linkage for this with MSYS2 halp T_T
@@ -344,7 +346,7 @@ void PersistentSocket::socketService_nix()
       } else {
          try {
             payload = std::move(writeQueue_.pop_front());
-         } catch (const Armory::Threading::IsEmpty&) {
+         } catch (const Threading::IsEmpty&) {
             pfd[1].events = POLLIN;
             return;
          }
@@ -477,7 +479,7 @@ void PersistentSocket::socketService_win()
       } else {
          try {
             payload = std::move(writeQueue_.pop_front());
-         } catch (const Armory::Threading::IsEmpty&) {
+         } catch (const Threading::IsEmpty&) {
             return;
          }
       }
@@ -608,7 +610,7 @@ void PersistentSocket::readService()
       try {
          auto packet = readQueue_.pop_front();
          respond(packet);
-      } catch (const Armory::Threading::StopBlockingLoop&) {
+      } catch (const Threading::StopBlockingLoop&) {
          //exit condition
          break;
       }
@@ -1058,7 +1060,7 @@ void ListenServer::acceptProcess(AcceptStruct aStruct)
             }
          }
       }
-   } catch (const Armory::Threading::IsEmpty&) {}
+   } catch (const Threading::IsEmpty&) {}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1138,21 +1140,6 @@ size_t WritePayload_Capnp::getSerializedSize() const
 bool WritePayload_Capnp::isSingleSegment() const
 {
    return false;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-//
-//// CallbackReturn_CloseBitcoinP2PSocket
-//
-///////////////////////////////////////////////////////////////////////////////
-CallbackReturn_CloseBitcoinP2PSocket::CallbackReturn_CloseBitcoinP2PSocket(
-   std::shared_ptr<Armory::Threading::BlockingQueue<std::vector<uint8_t>>> datastack) :
-   dataStack_(datastack)
-{}
-
-void CallbackReturn_CloseBitcoinP2PSocket::callback(BinaryDataRef)
-{
-   dataStack_->terminate();
 }
 
 ///////////////////////////////////////////////////////////////////////////////

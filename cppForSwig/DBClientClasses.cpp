@@ -10,7 +10,7 @@
 #include <Utils/BtcUtils.h>
 #include <Utils/varint.h>
 #include <btc/ecc.h>
-#include "WebSocketClient.h"
+#include <Network/WebSocketClient.h>
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
@@ -26,14 +26,14 @@ namespace {
       if (nodeStatus.hasChain()) {
          auto chainCapn = nodeStatus.getChain();
          NodeChainStatus ncs(
-            CoreRPC::ChainState(chainCapn.getChainState()),
+            Node::ChainState(chainCapn.getChainState()),
             chainCapn.getBlockSpeed(), chainCapn.getProgress(),
             chainCapn.getEta(), chainCapn.getBlocksLeft()
          );
 
          auto result = std::make_shared<NodeStatus>(
-            CoreRPC::NodeState(nodeStatus.getNode()),
-            CoreRPC::RpcState(nodeStatus.getRpc()),
+            Node::NodeState(nodeStatus.getNode()),
+            Node::RpcState(nodeStatus.getRpc()),
             nodeStatus.getIsSW(), ncs
          );
 
@@ -41,8 +41,8 @@ namespace {
       } else {
          DBClientClasses::NodeChainStatus ncs;
          auto result = std::make_shared<NodeStatus>(
-            CoreRPC::NodeState(nodeStatus.getNode()),
-            CoreRPC::RpcState(nodeStatus.getRpc()),
+            Node::NodeState(nodeStatus.getNode()),
+            Node::RpcState(nodeStatus.getRpc()),
             nodeStatus.getIsSW(), ncs
          );
 
@@ -280,14 +280,14 @@ bool RemoteCallback::processNotifications(
 // NodeStatus
 //
 ///////////////////////////////////////////////////////////////////////////////
-NodeStatus::NodeStatus(CoreRPC::NodeState nodeState,
-   CoreRPC::RpcState rpcState, bool isSW, NodeChainStatus& nodeChainState) :
+NodeStatus::NodeStatus(Node::NodeState nodeState,
+   Node::RpcState rpcState, bool isSW, NodeChainStatus& nodeChainState) :
    nodeState_(nodeState), rpcState_(rpcState), isSegWitEnabled_(isSW),
    nodeChainStatus_(std::move(nodeChainState))
 {}
 
 ///////////////////////////////////////////////////////////////////////////////
-CoreRPC::NodeState NodeStatus::state() const
+Node::NodeState NodeStatus::state() const
 {
    return nodeState_;
 }
@@ -299,7 +299,7 @@ bool NodeStatus::isSegWitEnabled() const
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-CoreRPC::RpcState NodeStatus::rpcState() const
+Node::RpcState NodeStatus::rpcState() const
 {
    return rpcState_;
 }
@@ -316,18 +316,18 @@ const NodeChainStatus& NodeStatus::chainStatus() const
 //
 ///////////////////////////////////////////////////////////////////////////////
 NodeChainStatus::NodeChainStatus() :
-   chainState_(CoreRPC::ChainState::Unknown), blockSpeed_(0), progressPct_(0),
+   chainState_(Node::ChainState::Unknown), blockSpeed_(0), progressPct_(0),
    etaSeconds_(UINT64_MAX), blocksLeft_(UINT32_MAX)
 {}
 
-NodeChainStatus::NodeChainStatus(CoreRPC::ChainState chainState,
+NodeChainStatus::NodeChainStatus(Node::ChainState chainState,
    float speed, float pct, uint64_t eta, unsigned blocksLeft) :
    chainState_(chainState), blockSpeed_(speed), progressPct_(pct),
    etaSeconds_(eta), blocksLeft_(blocksLeft)
 {}
 
 ///////////////////////////////////////////////////////////////////////////////
-CoreRPC::ChainState NodeChainStatus::state() const
+Node::ChainState NodeChainStatus::state() const
 {
    return chainState_;
 }

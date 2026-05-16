@@ -24,12 +24,11 @@
 #include <BlockchainDatabase/BlockUtils.h>
 #include <Wallets/IOHeader.h>
 #include <Wallets/AuthorizedPeers.h>
+#include <Network/SocketObject.h>
 
 #include "BDM_mainthread.h"
 #include "Server.h"
 #include "TerminalPassphrasePrompt.h"
-#include "SocketObject.h"
-
 #include <btc/ecc.h>
 
 using namespace Armory;
@@ -75,7 +74,8 @@ int main(int argc, char* argv[])
 
    if (!Config::DBSettings::checkChain()) {
       //check we can listen on this ip:port
-      if (SimpleSocket::checkSocket("127.0.0.1", Config::NetworkSettings::dbPort())) {
+      if (Network::SimpleSocket::checkSocket(
+         "127.0.0.1", Config::NetworkSettings::dbPort())) {
          LOGERR << "There is already a process listening on port " <<
             Config::NetworkSettings::dbPort();
          LOGERR << "ArmoryDB cannot start under these conditions. Shutting down!";

@@ -22,6 +22,9 @@
 
 using WordArray = kj::ArrayPtr<const capnp::word>;
 
+using namespace Armory;
+using namespace Armory::Network;
+
 namespace
 {
    /*

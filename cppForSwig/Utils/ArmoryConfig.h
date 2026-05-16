@@ -31,18 +31,24 @@
 #define BROADCAST_ID_LENGTH 6
 #define REGISTER_ID_LENGH 5
 
-namespace CoreRPC
+namespace Node
 {
-   class NodeRPCInterface;
-};
+   namespace Core
+   {
+      namespace RPC
+      {
+         class Iface;
+      }
+
+      namespace P2P
+      {
+         class Iface;
+      }
+   }
+}
 
 namespace Armory
 {
-   namespace Node
-   {
-      class BitcoinNodeInterface;
-   }
-
    namespace Config
    {
       class Error : public std::runtime_error
@@ -159,10 +165,10 @@ namespace Armory
       //////////////////////////////////////////////////////////////////////////
       class NetworkSettings
       {
-         using RpcPtr = std::shared_ptr<CoreRPC::NodeRPCInterface>;
+         using RpcPtr = std::shared_ptr<Node::Core::RPC::Iface>;
          using NodePair = std::pair<
-            std::shared_ptr<Node::BitcoinNodeInterface>,
-            std::shared_ptr<Node::BitcoinNodeInterface>
+            std::shared_ptr<Node::Core::P2P::Iface>,
+            std::shared_ptr<Node::Core::P2P::Iface>
          >;
 
          friend void Config::parseArgs(

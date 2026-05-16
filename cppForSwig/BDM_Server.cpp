@@ -18,12 +18,10 @@
 #include <ZeroConf/Parser.h>
 #include <ZeroConf/Utils.h>
 #include <ZeroConf/Notifications.h>
-#include <Ledgers/LedgerEntry.h>
-#include <btc/ecc.h>
+#include <Network/SocketWritePayload.h>
+#include <Network/WebSocketMessage.h>
 
-#include "SocketWritePayload.h"
 #include "Server.h"
-#include "WebSocketMessage.h"
 #include "BtcWallet.h"
 
 #include <capnp/message.h>
@@ -827,7 +825,7 @@ void BDV_Server_Object::init()
    auto flat = capnp::messageToFlatArray(message);
    auto bytes = flat.asBytes();
    std::vector<uint8_t> replyRaw(bytes.begin(), bytes.end());
-   notifications_->push(std::make_unique<WritePayload_Raw>(replyRaw));
+   notifications_->push(std::make_unique<Network::WritePayload_Raw>(replyRaw));
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1041,7 +1039,7 @@ void BDV_Server_Object::processNotification(
    }
 
    notifications_->push(
-      std::make_unique<WritePayload_Capnp>(
+      std::make_unique<Network::WritePayload_Capnp>(
          std::move(message), std::move(firstSegment)));
 }
 
@@ -1074,7 +1072,7 @@ void BDV_Server_Object::flagRefresh(BDV_refresh refresh,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-WebSocketMessagePartial BDV_Server_Object::preparePayload(
+Network::WebSocketMessagePartial BDV_Server_Object::preparePayload(
    std::shared_ptr<BDV_Payload> packet)
 {
    /*
@@ -1090,13 +1088,15 @@ WebSocketMessagePartial BDV_Server_Object::preparePayload(
    auto nextId = lastValidMessageId_ + 1;
    if (!packet->getData().empty()) {
       //grab and check the packet's message id
-      auto msgId = WebSocketMessagePartial::readMessageId(packet->getData());
+      auto msgId = Network::WebSocketMessagePartial::readMessageId(
+         packet->getData());
       if (msgId != UINT32_MAX) {
          //get the PartialMessage object for this id
          auto msgIter = messageMap_.find(msgId);
          if (msgIter == messageMap_.end()) {
             //create this PartialMessage if it's missing
-            msgIter = messageMap_.emplace(msgId, WebSocketMessagePartial()).first;
+            msgIter = messageMap_.emplace(
+               msgId, Network::WebSocketMessagePartial()).first;
          }
          auto& msgRef = msgIter->second;
 
@@ -1515,7 +1515,7 @@ void Clients::notificationThread()
 ///////////////////////////////////////////////////////////////////////////////
 void Clients::parseStandAlonePayload(std::shared_ptr<BDV_Payload> payloadPtr)
 {
-   WebSocketMessagePartial msg;
+   Network::WebSocketMessagePartial msg;
    auto packetData = payloadPtr->moveData();
    if (!msg.parsePacket(packetData)) {
       //we only allow single packet payloads in here
@@ -1540,7 +1540,7 @@ void Clients::parseStandAlonePayload(std::shared_ptr<BDV_Payload> payloadPtr)
          payloadPtr->getBdvID(), payloadPtr->getPubkey());
       if (builderPtr != nullptr) {
          WebSocketServer::write(payloadPtr->getBdvID(), 0,
-            std::make_unique<WritePayload_Capnp>(
+            std::make_unique<Network::WritePayload_Capnp>(
                std::move(builderPtr), std::vector<uint8_t>{})
          );
       }
@@ -1771,7 +1771,7 @@ void Clients::queuePayload(std::shared_ptr<BDV_Payload>& payload)
 }
 
 ////////
-std::unique_ptr<Socket_WritePayload> Clients::processCommand(
+std::unique_ptr<Network::Socket_WritePayload> Clients::processCommand(
    std::shared_ptr<BDV_Payload> payload)
 {
    //clear bdvPtr from the payload to avoid circular ownership
@@ -1800,7 +1800,7 @@ std::unique_ptr<Socket_WritePayload> Clients::processCommand(
             staticRequest, request.getMsgId(), this,
             payload->getBdvID(), payload->getPubkey());
          if (builderPtr != nullptr) {
-            return std::make_unique<WritePayload_Capnp>(
+            return std::make_unique<Network::WritePayload_Capnp>(
                std::move(builderPtr), std::vector<uint8_t>{});
          }
          break;
@@ -1820,14 +1820,14 @@ std::unique_ptr<Socket_WritePayload> Clients::processCommand(
                auto flat = capnp::messageToFlatArray(*builder.builder);
                auto bytes = flat.asBytes();
                std::vector<uint8_t> firstSegment(bytes.begin(), bytes.end());
-               return std::make_unique<WritePayload_Raw>(firstSegment);
+               return std::make_unique<Network::WritePayload_Raw>(firstSegment);
             } else {
                /*
                Message lives across multiple segments, we have to pass it to a
                capnp payload, along with the scratchpad, which contains the
                first segment
                */
-               return std::make_unique<WritePayload_Capnp>(
+               return std::make_unique<Network::WritePayload_Capnp>(
                   std::move(builder.builder),
                   std::move(bdvPtr->getScratchPad())
                );
@@ -1939,14 +1939,15 @@ Callback::~Callback()
 {}
 
 ///////////////////////////////////////////////////////////////////////////////
-void WS_Callback::push(std::unique_ptr<Socket_WritePayload> payload)
+void WS_Callback::push(std::unique_ptr<Network::Socket_WritePayload> payload)
 {
    //write to socket
    WebSocketServer::write(bdvID_, WEBSOCKET_CALLBACK_ID, std::move(payload));
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-void UnitTest_Callback::push(std::unique_ptr<Socket_WritePayload> payload)
+void UnitTest_Callback::push(
+   std::unique_ptr<Network::Socket_WritePayload> payload)
 {
    //stash the notification, unit test will pull it as needed
    notifQueue_.push_back(std::move(payload));

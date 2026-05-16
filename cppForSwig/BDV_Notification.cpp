@@ -10,9 +10,8 @@
 #include <Utils/log.h>
 #include <ZeroConf/Utils.h>
 #include <ZeroConf/Notifications.h>
-#include <Ledgers/LedgerEntry.h>
-#include "BitcoinP2P.h"
-#include "nodeRPC.h"
+#include <Node/BitcoinP2P.h>
+#include <Node/nodeRPC.h>
 
 ///////////////////////////////////////////////////////////////////////////////
 // BDV_Notification
@@ -111,7 +110,7 @@ BDV_Action BDV_Notification_Progress::actionType() const
 ///////////////////////////////////////////////////////////////////////////////
 // BDV_Notification_NodeStatus
 BDV_Notification_NodeStatus::BDV_Notification_NodeStatus(
-   std::shared_ptr<CoreRPC::NodeStatus> nss) :
+   std::shared_ptr<Node::Status> nss) :
    BDV_Notification(BDV_NOTIF_BROADCAST), status(nss)
 {}
 

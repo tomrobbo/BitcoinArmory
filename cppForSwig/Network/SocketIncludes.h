@@ -30,12 +30,15 @@
    #define SOCK_MAX INT_MAX
 #endif
 
-////////////////////////////////////////////////////////////////////////////////
-#include <string>
-
-struct SocketError : public std::runtime_error
+namespace Armory
 {
-public:
-   SocketError(const std::string& e) : std::runtime_error(e)
-   {}
-};
+   namespace Network
+   {
+      struct SocketError : public std::runtime_error
+      {
+      public:
+         SocketError(const std::string& e) : std::runtime_error(e)
+         {}
+      };
+   }
+}

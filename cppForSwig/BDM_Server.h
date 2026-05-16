@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2016-2025, goatpig.                                         //
+//  Copyright (C) 2016-2026, goatpig.                                         //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -15,7 +15,6 @@
 #include <future>
 
 #include <Utils/ArmoryErrors.h>
-#include "BitcoinP2P.h"
 #include "BlockDataViewer.h"
 #include "BDV_Notification.h"
 
@@ -23,7 +22,6 @@
 #define CALLBACK_EXPIRE_COUNT 5
 
 class BDV_Server_Object;
-class WebSocketMessagePartial;
 using BdvPtr = std::shared_ptr<BDV_Server_Object>;
 
 struct btc_pubkey_;
@@ -32,6 +30,11 @@ namespace Armory
    namespace ZeroConf
    {
       class ZeroConfCallbacks_BDV;
+   }
+
+   namespace Network
+   {
+      class WebSocketMessagePartial;
    }
 }
 
@@ -75,7 +78,7 @@ class Callback
 public:
    virtual ~Callback() = 0;
 
-   virtual void push(std::unique_ptr<Socket_WritePayload>) = 0;
+   virtual void push(std::unique_ptr<Armory::Network::Socket_WritePayload>) = 0;
    virtual bool isValid(void) = 0;
    virtual void shutdown(void) = 0;
 };
@@ -91,7 +94,7 @@ public:
       bdvID_(bdvid)
    {}
 
-   void push(std::unique_ptr<Socket_WritePayload>) override;
+   void push(std::unique_ptr<Armory::Network::Socket_WritePayload>) override;
    bool isValid(void) override { return true; }
    void shutdown(void) override {}
 };
@@ -100,10 +103,11 @@ public:
 class UnitTest_Callback : public Callback
 {
 private:
-   Armory::Threading::BlockingQueue<std::unique_ptr<Socket_WritePayload>> notifQueue_;
+   Armory::Threading::BlockingQueue<
+      std::unique_ptr<Armory::Network::Socket_WritePayload>> notifQueue_;
 
 public:
-   void push(std::unique_ptr<Socket_WritePayload>) override;
+   void push(std::unique_ptr<Armory::Network::Socket_WritePayload>) override;
    bool isValid(void) override { return true; }
    void shutdown(void) override {}
 
@@ -131,7 +135,7 @@ private:
    std::atomic<unsigned> packetProcess_threadLock_;
    std::atomic<unsigned> notificationProcess_threadLock_;
 
-   std::map<unsigned, WebSocketMessagePartial> messageMap_;
+   std::map<unsigned, Armory::Network::WebSocketMessagePartial> messageMap_;
    unsigned lastValidMessageId_ = 0;
    std::vector<uint8_t> scratchPad_;
 
@@ -141,7 +145,8 @@ public:
 private:
    BDV_Server_Object(BDV_Server_Object&) = delete; //no copies
    void setup(void);
-   WebSocketMessagePartial preparePayload(std::shared_ptr<BDV_Payload>);
+   Armory::Network::WebSocketMessagePartial
+   preparePayload(std::shared_ptr<BDV_Payload>);
    std::unique_ptr<BDV_Notification_ZC> createZcNotification(
       const std::set<Armory::Types::ScrAddr>&);
 
@@ -216,7 +221,7 @@ public:
    std::shared_ptr<BlockDataManager> bdm(void) const;
 
    void queuePayload(std::shared_ptr<BDV_Payload>&);
-   std::unique_ptr<Socket_WritePayload> processCommand(
+   std::unique_ptr<Armory::Network::Socket_WritePayload> processCommand(
       std::shared_ptr<BDV_Payload>);
    void rpcBroadcast(RpcBroadcastPacket&);
    void p2pBroadcast(Armory::Types::BdvId, std::vector<BinaryDataRef>&);

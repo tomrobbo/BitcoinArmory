@@ -17,9 +17,9 @@
 
 #define BDV_NOTIF_BROADCAST UINT64_MAX
 
-namespace CoreRPC
+namespace Node
 {
-   struct NodeStatus;
+   struct Status;
 }
 
 namespace Armory
@@ -114,9 +114,9 @@ struct BDV_Notification_Progress : public BDV_Notification
 ///////////////////////////////////////////////////////////////////////////////
 struct BDV_Notification_NodeStatus : public BDV_Notification
 {
-   const std::shared_ptr<CoreRPC::NodeStatus> status;
+   const std::shared_ptr<Node::Status> status;
 
-   BDV_Notification_NodeStatus(std::shared_ptr<CoreRPC::NodeStatus>);
+   BDV_Notification_NodeStatus(std::shared_ptr<Node::Status>);
    BDV_Action actionType(void) const override;
 };
 

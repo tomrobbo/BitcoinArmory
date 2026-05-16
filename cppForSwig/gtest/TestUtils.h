@@ -37,7 +37,7 @@
 #include <ScrAddrObj.h>
 #include <BtcWallet.h>
 #include <BlockDataViewer.h>
-#include <BitcoinP2P.h>
+#include <Node/BitcoinP2P.h>
 
 #include <Progress.h>
 #include <BDM_Server.h>

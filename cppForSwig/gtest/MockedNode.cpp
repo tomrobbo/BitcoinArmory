@@ -25,6 +25,7 @@
 #include "BDV_Notification.h"
 
 using namespace Armory;
+using namespace Node::Core;
 using namespace std::chrono_literals;
 
 namespace
@@ -112,7 +113,7 @@ bool MempoolObject::operator<(const MempoolObject& rhs) const
 Threading::BlockingQueue<BinaryData> NodeUnitTest::watcherInvQueue_;
 
 NodeUnitTest::NodeUnitTest(uint32_t magic_word, bool watcher) :
-   BitcoinNodeInterface(magic_word, watcher)
+   P2P::Iface(magic_word, watcher)
 {
    //0 is reserved for coinbase tx ordering in spoofed blocks
    counter_.store(1, std::memory_order_relaxed);
@@ -138,7 +139,7 @@ void NodeUnitTest::shutdown()
       watcherInvQueue_.terminate();
       watcherThread_.join();
    }
-   BitcoinNodeInterface::shutdown();
+   P2P::Iface::shutdown();
 }
 
 ////////
@@ -160,10 +161,10 @@ std::vector<UnitTestBlock> NodeUnitTest::getMinedBlocks() const
 
 void NodeUnitTest::notifyNewBlock(void)
 {
-   Node::InvEntry ie;
-   ie.invtype = Node::Inv_Msg_Block;
+   P2P::InvEntry ie;
+   ie.invtype = P2P::Inv_Msg_Block;
 
-   std::vector<Node::InvEntry> vecIE;
+   std::vector<P2P::InvEntry> vecIE;
    vecIE.push_back(ie);
 
    processInvBlock(std::move(vecIE));
@@ -386,11 +387,11 @@ std::map<unsigned, BinaryData> NodeUnitTest::mineNewBlock(
       }
 
       //push the staged transactions
-      std::vector<Node::InvEntry> invVec;
+      std::vector<P2P::InvEntry> invVec;
       std::map<BinaryData, BinaryData> rawTxMap;
       for (auto& tx : mempool_) {
-         Node::InvEntry ie;
-         ie.invtype = Node::Inv_Msg_Witness_Tx;
+         P2P::InvEntry ie;
+         ie.invtype = P2P::Inv_Msg_Witness_Tx;
          memcpy(ie.hash, tx.first.getPtr(), 32);
          invVec.emplace_back(ie);
          rawTxMap.emplace(tx.first, tx.second->rawTx);
@@ -434,7 +435,7 @@ void NodeUnitTest::pushZC(
    const std::vector<std::pair<BinaryData, unsigned>>& txVec,
    bool stage)
 {
-   std::vector<Node::InvEntry> invVec;
+   std::vector<P2P::InvEntry> invVec;
    std::map<BinaryData, BinaryData> rawTxMap;
 
    //save tx to fake mempool
@@ -501,8 +502,8 @@ void NodeUnitTest::pushZC(
       }
 
       //add to inv vector
-      Node::InvEntry ie;
-      ie.invtype = Node::Inv_Msg_Witness_Tx;
+      P2P::InvEntry ie;
+      ie.invtype = P2P::Inv_Msg_Witness_Tx;
       memcpy(ie.hash, insertIter.first->second->hash.getPtr(), 32);
       invVec.emplace_back(ie);
 
@@ -609,7 +610,7 @@ uint64_t NodeUnitTest::getFeeForTx(const Tx& tx) const
 }
 
 ////////
-void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
+void NodeUnitTest::sendMessage(std::unique_ptr<P2P::Payload> payload)
 {
    //need access to the db to check zc validity
    std::unique_lock<std::mutex> lock(sendMessageMutex_);
@@ -617,14 +618,14 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
    //mock the bitcoin node response to these sendMessage payloads
    switch (payload->type())
    {
-      case Node::PayloadType::Inv:
+      case P2P::PayloadType::Inv:
       {
          /*
          Pushed inv payload from armorydb to bitcoin node
          */
 
-         std::shared_ptr<Node::Payload> payloadSPtr(move(payload));
-         auto payloadInv = std::dynamic_pointer_cast<Node::Payload_Inv>(payloadSPtr);
+         std::shared_ptr<P2P::Payload> payloadSPtr(move(payload));
+         auto payloadInv = std::dynamic_pointer_cast<P2P::Payload_Inv>(payloadSPtr);
          if (payloadInv == nullptr) {
             throw std::runtime_error("unexpected payload type");
          }
@@ -632,8 +633,8 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
          for (auto& entry : payloadInv->invVector_) {
             switch (entry.invtype)
             {
-               case Node::Inv_Msg_Tx:
-               case Node::Inv_Msg_Witness_Tx:
+               case P2P::Inv_Msg_Tx:
+               case P2P::Inv_Msg_Witness_Tx:
                {
                   //bail if we have seen this hash before
                   BinaryData thisTxHash{&entry.hash[0], sizeof(entry.hash)};
@@ -649,7 +650,7 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
                      }
                   }
 
-                  std::shared_ptr<Node::Payload_Tx> payloadTx;
+                  std::shared_ptr<P2P::Payload_Tx> payloadTx;
                   {
                      //consume getDataMap entry
                      auto gdpMap = getDataPayloadMap_.get();
@@ -657,9 +658,9 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
                      if (iter == gdpMap->end()) {
                         break;
                      }
-                     std::shared_ptr<Node::Payload> payloadTxSPtr(
+                     std::shared_ptr<P2P::Payload> payloadTxSPtr(
                         std::move(iter->second->payload_));
-                     payloadTx = std::dynamic_pointer_cast<Node::Payload_Tx>(
+                     payloadTx = std::dynamic_pointer_cast<P2P::Payload_Tx>(
                         payloadTxSPtr);
 
                      //cleanup getdatapayload map
@@ -793,9 +794,9 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
                      auto txFee = getFeeForTx(tx);
                      if (txFee < 100000000) {
                         //fee too low to replace, push reject packet
-                        auto rejectPayload = std::make_unique<Node::Payload_Reject>();
+                        auto rejectPayload = std::make_unique<P2P::Payload_Reject>();
 
-                        rejectPayload->rejectType_ = Node::PayloadType::Tx;
+                        rejectPayload->rejectType_ = P2P::PayloadType::Tx;
                         rejectPayload->code_ =
                            (char)ArmoryErrorCodes::P2PReject_InsufficientFee;
 
@@ -870,16 +871,16 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
          break;
       }
 
-      case Node::PayloadType::GetData:
+      case P2P::PayloadType::GetData:
       {
          /*
          Pushed getdata payload from armorydb to bitcoin node
          */
 
          //looking to get data for a previous inv tx message
-         auto payloadSPtr = std::shared_ptr<Node::Payload>(std::move(payload));
+         auto payloadSPtr = std::shared_ptr<P2P::Payload>(std::move(payload));
          auto payloadGetData =
-         std::dynamic_pointer_cast<Node::Payload_GetData>(payloadSPtr);
+         std::dynamic_pointer_cast<P2P::Payload_GetData>(payloadSPtr);
          if (payloadGetData == nullptr) {
             throw std::runtime_error("invalid payload type");
          }
@@ -893,7 +894,7 @@ void NodeUnitTest::sendMessage(std::unique_ptr<Node::Payload> payload)
                continue;
             }
             grabbedTxs.emplace_back(iter->first);
-            auto payloadTx = std::make_unique<Node::Payload_Tx>();
+            auto payloadTx = std::make_unique<P2P::Payload_Tx>();
 
             std::vector<uint8_t> rawTx(iter->second.getSize());
             memcpy(&rawTx[0], iter->second.getPtr(), iter->second.getSize());
@@ -920,9 +921,9 @@ void NodeUnitTest::watcherProcess()
          break;
       }
 
-      std::vector<Node::InvEntry> invVec;
-      Node::InvEntry inv;
-      inv.invtype = Node::Inv_Msg_Witness_Tx;
+      std::vector<P2P::InvEntry> invVec;
+      P2P::InvEntry inv;
+      inv.invtype = P2P::Inv_Msg_Witness_Tx;
       memcpy(inv.hash, hash.getPtr(), 32);
       invVec.push_back(std::move(inv));
       processInvTx(invVec);
@@ -957,16 +958,16 @@ void NodeUnitTest::stallNextZc(unsigned seconds)
 NodeRPC_UnitTest::NodeRPC_UnitTest(
    std::shared_ptr<NodeUnitTest> primaryNode,
    std::shared_ptr<NodeUnitTest> watcherNode) :
-   CoreRPC::NodeRPCInterface(),
+   RPC::Iface(),
    primaryNode_(primaryNode), watcherNode_(watcherNode)
 {}
 
 void NodeRPC_UnitTest::shutdown()
 {}
 
-CoreRPC::RpcState NodeRPC_UnitTest::testConnection()
+Node::RpcState NodeRPC_UnitTest::testConnection()
 {
-   return CoreRPC::RpcState::Online;
+   return Node::RpcState::Online;
 }
 
 bool NodeRPC_UnitTest::canPoll() const
@@ -1092,8 +1093,8 @@ int NodeRPC_UnitTest::broadcastTx(const BinaryDataRef& rawTx, std::string&)
    return (int)ArmoryErrorCodes::Success;
 }
 
-CoreRPC::FeeEstimateResult NodeRPC_UnitTest::getFeeByte(
+RPC::FeeEstimateResult NodeRPC_UnitTest::getFeeByte(
    unsigned, const std::string&) const
 {
-   return CoreRPC::FeeEstimateResult();
+   return {};
 }

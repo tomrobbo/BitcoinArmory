@@ -13,13 +13,14 @@
 #include <Utils/Cryptography.h>
 #include <Utils/ArmoryErrors.h>
 #include <BlockchainDatabase/txio.h>
-#include "WebSocketMessage.h"
+#include <Network/WebSocketMessage.h>
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
 #include "capnp/BDV.capnp.h"
 
 using namespace Armory;
+using namespace Armory::Network;
 using namespace AsyncClient;
 
 #define REQUEST_ERROR      -1
@@ -87,14 +88,14 @@ namespace {
       if (nodeStatus.hasChain()) {
          auto chainCapn = nodeStatus.getChain();
          DBClientClasses::NodeChainStatus ncs(
-            CoreRPC::ChainState(chainCapn.getChainState()),
+            Node::ChainState(chainCapn.getChainState()),
             chainCapn.getBlockSpeed(), chainCapn.getProgress(),
             chainCapn.getEta(), chainCapn.getBlocksLeft()
          );
 
          auto result = std::make_shared<DBClientClasses::NodeStatus>(
-            CoreRPC::NodeState(nodeStatus.getNode()),
-            CoreRPC::RpcState(nodeStatus.getRpc()),
+            Node::NodeState(nodeStatus.getNode()),
+            Node::RpcState(nodeStatus.getRpc()),
             nodeStatus.getIsSW(), ncs
          );
 
@@ -102,8 +103,8 @@ namespace {
       } else {
          DBClientClasses::NodeChainStatus ncs;
          auto result = std::make_shared<DBClientClasses::NodeStatus>(
-            CoreRPC::NodeState(nodeStatus.getNode()),
-            CoreRPC::RpcState(nodeStatus.getRpc()),
+            Node::NodeState(nodeStatus.getNode()),
+            Node::RpcState(nodeStatus.getRpc()),
             nodeStatus.getIsSW(), ncs
          );
 
@@ -787,36 +788,6 @@ void AsyncClient::BtcWallet::unregister()
 {
    unregisterAddresses({});
 }
-
-///////////////////////////////////////////////////////////////////////////////
-ScrAddrObj AsyncClient::BtcWallet::getScrAddrObj(const BinaryData& scrAddr,
-   uint64_t full, uint64_t spendable, uint64_t unconf, uint32_t count)
-{
-   return ScrAddrObj(sock_, walletID_, scrAddr, INT32_MAX,
-      full, spendable, unconf, count);
-}
-
-///////////////////////////////////////////////////////////////////////////////
-//
-// ScrAddrObj
-//
-///////////////////////////////////////////////////////////////////////////////
-ScrAddrObj::ScrAddrObj(std::shared_ptr<SocketPrototype> sock,
-   const std::string& walletID, const BinaryData& scrAddr, int index,
-   uint64_t full, uint64_t spendabe, uint64_t unconf, uint32_t count) :
-   walletID_(walletID), scrAddr_(scrAddr), sock_(sock),
-   fullBalance_(full), spendableBalance_(spendabe),
-   unconfirmedBalance_(unconf), count_(count), index_(index)
-{}
-
-///////////////////////////////////////////////////////////////////////////////
-ScrAddrObj::ScrAddrObj(AsyncClient::BtcWallet* wlt, const BinaryData& scrAddr,
-   int index, uint64_t full, uint64_t spendabe, uint64_t unconf,
-   uint32_t count) :
-   walletID_(wlt->walletID_), scrAddr_(scrAddr), sock_(wlt->sock_),
-   fullBalance_(full), spendableBalance_(spendabe),
-   unconfirmedBalance_(unconf), count_(count), index_(index)
-{}
 
 ///////////////////////////////////////////////////////////////////////////////
 //

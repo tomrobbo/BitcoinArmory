@@ -20,8 +20,6 @@
 
 #include "TestUtils.h"
 #include <reorgTest/blkdata.h>
-#include <hkdf.h>
-#include <Ledgers/LedgerEntry.h>
 
 #include <Utils/ArmoryConfig.h>
 #include <Utils/DBUtils.h>
@@ -29,10 +27,10 @@
 #include <Wallets/IOHeader.h>
 #include <Wallets/AuthorizedPeers.h>
 #include <Signer/ScriptSpender.h>
+#include <Network/WebSocketClient.h>
 
 #include "BDM_mainthread.h"
 #include "Server.h"
-#include "WebSocketClient.h"
 
 using namespace std::string_view_literals;
 using namespace std::chrono_literals;

@@ -13,9 +13,9 @@
 
 #include <Utils/ReentrantLock.h>
 #include <Utils/Types.h>
-#include "StringSockets.h"
-#include "WebSocketClient.h"
-#include "SocketWritePayload.h"
+#include <Network/StringSockets.h>
+#include <Network/WebSocketClient.h>
+#include <Network/SocketWritePayload.h>
 #include "TxClasses.h"
 #include "DBClientClasses.h"
 
@@ -95,73 +95,19 @@ namespace AsyncClient
 
    class BlockDataViewer;
 
-   class BtcWallet;
-
-   /////////////////////////////////////////////////////////////////////////////
-   class ScrAddrObj
-   {
-      friend class Armory::Bridge::WalletContainer;
-
-   private:
-      const std::string walletID_;
-      const Armory::Types::ScrAddr scrAddr_;
-      const std::shared_ptr<SocketPrototype> sock_;
-
-      const uint64_t fullBalance_;
-      const uint64_t spendableBalance_;
-      const uint64_t unconfirmedBalance_;
-      const uint32_t count_;
-      const int index_;
-
-      std::string comment_;
-
-   private:
-      ScrAddrObj(const Armory::Types::ScrAddr& scrAddr, int index) :
-         walletID_({}),
-         scrAddr_(scrAddr),
-         sock_(nullptr),
-         fullBalance_(0), spendableBalance_(0), unconfirmedBalance_(0),
-         count_(0), index_(index)
-      {}
-
-   public:
-      ScrAddrObj(BtcWallet*, const Armory::Types::ScrAddr&, int index,
-         uint64_t, uint64_t, uint64_t, uint32_t);
-      ScrAddrObj(std::shared_ptr<SocketPrototype>,
-         const std::string&, const Armory::Types::ScrAddr&, int index,
-         uint64_t, uint64_t, uint64_t, uint32_t);
-
-      uint64_t getFullBalance(void) const { return fullBalance_; }
-      uint64_t getSpendableBalance(void) const { return spendableBalance_; }
-      uint64_t getUnconfirmedBalance(void) const { return unconfirmedBalance_; }
-
-      uint64_t getTxioCount(void) const { return count_; }
-
-      const Armory::Types::ScrAddr& getScrAddr(void) const { return scrAddr_; }
-
-      void setComment(const std::string& comment) { comment_ = comment; }
-      const std::string& getComment(void) const { return comment_; }
-      int getIndex(void) const { return index_; }
-   };
-
    /////////////////////////////////////////////////////////////////////////////
    class BtcWallet
    {
-      friend class ScrAddrObj;
-
    protected:
       const std::string walletID_;
-      const std::shared_ptr<SocketPrototype> sock_;
+      const std::shared_ptr<Armory::Network::SocketPrototype> sock_;
       std::string ledgerID_;
 
    public:
       BtcWallet(const BlockDataViewer&, const std::string&);
 
-      ScrAddrObj getScrAddrObj(const Armory::Types::ScrAddr&,
-         uint64_t, uint64_t, uint64_t, uint32_t);
-
       bool registerAddresses(
-         const std::vector<Armory::Types::ScrAddr>& addrVec, bool isNew);
+         const std::vector<Armory::Types::ScrAddr>&, bool);
       void unregisterAddresses(const std::set<Armory::Types::ScrAddr>&);
       void unregister(void);
 
@@ -173,7 +119,7 @@ namespace AsyncClient
    class Blockchain
    {
    private:
-      const std::shared_ptr<SocketPrototype> sock_;
+      const std::shared_ptr<Armory::Network::SocketPrototype> sock_;
 
    public:
       Blockchain(const BlockDataViewer&);
@@ -186,7 +132,6 @@ namespace AsyncClient
    /////////////////////////////////////////////////////////////////////////////
    class BlockDataViewer
    {
-      friend class ScrAddrObj;
       friend class BtcWallet;
       friend class RemoteCallback;
       friend class LedgerDelegate;
@@ -195,11 +140,11 @@ namespace AsyncClient
 
    private:
       bool registered_ = false;
-      std::shared_ptr<SocketPrototype> sock_;
+      std::shared_ptr<Armory::Network::SocketPrototype> sock_;
 
    private:
       BlockDataViewer(void);
-      BlockDataViewer(std::shared_ptr<SocketPrototype> sock);
+      BlockDataViewer(std::shared_ptr<Armory::Network::SocketPrototype>);
       BlockDataViewer& operator=(const BlockDataViewer&);
 
    public:
@@ -215,7 +160,8 @@ namespace AsyncClient
 
       //connectivity
       bool connectToRemote(void);
-      std::shared_ptr<SocketPrototype> getSocketObject(void) const { return sock_; }
+      std::shared_ptr<Armory::Network::SocketPrototype>
+      getSocketObject(void) const { return sock_; }
       void goOnline(void);
       bool hasRemoteDB(void);
 

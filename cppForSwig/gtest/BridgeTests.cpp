@@ -32,7 +32,6 @@
 
 #include "BDM_mainthread.h"
 #include "Server.h"
-#include "WebSocketClient.h"
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>

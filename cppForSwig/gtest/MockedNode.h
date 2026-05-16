@@ -13,8 +13,8 @@
 #include <map>
 
 #include <Utils/BinaryData.h>
-#include "BitcoinP2P.h"
-#include "nodeRPC.h"
+#include <Node/BitcoinP2P.h>
+#include <Node/nodeRPC.h>
 
 class BlockFiles;
 class LMDBBlockDatabase;
@@ -58,7 +58,7 @@ struct MempoolObject
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-class NodeUnitTest : public Armory::Node::BitcoinNodeInterface
+class NodeUnitTest : public Node::Core::P2P::Iface
 {
    friend class NodeRPC_UnitTest;
 
@@ -128,7 +128,7 @@ public:
    void setBDM(std::shared_ptr<BlockDataManager>);
 
    //virtuals
-   void sendMessage(std::unique_ptr<Armory::Node::Payload>) override;
+   void sendMessage(std::unique_ptr<Node::Core::P2P::Payload>) override;
 
    void connectToNode(bool) override;
    bool connected(void) const override;
@@ -140,7 +140,7 @@ public:
 
 
 ////////////////////////////////////////////////////////////////////////////////
-class NodeRPC_UnitTest : public CoreRPC::NodeRPCInterface
+class NodeRPC_UnitTest : public Node::Core::RPC::Iface
 {
 private:
    std::shared_ptr<NodeUnitTest> primaryNode_;
@@ -157,11 +157,11 @@ public:
 
    //virtuals
    void shutdown(void) override;
-   CoreRPC::RpcState testConnection(void) override;
+   Node::RpcState testConnection(void) override;
    bool canPoll(void) const override;
    void waitOnChainSync(std::function<void(void)>);
    int broadcastTx(const BinaryDataRef&, std::string&) override;
-   CoreRPC::FeeEstimateResult getFeeByte(
+   Node::Core::RPC::FeeEstimateResult getFeeByte(
       unsigned, const std::string&) const override;
 
    //locals

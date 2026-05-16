@@ -12,19 +12,9 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "ScrAddrObj.h"
-#include <Utils/BitcoinSettings.h>
-#include <Utils/BtcUtils.h>
-#include <Utils/DBUtils.h>
 #include <BlockchainDatabase/lmdb_wrapper.h>
-#include <BlockchainDatabase/Blockchain.h>
 #include <BlockchainDatabase/txio.h>
-#include <BlockchainDatabase/BlockObj.h>
 #include <BlockchainDatabase/StoredBlockObj.h>
-#include <ZeroConf/Utils.h>
-#include <ZeroConf/Parser.h>
-#include <Ledgers/LedgerEntry.h>
-#include <Ledgers/Context.h>
-#include "BitcoinP2P.h"
 
 using namespace Armory;
 

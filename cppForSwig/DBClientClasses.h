@@ -15,9 +15,9 @@
 #include <Utils/BinaryData.h>
 #include <Utils/Types.h>
 #include <BlockchainDatabase/txio.h>
+#include <Network/SocketObject.h>
+#include <Node/nodeRPC.h>
 #include "bdmenums.h"
-#include "SocketObject.h"
-#include "nodeRPC.h"
 
 #define FILTER_CHANGE_FLAG "wallet_filter_changed"
 
@@ -81,7 +81,7 @@ namespace DBClientClasses
    class NodeChainStatus
    {
    private:
-      const CoreRPC::ChainState chainState_;
+      const Node::ChainState chainState_;
       const float blockSpeed_;
       const float progressPct_;
       const uint64_t etaSeconds_;
@@ -89,10 +89,10 @@ namespace DBClientClasses
 
    public:
       NodeChainStatus(void);
-      NodeChainStatus(CoreRPC::ChainState, float, float, uint64_t, unsigned);
+      NodeChainStatus(Node::ChainState, float, float, uint64_t, unsigned);
       NodeChainStatus(NodeChainStatus&&) = default;
 
-      CoreRPC::ChainState state(void) const;
+      Node::ChainState state(void) const;
       float getBlockSpeed(void) const;
 
       float getProgressPct(void) const;
@@ -104,17 +104,17 @@ namespace DBClientClasses
    class NodeStatus
    {
    private:
-      const CoreRPC::NodeState nodeState_;
-      const CoreRPC::RpcState rpcState_;
+      const Node::NodeState nodeState_;
+      const Node::RpcState rpcState_;
       const bool isSegWitEnabled_;
       const NodeChainStatus nodeChainStatus_;
 
    public:
-      NodeStatus(CoreRPC::NodeState, CoreRPC::RpcState, bool, NodeChainStatus&);
+      NodeStatus(Node::NodeState, Node::RpcState, bool, NodeChainStatus&);
 
-      CoreRPC::NodeState state(void) const;
+      Node::NodeState state(void) const;
       bool isSegWitEnabled(void) const;
-      CoreRPC::RpcState rpcState(void) const;
+      Node::RpcState rpcState(void) const;
       const NodeChainStatus& chainStatus(void) const;
    };
 }; //namespace DBClientClasses

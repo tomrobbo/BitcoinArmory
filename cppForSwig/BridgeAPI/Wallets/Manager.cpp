@@ -688,7 +688,7 @@ const Wallets::WalletId& WalletManager::migrateWallet(
    //sanity checks
    if (path.empty() || lbd == nullptr) {
       throw std::runtime_error(
-         "tried to unlock control header with empty id/lambda");
+         "tried to migrate wallet with empty id/lambda");
    }
 
    auto iter = walletFiles_.find(path.filename().string());
