@@ -1636,6 +1636,7 @@ TEST_F(ZeroConfTests_FullNode, Load3Blocks_ZC_Plus3)
    EXPECT_EQ(DBTestUtils::getScrAddrBalance(TestChain::scrAddrC, bdm), 65 * COIN);
 
    //pull ZC from DB, verify it's carrying the proper data
+   std::this_thread::sleep_for(100ms);
    auto dbtx = iface_->beginTransaction(
       DB_SELECT::ZERO_CONF, LMDB::Mode::ReadOnly);
    StoredTx zcStx;

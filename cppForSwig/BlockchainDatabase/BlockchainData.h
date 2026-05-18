@@ -9,17 +9,18 @@
 #pragma once
 
 #include <memory>
+#include <vector>
 #include <string>
 
 #include <Utils/Types.h>
 
 class Tx;
-class BinaryData;
 
 namespace Armory
 {
    class Blockchain;
    class Hash32;
+   class BlockHeader;
 
    ////////
    struct BlockchainDataException : public std::runtime_error
@@ -41,6 +42,10 @@ namespace Armory
 
       Hash32 getTxHashForTxKey(const Types::TxKey&) const;
       bool isTxKeyOnMainBranch(const Types::TxKey&) const;
-      BinaryData getRawBlockForId(Types::BlockId) const;
+
+      std::pair<std::vector<uint8_t>, size_t> getRawBlockForId(
+         Types::BlockId) const;
+      std::pair<std::vector<uint8_t>, size_t> getRawBlockForHeader(
+         std::shared_ptr<BlockHeader>) const;
    };
 }

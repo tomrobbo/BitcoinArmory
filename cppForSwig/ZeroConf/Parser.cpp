@@ -20,6 +20,7 @@
 #include <Utils/BCTX.h>
 #include <BlockchainDatabase/BlockObj.h>
 #include <BlockchainDatabase/BlockDataMap.h>
+#include <BlockchainDatabase/BlockchainData.h>
 #include <BlockchainDatabase/lmdb_wrapper.h>
 #include <BlockchainDatabase/ScrAddrFilter.h>
 #include <BlockchainDatabase/txio.h>
@@ -35,17 +36,6 @@ using namespace Node::Core;
 using namespace std::chrono_literals;
 
 #define ZC_GETDATA_TIMEOUT_MS 60000
-
-namespace {
-   BinaryData getRawBlock(std::shared_ptr<BlockHeader> bh)
-   {
-      //open block file
-      auto path = FileUtils::getBlkFilename(
-         Config::Pathing::blkFilePath(), bh->getBlockFileNum());
-      auto fileMap = FileUtils::FileMap(path, false);
-      return BinaryData(fileMap.ptr() + bh->getOffset(), bh->getBlockSize());
-   }
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 // misc
@@ -233,10 +223,10 @@ ZeroConfContainer::purgeToBranchpoint(
    //loop over headers
    while (currentHeader != reorgState.reorgBranchPoint) {
       //grab block
-      auto rawBlock = getRawBlock(currentHeader);
+      auto rawBlock = bd_->getRawBlockForHeader(currentHeader);
       auto block = BlockData::deserialize(
-         rawBlock.getPtr(), rawBlock.getSize(),
-         currentHeader,
+         &rawBlock.first[0] + rawBlock.second,
+         currentHeader->getBlockSize(), currentHeader,
          BlockData::CheckHashes::NoChecks);
       const auto& txns = block->getTxns();
 
@@ -334,10 +324,10 @@ std::map<Types::TxKey, std::shared_ptr<ParsedTx>> ZeroConfContainer::purge(
    while (nextHashPtr != nullptr) {
       //grab block
       currentHeader = bc_->getHeaderByHash(*nextHashPtr);
-      auto rawBlock = getRawBlock(currentHeader);
+      auto rawBlock = bd_->getRawBlockForHeader(currentHeader);
       auto block = BlockData::deserialize(
-         rawBlock.getPtr(), rawBlock.getSize(),
-         currentHeader,
+         &rawBlock.first[0] + rawBlock.second,
+         currentHeader->getBlockSize(), currentHeader,
          BlockData::CheckHashes::NoChecks);
       const auto& txns = block->getTxns();
 
