@@ -13,8 +13,8 @@
 #include <Utils/log.h>
 #include <Utils/BtcUtils.h>
 #include <Utils/varint.h>
-#include <Utils/TxOutScrRef.h>
 #include <Utils/DBUtils.h>
+#include <Utils/FileUtils.h>
 #include <Utils/BCTX.h>
 #include <Utils/ArmoryConfig.h>
 #include <Utils/UniversalTimer.h>

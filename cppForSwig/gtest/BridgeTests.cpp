@@ -13,7 +13,7 @@
 #include "TestUtils.h"
 #include <reorgTest/blkdata.h>
 #include <Utils/ArmoryConfig.h>
-#include <Utils/DBUtils.h>
+#include <Utils/FileUtils.h>
 #include <Ledgers/LedgerEntry.h>
 
 #include <Wallets/Accounts/AddressAccounts.h>

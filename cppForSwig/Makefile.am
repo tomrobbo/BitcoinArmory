@@ -105,6 +105,7 @@ ARMORYUTILS_SOURCE_FILES = Utils/ArmoryConfig.cpp \
 	Utils/TxOutScrRef.cpp \
 	Utils/Cryptography.cpp \
 	Utils/DBUtils.cpp \
+	Utils/FileUtils.cpp \
 	Utils/HttpMessage.cpp \
 	Utils/JSON_codec.cpp \
 	Utils/log.cpp \

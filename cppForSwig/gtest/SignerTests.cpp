@@ -16,7 +16,7 @@
 #include <reorgTest/blkdata.h>
 
 #include <Utils/ArmoryConfig.h>
-#include <Utils/DBUtils.h>
+#include <Utils/FileUtils.h>
 #include <Utils/UniversalTimer.h>
 #include <Ledgers/LedgerEntry.h>
 

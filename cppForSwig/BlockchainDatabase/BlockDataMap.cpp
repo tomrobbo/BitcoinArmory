@@ -13,7 +13,7 @@
 #include <Utils/BtcUtils.h>
 #include <Utils/varint.h>
 #include <Utils/BCTX.h>
-#include <Utils/DBUtils.h>
+#include <Utils/FileUtils.h>
 #include <Utils/ArmoryConfig.h>
 #include "TxHashFilters.h"
 #include "BlockObj.h"

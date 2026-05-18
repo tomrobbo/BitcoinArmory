@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2019-2025, goatpig                                          //
+//  Copyright (C) 2019-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -11,6 +11,7 @@
 
 #include <Utils/BtcUtils.h>
 #include <Utils/DBUtils.h>
+#include <Utils/FileUtils.h>
 #include <Utils/Cryptography.h>
 #include "WalletFileInterface.h"
 #include "WalletHeader.h"

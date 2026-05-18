@@ -14,7 +14,7 @@
 
 #include <Utils/ArmoryConfig.h>
 #include <Utils/BtcUtils.h>
-#include <Utils/DBUtils.h>
+#include <Utils/FileUtils.h>
 #include <Signer/Signer.h>
 #include <Signer/ResolverFeed_Wallets.h>
 #include <Ledgers/LedgerEntry.h>

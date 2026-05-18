@@ -10,7 +10,7 @@
 #include "TestUtils.h"
 #include <reorgTest/blkdata.h>
 #include <Utils/BIP15x_Handshake.h>
-#include <Utils/DBUtils.h>
+#include <Utils/FileUtils.h>
 #include <Wallets/Accounts/AddressAccounts.h>
 #include <Ledgers/LedgerEntry.h>
 #include <BDM_mainthread.h>
@@ -18,7 +18,6 @@
 #include <ZeroConf/Parser.h>
 #include <ZeroConf/Utils.h>
 
-using namespace std;
 using namespace Armory;
 using namespace Armory::Assets;
 using namespace Armory::Wallets;
@@ -102,7 +101,7 @@ namespace TestUtils
       auto filemap = FileUtils::FileMap(filename);
 
       if (data.getSize() < 8) {
-         throw runtime_error("only for buffers 8 bytes and larger");
+         throw std::runtime_error("only for buffers 8 bytes and larger");
       }
 
       //search it
@@ -158,10 +157,10 @@ namespace TestUtils
    void concatFile(const std::vector<std::filesystem::path> &from,
       const std::filesystem::path &to)
    {
-      std::ofstream o(to, ios::app | ios::binary);
+      std::ofstream o(to, std::ios::app | std::ios::binary);
 
       for (const auto& fname : from) {
-         std::ifstream i(fname, ios::binary);
+         std::ifstream i(fname, std::ios::binary);
          o << i.rdbuf();
       }
 
@@ -185,7 +184,7 @@ namespace TestUtils
    void setBlocks(const std::vector<std::string> &files,
       const std::filesystem::path &to)
    {
-      std::ofstream o(to, ios::trunc | ios::binary);
+      std::ofstream o(to, std::ios::trunc | std::ios::binary);
       o.close();
 
       std::vector<std::filesystem::path> fullFileNames;
@@ -219,7 +218,7 @@ namespace TestUtils
 
       auto iter = sbh.stxMap.find(id);
       if (iter == sbh.stxMap.end()) {
-         throw range_error("invalid tx id");
+         throw std::range_error("invalid tx id");
       }
       return iter->second.dataCopy;
    }
@@ -246,7 +245,7 @@ namespace TestUtils
 namespace DBTestUtils
 {
    unsigned commandCtr_ = 0;
-   deque<unsigned> zcDelays_;
+   std::deque<unsigned> zcDelays_;
 
    /////////////////////////////////////////////////////////////////////////////
    Hash32 getTopBlockHash(LMDBBlockDatabase* db, DB_SELECT dbSelect)
@@ -273,19 +272,19 @@ namespace DBTestUtils
 
       auto bdvRequest = payload.initBdv();
       bdvRequest.setGoOnline();
-
       processCommand(clients, id, serializeCapnp(message));
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   const shared_ptr<BDV_Server_Object> getBDV(Clients* clients, Types::BdvId id)
+   const std::shared_ptr<BDV_Server_Object> getBDV(
+      Clients* clients, Types::BdvId id)
    {
       return clients->get(id);
    }
 
    /////////////////////////////////////////////////////////////////////////////
    void registerWallet(Clients* clients, Types::BdvId bdvId,
-      const vector<Types::ScrAddr>& scrAddrs, const string& wltName,
+      const std::vector<Types::ScrAddr>& scrAddrs, const std::string& wltName,
       bool waitOnReg)
    {
       capnp::MallocMessageBuilder message;
@@ -668,7 +667,7 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   std::pair<vector<TxIOPair>, std::set<Types::TxHash>> waitOnNewZcSignal(
+   std::pair<std::vector<TxIOPair>, std::set<Types::TxHash>> waitOnNewZcSignal(
       Clients* clients, Types::BdvId bdvId)
    {
       auto result = waitOnSignal(clients, bdvId,
@@ -686,13 +685,13 @@ namespace DBTestUtils
 
       auto zcNotif = notifList[index];
       if (zcNotif.which() != Codec::BDV::Notification::ZC) {
-         cout << "invalid result vector size in waitOnNewZcSignal";
-         throw runtime_error("");
+         std::cout << "invalid result vector size in waitOnNewZcSignal" << std::endl;
+         throw std::runtime_error("");
       }
 
       auto capnZcs = zcNotif.getZc();
 
-      std::pair<vector<TxIOPair>, std::set<Types::TxHash>> txioData;
+      std::pair<std::vector<TxIOPair>, std::set<Types::TxHash>> txioData;
       txioData.first = capnToTxios(capnZcs);
 
       if (notifList.size() >= index + 2) {
@@ -726,8 +725,8 @@ namespace DBTestUtils
          auto notifList = notifs.getNotifs();
          auto notif = notifList[get<1>(result)];
          if (notif.which() != Codec::BDV::Notification::REFRESH) {
-            cout << "invalid result vector size in waitOnWalletRefresh";
-            throw runtime_error("");
+            std::cout << "invalid result vector size in waitOnWalletRefresh" << std::endl;
+            throw std::runtime_error("");
          }
 
          auto refresh = notif.getRefresh();
@@ -755,7 +754,6 @@ namespace DBTestUtils
    {
       auto nodePtr = bdmt->bdm()->processNode_;
       auto nodeUnitTest = (NodeUnitTest*)nodePtr.get();
-
       nodeUnitTest->mineNewBlock(bdmt->bdm(), count, h160);
    }
 
@@ -764,7 +762,6 @@ namespace DBTestUtils
    {
       auto nodePtr = bdmt->bdm()->processNode_;
       auto nodeUnitTest = (NodeUnitTest*)nodePtr.get();
-
       return nodeUnitTest->getMinedBlocks();
    }
 
@@ -792,7 +789,7 @@ namespace DBTestUtils
          zcDelays_.pop_front();
       }
 
-      std::vector<pair<BinaryData, unsigned>> txVec;
+      std::vector<std::pair<BinaryData, unsigned>> txVec;
       for (auto& newzc : zcVec.zcVec_) {
          BinaryData bdTx{newzc.first.getPtr(), newzc.first.getSize()};
          auto localDelay = newzc.second;
@@ -811,13 +808,13 @@ namespace DBTestUtils
    }
 
    /////////////////////////////////////////////////////////////////////////////
-   pair<BinaryData, BinaryData> getAddrAndPubKeyFromPrivKey(
+   std::pair<BinaryData, BinaryData> getAddrAndPubKeyFromPrivKey(
       BinaryData privKey, bool compressed)
    {
       auto pubkey = Cryptography::ECDSA::computePublicKey(privKey, compressed);
       auto h160 = BtcUtils::getHash160(pubkey);
 
-      pair<BinaryData, BinaryData> result;
+      std::pair<BinaryData, BinaryData> result;
       result.second = pubkey;
       result.first = h160;
 
@@ -935,9 +932,9 @@ namespace DBTestUtils
 
    /////////////////////////////////////////////////////////////////////////////
    AsyncClient::TxResult getTxByHash(
-      shared_ptr<AsyncClient::BlockDataViewer> bdv, const BinaryData& hash)
+      std::shared_ptr<AsyncClient::BlockDataViewer> bdv, const BinaryData& hash)
    {
-      auto prom = make_shared<promise<AsyncClient::TxBatchResult>>();
+      auto prom = std::make_shared<std::promise<AsyncClient::TxBatchResult>>();
       auto fut = prom->get_future();
       auto lbd = [prom](ReturnMessage<AsyncClient::TxBatchResult> msg)->void
       {

@@ -14,7 +14,7 @@
 #include <Node/nodeRPC.h>
 
 #include "ArmoryErrors.h"
-#include "DBUtils.h"
+#include "FileUtils.h"
 #include "Cryptography.h"
 #include "BitcoinSettings.h"
 

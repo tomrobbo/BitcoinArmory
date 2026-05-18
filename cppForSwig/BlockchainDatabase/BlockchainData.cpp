@@ -10,7 +10,7 @@
 
 #include "BlockchainData.h"
 #include <Utils/ArmoryConfig.h>
-#include <Utils/DBUtils.h>
+#include <Utils/FileUtils.h>
 #include <Utils/BCTX.h>
 #include <Utils/varint.h>
 #include <Utils/BinaryData.h>

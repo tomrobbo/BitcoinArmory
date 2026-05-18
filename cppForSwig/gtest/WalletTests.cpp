@@ -13,7 +13,7 @@
 
 #include "TestUtils.h"
 #include <reorgTest/blkdata.h>
-#include <Utils/DBUtils.h>
+#include <Utils/FileUtils.h>
 #include <Utils/ArmoryConfig.h>
 #include <Utils/BitcoinSettings.h>
 #include <Ledgers/LedgerEntry.h>

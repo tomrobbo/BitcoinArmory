@@ -20,7 +20,7 @@
 #include <reorgTest/blkdata.h>
 
 #include <Utils/ArmoryConfig.h>
-#include <Utils/DBUtils.h>
+#include <Utils/FileUtils.h>
 #include <Utils/UniversalTimer.h>
 #include <Wallets/IOHeader.h>
 #include <Wallets/Seeds/Seeds.h>
@@ -1641,7 +1641,7 @@ TEST_F(ZeroConfTests_FullNode, Load3Blocks_ZC_Plus3)
    StoredTx zcStx;
    auto zcKey = Types::constructZCKey(0);
 
-   EXPECT_TRUE(iface_->getStoredZC(zcStx, zcKey));
+   ASSERT_TRUE(iface_->getStoredZC(zcStx, zcKey));
    EXPECT_EQ(zcStx.thisHash, ZChash1);
    EXPECT_EQ(zcStx.numBytes , TestChain::zcTxSize);
    EXPECT_EQ(zcStx.fragBytes, 190U);

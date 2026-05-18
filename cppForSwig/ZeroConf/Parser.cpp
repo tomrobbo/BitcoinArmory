@@ -15,6 +15,7 @@
 #include "Parser.h"
 #include <Utils/ArmoryErrors.h>
 #include <Utils/ArmoryConfig.h>
+#include <Utils/FileUtils.h>
 #include <Utils/DBUtils.h>
 #include <Utils/BCTX.h>
 #include <BlockchainDatabase/BlockObj.h>

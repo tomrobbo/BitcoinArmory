@@ -10,7 +10,7 @@
 
 #include "AuthorizedPeers.h"
 #include <Utils/BIP150_151.h>
-#include <Utils/DBUtils.h>
+#include <Utils/FileUtils.h>
 #include <Utils/BtcUtils.h>
 
 #include "Accounts/AccountTypes.h"

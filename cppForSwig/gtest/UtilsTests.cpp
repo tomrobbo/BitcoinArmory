@@ -24,6 +24,7 @@
 #include <Utils/ArmoryConfig.h>
 #include <Utils/varint.h>
 #include <Utils/DBUtils.h>
+#include <Utils/FileUtils.h>
 #include <Utils/UniversalTimer.h>
 #include <Utils/JSON_codec.cpp>
 #include <Ledgers/LedgerEntry.h>

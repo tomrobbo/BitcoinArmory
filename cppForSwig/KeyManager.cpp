@@ -13,7 +13,7 @@
 
 #include "TerminalPassphrasePrompt.h"
 #include <Utils/ArmoryConfig.h>
-#include <Utils/DBUtils.h>
+#include <Utils/FileUtils.h>
 #include <Utils/Cryptography.h>
 #include <Wallets/AuthorizedPeers.h>
 #include <Wallets/IOHeader.h>

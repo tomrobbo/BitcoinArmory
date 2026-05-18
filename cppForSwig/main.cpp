@@ -20,7 +20,7 @@
 #include <Utils/ArmoryConfig.h>
 #include <Utils/Cryptography.h>
 #include <Utils/BIP150_151.h>
-#include <Utils/DBUtils.h>
+#include <Utils/FileUtils.h>
 #include <BlockchainDatabase/BlockUtils.h>
 #include <Wallets/IOHeader.h>
 #include <Wallets/AuthorizedPeers.h>

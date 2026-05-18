@@ -13,6 +13,7 @@
 #include <Utils/BtcUtils.h>
 #include <Utils/varint.h>
 #include <Utils/DBUtils.h>
+#include <Utils/FileUtils.h>
 #include <Utils/ArmoryConfig.h>
 #include <Utils/BitcoinSettings.h>
 #include <Utils/UniversalTimer.h>
