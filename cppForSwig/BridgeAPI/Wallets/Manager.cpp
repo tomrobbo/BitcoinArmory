@@ -172,6 +172,9 @@ void WalletManager::updateMainLedgerFilter(
    const std::map<Wallets::WalletId, AAIdSet>& idMap)
 {
    mainLedgerFilter_ = idMap;
+   if (callbackPtr_ != nullptr) {
+      callbackPtr_->notifyRefresh({"wallet_filter_changed"});
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

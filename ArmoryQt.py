@@ -221,7 +221,6 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
       self.cppLockboxWltMap = {}
       self.broadcasting = {}
       self.wallets = wallets
-      self.walletModel = AllWalletsDispModel(self.wallets, self)
 
       self.nodeStatus = None
       self.numHeartBeat = 0
@@ -5072,7 +5071,7 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
       del self.progressCallbacks[id]
 
 ################################################################################
-if 1:
+if True:
    # 1) Show splash screen during actual loading (bridge startup)
    pixLogo = QtGui.QPixmap('./img/splashlogo.png')
    if USE_TESTNET or USE_REGTEST:

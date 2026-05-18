@@ -1877,8 +1877,6 @@ void CppBridge::updateWalletsLedgerFilter(
    const std::map<Wallets::WalletId, std::set<Wallets::AddressAccountId>>& idMap)
 {
    wltManager_->updateMainLedgerFilter(idMap);
-   //TODO: send updated filter notif to client
-   throw std::runtime_error("this needs to push a notif");
 }
 
 ////////////////////////////////////////////////////////////////////////////////

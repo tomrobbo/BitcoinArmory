@@ -6615,6 +6615,83 @@ TEST_F(BridgeChainDataTests, Check5Blocks_BCDE)
    }
 }
 
+TEST_F(BridgeChainDataTests, ChangeFilters_ALFB_BCDE)
+{
+   loadWallets({walletId_BCDE_, walletId_AFLB_});
+
+   TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
+   WebSocketServer::initAuthPeers({
+      homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+   WebSocketServer::start(theBDMt_->bdm(), true);
+
+   ASSERT_TRUE(connectToIp(bridge_, "127.0.0.1", "9001", serverPubkey_));
+   ASSERT_TRUE(registerWallets(bridge_));
+
+   //start db, go online and wait on ready notif
+   theBDMt_->start(Config::DBSettings::initMode());
+   ASSERT_EQ(goOnline(bridge_), 5);
+
+   //check main ledger
+   auto delegateId = getLedgerDelegateId(bridge_);
+   ASSERT_FALSE(delegateId.empty());
+
+   auto pageCount = getLedgersPageCount(bridge_, delegateId);
+   EXPECT_EQ(pageCount, 1);
+
+   auto ledgers = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgers.size(), 26);
+
+   std::vector<TestChain::LedgerEntryValue> combinedLedgers;
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersBCDE.begin(), TestChain::ledgersBCDE.end());
+   combinedLedgers.insert(combinedLedgers.end(),
+      TestChain::ledgersAFLB.begin(), TestChain::ledgersAFLB.end());
+   ASSERT_EQ(combinedLedgers.size(), 26);
+   std::sort(combinedLedgers.begin(), combinedLedgers.end());
+
+   for (unsigned i = 0; i < ledgers.size(); i++) {
+      EXPECT_TRUE(
+         checkLedgers(ledgers[i],
+            combinedLedgers[i])) << i;
+   }
+
+   //remove AFLB from filter
+   uint64_t refId = rand();
+
+   capnp::MallocMessageBuilder message;
+   auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+   toBridge.setReferenceId(refId);
+   auto request = toBridge.initWalletManager();
+   auto filterReq = request.initUpdateMainLedgerFilter(1);
+   auto wltId0 = filterReq[0];
+   wltId0.setWalletId(walletId_BCDE_);
+   wltId0.setAccountId(accountId_BCDE_);
+
+   auto rawReq = serializeCapnp(message);
+   pushRequest(bridge_, rawReq);
+
+   auto result = waitOnReply();
+   kj::ArrayPtr<const capnp::word> words(
+      reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+      result->data.getSize() / sizeof(capnp::word));
+   capnp::FlatArrayMessageReader reader(words);
+   auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+   ASSERT_EQ(fromBridge.which(), Codec::Bridge::FromBridge::NOTIFICATION);
+   auto notif = fromBridge.getNotification();
+   ASSERT_EQ(notif.which(), Codec::Bridge::Notification::REFRESH);
+   auto notifIds = notif.getRefresh();
+   ASSERT_EQ(notifIds.size(), 1);
+   ASSERT_EQ(std::string(notifIds[0]), std::string{"wallet_filter_changed"});
+
+   //check main ledger again
+   ledgers = getLedgersPage(bridge_, delegateId, 0);
+   ASSERT_EQ(ledgers.size(), 15);
+
+   for (unsigned i = 0; i < ledgers.size(); i++) {
+      EXPECT_TRUE(checkLedgers(ledgers[i], TestChain::ledgersBCDE[i])) << i;
+   }
+}
+
 TEST_F(BridgeChainDataTests, BlocksOutOfOrder_BCDE)
 {
    /*

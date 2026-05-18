@@ -858,12 +858,14 @@ class WalletManagerWrapper(ProtoWrapper):
       return response.walletManager.getMainLedgerDelegateId
 
    ####
-   def updateMainLedgerFilter(self, ids: list[str]):
-      return
+   def updateMainLedgerFilter(self, ids):
       packet = Bridge.ToBridge.new_message()
-      packetIds = packet.init("walletManager").init("updateMainLedgerFilter", len(ids))
-      for i, id_ in enumerate(ids):
-         packetIds[i] = id_
+      packetIds = packet.init("walletManager").init(
+         "updateMainLedgerFilter", len(ids))
+      for i in range(len(ids))
+         capnId = packetIds[i]
+         capnId.walletId = ids[i][0]
+         capnId.accountId = ids[i][1]
       self.send(packet, needsReply=False)
 
 ################################################################################
