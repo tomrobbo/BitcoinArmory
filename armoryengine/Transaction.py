@@ -1947,7 +1947,7 @@ class UnsignedTransaction(AsciiSerializable):
          for txHash in capnTxns:
             if not txHash in prevTxs:
                raise InvalidHashError('Could not find the referenced tx')
-            prevTxs[txHash]['pyTx'] = PyTx().unserialize(capnTxns[txHash].raw)
+            prevTxs[txHash]['pyTx'] = PyTx().unserialize(capnTxns[txHash].body.raw)
 
       count = 0
       #populate input list with tx data
@@ -2417,7 +2417,7 @@ def determineSentToSelfAmt(le, wlt):
          return (0, 0)
       txData = txProto[le.txHash]
 
-      pytx = PyTx().unserialize(txData.raw)
+      pytx = PyTx().unserialize(txData.body.raw)
       if pytx.getNumTxOut()==1:
          return (pytx.outputs[0].getValue(), -1)
       maxChainIndex = -5

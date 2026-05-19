@@ -272,9 +272,11 @@ uint32_t TxIOCache::update(
       auto zcIter = zcHashes.find(tx.getThisHash());
       if (zcIter != zcHashes.end()) {
          dbCache_->txMap.erase(zcIter->second);
+         dbCache_->txHashToKey.erase(tx.getThisHash());
       }
 
       //add fresh tx
+      dbCache_->txHashToKey.emplace(tx.getThisHash(), tx.getDBKey());
       dbCache_->txMap.emplace(tx.getDBKey(), std::move(tx));
    }
    dbCache_->addHeaders(headers);

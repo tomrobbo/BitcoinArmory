@@ -2857,8 +2857,8 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
          f"Could not find a transaction for hash {txHash}!", QtWidgets.QMessageBox.Ok))
          return
       txData = txProto[txHashBin]
-      pytx = PyTx().unserialize(txData.raw)
-      pytx.setRBF(txData.rbf)
+      pytx = PyTx().unserialize(txData.body.raw)
+      pytx.setRBF(txData.body.isRbf)
 
       if pytx==None:
          QtWidgets.QMessageBox.critical(self, self.tr('Invalid Tx'), self.tr(
@@ -5022,7 +5022,7 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
       txHashBin = hex_to_binary(txHash)
       result = TheBridge.service.getTxsByHash([txHashBin])
       zctx = result[txHashBin]
-      pytx = PyTx().unserialize(zctx.raw)
+      pytx = PyTx().unserialize(zctx.body.raw)
 
       #init tx prefill data
       prefill = {

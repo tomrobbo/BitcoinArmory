@@ -55,7 +55,7 @@ struct Outpoint {
 }
 
 struct Tx {
-   body        @0 : Data;
+   raw         @0 : Data;
    key         @1 : TxKey;
    isChainedZc @2 : Bool;
    isRbf       @3 : Bool;

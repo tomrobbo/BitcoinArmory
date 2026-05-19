@@ -303,12 +303,11 @@ struct BlockchainServiceRequest {
 
 struct BlockchainServiceReply {
    struct TxData {
-      raw         @0 : Data;
-      hash        @1 : Types.Hash;
-      height      @2 : Types.Height;
-      txIndex     @3 : UInt32;
-      rbf         @4 : Bool;
-      chainedZc   @5 : Bool;
+      height      @0 : Types.Height;
+      txIndex     @1 : UInt32;
+      timestamp   @2 : UInt32;
+      hash        @3 : Types.Hash;
+      body        @4 : Types.Tx;
    }
 
    # reply

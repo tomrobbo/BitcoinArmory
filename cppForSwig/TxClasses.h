@@ -245,7 +245,7 @@ private:
    const uint32_t lockTime_;
    const bool usesWitness_;
 
-   uint32_t txTime_{0};
+   uint32_t txTime_{UINT32_MAX};
    mutable Armory::Types::TxHash thisHash_;
    Armory::Types::TxKey txKey_;
 
