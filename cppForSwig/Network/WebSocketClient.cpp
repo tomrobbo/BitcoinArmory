@@ -18,6 +18,7 @@
 #include "capnp/BDV.capnp.h"
 
 using namespace Armory;
+using namespace Armory::Network;
 
 ////////////////////////////////////////////////////////////////////////////////
 static struct lws_protocols protocols[] =
@@ -130,7 +131,8 @@ void WebSocketClient::writeService()
          }
 
          if (needs_rekey) {
-            BinaryData rekeyPacket(BIP151PUBKEYSIZE);
+            BinaryData rekeyPacket;
+            rekeyPacket.resize(BIP151PUBKEYSIZE);
             memset(rekeyPacket.getPtr(), 0, BIP151PUBKEYSIZE);
 
             SerializedMessage rekey_msg;
@@ -671,7 +673,7 @@ void WSClientWriteQueue::push_back(SerializedMessage& msg)
 
 SerializedMessage WSClientWriteQueue::pop_front()
 {
-   return std::move(writeQueue_.pop_front());
+   return writeQueue_.pop_front();
 }
 
 bool WSClientWriteQueue::empty() const

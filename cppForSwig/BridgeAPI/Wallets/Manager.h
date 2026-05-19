@@ -60,6 +60,7 @@ namespace Armory
       class Callback;
       class TxIOCache;
       struct NotifStruct;
+      using AAIdSet = std::set<Wallets::AddressAccountId>;
 
       class WalletManager : public Lockable
       {
@@ -79,6 +80,7 @@ namespace Armory
          //history
          std::shared_ptr<TxIOCache> txioCache_;
          std::map<std::string, Ledgers::Delegate> delegateMap_;
+         std::map<Wallets::WalletId, AAIdSet> mainLedgerFilter_;
 
       private:
          void initAfterLock(void) override {}
@@ -123,10 +125,9 @@ namespace Armory
             const Wallets::WalletId&) const;
          std::shared_ptr<WalletContainer> getWalletContainer(
             const Wallets::WalletId&, const Wallets::AddressAccountId&) const;
+         AAIdSet getAddressAccountIds(const Wallets::WalletId&) const;
          const std::map<std::string, std::shared_ptr<WalletContainer>>&
          getWalletContainerMap(void) const;
-         std::set<Wallets::AddressAccountId> getAddressAccountIds(
-            const Wallets::WalletId&) const;
 
          /* wallet add/create/delete */
          void loadWallet(const Wallets::IO::ReadOnlyFileParams&);
@@ -158,7 +159,12 @@ namespace Armory
             const Wallets::WalletId&, const Wallets::AddressAccountId&);
          const std::string& getDelegateIdForScrAddr(
             const Wallets::WalletId&, const Wallets::AddressAccountId&,
-            const BinaryData&);
+            const Types::ScrAddr&);
+
+         std::map<std::string, std::shared_ptr<WalletContainer>>
+         getFilteredContainerMap(void) const;
+         void updateMainLedgerFilter(
+            const std::map<Wallets::WalletId, AAIdSet>&);
 
          uint32_t getPageCountForDelegate(const std::string&) const;
          std::vector<Ledgers::Entry> getPageForDelegate(

@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2016-2025, goatpig                                          //
+//  Copyright (C) 2016-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -14,7 +14,7 @@
 
 #include "Manager.h"
 #include <Utils/BtcUtils.h>
-#include <Utils/DBUtils.h>
+#include <Utils/FileUtils.h>
 #include <Ledgers/LedgerEntry.h>
 #include <Ledgers/Context.h>
 #include <AsyncClient.h>
@@ -44,10 +44,11 @@ namespace
    {
       ReentrantLock lock(mgr);
 
-      std::vector<std::map<BinaryData, Ledgers::Entry>> walletLedgers;
+      std::vector<std::map<Types::TxKey, Ledgers::Entry>> walletLedgers;
       unsigned totalSize = 0;
-      walletLedgers.reserve(mgr->getWalletContainerMap().size());
-      for (const auto& wltCont : mgr->getWalletContainerMap()) {
+      auto filteredMap = mgr->getFilteredContainerMap();
+      walletLedgers.reserve(filteredMap.size());
+      for (const auto& wltCont : filteredMap) {
          const auto txioMap = wltCont.second->getTxioMap();
          auto context = Ledgers::prepareContext(txioMap, mgr->getDbCache(), {});
          walletLedgers.emplace_back(std::move(Ledgers::computeLedgerMap(
@@ -70,12 +71,13 @@ namespace
    {
       //this is only used to generate ledgers for ZC notifs
       auto txioCache = mgr->txioCache();
-      std::vector<std::map<BinaryData, Ledgers::Entry>> walletLedgers;
+      std::vector<std::map<Types::TxKey, Ledgers::Entry>> walletLedgers;
       unsigned totalSize = 0;
-      walletLedgers.reserve(mgr->getWalletContainerMap().size());
-      for (const auto& wltCont : mgr->getWalletContainerMap()) {
+      auto filteredMap = mgr->getFilteredContainerMap();
+      walletLedgers.reserve(filteredMap.size());
+      for (const auto& wltCont : filteredMap) {
          const auto& txioMap = txioCache->getZcTxios(
-            [wltPtr=wltCont.second](const BinaryData& addr)->bool
+            [wltPtr=wltCont.second](const Types::ScrAddr& addr)->bool
             { return wltPtr->hasScrAddr(addr); }
          );
          auto context = Ledgers::prepareContext(txioMap, mgr->getDbCache(), {});
@@ -146,6 +148,33 @@ const std::map<std::string, std::shared_ptr<WalletContainer>>&
 WalletManager::getWalletContainerMap() const
 {
    return walletsByDbId_;
+}
+
+std::map<std::string, std::shared_ptr<WalletContainer>>
+WalletManager::getFilteredContainerMap() const
+{
+   std::map<std::string, std::shared_ptr<WalletContainer>> result;
+   for (const auto& wltPair : walletsByDbId_) {
+      auto wltIter = mainLedgerFilter_.find(wltPair.second->getWalletId());
+      if (wltIter == mainLedgerFilter_.end()) {
+         continue;
+      }
+      auto accIter = wltIter->second.find(wltPair.second->getAccountId());
+      if (accIter == wltIter->second.end()) {
+         continue;
+      }
+      result.emplace(wltPair);
+   }
+   return result;
+}
+
+void WalletManager::updateMainLedgerFilter(
+   const std::map<Wallets::WalletId, AAIdSet>& idMap)
+{
+   mainLedgerFilter_ = idMap;
+   if (callbackPtr_ != nullptr) {
+      callbackPtr_->notifyRefresh({"wallet_filter_changed"});
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -334,6 +363,7 @@ std::shared_ptr<WalletContainer> WalletManager::addAccount(
       wltIter = wallets_.emplace(wltPtr->getID(),
          std::map<Wallets::AddressAccountId, std::shared_ptr<WalletContainer>>{}).first;
    }
+   auto filterIter = mainLedgerFilter_.emplace(wltPtr->getID(), AAIdSet{}).first;
 
    auto accIter = wltIter->second.find(accId);
    if (accIter != wltIter->second.end()) {
@@ -354,6 +384,7 @@ std::shared_ptr<WalletContainer> WalletManager::addAccount(
    wltCont->setWalletPtr(wltPtr, accId);
    wltIter->second.emplace(accId, wltCont);
    walletsByDbId_.emplace(wltCont->getDbId(), wltCont);
+   filterIter->second.emplace(accId);
 
    //return it
    return wltCont;
@@ -660,7 +691,7 @@ const Wallets::WalletId& WalletManager::migrateWallet(
    //sanity checks
    if (path.empty() || lbd == nullptr) {
       throw std::runtime_error(
-         "tried to unlock control header with empty id/lambda");
+         "tried to migrate wallet with empty id/lambda");
    }
 
    auto iter = walletFiles_.find(path.filename().string());
@@ -763,7 +794,7 @@ void WalletManager::updateStateFromDB(std::shared_ptr<NotifStruct> notif)
 
             //feed them to callback
             auto zcPtr = std::dynamic_pointer_cast<NotifStruct_ZC>(notif);
-            zcPtr->callback(ledgers, zcPtr->invalidatedZCs);
+            zcPtr->callback(ledgers, zcPtr->invalidatedZCHashes);
             break;
          }
 

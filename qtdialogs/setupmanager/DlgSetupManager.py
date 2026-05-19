@@ -423,7 +423,7 @@ class DlgSetupManager(ArmoryDialog):
       if dbScenario == SCENARIO_DB_LOCAL:
          dbTypeVal = 'DB_SUPER' \
             if dbSettings['typeDisp'] == 'Supernode' \
-            else 'DB_FULL'
+            else 'DB_BARE'
          self._setSettingIfChanged(
             'DBType', dbTypeVal)
          if dbSettings['ram']:

@@ -42,7 +42,6 @@ namespace
       capnLedger.setIsSTS(ledger.isSentToSelf());
       capnLedger.setIsOptInRBF(ledger.isOptInRBF());
       capnLedger.setIsChainedZC(ledger.isChainedZC());
-      capnLedger.setIsWitness(ledger.usesWitness());
 
       auto txHash = ledger.getTxHash();
       capnLedger.setTxHash(capnp::Data::Builder(
@@ -217,7 +216,7 @@ void Callback::run(BdmNotification notif)
                serializeCapnp(messageIZC)));
          };
          notifFunc_(std::make_shared<NotifStruct_ZC>(
-            std::move(notif.txios), std::move(notif.invalidatedZc), lbd));
+            std::move(notif.txios), std::move(notif.invalidatedZcHashes), lbd));
          break;
       }
 
@@ -384,7 +383,7 @@ NotifStruct_ZC::NotifStruct_ZC(
       const std::vector<Ledgers::Entry>&,
       const std::set<BinaryData>&)>& lbd) :
    NotifStruct(NotifType::ZC), txios(std::move(txioVec)),
-   invalidatedZCs(std::move(invalidatedZc)), callback(lbd)
+   invalidatedZCHashes(std::move(invalidatedZc)), callback(lbd)
 {}
 
 ////////

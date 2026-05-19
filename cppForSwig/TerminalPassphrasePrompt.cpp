@@ -8,7 +8,7 @@
 
 #include "TerminalPassphrasePrompt.h"
 
-#if defined(__MINGW32__) || defined(_MSC_VER)
+#ifdef _WIN32
    #include <windows.h>
 #else
    #include <termios.h>
