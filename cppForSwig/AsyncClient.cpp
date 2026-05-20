@@ -117,14 +117,13 @@ namespace {
    {
       std::map<BinaryData, TxResult> result;
       for (auto capnTx : txs) {
-         auto body = capnTx.getBody();
+         auto body = capnTx.getRaw();
          BinaryDataRef rawTx(body.begin(), body.end());
          try {
             auto txObj = std::make_shared<Tx>(rawTx);
             txObj->setTxKey(capnTx.getKey());
             txObj->setChainedZC(capnTx.getIsChainedZc());
             txObj->setRBF(capnTx.getIsRbf());
-
             result.emplace(txObj->getThisHash(), std::move(txObj));
          } catch (const BtcUtils::BlockDeserializingException&) {}
       }
@@ -137,7 +136,7 @@ namespace {
       std::vector<Tx> result;
       result.reserve(txs.size());
       for (auto capnTx : txs) {
-         auto body = capnTx.getBody();
+         auto body = capnTx.getRaw();
          BinaryDataRef rawTx(body.begin(), body.end());
          try {
             auto& txObj = result.emplace_back(Tx{rawTx});

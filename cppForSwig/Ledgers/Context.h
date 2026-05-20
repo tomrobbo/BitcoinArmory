@@ -32,6 +32,7 @@ namespace Armory
       struct DBCache
       {
          std::map<Types::TxKey, Tx> txMap;
+         std::map<Types::TxHash, Types::TxKey> txHashToKey;
          std::map<Types::BlockId, HeaderPtr> headers;
 
          void addHeaders(const std::vector<HeaderPtr>&);

@@ -862,7 +862,7 @@ class WalletManagerWrapper(ProtoWrapper):
       packet = Bridge.ToBridge.new_message()
       packetIds = packet.init("walletManager").init(
          "updateMainLedgerFilter", len(ids))
-      for i in range(len(ids))
+      for i in range(len(ids)):
          capnId = packetIds[i]
          capnId.walletId = ids[i][0]
          capnId.accountId = ids[i][1]

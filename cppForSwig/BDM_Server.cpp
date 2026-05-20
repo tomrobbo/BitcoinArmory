@@ -179,7 +179,7 @@ namespace {
             unsigned txCount = 0;
             for (const auto& tx : results) {
                auto capnTx = capnTxs[txCount++];
-               capnTx.setBody(capnp::Data::Builder(
+               capnTx.setRaw(capnp::Data::Builder(
                   (uint8_t*)tx.second.getPtr(), tx.second.getSize()
                ));
                capnTx.setKey(tx.first);
@@ -227,7 +227,7 @@ namespace {
             unsigned txCount = 0;
             for (const auto& tx : results) {
                auto capnTx = capnTxs[txCount++];
-               capnTx.setBody(capnp::Data::Builder(
+               capnTx.setRaw(capnp::Data::Builder(
                   (uint8_t*)tx.second.getPtr(), tx.second.getSize()
                ));
                capnTx.setKey(tx.first);

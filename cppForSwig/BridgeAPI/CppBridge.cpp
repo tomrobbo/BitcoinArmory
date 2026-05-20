@@ -17,6 +17,7 @@
 #include <Utils/FileUtils.h>
 #include <Signer/Signer.h>
 #include <Signer/ResolverFeed_Wallets.h>
+#include <Signer/CoinSelection.h>
 #include <Ledgers/LedgerEntry.h>
 #include <Ledgers/Context.h>
 #include <BlockchainDatabase/txio.h>
@@ -31,11 +32,12 @@
 #include <Wallets/Accounts/AccountTypes.h>
 #include <Wallets/Accounts/AddressAccounts.h>
 
+#include <AsyncClient.h>
+#include <TxClasses.h>
+
 #include "BlockchainDbClient.h"
 #include "PassphrasePrompt.h"
-#include "AsyncClient.h"
-#include "CoinSelection.h"
-#include "TerminalPassphrasePrompt.h"
+//#include "TerminalPassphrasePrompt.h"
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
@@ -2285,41 +2287,62 @@ void CppBridge::getAddress(const Wallets::WalletId& wltId,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void CppBridge::getTxsByHash(const std::set<BinaryData>& hashes, MessageId msgId)
+void CppBridge::getTxsByHash(const std::set<Types::TxHash>& hashes, MessageId msgId)
 {
-   auto lbd = [this, msgId](ReturnMessage<AsyncClient::TxBatchResult> result)
+   auto func = [this, hashes, msgId]()
    {
-      AsyncClient::TxBatchResult txMap;
-      bool valid = false;
-      try {
-         txMap = std::move(result.get());
-         valid = true;
-      } catch(const std::exception&) {}
+      auto txioCache = wltManager_->txioCache();
+      ReentrantLock lock(txioCache.get());
+      auto dbCache = txioCache->getDBCache();
+
+      std::vector<::Tx> txs;
+      txs.reserve(hashes.size());
+      for (const auto& txHash : hashes) {
+         try {
+            auto txKey = dbCache->txHashToKey.at(txHash);
+            txs.emplace_back(dbCache->txMap.at(txKey));
+         } catch (const std::out_of_range&) {
+            //no tx for this hash
+            continue;
+         }
+      }
 
       capnp::MallocMessageBuilder message;
       auto fromBridge = message.initRoot<FromBridge>();
       auto reply = fromBridge.initReply();
       reply.setReferenceId(msgId);
-      if (!valid) {
+      if (txs.empty()) {
          reply.setSuccess(false);
+         reply.setError("no txs found for requested hashes");
       } else {
-         auto service = reply.initService();
-         auto capnTxs = service.initGetTxsByHash(txMap.size());
-         unsigned i = 0;
-         for (const auto& tx : txMap) {
-            auto capnTx = capnTxs[i++];
+         auto serviceReply = reply.initService();
+         auto capnTxs = serviceReply.initGetTxsByHash(txs.size());
+
+         size_t count = 0;
+         for (const auto& tx : txs) {
+            auto capnTx = capnTxs[count++];
+            auto txKey = tx.getDBKey();
+            if (Types::isThisAZCKey(txKey)) {
+               capnTx.setHeight(UINT32_MAX);
+               capnTx.setTimestamp(tx.getTxTime());
+               capnTx.setTxIndex(UINT32_MAX);
+            } else {
+               auto header = dbCache->headers.at(
+                  Types::getBlockIDFromTxKey(txKey));
+               capnTx.setHeight(header->blockHeight);
+               capnTx.setTimestamp(header->timestamp);
+               capnTx.setTxIndex(tx.getTxIndex());
+            }
+            const auto& txHash = tx.getThisHash();
             capnTx.setHash(capnp::Data::Builder(
-               (uint8_t*)tx.first.getPtr(), tx.first.getSize()
-            ));
+               (uint8_t*)txHash.getPtr(), txHash.getSize()));
 
-            auto txRaw = tx.second->serialize();
-            capnTx.setRaw(capnp::Data::Builder(
-               (uint8_t*)txRaw.getPtr(), txRaw.getSize()));
-
-            capnTx.setRbf(tx.second->isRBF());
-            capnTx.setChainedZc(tx.second->isChained());
-            //capnTx.setBlockId(tx.second->getBlockId());
-            capnTx.setTxIndex(tx.second->getTxIndex());
+            auto capnTxBody = capnTx.initBody();
+            capnTxBody.setRaw(capnp::Data::Builder(
+               (uint8_t*)tx.getPtr(), tx.getSize()));
+            capnTxBody.setKey(txKey);
+            capnTxBody.setIsChainedZc(tx.isChained());
+            capnTxBody.setIsRbf(tx.isRBF());
          }
          reply.setSuccess(true);
       }
@@ -2327,7 +2350,11 @@ void CppBridge::getTxsByHash(const std::set<BinaryData>& hashes, MessageId msgId
       auto serialized = serializeCapnp(message);
       this->writeToClient(serialized);
    };
-   bdvPtr_->getTxsByHash(hashes, lbd);
+
+   std::thread run{func};
+   if (run.joinable()) {
+      run.detach();
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
