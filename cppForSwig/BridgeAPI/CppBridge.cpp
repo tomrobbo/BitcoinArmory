@@ -2299,8 +2299,7 @@ void CppBridge::getTxsByHash(const std::set<Types::TxHash>& hashes, MessageId ms
       txs.reserve(hashes.size());
       for (const auto& txHash : hashes) {
          try {
-            auto txKey = dbCache->txHashToKey.at(txHash);
-            txs.emplace_back(dbCache->txMap.at(txKey));
+            txs.emplace_back(dbCache->getTxByHash(txHash));
          } catch (const std::out_of_range&) {
             //no tx for this hash
             continue;
@@ -2327,7 +2326,7 @@ void CppBridge::getTxsByHash(const std::set<Types::TxHash>& hashes, MessageId ms
                capnTx.setTimestamp(tx.getTxTime());
                capnTx.setTxIndex(UINT32_MAX);
             } else {
-               auto header = dbCache->headers.at(
+               auto header = dbCache->getHeader(
                   Types::getBlockIDFromTxKey(txKey));
                capnTx.setHeight(header->blockHeight);
                capnTx.setTimestamp(header->timestamp);
