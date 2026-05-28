@@ -2521,7 +2521,8 @@ namespace {
          auto capnHash = capnTx.getHash();
          BinaryDataRef hash{capnHash.begin(), capnHash.size()};
 
-         auto capnRaw = capnTx.getRaw();
+         auto capnBody = capnTx.getBody();
+         auto capnRaw = capnBody.getRaw();
          BinaryDataRef raw{capnRaw.begin(), capnRaw.size()};
          result.emplace(hash, raw);
       }
