@@ -37,6 +37,25 @@ using namespace std;
 using namespace Armory;
 
 ////////////////////////////////////////////////////////////////////////////////
+TEST(SettingsUtilsTest, GetKeyValsFromLines_SkipsEmptyLines)
+{
+   vector<string> lines{
+      "",
+      "key1=val1",
+      "",
+      "key2=val2",
+      ""
+   };
+
+   auto keyVals = Config::SettingsUtils::getKeyValsFromLines(lines, '=');
+
+   EXPECT_EQ(keyVals.size(), 2ULL);
+   EXPECT_EQ(keyVals.at("key1"), "val1");
+   EXPECT_EQ(keyVals.at("key2"), "val2");
+   EXPECT_EQ(keyVals.find(""), keyVals.end());
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // RFC 5869 (HKDF) unit tests for SHA-256.
 class HKDF256Test : public ::testing::Test
 {
