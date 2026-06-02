@@ -518,7 +518,7 @@ class QLabelButton(QtWidgets.QLabel):
       txt = toBytes(self.text())
       if txt in self.mousePressOn:
          self.mousePressOn.remove(txt)
-         self.linkActivated.emit(ev)
+         self.linkActivated.emit(None)
 
    def enterEvent(self, ev):
       ssStr = "QtWidgets.QLabel { background-color : %s }" % \
