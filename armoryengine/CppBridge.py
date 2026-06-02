@@ -48,6 +48,24 @@ class BridgeSignerError(Exception):
    pass
 
 ################################################################################
+def findCppBridgeBinary() -> str:
+   #search candidate locations in priority order, return the first that exists
+   candidates = [
+      os.path.normpath(os.path.join(
+         os.path.dirname(os.path.abspath(__file__)), '..', 'CppBridge')),
+      os.path.join(os.getcwd(), 'CppBridge'),
+      os.path.join(os.getcwd(), 'build', 'CppBridge'),
+   ]
+
+   for candidate in candidates:
+      if os.path.isfile(candidate):
+         return candidate
+
+   triedPaths = '\n'.join('  ' + path for path in candidates)
+   raise BridgeError(
+      "could not find CppBridge binary; tried:\n" + triedPaths)
+
+################################################################################
 ##
 #### Tools
 ##
@@ -157,7 +175,7 @@ class BridgeSocket(object):
 
    ####
    def spawnBridge(self, args: list):
-      subprocess.run(["./build/CppBridge", *args])
+      subprocess.run([findCppBridgeBinary(), *args])
 
    #############################################################################
    ## socket write
