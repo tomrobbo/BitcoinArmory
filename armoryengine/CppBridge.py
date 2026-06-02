@@ -29,7 +29,26 @@ from armoryengine.BIP15x import \
 BRIDGE_CLIENT_HEADER = 1
 
 import sys
-sys.path.append("cppForSwig/capnp")
+
+################################################################################
+def findCapnpSchemaDir() -> str:
+   #search candidate locations for the capnp schema dir, in priority order
+   candidates = [
+      os.path.normpath(os.path.join(
+         os.path.dirname(os.path.abspath(__file__)),
+         '..', 'cppForSwig', 'capnp')),
+      os.path.join(os.getcwd(), 'cppForSwig', 'capnp'),
+   ]
+
+   for candidate in candidates:
+      if os.path.isdir(candidate):
+         return candidate
+
+   triedPaths = '\n'.join('  ' + path for path in candidates)
+   raise ImportError(
+      "could not find capnp schema directory; tried:\n" + triedPaths)
+
+sys.path.append(findCapnpSchemaDir())
 
 import capnp
 import Bridge_capnp as Bridge
