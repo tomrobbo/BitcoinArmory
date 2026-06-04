@@ -1723,7 +1723,7 @@ void CppBridge::restoreWallet(
             if (isWO) {
                restoreResult.wltPtr->extendPublicChain(499);
             } else {
-               restoreResult.wltPtr->setPassphrasePromptLambda(
+               auto lock = restoreResult.wltPtr->lockDecryptedContainer(
                   params.setPrivPassObj.getUnlockFunc());
                restoreResult.wltPtr->extendPrivateChainToIndex(499);
             }
@@ -2908,11 +2908,8 @@ void CppBridgeSignerStruct::signTx(const Wallets::WalletId& wltId,
          signer->resetFeed();
          signer->setFeed(feed);
 
-         //create & set passphrase lambda
-         wltPtr->setPassphrasePromptLambda(passLbd);
-
          //lock decryption container
-         auto lock = wltPtr->lockDecryptedContainer();
+         auto lock = wltPtr->lockDecryptedContainer(passLbd);
 
          //sign, this will prompt the passphrase lambda on demand
          signer->sign();

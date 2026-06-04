@@ -666,32 +666,10 @@ const WalletId& AssetWallet::getMasterID() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-ReentrantLock AssetWallet::lockDecryptedContainer()
+SingleLock AssetWallet::lockDecryptedContainer(
+   const Passphrase::UnlockFunc& func)
 {
-   return ReentrantLock(decryptedData_.get());
-}
-
-////////////////////////////////////////////////////////////////////////////////
-bool AssetWallet::isDecryptedContainerLocked() const
-{
-   try {
-      auto lock = SingleLock(decryptedData_.get());
-      return false;
-   } catch (const AlreadyLocked&) {
-      return true;
-   }
-}
-
-////
-void AssetWallet::setPassphrasePromptLambda(const Passphrase::UnlockFunc& func)
-{
-   decryptedData_->setPassphrasePromptLambda(func);
-}
-
-////
-void AssetWallet::resetPassphrasePromptLambda()
-{
-   decryptedData_->resetPassphraseLambda();
+   return decryptedData_->lockContainer(func);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -769,14 +747,8 @@ void AssetWallet::addSubDB(const std::string& dbName,
    auto headerPtr = std::make_shared<IO::WalletHeader_Custom>();
    headerPtr->walletID_ = WalletId{std::string_view{dbName}};
 
-   try {
-      iface_->lockControlContainer(passFunc);
-      iface_->addHeader(headerPtr);
-      iface_->unlockControlContainer();
-   } catch (...) {
-      iface_->unlockControlContainer();
-      rethrow_exception(std::current_exception());
-   }
+   auto lock = iface_->lockControlContainer(passFunc);
+   iface_->addHeader(headerPtr);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1190,7 +1162,8 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::createFromSeed(
    //create account
    auto account135 = std::make_shared<AccountType_ArmoryLegacy>();
    account135->setMain(true);
-   walletPtr->decryptedData_->setPassphrasePromptLambda(
+
+   auto lock = walletPtr->decryptedData_->lockContainer(
       params.setPrivPassObj.getUnlockFunc());
 
    //add primary account
@@ -1210,7 +1183,6 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::createFromSeed(
    }
 
    //clean up and return wallet
-   walletPtr->resetPassphrasePromptLambda();
    return walletPtr;
 }
 
@@ -1325,7 +1297,8 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::createFromSeed(
    }
 
    //add accounts
-   walletPtr->setPassphrasePromptLambda(params.setPrivPassObj.getUnlockFunc());
+   auto lock = walletPtr->decryptedData_->lockContainer(
+      params.setPrivPassObj.getUnlockFunc());
    switch (seed->type())
    {
       case Seeds::SeedType::BIP32_Structured:
@@ -1341,9 +1314,6 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::createFromSeed(
          //no accounts structure for these seeds
          break;
    }
-
-   //cleanup and return
-   walletPtr->resetPassphrasePromptLambda();
    return walletPtr;
 }
 
@@ -1521,9 +1491,11 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::initWalletDb(
    walletPtr->decryptedData_->addEncryptionKey(masterKeyStruct.masterKey_);
 
    //put wallet db name in meta db
-   iface->lockControlContainer(params.setCtrlPassObj.getUnlockFunc());
-   iface->addHeader(headerPtr);
-   iface->unlockControlContainer();
+   {
+      auto lock = iface->lockControlContainer(
+         params.setCtrlPassObj.getUnlockFunc());
+      iface->addHeader(headerPtr);
+   }
 
    //insert the original entries
    {
@@ -1613,9 +1585,11 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::initWalletDbWithPubRoot(
    auto walletPtr = std::make_shared<AssetWallet_Single>(
       iface, headerPtr, masterID);
 
-   iface->lockControlContainer(params.setCtrlPassObj.getUnlockFunc());
-   iface->addHeader(headerPtr);
-   iface->unlockControlContainer();
+   {
+      auto lock = iface->lockControlContainer(
+         params.setCtrlPassObj.getUnlockFunc());
+      iface->addHeader(headerPtr);
+   }
 
    /**insert the original entries**/
    {
@@ -1727,25 +1701,26 @@ const AssetId& AssetWallet_Single::derivePrivKeyFromPath(
 
 ////////////////////////////////////////////////////////////////////////////////
 void AssetWallet_Single::changePrivateKeyPassphrase(
-   Passphrase::SetNew& newPassObj)
+   const Passphrase::UnlockFunc& unlockFunc, Passphrase::SetNew& newPassObj)
 {
    auto masterKeyId = decryptedData_->getMasterEncryptionKeyId();
-   decryptedData_->encryptEncryptionKey(masterKeyId, newPassObj, true);
+   decryptedData_->encryptEncryptionKey(masterKeyId, unlockFunc, newPassObj, true);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 void AssetWallet_Single::addPrivateKeyPassphrase(
-   Passphrase::SetNew& newPassObj)
+   const Passphrase::UnlockFunc& unlockFunc, Passphrase::SetNew& newPassObj)
 {
    if (root_ == nullptr || !root_->hasPrivateKey()) {
       throw WalletException("wallet has no private root");
    }
    auto masterKeyId = decryptedData_->getMasterEncryptionKeyId();
-   decryptedData_->encryptEncryptionKey(masterKeyId, newPassObj, false);
+   decryptedData_->encryptEncryptionKey(masterKeyId, unlockFunc, newPassObj, false);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void AssetWallet_Single::erasePrivateKeyPassphrase()
+void AssetWallet_Single::erasePrivateKeyPassphrase(
+   const Passphrase::UnlockFunc& unlockFunc)
 {
    if (root_ == nullptr || !root_->hasPrivateKey()) {
       throw WalletException("wallet has no private root");
@@ -1753,7 +1728,7 @@ void AssetWallet_Single::erasePrivateKeyPassphrase()
 
    auto masterKeyId = root_->getPrivateEncryptionKeyId();
    auto masterKdfId = root_->getKdfId();
-   decryptedData_->eraseEncryptionKey(masterKeyId, masterKdfId);
+   decryptedData_->eraseEncryptionKey(masterKeyId, masterKdfId, unlockFunc);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2339,7 +2314,6 @@ AssetId AssetWallet_Single::importPrivateKey(SecureBinaryData& privkey,
    auto cipherCopy = cipherPtr->cipher->getCopy();
 
    //import private key and set address type for its asset id
-   auto ddc = lockDecryptedContainer();
    auto tx = iface_->beginWriteTransaction(dbName_);
    auto assetId = importAcc->importPrivateKey(iface_, decryptedData_,
       privkey, std::move(cipherCopy));
@@ -2368,10 +2342,10 @@ std::filesystem::path AssetWallet_Single::forkWatchingOnly(
 
    //init wallet db interface
    auto woIface = createIface(IO::CreateFileParams{newPath, woCtrlPassObj});
-   woIface->lockControlContainer(woCtrlPassObj.getUnlockFunc());
 
    {
       //setup walletId header
+      auto lock = woIface->lockControlContainer(woCtrlPassObj.getUnlockFunc());
       auto headerPtr = std::make_shared<IO::WalletHeader_Single>(
          Armory::Config::BitcoinSettings::getMagicBytes());
       headerPtr->walletID_ = wpd.walletID;
@@ -2385,7 +2359,6 @@ std::filesystem::path AssetWallet_Single::forkWatchingOnly(
    setMainWallet(woIface, wpd.walletID);
 
    //close dbs
-   woIface->unlockControlContainer();
    woIface.reset();
 
    //return the file name of the wo wallet

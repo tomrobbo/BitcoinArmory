@@ -113,10 +113,9 @@ void AuthorizedPeers::initFromWallet()
             true
          };
       };
-      wallet_->setPassphrasePromptLambda(passphrasePrompt);
 
       //grab decryption container lock
-      auto lock = wallet_->lockDecryptedContainer();
+      auto lock = wallet_->lockDecryptedContainer(passphrasePrompt);
 
       auto walletSingle = std::dynamic_pointer_cast<AssetWallet_Single>(wallet_);
       if (walletSingle == nullptr) {
@@ -192,7 +191,7 @@ std::shared_ptr<AuthorizedPeers> AuthorizedPeers::createWallet(
       account->setMain(true);
       account->setAddressLookup(2);
 
-      wallet->setPassphrasePromptLambda(
+      auto lock = wallet->lockDecryptedContainer(
          walletParams.setPrivPassObj.getUnlockFunc());
       wltSingle->createBIP32Account(account, nullptr);
    }

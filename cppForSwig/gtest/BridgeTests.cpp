@@ -307,7 +307,7 @@ namespace {
          std::move(seed), params);
       assetWlt->setupImportAccount();
 
-      assetWlt->setPassphrasePromptLambda(
+      auto lock = assetWlt->lockDecryptedContainer(
          [&privPass](const std::set<Wallets::EncryptionKeyId>&)->Passphrase::Result
          { return {privPass, true}; }
       );
@@ -317,7 +317,6 @@ namespace {
             AddressEntryType::P2PKH | AddressEntryType::Uncompressed
          ));
       }
-      assetWlt->resetPassphrasePromptLambda();
       return assetWlt->getID();
    }
 

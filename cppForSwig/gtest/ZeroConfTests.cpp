@@ -2297,7 +2297,7 @@ TEST_F(ZeroConfTests_FullNode, Replace_ZC_Test)
 
       //sign, verify then broadcast
       {
-         auto lock = assetWlt->lockDecryptedContainer();
+         auto lock = assetWlt->lockDecryptedContainer({});
          signer3.setFeed(assetFeed);
          signer3.sign();
       }
@@ -2668,7 +2668,7 @@ TEST_F(ZeroConfTests_FullNode, ChainZC_RBFchild_Test)
 
       //sign, verify then broadcast
       {
-         auto lock = assetWlt->lockDecryptedContainer();
+         auto lock = assetWlt->lockDecryptedContainer({});
          signer3.setFeed(assetFeed);
          signer3.sign();
       }
@@ -2788,7 +2788,7 @@ TEST_F(ZeroConfTests_FullNode, ChainZC_RBFchild_Test)
 
       //sign, verify then broadcast
       {
-         auto lock = assetWlt->lockDecryptedContainer();
+         auto lock = assetWlt->lockDecryptedContainer({});
          signer2.setFeed(assetFeed);
          signer2.sign();
       }
@@ -3774,7 +3774,7 @@ TEST_F(ZeroConfTests_Supernode, ChainZC_RBFchild_Test)
 
       //sign, verify then broadcast 
       {
-         auto lock = assetWlt->lockDecryptedContainer();
+         auto lock = assetWlt->lockDecryptedContainer({});
          signer3.setFeed(assetFeed);
          signer3.sign();
       }
@@ -3872,7 +3872,7 @@ TEST_F(ZeroConfTests_Supernode, ChainZC_RBFchild_Test)
 
       //sign, verify then broadcast
       {
-         auto lock = assetWlt->lockDecryptedContainer();
+         auto lock = assetWlt->lockDecryptedContainer({});
          signer2.setFeed(assetFeed);
          signer2.sign();
       }

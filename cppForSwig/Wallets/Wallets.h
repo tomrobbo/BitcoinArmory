@@ -172,17 +172,15 @@ namespace Armory
          void updateAddressEntryType(const AssetId&,
             AddressEntryType);
 
+         virtual SingleLock lockDecryptedContainer(
+            const Passphrase::UnlockFunc&);
+
          const WalletId& getID(void) const;
          const WalletId& getMasterID(void) const;
-         virtual ReentrantLock lockDecryptedContainer(void);
          std::shared_ptr<Encryption::KeyDerivationFunction>
             getPrimaryKdf(void) const;
          std::shared_ptr<Encryption::KeyDerivationFunction>
             getDefaultKdf(void) const;
-
-         bool isDecryptedContainerLocked(void) const;
-         void setPassphrasePromptLambda(const Passphrase::UnlockFunc&);
-         void resetPassphrasePromptLambda(void);
 
          void extendPublicChain(int32_t);
          void extendPublicChain(const AddressAccountId&, int32_t,
@@ -322,9 +320,11 @@ namespace Armory
             std::shared_ptr<IO::WalletHeader>, const WalletId&);
 
          //locals
-         void addPrivateKeyPassphrase(Passphrase::SetNew&);
-         void changePrivateKeyPassphrase(Passphrase::SetNew&);
-         void erasePrivateKeyPassphrase(void);
+         void addPrivateKeyPassphrase(const Passphrase::UnlockFunc&,
+            Passphrase::SetNew&);
+         void changePrivateKeyPassphrase(const Passphrase::UnlockFunc&,
+            Passphrase::SetNew&);
+         void erasePrivateKeyPassphrase(const Passphrase::UnlockFunc&);
 
          std::shared_ptr<Assets::AssetEntry> getRoot(void) const override;
          const SecureBinaryData& getPublicRoot(void) const;
