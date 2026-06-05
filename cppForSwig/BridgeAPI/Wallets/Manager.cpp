@@ -200,9 +200,8 @@ std::shared_ptr<WalletContainer> WalletManager::getWalletContainer(
 {
    auto iter = wallets_.find(wltId);
    if (iter == wallets_.end()) {
-      std::string errStr{"no wallet for id "sv};
-      errStr += wltId;
-      throw std::runtime_error(errStr);
+      throw std::runtime_error(std::format("no wallet for id {}",
+         static_cast<std::string>(wltId)));
    }
    return iter->second.begin()->second;
 }
@@ -213,16 +212,16 @@ std::shared_ptr<WalletContainer> WalletManager::getWalletContainer(
 {
    auto wltIter = wallets_.find(wltId);
    if (wltIter == wallets_.end()) {
-      std::string errStr{"i do not know wallet "sv};
-      errStr += wltId;
-      throw std::runtime_error(errStr);
+      throw std::runtime_error(std::format("i do not know wallet {}",
+         static_cast<std::string>(wltId)));
    }
 
    auto accIter = wltIter->second.find(accId);
    if (accIter == wltIter->second.end()) {
-      std::string errStr{"there is no account "sv};
-      errStr += accId.toHexStr() + std::string{" for wallet "sv} + wltId;
-      throw std::runtime_error(errStr);
+      throw std::runtime_error(std::format(
+         "there is no account {} for wallet {}",
+         accId.toHexStr(), static_cast<std::string>(wltId))
+      );
    }
    return accIter->second;
 }

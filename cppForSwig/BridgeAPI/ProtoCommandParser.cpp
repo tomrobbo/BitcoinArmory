@@ -657,6 +657,27 @@ namespace
             break;
          }
 
+         case WalletRequest::HAS_IMPORTS:
+         {
+            capnp::MallocMessageBuilder message;
+            auto fromBridge = message.initRoot<FromBridge>();
+            auto reply = fromBridge.initReply();
+            reply.setReferenceId(referenceId);
+
+            try {
+               auto hasImports = bridge->doesWalletHaveImports(walletId);
+               auto wltReply = reply.initWallet();
+               wltReply.setHasImports(hasImports);
+               reply.setSuccess(true);
+            } catch (const std::exception& e) {
+               reply.setSuccess(false);
+               reply.setError(e.what());
+            }
+
+            response = serializeCapnp(message);
+            break;
+         }
+
          default:
             capnp::MallocMessageBuilder message;
             auto fromBridge = message.initRoot<FromBridge>();
@@ -665,7 +686,6 @@ namespace
             reply.setReferenceId(referenceId);
             reply.setError("unknown wallet method");
             response = serializeCapnp(message);
-
       }
 
       if (!response.empty()) {

@@ -806,6 +806,10 @@ class PyBtcWallet(object):
    def getLedgerDelegateIdForScrAddr(self, scrAddr):
       return self.bridgeWalletObj.getLedgerDelegateIdForScrAddr(scrAddr)
 
+   ####
+   def hasAnyImported(self):
+      return self.bridgeWalletObj.hasImports()
+
    #############################################################################
    ## properties
    @property
@@ -832,7 +836,8 @@ class PyBtcWallet(object):
          raise Exception("missing settingsId!")
       return self._settingsId
 
-   ####
+   #############################################################################
+   ## UI strings
    def getHighestUsedIndex(self):
       """
       This only retrieves the stored value, but it may not be correct if,

@@ -266,7 +266,8 @@ namespace Armory
          bool isOffline(void) const;
 
          //wallet misc
-         void getUnlockTime(const Wallets::WalletId&, MessageId);
+         void getUnlockTime(const Wallets::WalletId&, MessageId) const;
+         bool doesWalletHaveImports(const Wallets::WalletId&) const;
 
       public:
          CppBridge(void);

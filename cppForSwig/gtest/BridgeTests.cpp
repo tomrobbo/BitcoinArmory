@@ -986,8 +986,38 @@ namespace {
          throw std::runtime_error({});
       }
 
-      auto replyMgr = reply.getWallet();
-      return capnToWalletData(replyMgr.getGetData());
+      auto replyWlt = reply.getWallet();
+      return capnToWalletData(replyWlt.getGetData());
+   }
+
+   bool checkHasImports(std::shared_ptr<Bridge::CppBridge> bridge,
+      const std::string& walletId)
+   {
+      uint64_t refId = rand();
+
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto request = toBridge.initWallet();
+      request.setWalletId(walletId);
+      request.setHasImports();
+
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge, rawReq);
+
+      auto result = waitOnReply();
+      kj::ArrayPtr<const capnp::word> words(
+         reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+         result->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      auto reply = fromBridge.getReply();
+      if (!reply.getSuccess() || reply.getReferenceId() != refId) {
+         throw std::runtime_error({});
+      }
+
+      auto replyWlt = reply.getWallet();
+      return replyWlt.getHasImports();
    }
 
    bool changeWalletPassphrase(
@@ -4859,6 +4889,9 @@ TEST_F(BridgeWalletTests, RestoreWallet_Legacy)
    } catch (const std::exception& e) {
       ASSERT_TRUE(false) << e.what();
    }
+
+   //sanity check
+   ASSERT_FALSE(checkHasImports(bridge_, walletId));
 }
 
 TEST_F(BridgeWalletTests, RestoreWallet_BIP32)
@@ -6574,6 +6607,7 @@ protected:
 TEST_F(BridgeChainDataTests, Check5Blocks_BCDE)
 {
    loadWallets({walletId_BCDE_});
+   ASSERT_TRUE(checkHasImports(bridge_, walletId_BCDE_));
 
    TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
    WebSocketServer::initAuthPeers({

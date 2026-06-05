@@ -2815,7 +2815,8 @@ CallbackHandler CppBridge::getCallbackHandler(uint32_t id)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void CppBridge::getUnlockTime(const Wallets::WalletId& walletId, MessageId refId)
+void CppBridge::getUnlockTime(
+   const Wallets::WalletId& walletId, MessageId refId) const
 {
    using namespace std::chrono;
    auto testUnlockTime = [this, walletId, refId]
@@ -2865,6 +2866,38 @@ void CppBridge::getUnlockTime(const Wallets::WalletId& walletId, MessageId refId
    if (thr.joinable()) {
       thr.detach();
    }
+}
+
+bool CppBridge::doesWalletHaveImports(const Wallets::WalletId& walletId) const
+{
+   //get wallet
+   auto wltContainer = wltManager_->getWalletContainer(walletId);
+   auto wlt = wltContainer->getWalletPtr();
+
+   //look for address imports
+   try {
+      auto addrAccPtr = wlt->getAccountForID(IMPORTS_ACCOUNT_PUB);
+      auto accPtr = addrAccPtr->getOuterAccount();
+      if (accPtr->getAssetCount() > 0) {
+         return true;
+      }
+   } catch (const std::exception&) {
+      //no WO import account, move on
+   }
+
+   //look for priv key imports
+   try {
+      auto addrAccPtr = wlt->getAccountForID(IMPORTS_ACCOUNT_PRIV);
+      auto accPtr = addrAccPtr->getOuterAccount();
+      if (accPtr->getAssetCount() > 0) {
+         return true;
+      }
+   } catch (const std::exception&) {
+      //no priv import account
+   }
+
+   //no imports were found
+   return false;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

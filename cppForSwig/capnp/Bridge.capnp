@@ -489,6 +489,7 @@ struct WalletRequest {
 
       getUnlockTime                 @19: Void;
       forkWatchingOnly              @20: Types.CallbackId;
+      hasImports                    @21: Void;
    }
 }
 
@@ -528,6 +529,7 @@ struct WalletReply {
       createAddressBook             @13: Types.AddressBook;
       getUnlockTime                 @14: UInt32; #unlock time in ms
       forkWatchingOnly              @15: Text; #path to new WO wallet
+      hasImports                    @16: Bool;
    }
 }
 

@@ -1062,6 +1062,15 @@ class BridgeWalletWrapper(ProtoWrapper):
          changeRequest.control = None
       self.send(packet, callback=callback)
 
+   ####
+   def hasImports(self):
+      packet = self._getPacket()
+      packet.wallet.hasImports = None
+
+      fut = self.send(packet)
+      reply = fut.getVal()
+      return reply.wallet.hasImports
+
 ################################################################################
 class BridgeCoinSelectionWrapper(ProtoWrapper):
    #############################################################################
