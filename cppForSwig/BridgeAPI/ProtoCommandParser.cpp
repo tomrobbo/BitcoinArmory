@@ -678,6 +678,13 @@ namespace
             break;
          }
 
+         case WalletRequest::EXPORT_PRIVATE_KEYS:
+         {
+            std::string callbackId{request.getExportPrivateKeys()};
+            bridge->exportPrivateKeys(walletId, callbackId, referenceId);
+            break;
+         }
+
          default:
             capnp::MallocMessageBuilder message;
             auto fromBridge = message.initRoot<FromBridge>();

@@ -490,6 +490,7 @@ struct WalletRequest {
       getUnlockTime                 @19: Void;
       forkWatchingOnly              @20: Types.CallbackId;
       hasImports                    @21: Void;
+      exportPrivateKeys             @22: Types.CallbackId;
    }
 }
 
@@ -503,6 +504,11 @@ struct WalletReply {
    struct AddressAndBalanceData {
       balances       @0 : List(AddressBalanceData);
       updatedAssets  @1 : List(WalletData.AddressData);
+   }
+
+   struct ExportedPrivateKey {
+      assetId  @0 : Data;
+      privKey  @1 : Data;
    }
 
    # reply
@@ -530,6 +536,7 @@ struct WalletReply {
       getUnlockTime                 @14: UInt32; #unlock time in ms
       forkWatchingOnly              @15: Text; #path to new WO wallet
       hasImports                    @16: Bool;
+      exportPrivateKeys             @17: List(ExportedPrivateKey);
    }
 }
 
