@@ -507,8 +507,12 @@ struct WalletReply {
    }
 
    struct ExportedPrivateKey {
-      assetId  @0 : Data;
-      privKey  @1 : Data;
+      assetId        @0 : Data;
+      privKey        @1 : Data;
+      publicKey      @2 : Data;
+      addressString  @3 : Text;
+      addrType       @4 : UInt32;
+      index          @5 : Int32;
    }
 
    # reply

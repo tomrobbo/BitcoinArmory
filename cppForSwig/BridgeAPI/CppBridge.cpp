@@ -760,8 +760,19 @@ void CppBridge::exportPrivateKeys(const Wallets::WalletId& wltId,
 {
    auto func = [this, wltId, callbackId, msgId]()
    {
-      // (assetId serialized with PROTO_ASSETID_PREFIX, private key copy)
-      std::vector<std::pair<BinaryData, SecureBinaryData>> keyPairs;
+      //one entry per exported key: the serialized asset id (with
+      //PROTO_ASSETID_PREFIX), the decrypted private key and the public
+      //metadata needed to render the key without the in-use address map
+      struct ExportedKeyData
+      {
+         BinaryData assetId;
+         SecureBinaryData privKey;
+         BinaryData pubKey;
+         std::string addressString;
+         uint32_t addrType = 0;
+         int32_t index = 0;
+      };
+      std::vector<ExportedKeyData> exportedKeys;
       std::string error;
 
       std::shared_ptr<BridgePassphrasePrompt> passPromptObj;
@@ -851,12 +862,41 @@ void CppBridge::exportPrivateKeys(const Wallets::WalletId& wltId,
                   }
 
                   const auto& assetID = assetPtr->getID();
-                  const auto& serAssetId = assetID.getSerializedKey(
-                     PROTO_ASSETID_PREFIX);
                   const auto& privKey =
                      wltSingle->getDecryptedPrivateKeyForAsset(assetSingle);
 
-                  keyPairs.emplace_back(serAssetId, SecureBinaryData(privKey));
+                  ExportedKeyData entry;
+                  entry.assetId = assetID.getSerializedKey(PROTO_ASSETID_PREFIX);
+                  entry.privKey = SecureBinaryData(privKey);
+                  entry.index = assetSingle->getIndex();
+
+                  //public key (compressed)
+                  try {
+                     auto pubKeyPtr = assetSingle->getPubKey();
+                     if (pubKeyPtr != nullptr) {
+                        entry.pubKey = pubKeyPtr->getCompressedKey();
+                     }
+                  } catch (const std::exception&) {
+                     //no public key available, leave empty
+                  }
+
+                  //human readable address and type, derived on the fly for
+                  //the account's default address type
+                  try {
+                     auto addrEntry = accPtr->getAddressEntryForID(assetID);
+                     if (addrEntry != nullptr) {
+                        entry.addrType = (uint32_t)addrEntry->getType();
+                        try {
+                           entry.addressString = addrEntry->getAddress();
+                        } catch (const AddressException&) {
+                           //address type yields no human readable string
+                        }
+                     }
+                  } catch (const std::exception&) {
+                     //asset has no instantiable address, leave blank
+                  }
+
+                  exportedKeys.emplace_back(std::move(entry));
                }
             }
          }
@@ -878,21 +918,27 @@ void CppBridge::exportPrivateKeys(const Wallets::WalletId& wltId,
       } else {
          reply.setSuccess(true);
          auto walletReply = reply.initWallet();
-         auto capnKeys = walletReply.initExportPrivateKeys(keyPairs.size());
-         for (size_t i = 0; i < keyPairs.size(); i++) {
+         auto capnKeys = walletReply.initExportPrivateKeys(exportedKeys.size());
+         for (size_t i = 0; i < exportedKeys.size(); i++) {
             auto capnKey = capnKeys[i];
-            const auto& id  = keyPairs[i].first;
-            const auto& key = keyPairs[i].second;
+            const auto& entry = exportedKeys[i];
             capnKey.setAssetId(capnp::Data::Builder(
-               (uint8_t*)id.getPtr(), id.getSize()));
+               (uint8_t*)entry.assetId.getPtr(), entry.assetId.getSize()));
             capnKey.setPrivKey(capnp::Data::Builder(
-               (uint8_t*)key.getPtr(), key.getSize()));
+               (uint8_t*)entry.privKey.getPtr(), entry.privKey.getSize()));
+            if (!entry.pubKey.empty()) {
+               capnKey.setPublicKey(capnp::Data::Builder(
+                  (uint8_t*)entry.pubKey.getPtr(), entry.pubKey.getSize()));
+            }
+            capnKey.setAddressString(entry.addressString);
+            capnKey.setAddrType(entry.addrType);
+            capnKey.setIndex(entry.index);
          }
       }
 
       auto serialized = serializeCapnp(message);
       this->writeToClient(serialized);
-      //keyPairs destroyed here; SecureBinaryData destructor zeroes memory
+      //exportedKeys destroyed here; SecureBinaryData destructor zeroes memory
    };
 
    std::thread thr(func);
