@@ -29,7 +29,26 @@ from armoryengine.BIP15x import \
 BRIDGE_CLIENT_HEADER = 1
 
 import sys
-sys.path.append("cppForSwig/capnp")
+
+################################################################################
+def findCapnpSchemaDir() -> str:
+   #search candidate locations for the capnp schema dir, in priority order
+   candidates = [
+      os.path.normpath(os.path.join(
+         os.path.dirname(os.path.abspath(__file__)),
+         '..', 'cppForSwig', 'capnp')),
+      os.path.join(os.getcwd(), 'cppForSwig', 'capnp'),
+   ]
+
+   for candidate in candidates:
+      if os.path.isdir(candidate):
+         return candidate
+
+   triedPaths = '\n'.join('  ' + path for path in candidates)
+   raise ImportError(
+      "could not find capnp schema directory; tried:\n" + triedPaths)
+
+sys.path.append(findCapnpSchemaDir())
 
 import capnp
 import Bridge_capnp as Bridge
@@ -46,6 +65,24 @@ class BridgeError(Exception):
 ################################################################################
 class BridgeSignerError(Exception):
    pass
+
+################################################################################
+def findCppBridgeBinary() -> str:
+   #search candidate locations in priority order, return the first that exists
+   candidates = [
+      os.path.normpath(os.path.join(
+         os.path.dirname(os.path.abspath(__file__)), '..', 'CppBridge')),
+      os.path.join(os.getcwd(), 'CppBridge'),
+      os.path.join(os.getcwd(), 'build', 'CppBridge'),
+   ]
+
+   for candidate in candidates:
+      if os.path.isfile(candidate):
+         return candidate
+
+   triedPaths = '\n'.join('  ' + path for path in candidates)
+   raise BridgeError(
+      "could not find CppBridge binary; tried:\n" + triedPaths)
 
 ################################################################################
 ##
@@ -157,7 +194,7 @@ class BridgeSocket(object):
 
    ####
    def spawnBridge(self, args: list):
-      subprocess.run(["./build/CppBridge", *args])
+      subprocess.run([findCppBridgeBinary(), *args])
 
    #############################################################################
    ## socket write

@@ -249,7 +249,11 @@ std::map<std::string, std::string> SettingsUtils::getKeyValsFromLines(
 {
    std::map<std::string, std::string> output;
    for (auto& line : lines) {
-      output.emplace(getKeyValFromLine(line, delim));
+      auto keyval = getKeyValFromLine(line, delim);
+      if (keyval.first.empty()) {
+         continue;
+      }
+      output.emplace(keyval);
    }
    return output;
 }
