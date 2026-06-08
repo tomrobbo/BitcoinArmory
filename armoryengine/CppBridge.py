@@ -1108,6 +1108,12 @@ class BridgeWalletWrapper(ProtoWrapper):
       reply = fut.getVal()
       return reply.wallet.hasImports
 
+   ####
+   def exportPrivateKeys(self, callback: callable, unlockHandler):
+      packet = self._getPacket()
+      packet.wallet.exportPrivateKeys = unlockHandler.callbackId
+      self.send(packet, callback=callback)
+
 ################################################################################
 class BridgeCoinSelectionWrapper(ProtoWrapper):
    #############################################################################
