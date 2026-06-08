@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2025, goatpig                                               //
+//  Copyright (C) 2025-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -37,7 +37,7 @@ namespace Armory
       extern int autoDbPid;
    #endif
 
-      ////////
+      /* db helpers */
       std::pair<std::shared_ptr<Wallets::AuthorizedPeers>, uint32_t> spawnDb(
          const std::filesystem::path&, const std::filesystem::path&);
       bool isDbRunning(void);
@@ -53,5 +53,24 @@ namespace Armory
          const Wallets::PeerKey&,
          std::shared_ptr<RemoteCallback>
       );
+   } //namespace Bridge
+} //namespace Armory
+
+namespace Node
+{
+   namespace Core
+   {
+      struct DatadirState
+      {
+         const std::filesystem::path datadir;
+         const size_t fileSize;
+         const bool isPruned;
+      };
+
+      std::filesystem::path findDatadir(void);
+      std::filesystem::path findBinary(void);
+
+      DatadirState validateDatadir(const std::filesystem::path&);
+      void validateBinary(const std::filesystem::path&);
    }
 }

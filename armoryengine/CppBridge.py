@@ -623,6 +623,26 @@ class DbSetupService(ProtoWrapper):
       self.send(packet, needsReply=False)
       self.bridgeSocket.stop()
 
+   ####
+   def findSatoshiDatadir(self):
+      """Look for the Core datadir"""
+      packet = Bridge.ToBridge.new_message()
+      packet.init("setup").findSatoshiDatadir = None
+      fut = self.send(packet)
+      result = fut.getVal(nothrow=True)
+      if result.success == False:
+         return None
+      return result.setup.findSatoshiDatadir
+
+   def validateSatoshiDatadir(self, datadir):
+      """Check folder is Core datadir, also look for pruning and RPC setting"""
+      packet = Bridge.ToBridge.new_message()
+      packet.init("setup").validateSatoshiDatadir = str(datadir)
+
+      fut = self.send(packet)
+      result = fut.getVal()
+      return result.setup.validateSatoshiDatadir
+
 ################################################################################
 class BlockchainService(ProtoWrapper):
    #############################################################################

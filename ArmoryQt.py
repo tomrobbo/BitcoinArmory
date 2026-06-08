@@ -4544,7 +4544,7 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
          for progId in idList:
             self.walletSideScanProgress[progId] = prog*100
             if len(progId) > 0:
-               if progId in self.wallets:
+               if self.wallets.hasWallet(progId):
                   wlt = self.wallets[progId]
                   wlt.disableWalletUI()
                   if progId in self.walletDialogDict:

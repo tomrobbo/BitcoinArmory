@@ -28,7 +28,7 @@
 #include <BridgeAPI/Wallets/Manager.h>
 #include <BridgeAPI/Wallets/Notifications.h>
 #include <BridgeAPI/Wallets/TxIOCache.h>
-#include <BridgeAPI/BlockchainDbClient.h>
+#include <BridgeAPI/DBSetup.h>
 
 #include "BDM_mainthread.h"
 #include "Server.h"

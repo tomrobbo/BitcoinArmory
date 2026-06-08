@@ -95,17 +95,13 @@ class DlgSetupManager(ArmoryDialog):
       self.tabWidget.addTab(self.databaseTab, self.tr('Database Settings'))
       self.tabWidget.addTab(self.coreTab, self.tr('Core Settings'))
 
-      coreTabIndex = self.tabWidget.indexOf(self.coreTab)
-      self.tabWidget.setTabEnabled(coreTabIndex, False)
-      self.tabWidget.setTabToolTip(
-         coreTabIndex,
-         self.tr('Disabled until backend calls are provided'))
-
       if CLI_OPTIONS.offline:
          dbTabIndex = self.tabWidget.indexOf(self.databaseTab)
          self.tabWidget.setTabEnabled(dbTabIndex, False)
          self.tabWidget.setTabText(
             dbTabIndex, self.tr('Database Settings, Offline'))
+         coreTabIndex = self.tabWidget.indexOf(self.coreTab)
+         self.tabWidget.setTabEnabled(coreTabIndex, False)
 
    def setupMainLayout(self):
       """Set up the main layout with tabs and buttons."""
@@ -230,6 +226,7 @@ class DlgSetupManager(ArmoryDialog):
       """Called when bridge is ready."""
       self.walletTab.loadWalletList()
       self._autoLoadPeersIfNeeded()
+      self.coreTab.onBridgeReady()
 
    def registerWidgetActivateTime(self, widget):
       """Stub for entropy collection - no-op during setup."""

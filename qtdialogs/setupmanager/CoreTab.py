@@ -9,7 +9,7 @@
 import os
 
 from qtpy import QtCore, QtWidgets
-from armoryengine.BDM import TheBDM
+from armoryengine.CppBridge import TheBridge
 from armoryengine.ArmoryUtils import USE_TESTNET, USE_REGTEST, BITCOIN_PORT, \
    BITCOIN_RPC_PORT
 from armoryengine.Settings import TheSettings
@@ -33,9 +33,14 @@ class CoreTab(QtWidgets.QWidget):
    """
    def __init__(self, parent, main=None):
       super().__init__(parent)
+      self.btcDir = None
+      self.btcBin = None
+
       self.main = main
       self.satoshiHomePath = None
       self.satoshiBrowseButton = None
+      self.chainSize = None
+      self.prunedState = None
       self.scenarioCombo = None
       self.networkModeCombo = None
       self.p2pPortInput = None
@@ -79,12 +84,17 @@ class CoreTab(QtWidgets.QWidget):
       self.satoshiBrowseButton.setFixedWidth(100)
       self.satoshiBrowseButton.clicked.connect(self.browseSatoshiHome)
 
-      dirInputLayout = QtWidgets.QHBoxLayout()
-      dirInputLayout.setSpacing(8)
-      dirInputLayout.addWidget(self.satoshiHomePath)
-      dirInputLayout.addWidget(self.satoshiBrowseButton)
+      self.chainSize = QtWidgets.QLabel("Chain Size: N/A")
+      self.prunedState = QtWidgets.QLabel("Chain Data: N/A")
 
-      dirGrid.addWidget(coreDirLabel, 0, 0)
+      dirInputLayout = QtWidgets.QGridLayout()
+      dirInputLayout.setSpacing(8)
+      dirInputLayout.addWidget(coreDirLabel, 0, 0, 1, 2)
+      dirInputLayout.addWidget(self.satoshiHomePath      , 0, 2, 1, 4)
+      dirInputLayout.addWidget(self.satoshiBrowseButton  , 0, 6, 1, 1)
+      dirInputLayout.addWidget(self.chainSize            , 1, 2, 1, 1)
+      dirInputLayout.addWidget(self.prunedState          , 1, 4, 1, 1)
+
       dirGrid.addLayout(dirInputLayout, 0, 1)
       dirGrid.setColumnStretch(1, 1)
 
@@ -163,13 +173,10 @@ class CoreTab(QtWidgets.QWidget):
 
    def loadSettings(self):
       """Load core tab settings from configuration."""
-      # Load Bitcoin Core path from settings, fallback to TheBDM
+      # Load Bitcoin Core path from settings,
+      # fallback to bridge auto detection routine
       savedPath = TheSettings.get('SatoshiDatadir')
-      if savedPath:
-         btcDir = savedPath
-      else:
-         btcDir = TheBDM.btcdir
-      self.satoshiHomePath.setText(os.path.normpath(btcDir))
+      self.btcDir = savedPath if savedPath else None
 
       # Load operation mode
       hasCoreSettings = bool(self.satoshiHomePath.text() and
@@ -248,3 +255,31 @@ class CoreTab(QtWidgets.QWidget):
                return self.validateCorePath()
          return False
       return True
+
+   def validateDataDir(self):
+      isValid = False
+      try:
+         validationResult = \
+            TheBridge.dbSetup.validateSatoshiDatadir(self.btcDir)
+         self.btcDir = os.path.normpath(self.btcDir)
+         self.satoshiHomePath.setText(self.btcDir)
+         self.chainSize.setText(f"Chain Size: <b>{validationResult.chainSizeGB}GB</b>")
+
+         prunedFlag = f"<b style=\"color: red;\">Pruned</b>" if validationResult.pruned else \
+            f"<b style=\"color: green;\">No Pruning</b>"
+         self.prunedState.setText(f"Chain Data: {prunedFlag}")
+         isValid = True
+      except Exception as e:
+         self.satoshiHomePath.setText("N/A")
+         self.chainSize.setText("Chain Size: N/A")
+         self.prunedState.setText("Chain Data: N/A")
+         isValid = False
+      return isValid
+
+   def onBridgeReady(self):
+      ## detect and/or validate satoshi datadir ##
+      if not self.btcDir:
+         self.btcDir = TheBridge.dbSetup.findSatoshiDatadir()
+      self.validateDataDir()
+
+      ## detect and/or validate satoshi binary ##

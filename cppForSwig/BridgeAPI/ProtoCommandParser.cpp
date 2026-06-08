@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2020-2025, goatpig                                          //
+//  Copyright (C) 2020-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -20,6 +20,7 @@
 #include <AsyncClient.h>
 
 #include "CppBridge.h"
+#include "DBSetup.h"
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
@@ -194,6 +195,55 @@ namespace
             bridge->setPeerLabel(
                labelReq.getKey(), labelReq.getLabel(), referenceId);
             return true;
+         }
+
+         case DbSetupRequest::FIND_SATOSHI_DATADIR:
+         {
+            capnp::MallocMessageBuilder message;
+            auto fromBridge = message.initRoot<FromBridge>();
+            auto reply = fromBridge.initReply();
+            reply.setReferenceId(referenceId);
+
+            try {
+               auto p = Node::Core::findDatadir();
+               auto setupReply = reply.initSetup();
+               setupReply.setFindSatoshiDatadir(p.string());
+               reply.setSuccess(true);
+            } catch (const std::exception& e) {
+               reply.setError(e.what());
+               reply.setSuccess(false);
+            }
+            response = serializeCapnp(message);
+            break;
+         }
+
+         case DbSetupRequest::VALIDATE_SATOSHI_DATADIR:
+         {
+            capnp::MallocMessageBuilder message;
+            auto fromBridge = message.initRoot<FromBridge>();
+            auto reply = fromBridge.initReply();
+            reply.setReferenceId(referenceId);
+
+            try {
+               auto datadir = std::filesystem::path(
+                  request.getValidateSatoshiDatadir());
+               auto validationResult =
+                  Node::Core::validateDatadir(datadir);
+
+               auto setupReply = reply.initSetup();
+               auto capnValidationResult =
+                  setupReply.initValidateSatoshiDatadir();
+               capnValidationResult.setPath(validationResult.datadir.string());
+               capnValidationResult.setChainSizeGB(
+                  validationResult.fileSize / (1024 * 1024 * 1024));
+               capnValidationResult.setPruned(validationResult.isPruned);
+               reply.setSuccess(true);
+            } catch (const std::exception& e) {
+               reply.setError(e.what());
+               reply.setSuccess(false);
+            }
+            response = serializeCapnp(message);
+            break;
          }
 
          default:

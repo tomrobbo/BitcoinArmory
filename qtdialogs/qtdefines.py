@@ -504,6 +504,7 @@ class QLabelButton(QtWidgets.QLabel):
       super().__init__('<font color=%s>%s</u></font>' % (colorStr, txt))
       self.plainText = txt
       self.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter)
+      self.setOpenExternalLinks(False)
 
    def sizeHint(self):
       w,h = relaxedSizeStr(self, self.plainText)

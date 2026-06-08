@@ -92,9 +92,10 @@ void Armory::Config::printHelp(void)
                            restart. Defaults at 100.
 --db-type                  sets the db type:
                            DB_BARE:  tracks wallet history only. Smallest DB.
+                           Default since 0.97.
                            DB_FULL:  tracks wallet history and resolves all
                               relevant tx hashes. ~50GB DB at the time
-                              of 0.97 release. Default DB type.
+                              of 0.97 release.
                            DB_SUPER: tracks all blockchain history.
                               XXL DB (100GB+).
                            db type cannot be changed in between processes.
@@ -102,16 +103,16 @@ void Armory::Config::printHelp(void)
                            always function according to that type.
                            Specifying another type will do nothing. Build a new
                            db to change type.
---ephemeral                server only. Ignores authorized peer store. Create a
+--ephemeral                Server only. Ignores authorized peer store. Create a
                            cookie file holding a random authentication keypair
                            instead to allow local clients to make use of elevated
                            commands, like shutdown. Expects client pubkey in
                            envvars under CALLER_PUBKEY. Enforces 2-way auth.
 --armorydb-port            DB port to connect to.
 --armorydb-ip              DB IP to connect to.
---clear-mempool            delete all zero confirmation transactions from the DB.
---satoshirpc-port          set node rpc port
---satoshi-port             set Bitcoin node port
+--clear-mempool            Delete all zero confirmation transactions from the DB.
+--satoshirpc-port          Set node RPC port
+--satoshi-port             Set node P2P port
 --public                   BIP150 auth will allow for anonymous requesters.
                            While only clients can be anon (servers/responders are
                            always auth'ed), both sides need to enable public

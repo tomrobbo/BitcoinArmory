@@ -35,9 +35,8 @@
 #include <AsyncClient.h>
 #include <TxClasses.h>
 
-#include "BlockchainDbClient.h"
+#include "DBSetup.h"
 #include "PassphrasePrompt.h"
-//#include "TerminalPassphrasePrompt.h"
 
 #include <capnp/message.h>
 #include <capnp/serialize.h>
@@ -1043,9 +1042,7 @@ void CppBridge::setPeerLabel(
 
    auto response = serializeCapnp(message);
    this->writeToClient(response);
-
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 // db connection routines

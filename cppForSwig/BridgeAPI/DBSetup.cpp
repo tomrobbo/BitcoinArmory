@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2025, goatpig                                               //
+//  Copyright (C) 2025-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -12,13 +12,14 @@
 #include <sys/file.h>
 #include <random>
 #include <cstring>
+#include <charconv>
 
 #ifndef _WIN32
    #include <sys/wait.h>
    #include "spawn.h"
 #endif
 
-#include "BlockchainDbClient.h"
+#include "DBSetup.h"
 #include <Utils/ArmoryConfig.h>
 #include <Utils/FileUtils.h>
 #include <Utils/Cryptography.h>
@@ -35,6 +36,11 @@ using namespace std::chrono_literals;
 
 namespace {
 #ifdef _WIN32
+   std::vector<std::string_view> satoshiDirCandidates{
+      "Local/Bitcoin"sv,
+      "Roaming/Bitcoin"sv
+   };
+
    size_t getFileSize(HANDLE fHandle)
    {
       auto size = GetFileSize(fHandle, NULL);
@@ -45,6 +51,10 @@ namespace {
    }
 
 #else
+   std::vector<std::string_view> satoshiDirCandidates{
+      ".bitcoin"sv
+   };
+
    size_t getFileSize(int fd)
    {
       struct stat buf;
@@ -73,6 +83,88 @@ namespace {
          output.second = Config::NetworkSettings::dbPort();
       }
       return output;
+   }
+
+   ////////
+   constexpr std::string_view blocksDir = "blocks"sv;
+   constexpr std::string_view xorFile = "xor.dat"sv;
+   constexpr std::string_view bitcoinConfFile = "bitcoin.conf"sv;
+   constexpr std::string_view cookieFile = ".cookie"sv;
+   constexpr std::string_view prunedKey = "prune"sv;
+   constexpr std::string_view rpcLogKey = "rpcuser"sv;
+   constexpr std::string_view rpcPassKey = "rpcpassword"sv;
+
+   std::filesystem::path getSatoshiDatadir(const std::filesystem::path& path)
+   {
+      if (path.stem() != blocksDir) {
+         return path;
+      }
+      return path.parent_path();
+   }
+
+   std::filesystem::path getBlocksDir(const std::filesystem::path& path)
+   {
+      if (path.stem() == blocksDir) {
+         return path;
+      }
+      return path / blocksDir;
+   }
+
+   std::pair<bool, size_t> validateBlocksDir(const std::filesystem::path& dataDir)
+   {
+      auto blocksDir = getBlocksDir(dataDir);
+      if (!FileUtils::isDir(blocksDir, 2)) {
+         return { false, SIZE_MAX };
+      }
+
+      //look for first blkXXXXX.dat file
+      std::filesystem::path firstBlkFile{};
+      size_t totalChainSize = 0;
+      for (const auto& entry : std::filesystem::directory_iterator{blocksDir}) {
+         if (!entry.is_regular_file()) {
+            continue;
+         }
+
+         auto blkFilePath = entry.path();
+         auto filesize = FileUtils::getFileSize(blkFilePath);
+         if (filesize == SIZE_MAX) {
+            continue;
+         }
+         if (filesize >= 8 && firstBlkFile.empty()) {
+            firstBlkFile = blkFilePath;
+         }
+         totalChainSize += filesize;
+      }
+
+      if (firstBlkFile.empty()) {
+         return { false, SIZE_MAX };
+      }
+
+      //look for xor key
+      auto xorPath = blocksDir / xorFile;
+      uint64_t xorKey = 0;
+      if (FileUtils::pathExists(xorPath, 2)) {
+         auto fileCopy = FileUtils::FileCopy(xorPath);
+         if (fileCopy.size() == 8) {
+            std::memcpy(&xorKey, fileCopy.ptr(), 8);
+         }
+      }
+
+      //check magic byte in first file
+      uint64_t firstChunk;
+      std::ifstream blkFileStream{firstBlkFile, std::ios::binary | std::ios::in};
+      blkFileStream.read(reinterpret_cast<char*>(&firstChunk), sizeof(uint64_t));
+      if (xorKey != 0) {
+         firstChunk ^= xorKey;
+      }
+
+      auto magicBytes = Config::BitcoinSettings::getMagicBytes();
+      auto isMatch = std::memcmp(
+         reinterpret_cast<char*>(&firstChunk),
+         magicBytes.getPtr(),
+         magicBytes.getSize()
+      ) == 0;
+      return { isMatch, isMatch ? totalChainSize : SIZE_MAX };
    }
 }
 
@@ -353,7 +445,10 @@ Bridge::spawnDb(const std::filesystem::path& satoshiPath,
       }};
 
    //open file and lock it
-   auto fd = open(keyFilePath.c_str(), O_CREAT | O_EXCL | O_RSYNC | O_RDWR);
+   auto fd = open(
+      keyFilePath.c_str(),
+      O_CREAT | O_EXCL | O_RSYNC | O_RDWR,
+      S_IRWXU | S_IRUSR);
    if (fd == -1) {
       throw std::runtime_error("failed to create autodb key file");
    }
@@ -496,7 +591,7 @@ BdvPtr Armory::Bridge::setupClientConnection(
    return bdvPtr;
 }
 
-////////////////////////////////////////////////////////////////////////////////
+////////
 BdvPtr Armory::Bridge::setupClientConnection(
    std::shared_ptr<Wallets::AuthorizedPeers> peers,
    const Wallets::PeerKey& peerObj,
@@ -521,4 +616,80 @@ BdvPtr Armory::Bridge::setupClientConnection(
       }
    }
    return nullptr;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+std::filesystem::path Node::Core::findDatadir()
+{
+   auto home = FileUtils::getUserHomePath();
+   for (const auto& candidate : satoshiDirCandidates) {
+      std::filesystem::path dataDir = home / candidate;
+
+      //look for /blocks folder
+      auto blocksDir = getBlocksDir(dataDir);
+      if (validateBlocksDir(blocksDir).first == true) {
+         return dataDir;
+      }
+   }
+   throw std::runtime_error("could not find a valid satoshi datadir");
+}
+
+Node::Core::DatadirState Node::Core::validateDatadir(
+   const std::filesystem::path& datadir)
+{
+   auto satoshiDir = getSatoshiDatadir(datadir);
+   auto blocksDirValidation = validateBlocksDir(satoshiDir);
+   if (blocksDirValidation.first == false) {
+      throw std::runtime_error(
+         std::format("{} is not a valid satoshi datadir", satoshiDir.string()));
+   }
+
+   //inspect files in the folder
+   bool hasCookie = false;
+   std::vector<std::string> confLines;
+   for (const auto& entry : std::filesystem::directory_iterator{satoshiDir}) {
+      if (!entry.is_regular_file()) {
+         continue;
+      }
+
+      auto fpath = entry.path();
+      const auto& fName = fpath.filename();
+      if (fName == bitcoinConfFile) {
+         confLines = Config::SettingsUtils::getLines(fpath);
+      } else if (fName == cookieFile) {
+         hasCookie = true;
+      }
+   }
+
+   bool isPruned = false;
+   bool hasRpcLog = false;
+   bool hasRpcPass = false;
+   for (const auto& confLine : confLines) {
+      auto keyval = Config::SettingsUtils::getKeyValFromLine(confLine, '=');
+      if (keyval.first == prunedKey) {
+         const auto& val = keyval.second;
+         int result = INT32_MAX;
+         auto charConvResult = std::from_chars(
+            val.data(), val.data() + val.size(), result);
+         if (charConvResult.ec == std::errc{} && result != 0) {
+            isPruned = true;
+         }
+      } else if (keyval.first == rpcLogKey) {
+         if (!keyval.second.empty()) {
+            hasRpcLog = true;
+         }
+      } else if (keyval.second == rpcPassKey) {
+         if (!keyval.second.empty()) {
+            hasRpcPass = true;
+         }
+      }
+   }
+
+   //TODO: cookie detection has to be more subtle
+
+   return DatadirState{
+      satoshiDir,
+      blocksDirValidation.second,
+      isPruned
+   };
 }

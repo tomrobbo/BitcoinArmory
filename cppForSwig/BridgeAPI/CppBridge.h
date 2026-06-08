@@ -154,6 +154,7 @@ namespace Armory
          void cleanupDb(MessageId);
          void goOnline(void);
 
+         //peers db
          void loadPeersDb(const CallbackId&, MessageId);
          void listPeers(MessageId);
          void addPeer(const std::string&,

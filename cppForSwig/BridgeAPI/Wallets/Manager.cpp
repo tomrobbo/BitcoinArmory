@@ -109,7 +109,7 @@ namespace
 WalletManager::WalletManager(const std::filesystem::path& path) :
    path_(path)
 {
-   if (!FileUtils::isDir(path_)) {
+   if (!FileUtils::isDir(path_, 2)) {
       std::string err{path_.string() + std::string{"is not a valid datadir"sv}};
       LOGERR << err;
       throw std::runtime_error(err);
@@ -549,7 +549,7 @@ WalletManager::listWallets()
       const auto& path = dirEntry.path();
 
       //ignore folders
-      if (FileUtils::isDir(path)) {
+      if (FileUtils::isDir(path, 2)) {
          continue;
       }
 

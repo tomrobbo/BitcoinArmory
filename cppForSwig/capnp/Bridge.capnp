@@ -253,6 +253,11 @@ struct DbSetupRequest {
       addPeer        @10: Peer;
       removePeer     @11: Text; #remove by key
       setLabel       @12: LabelRequest;
+
+      findSatoshiDatadir      @13: Void;
+      findSatoshiBinary       @14: Void;
+      validateSatoshiDatadir  @15: Text;
+      validateSatoshiBinary   @16: Text;
    }
 }
 
@@ -262,10 +267,25 @@ struct DbSetupReply {
       oneWay         @1 : Bool;
    }
 
-   union {
-      unset          @0 : Void;
+   struct SatoshiDatadirState {
+      path        @0 : Text;
+      chainSizeGB @1 : UInt32;
+      pruned      @2 : Bool;
+   }
 
-      listPeers      @1 : List(PeerData);
+   struct SatoshiBinaryState {
+      path @0: Text;
+      version @1: Text;
+   }
+
+   union {
+      unset                   @0 : Void;
+
+      listPeers               @1 : List(PeerData);
+      findSatoshiDatadir      @2 : Text;
+      findSatoshiBinary       @3 : Text;
+      validateSatoshiDatadir  @4 : SatoshiDatadirState;
+      validateSatoshiBinary   @5 : SatoshiBinaryState;
    }
 }
 
