@@ -787,6 +787,10 @@ void CppBridge::exportPrivateKeys(const Wallets::WalletId& wltId,
             throw std::runtime_error("wallet is not an AssetWallet_Single");
          }
 
+         if (!wltSingle->getRoot()->hasPrivateKey()) {
+            throw std::runtime_error("this is a WO wallet");
+         }
+
          //setup passphrase prompt
          passPromptObj = std::make_shared<BridgePassphrasePrompt>(
             callbackId, [this](ServerPushWrapper wrapper){
@@ -815,13 +819,31 @@ void CppBridge::exportPrivateKeys(const Wallets::WalletId& wltId,
                   continue;
                }
 
-               auto lastIdx = assetAcc->getLastComputedIndex();
-               for (int32_t i = 0; i <= lastIdx; i++) {
-                  auto assetPtr = assetAcc->getAssetForKey(i);
-                  if (!assetPtr || !assetPtr->hasPrivateKey()) {
-                     continue;
-                  }
+               //check this account carries private keys
+               switch (assetAcc->type()) {
+                  //these accounts have private keys
+                  case Accounts::AssetAccountType::Plain:
+                  case Accounts::AssetAccountType::Imports:
+                     break;
 
+                  //these accounts do not carry private keys
+                  case Accounts::AssetAccountType::ECDH:
+                  case Accounts::AssetAccountType::ImportsWO:
+                     continue;
+
+                  default:
+                     LOGWARN << "trying to export private keys" <<
+                        " from unsupported account type";
+                     continue;
+               }
+
+               //getDecryptedPrivateKeyForAsset will fill missing private keys
+               //run backwards the assets to compute missing keys in batch
+               //rather than sequentially
+               //TODO: add progressCallback logic to extend/fillPrivateKey
+               auto lastIdx = assetAcc->getLastComputedIndex();
+               for (int32_t i = lastIdx; i >= 0; i--) {
+                  auto assetPtr = assetAcc->getAssetForKey(i);
                   auto assetSingle = std::dynamic_pointer_cast<
                      Assets::AssetEntry_Single>(assetPtr);
                   if (!assetSingle) {
