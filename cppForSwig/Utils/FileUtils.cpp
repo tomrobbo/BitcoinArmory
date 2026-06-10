@@ -302,6 +302,12 @@ bool FileUtils::pathExists(const std::filesystem::path& path, int mode)
          std::filesystem::perms::none) {
          return false;
       }
+
+      //do we need exec permissions
+      if ((mode & 8) && (filePerms & std::filesystem::perms::owner_exec) ==
+         std::filesystem::perms::none) {
+         return false;
+      }
       return true;
    } catch (const std::filesystem::filesystem_error&) {
       //throw, invalid path/file doesnt exist

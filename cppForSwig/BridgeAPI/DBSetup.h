@@ -67,10 +67,16 @@ namespace Node
          const bool isPruned;
       };
 
+      struct BinaryState
+      {
+         const std::filesystem::path path;
+         const std::string version;
+      };
+
       std::filesystem::path findDatadir(void);
       std::filesystem::path findBinary(void);
 
       DatadirState validateDatadir(const std::filesystem::path&);
-      void validateBinary(const std::filesystem::path&);
+      BinaryState validateBinary(const std::filesystem::path&);
    }
 }

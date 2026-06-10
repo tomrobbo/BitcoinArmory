@@ -40,6 +40,9 @@ namespace {
       "Local/Bitcoin"sv,
       "Roaming/Bitcoin"sv
    };
+   std::vector<std::string_view> satoshiBinCandidates{
+      //figure out default windows install location
+   };
 
    size_t getFileSize(HANDLE fHandle)
    {
@@ -53,6 +56,11 @@ namespace {
 #else
    std::vector<std::string_view> satoshiDirCandidates{
       ".bitcoin"sv
+   };
+   std::vector<std::string_view> satoshiBinCandidates{
+      "/usr/bin"sv,
+      "/usr/local/bin"sv,
+      "/opt/bin"sv
    };
 
    size_t getFileSize(int fd)
@@ -87,12 +95,14 @@ namespace {
 
    ////////
    constexpr std::string_view blocksDir = "blocks"sv;
+   constexpr std::string_view bitcoind = "bitcoind"sv;
    constexpr std::string_view xorFile = "xor.dat"sv;
    constexpr std::string_view bitcoinConfFile = "bitcoin.conf"sv;
    constexpr std::string_view cookieFile = ".cookie"sv;
    constexpr std::string_view prunedKey = "prune"sv;
    constexpr std::string_view rpcLogKey = "rpcuser"sv;
    constexpr std::string_view rpcPassKey = "rpcpassword"sv;
+   constexpr std::string_view coreVersionHeader = "Bitcoin Core daemon version "sv;
 
    std::filesystem::path getSatoshiDatadir(const std::filesystem::path& path)
    {
@@ -165,6 +175,129 @@ namespace {
          magicBytes.getSize()
       ) == 0;
       return { isMatch, isMatch ? totalChainSize : SIZE_MAX };
+   }
+
+   std::string getVersionStringFromOutput(const std::string& output)
+   {
+      if (output.size() < coreVersionHeader.size()) {
+         throw std::runtime_error("invalid node executable output size");
+      }
+      std::string_view header{output.c_str(), coreVersionHeader.size()};
+      if (header != coreVersionHeader) {
+         throw std::runtime_error("node executable output header mismatch");
+      }
+
+      //assume next token is version string
+      std::string_view body{
+         output.c_str() + coreVersionHeader.size(),
+         output.size() - coreVersionHeader.size()
+      };
+      auto end = body.find(' ');
+      if (end == std::string_view::npos) {
+         throw std::runtime_error("failed to tokenize node output");
+      }
+      return std::string{ body.substr(0, end) };
+   }
+
+   std::pair<bool, std::string> validateSatoshiBinary(
+      const std::filesystem::path& binPath)
+   {
+      /*
+      Run `bitcoin --version`, grab stdout.
+      Parse it for the version string.
+
+      popen version, invokes a shell, too wide net; prefer posix_spawn
+      */
+
+      if (!FileUtils::pathExists(binPath, 8)) {
+         return { false, std::format(
+            "{} is not an executable", binPath.string()) };
+      }
+
+      std::string command = binPath.string() + " --version";
+      FILE* readStream = popen(command.c_str(), "r");
+
+      std::string output;
+      char buffer[256];
+      while (fgets(buffer, 255, readStream) != nullptr) {
+         output.append(buffer);
+      }
+
+      pclose(readStream);
+      try {
+         return { true, getVersionStringFromOutput(output) };
+      } catch (const std::exception& e) {
+         return { false, e.what() };
+      }
+   }
+
+   std::pair<bool, std::string> validateSatoshiBinary_ps(
+      const std::filesystem::path& binPath)
+   {
+      /*
+      Run `bitcoin --version`, grab stdout.
+      Parse it for the version string.
+
+      posix_spawn version, runs into permission issues, revisit later
+      */
+      if (!FileUtils::pathExists(binPath, 8)) {
+         return { false, std::format(
+            "{} is not an executable", binPath.string()) };
+      }
+
+      //bitcoind --version
+      auto binPathStr = binPath.string();
+      char* argv[] = {
+         //first arg has to be binary's path
+         binPathStr.data(),
+         //version arg
+         (char*)"--version"sv.data(),
+         //mandatory terminator
+         (char*)nullptr
+      };
+
+      //setup pipe to feed to child
+      int stdout_pipe[2];
+      if (pipe(stdout_pipe) != 0) {
+         return { false, "failed to setup pipes" };
+      }
+
+      //tell posix_spawn to substitute child's fd 1 (stdout) with our pipe
+      posix_spawn_file_actions_t ps_actions;
+      posix_spawn_file_actions_init(&ps_actions);
+      posix_spawn_file_actions_adddup2(&ps_actions, stdout_pipe[1], 1);
+
+      std::string stdout_str;
+      int pid = -1;
+      int result = posix_spawn(&pid, argv[0], &ps_actions, nullptr, argv, nullptr);
+      if (result == 0 && pid != -1) {
+         //read the pipe, with 2sec timeout
+         struct pollfd pfd{ stdout_pipe[0], POLLIN };
+         if (poll(&pfd, 1, 2000) > 0) {
+            stdout_str.resize(1024);
+            auto bytesread = read(stdout_pipe[0], stdout_str.data(), 1023);
+            if (bytesread > 0) {
+               stdout_str.resize(bytesread);
+            } else {
+               stdout_str.clear();
+            }
+         }
+      }
+
+      //wait on pid
+      int waitpid_status;
+      waitpid(pid, &waitpid_status, 0);
+
+      //cleanup pipes and posix_spawn data
+      close(stdout_pipe[0]);
+      close(stdout_pipe[1]);
+      posix_spawn_file_actions_destroy(&ps_actions);
+
+      try {
+         return { true, getVersionStringFromOutput(stdout_str) };
+      } catch (const std::exception& e) {
+         return { false, e.what() };
+      }
    }
 }
 
@@ -361,7 +494,7 @@ Bridge::spawnDb(const std::filesystem::path& satoshiPath,
          envvars, adds it to the store and sets it as the store's master key.
       4. ArmoryDB grabs the key file fd from envvars and writes its pubkey
          there. This should work by virtue of opened file descriptors sharing
-         rules for fork() evexve(), which posix_spawn() inherits.
+         rules for fork(), which posix_spawn() inherits.
       5. CppBridge detects changes to the key file, grabs the pubkey and
          injects it into its own store. The lock is released, the file closed
          and removed.
@@ -380,7 +513,7 @@ Bridge::spawnDb(const std::filesystem::path& satoshiPath,
    //get full path to armorydb
    const std::filesystem::path armoryDbPath{
       Config::Pathing::runningDir() / "ArmoryDB" };
-   if (!FileUtils::pathExists(armoryDbPath, 0)) {
+   if (!FileUtils::pathExists(armoryDbPath, 8)) {
       throw std::runtime_error("invalid db binary path: " + armoryDbPath.string());
    }
 
@@ -634,6 +767,18 @@ std::filesystem::path Node::Core::findDatadir()
    throw std::runtime_error("could not find a valid satoshi datadir");
 }
 
+std::filesystem::path Node::Core::findBinary()
+{
+   //look for bitcoind
+   for (const auto& candidate : satoshiDirCandidates) {
+      auto binPath = std::filesystem::path{candidate} / bitcoind;
+      if (validateSatoshiBinary(binPath).first == true) {
+         return binPath;
+      }
+   }
+   throw std::runtime_error("could not find a valid satoshi binary");}
+
+////////
 Node::Core::DatadirState Node::Core::validateDatadir(
    const std::filesystem::path& datadir)
 {
@@ -692,4 +837,14 @@ Node::Core::DatadirState Node::Core::validateDatadir(
       blocksDirValidation.second,
       isPruned
    };
+}
+
+Node::Core::BinaryState Node::Core::validateBinary(
+   const std::filesystem::path& binPath)
+{
+   auto result = validateSatoshiBinary(binPath);
+   if (result.first == false) {
+      throw std::runtime_error(result.second);
+   }
+   return { binPath, result.second };
 }

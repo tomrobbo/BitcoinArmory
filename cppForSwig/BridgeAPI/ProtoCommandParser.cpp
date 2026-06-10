@@ -217,6 +217,26 @@ namespace
             break;
          }
 
+         case DbSetupRequest::FIND_SATOSHI_BINARY:
+         {
+            capnp::MallocMessageBuilder message;
+            auto fromBridge = message.initRoot<FromBridge>();
+            auto reply = fromBridge.initReply();
+            reply.setReferenceId(referenceId);
+
+            try {
+               auto p = Node::Core::findBinary();
+               auto setupReply = reply.initSetup();
+               setupReply.setFindSatoshiBinary(p.string());
+               reply.setSuccess(true);
+            } catch (const std::exception& e) {
+               reply.setError(e.what());
+               reply.setSuccess(false);
+            }
+            response = serializeCapnp(message);
+            break;
+         }
+
          case DbSetupRequest::VALIDATE_SATOSHI_DATADIR:
          {
             capnp::MallocMessageBuilder message;
@@ -237,6 +257,32 @@ namespace
                capnValidationResult.setChainSizeGB(
                   validationResult.fileSize / (1024 * 1024 * 1024));
                capnValidationResult.setPruned(validationResult.isPruned);
+               reply.setSuccess(true);
+            } catch (const std::exception& e) {
+               reply.setError(e.what());
+               reply.setSuccess(false);
+            }
+            response = serializeCapnp(message);
+            break;
+         }
+
+         case DbSetupRequest::VALIDATE_SATOSHI_BINARY:
+         {
+            capnp::MallocMessageBuilder message;
+            auto fromBridge = message.initRoot<FromBridge>();
+            auto reply = fromBridge.initReply();
+            reply.setReferenceId(referenceId);
+
+            try {
+               auto binPath = std::filesystem::path(
+                  request.getValidateSatoshiBinary());
+               auto validationResult = Node::Core::validateBinary(binPath);
+
+               auto setupReply = reply.initSetup();
+               auto capnValidationResult =
+                  setupReply.initValidateSatoshiBinary();
+               capnValidationResult.setPath(validationResult.path.string());
+               capnValidationResult.setVersion(validationResult.version);
                reply.setSuccess(true);
             } catch (const std::exception& e) {
                reply.setError(e.what());

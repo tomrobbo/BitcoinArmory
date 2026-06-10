@@ -634,14 +634,34 @@ class DbSetupService(ProtoWrapper):
          return None
       return result.setup.findSatoshiDatadir
 
+   def findSatoshiBinary(self):
+      """Look for the Core binary"""
+      packet = Bridge.ToBridge.new_message()
+      packet.init("setup").findSatoshiBinary = None
+      fut = self.send(packet)
+      result = fut.getVal(nothrow=True)
+      if result.success == False:
+         return None
+      return result.setup.findSatoshiBinary
+
+   ####
    def validateSatoshiDatadir(self, datadir):
-      """Check folder is Core datadir, also look for pruning and RPC setting"""
+      """Check folder is Core datadir, also check for pruning and RPC setting"""
       packet = Bridge.ToBridge.new_message()
       packet.init("setup").validateSatoshiDatadir = str(datadir)
 
       fut = self.send(packet)
       result = fut.getVal()
       return result.setup.validateSatoshiDatadir
+
+   def validateSatoshiBinary(self, binPath):
+      """Check path is Core binary, also grab version"""
+      packet = Bridge.ToBridge.new_message()
+      packet.init("setup").validateSatoshiBinary = str(binPath)
+
+      fut = self.send(packet)
+      result = fut.getVal()
+      return result.setup.validateSatoshiBinary
 
 ################################################################################
 class BlockchainService(ProtoWrapper):
