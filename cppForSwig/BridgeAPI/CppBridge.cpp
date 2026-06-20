@@ -468,6 +468,56 @@ namespace
          return std::make_unique<Passphrase::Params>(reply.passParams);
       };
    }
+
+   std::function<void(AutomationStep)> getAutomationNotifFunc(
+      CppBridge* bridgePtr, const CallbackId& callbackId)
+   {
+      return [bridgePtr, callbackId](AutomationStep step)
+      {
+         if (callbackId.empty()) {
+            return;
+         }
+
+         capnp::MallocMessageBuilder message;
+         auto fromBridge = message.initRoot<FromBridge>();
+         auto notif = fromBridge.initNotification();
+         notif.setCallbackId(callbackId);
+
+         if (step == AutomationStep::Cleanup) {
+            notif.setCleanup();
+         } else {
+            auto automationNotif = notif.initAutomation();
+            switch (step)
+            {
+               case AutomationStep::SpawnNode:
+                  automationNotif.setSpawnNode();
+                  break;
+
+               case AutomationStep::SpawnDb:
+                  automationNotif.setSpawnDb();
+                  break;
+
+               case AutomationStep::ConnectToDb:
+                  automationNotif.setConnectToDb();
+                  break;
+
+               case AutomationStep::ShutdownDb:
+                  automationNotif.setShutdownDb();
+                  break;
+
+               case AutomationStep::ShutdownNode:
+                  automationNotif.setShutdownNode();
+                  break;
+
+               case AutomationStep::Done:
+                  automationNotif.setDone();
+                  break;
+            }
+         }
+         auto response = serializeCapnp(message);
+         bridgePtr->writeToClient(response);
+      };
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -534,7 +584,15 @@ const std::filesystem::path& CppBridge::getDataDir() const
    return path_;
 }
 
-////////////////////////////////////////////////////////////////////////////////
+bool CppBridge::isDbRunning()
+{
+   if (automationContext_ == nullptr) {
+      return false;
+   }
+   return automationContext_->isDbRunning();
+}
+
+////////
 void CppBridge::writeToClient(BinaryData& payload) const
 {
    auto payloadPtr = std::make_unique<WritePayload_Bridge>();
@@ -542,7 +600,6 @@ void CppBridge::writeToClient(BinaryData& payload) const
    writeLambda_(std::move(payloadPtr));
 }
 
-////////////////////////////////////////////////////////////////////////////////
 void CppBridge::callbackWriter(ServerPushWrapper& wrapper)
 {
    setCallbackHandler(wrapper);
@@ -1203,95 +1260,133 @@ void CppBridge::connectToPeer(const std::string& peerKey, MessageId refId)
    this->writeToClient(response);
 }
 
-void CppBridge::automateDb(
-   const std::filesystem::path& satoshiPath,
-   const std::filesystem::path& dbDir,
-   MessageId refId)
-{
-   /*
-   * should call this method from a dedicated thread
-   */
-   LOGINFO << "automating ArmoryDB";
-
-   capnp::MallocMessageBuilder message;
-   auto fromBridge = message.initRoot<FromBridge>();
-   auto reply = fromBridge.initReply();
-   reply.setReferenceId(refId);
-
-   if (dbOffline_) {
-      LOGWARN << "attempt to connect to DB in offline mode, ignoring";
-      reply.setError("cannot setup db in offline mode");
-      reply.setSuccess(false);
-      auto response = serializeCapnp(message);
-      this->writeToClient(response);
-      return;
-   }
-
-   if (bdvPtr_ != nullptr) {
-      LOGWARN << "already connected to db!";
-      reply.setError("already connected to db!");
-      reply.setSuccess(false);
-      auto response = serializeCapnp(message);
-      this->writeToClient(response);
-      return;
-   }
-
-   auto result = spawnDb(satoshiPath, dbDir);
-   auto peers = result.first;
-   auto port = std::to_string(result.second);
-
-   //connect to db
-   try {
-      bdvPtr_ = setupClientConnection(peers,
-         "127.0.0.1", port,
-         false, nullptr,
-         wltManager_->getBdvCallback());
-      if (bdvPtr_ == nullptr) {
-         throw std::runtime_error("automatedDb connection failed");
-      }
-      wltManager_->setBdvPtr(bdvPtr_);
-
-      //reply to caller
-      reply.setSuccess(true);
-   } catch (const std::exception& e) {
-      reply.setSuccess(false);
-      reply.setError(e.what());
-   }
-
-   auto response = serializeCapnp(message);
-   this->writeToClient(response);
-}
-
 ////
-void CppBridge::cleanupDb(MessageId refId)
-{
-   capnp::MallocMessageBuilder message;
-   auto fromBridge = message.initRoot<FromBridge>();
-   auto reply = fromBridge.initReply();
-   reply.setReferenceId(refId);
-
-   if (bdvPtr_ == nullptr) {
-      reply.setSuccess(false);
-      reply.setError("no connection to db");
-   } else if (!isDbRunning()) {
-      reply.setSuccess(false);
-      reply.setError("db is not running");
-   } else {
-      bdvPtr_->shutdown();
-      reply.setSuccess(true);
-   }
-
-   auto response = serializeCapnp(message);
-   this->writeToClient(response);
-}
-
-////
-void CppBridge::goOnline()
+void CppBridge::beginDbSession()
 {
    if (bdvPtr_ == nullptr) {
       throw std::runtime_error("have to connect to db first!");
    }
    bdvPtr_->goOnline();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void CppBridge::setAutomationContext(std::unique_ptr<AutomationContext> ctxPtr)
+{
+   if (automationContext_ != nullptr) {
+      throw std::runtime_error("already have a context");
+   }
+   automationContext_ = std::move(ctxPtr);
+}
+
+void CppBridge::runAutomationContext(CallbackId cbId, MessageId refId)
+{
+   auto threadBody = [this, cbId, refId]()
+   {
+      LOGINFO << "running automation context";
+
+      capnp::MallocMessageBuilder message;
+      auto fromBridge = message.initRoot<FromBridge>();
+      auto reply = fromBridge.initReply();
+      reply.setReferenceId(refId);
+
+      //sanity checks
+      if (dbOffline_) {
+         reply.setError("cannot automate db in offline mode");
+         reply.setSuccess(false);
+         auto response = serializeCapnp(message);
+         this->writeToClient(response);
+         return;
+      }
+
+      if (automationContext_ == nullptr) {
+         reply.setError("missing automation context");
+         reply.setSuccess(false);
+         auto response = serializeCapnp(message);
+         this->writeToClient(response);
+         return;
+      }
+
+      if (bdvPtr_ != nullptr) {
+         reply.setError("already connected to db!");
+         reply.setSuccess(false);
+         auto response = serializeCapnp(message);
+         this->writeToClient(response);
+         return;
+      }
+
+      auto notifyFunc = getAutomationNotifFunc(this, cbId);
+      try {
+         //run context
+         if (!automationContext_->run(notifyFunc)) {
+            //no automation, return
+            reply.setSuccess(true);
+            auto response = serializeCapnp(message);
+            this->writeToClient(response);
+            return;
+         }
+
+         //connect to db
+         notifyFunc(AutomationStep::ConnectToDb);
+         auto peers = automationContext_->getPeersDb();
+         auto port = std::to_string(automationContext_->getDbPort());
+         bdvPtr_ = setupClientConnection(peers,
+            "127.0.0.1", port,
+            false, nullptr,
+            wltManager_->getBdvCallback());
+         if (bdvPtr_ == nullptr) {
+            throw std::runtime_error("automatedDb connection failed");
+         }
+         wltManager_->setBdvPtr(bdvPtr_);
+
+         //reply to caller
+         notifyFunc(AutomationStep::Done);
+         reply.setSuccess(true);
+      } catch (const std::exception& e) {
+         reply.setSuccess(false);
+         reply.setError(e.what());
+      }
+
+      notifyFunc(AutomationStep::Cleanup);
+      auto response = serializeCapnp(message);
+      this->writeToClient(response);
+   };
+
+   std::thread thr{threadBody};
+   if (thr.joinable()) {
+      thr.detach();
+   }
+}
+
+void CppBridge::cleanupAutomationContext(CallbackId cbId, MessageId refId)
+{
+   auto threadBody = [this, refId, cbId]()
+   {
+      capnp::MallocMessageBuilder message;
+      auto fromBridge = message.initRoot<FromBridge>();
+      auto reply = fromBridge.initReply();
+      reply.setReferenceId(refId);
+
+      auto notifFunc = getAutomationNotifFunc(this, cbId);
+      try {
+         if (automationContext_ != nullptr) {
+            automationContext_->cleanup(notifFunc);
+            automationContext_.reset();
+         }
+         reply.setSuccess(true);
+      } catch (const std::exception& e) {
+         reply.setSuccess(false);
+         reply.setError(e.what());
+      }
+
+      notifFunc(AutomationStep::Cleanup);
+      auto response = serializeCapnp(message);
+      this->writeToClient(response);
+   };
+
+   std::thread thr{threadBody};
+   if (thr.joinable()) {
+      thr.detach();
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

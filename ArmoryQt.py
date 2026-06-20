@@ -27,7 +27,18 @@ from struct import pack
 import qtpy
 from qtpy import QtCore, QtGui, QtWidgets
 
-from armorycolors import Colors, htmlColor, QAPP
+"""
+Need to setup colors early. This is because non GUI code ends up import dialogs.
+Dialogs import ArmoryDialog, which in turn imports QtDefines, which makes use of
+htmlColor.
+This can (and should) be fixed by splitting GUI code from business logic
+"""
+
+from armorycolors import initQAppColors
+QAPP = QtWidgets.QApplication(sys.argv)
+initQAppColors(QAPP)
+
+from armorycolors import Colors, htmlColor
 from armoryengine.ArmoryUtils import HMAC256, \
    OS_LINUX, OS_MACOSX, OS_WINDOWS, AllowAsync, USE_TESTNET, USE_REGTEST, \
    CLI_OPTIONS, getVersionString, BTCARMORY_VERSION, \
@@ -94,7 +105,8 @@ from qtdialogs.MsgBoxCustom import MsgBoxCustom
 from qtdialogs.MsgBoxWithDNAA import MsgBoxWithDNAA
 from qtdialogs.DlgUniversalRestoreSelect import DlgUniversalRestoreSelect
 from qtdialogs.DlgWalletMigration import DlgWalletMigration
-from qtdialogs.setupmanager import DlgSetupManager, SCENARIO_DB_NONE
+from qtdialogs.setupmanager import DlgSetupManager, DlgAutomations, \
+   SCENARIO_DB_NONE
 
 from ui.QtExecuteSignal import TheSignalExecution
 from armorymodels import AllWalletsDispModel, AllWalletsCheckboxDelegate, \
@@ -974,22 +986,6 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
 
    ############################################################################
    def factoryReset(self):
-      """
-      reply = QtWidgets.QMessageBox.information(self,'Factory Reset', \
-         'You are about to revert all Armory settings '
-         'to the state they were in when Armory was first installed.  '
-         '<br><br>'
-         'If you click "Yes," Armory will exit after settings are '
-         'reverted.  You will have to manually start Armory again.'
-         '<br><br>'
-         'Do you want to continue? ', \
-         QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
-
-      if reply==QtWidgets.QMessageBox.Yes:
-         self.removeSettingsOnClose = True
-         self.closeForReal()
-      """
-
       if DlgFactoryReset(self,self).exec_():
          # The dialog already wrote all the flag files, just close now
          self.closeForReal()
@@ -4792,9 +4788,11 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
       Unlike File->Quit or clicking the X on the window, which may actually
       minimize Armory, this method is for *really* closing Armory
       '''
+      def completeCloseForReal(self):
+         LOGINFO('Attempting to close the main window!')
+         TheSignalExecution.executeMethod(QAPP.exit)
 
       self.showShuttingDownMessage()
-
       try:
          # Save the main window geometry in the settings file
          try:
@@ -4813,18 +4811,18 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
             LOGINFO('BDM is safe for clean shutdown')
 
          TheBDM.shutdown()
-         TheBridge.dbSetup.shutdown()
-
          # Remove Temp Modules Directory if it exists:
          if self.tempModulesDirName:
             shutil.rmtree(self.tempModulesDirName)
 
-      except:
-         # Don't want a strange error here interrupt shutdown
-         LOGEXCEPT('Strange error during shutdown')
+         automationDlg = DlgAutomations(self, self, False)
+         TheBridge.dbSetup.cleanup(
+            automationDlg.callbackId,
+            completeCloseForReal)
 
-      LOGINFO('Attempting to close the main window!')
-      TheSignalExecution.executeMethod(QAPP.quit)
+      except Exception as e:
+         # Don't want a strange error here interrupt shutdown
+         LOGEXCEPT(f'Strange error during shutdown: {str(e)}')
 
    #############################################################################
    def loadNewPage(self):
@@ -4882,7 +4880,7 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
       self.setupLedgerViews()
       self.loadBlockchainIfNecessary()
       self.setDashboardDetails()
-      TheBridge.dbSetup.goOnline()
+      TheBridge.dbSetup.beginDbSession()
 
    #############################################################################
    def setupLedgerViews(self):
@@ -5079,9 +5077,9 @@ if True:
    SPLASH = ArmorySplashScreen(pixLogo)
    SPLASH.setMask(pixLogo.mask())
    SPLASH.show()
-   QAPP.processEvents()
 
-   # Will make this customizable
+   #init QApplication
+   QAPP.processEvents()
    QAPP.setFont(GETFONT('var'))
 
    # Setup translations before any dialogs
@@ -5109,8 +5107,9 @@ if True:
 
    # Show setup manager (wallet list will populate when bridge ready)
    if dlg.exec_() != QtWidgets.QDialog.Accepted:
-      TheBridge.dbSetup.shutdown()
-      sys.exit(1)
+      TheBridge.dbSetup.cleanup("", None)
+      QAPP.quit()
+      os._exit(0)
 
    dbSettings = dlg.databaseTab.collectSettings()
    if dbSettings['scenario'] == SCENARIO_DB_NONE:

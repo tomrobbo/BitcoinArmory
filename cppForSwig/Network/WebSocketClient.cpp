@@ -26,7 +26,7 @@ static struct lws_protocols protocols[] =
    /* first protocol must always be HTTP handler */
    {
       "armory-bdm-protocol",
-      WebSocketClient::callback,
+      WebSocketClient::lwsServiveHandler,
       sizeof(struct per_session_data__client),
       per_session_data__client::rcv_size,
       1,
@@ -56,10 +56,15 @@ WebSocketClient::WebSocketClient(const std::string& addr,
 
 WebSocketClient::~WebSocketClient()
 {
+   //shutdown and wait on service thread
    shutdown();
    if (serviceThr_.joinable()) {
       serviceThr_.join();
    }
+
+   //cleanup read and write queues
+   //push error message to all outstanding callbacks
+   cleanup();
 }
 
 ////////
@@ -238,7 +243,6 @@ void WebSocketClient::service(lws_context* contextPtr)
 {
    int n = 0;
    auto wsiPtr = (struct lws*)wsiPtr_.load(std::memory_order_acquire);
-
    while (run_.load(std::memory_order_relaxed) != 0 && n >= 0) {
       n = lws_service(contextPtr, 500);
       if (!currentWriteMessage_.isDone() || !writeQueue_->empty()) {
@@ -246,9 +250,8 @@ void WebSocketClient::service(lws_context* contextPtr)
       }
    }
 
+   contextPtr_.store(nullptr, std::memory_order_release);
    lws_context_destroy(contextPtr);
-   contextPtr_.store(0, std::memory_order_release);
-   cleanup();
 }
 
 ////////
@@ -257,7 +260,6 @@ void WebSocketClient::shutdown()
    if (run_.exchange(0, std::memory_order_relaxed) == 0) {
       return;
    }
-
    auto context = (struct lws_context*)contextPtr_.load(std::memory_order_acquire);
    if (context == nullptr) {
       return;
@@ -336,7 +338,7 @@ void WebSocketClient::cleanup()
 }
 
 ////////
-int WebSocketClient::callback(struct lws *wsi,
+int WebSocketClient::lwsServiveHandler(struct lws *wsi,
    enum lws_callback_reasons reason, void *user, void *in, size_t len)
 {
    auto instance = (WebSocketClient*)user;

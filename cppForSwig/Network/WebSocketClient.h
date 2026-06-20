@@ -157,7 +157,7 @@ namespace Armory
             std::shared_ptr<Socket_ReadPayload>) override;
          bool connectToRemote(void) override;
 
-         static int callback(
+         static int lwsServiveHandler(
             struct lws *wsi, enum lws_callback_reasons reason,
             void *user, void *in, size_t len);
       };

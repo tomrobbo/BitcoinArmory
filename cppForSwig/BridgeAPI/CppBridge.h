@@ -63,6 +63,7 @@ namespace Armory
       struct ServerPushWrapper;
       struct WritePayload_Bridge;
       class WalletManager;
+      class AutomationContext;
 
       ////
       using MessageId = uint64_t;
@@ -118,6 +119,9 @@ namespace Armory
          std::mutex callbackHandlerMu_;
          std::map<uint32_t, CallbackHandler> callbackHandlers_;
 
+         //binary automation
+         std::unique_ptr<AutomationContext> automationContext_;
+
       private:
          std::shared_ptr<Wallets::AuthorizedPeers> getPeersDb(void);
          void reset(void);
@@ -143,16 +147,17 @@ namespace Armory
          BinaryData getWalletPacket(const Wallets::WalletId&,
             Wallets::AddressAccountId, MessageId) const;
 
+         //binary automation
+         void setAutomationContext(std::unique_ptr<AutomationContext>);
+         void runAutomationContext(CallbackId, MessageId);
+         void cleanupAutomationContext(CallbackId, MessageId);
+
          //db setup
          void connectToIp(const std::string&, const std::string&,
             const CallbackId&, MessageId);
          void connectToPeer(const std::string&, MessageId);
-         void automateDb(
-            const std::filesystem::path&,
-            const std::filesystem::path&,
-            MessageId);
-         void cleanupDb(MessageId);
-         void goOnline(void);
+         void beginDbSession(void);
+         bool isDbRunning(void);
 
          //peers db
          void loadPeersDb(const CallbackId&, MessageId);

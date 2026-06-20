@@ -13,7 +13,8 @@ from armoryengine.ArmoryUtils import CLI_OPTIONS, \
    ARMORY_HOME_DIR, ARMORYDB_DEFAULT_PORT, \
    LOGINFO, LOGERROR
 from armoryengine.Settings import TheSettings
-from armoryengine.CppBridge import TheBridge, PeersDbCallback, ServerKeyCallback
+from armoryengine.CppBridge import TheBridge, ServerPush, \
+   PeersDbCallback, ServerKeyCallback
 from ui.QtExecuteSignal import TheSignalExecution
 
 from qtdialogs.ArmoryDialog import ArmoryDialog
@@ -163,6 +164,7 @@ class DlgSetupManager(ArmoryDialog):
       # Offline mode is always valid - no connection needed
       if scenario == SCENARIO_DB_NONE:
          LOGINFO("Offline mode - no connection validation needed")
+         #TODO: set instance wide offline flag
          self._saveAndAccept()
          return
 
@@ -178,7 +180,9 @@ class DlgSetupManager(ArmoryDialog):
       QtWidgets.QApplication.processEvents()
 
       params = self.getDbConnectionParams()
-      success, error = self.initiateDbConnection(params)
+      self.initiateDbConnection(params)
+
+   def _handleConnectionAttemptFinality(self, success, error):
       self.unsetCursor()
 
       if success:
@@ -487,32 +491,41 @@ class DlgSetupManager(ArmoryDialog):
       elif scenario == SCENARIO_DB_LOCAL:
          return self._connectLocalDb(params)
       elif scenario == SCENARIO_REMOTE_PEER:
-         return self._connectToPeer(params)
+         success, error = self._connectToPeer(params)
+         self._handleConnectionAttemptFinality(success, error)
       elif scenario == SCENARIO_REMOTE_IP:
-         return self._connectToIp(params)
+         success, error = self._connectToIp(params)
+         self._handleConnectionAttemptFinality(success, error)
 
       raise ValueError(f"Unknown scenario: {scenario}")
 
-   def _connectLocalDb(self, params):
-      """Initiate local (automated) database connection."""
-      satoshiPath = params.get('satoshiPath', '')
-      dbPath = params.get('dbPath', '')
-
-      LOGINFO(f"Calling automateDb: "
-         f"satoshiPath={satoshiPath}, "
-         f"dbPath={dbPath}")
-
-      result = TheBridge.dbSetup.automateDb(
-         satoshiPath=satoshiPath,
-         dbDir=dbPath
+   def _handleAutomationReply(self, reply):
+      TheSignalExecution.executeMethod(
+         self._handleConnectionAttemptFinality,
+         reply.success, reply.error
       )
 
-      if result.success:
-         LOGINFO("automateDb succeeded")
-         return (True, None)
+   def _connectLocalDb(self, params):
+      """Initiate local (automated) database connection."""
+      satoshiDir = params.get('satoshiPath', '')
+      satoshiBin = params.get('satoshiBin', '')
+      dbDir = params.get('dbPath', '')
+      automateNode = params.get('automateNode', False)
 
-      LOGERROR(f"automateDb failed: {result.error}")
-      return (False, result.error)
+      LOGINFO("automating db/node operations")
+      result = TheBridge.dbSetup.initAutomationContext(
+         satoshiDir=satoshiDir, satoshiBin=satoshiBin,
+         dbDir=dbDir, automateNode=automateNode, automateDb=True)
+
+      if result.success == False:
+         LOGINFO("automation context init failed!")
+         return (False, result.error)
+
+      dlgAutomations = DlgAutomations(self, self.main, automateNode)
+      TheBridge.dbSetup.runAutomationContext(
+         dlgAutomations.callbackId,
+         self._handleAutomationReply)
+      dlgAutomations.exec_()
 
    def _connectToPeer(self, params):
       """Connect to a known peer from the peers database."""
@@ -760,3 +773,40 @@ class DlgSetupManager(ArmoryDialog):
 
       TheSignalExecution.executeMethod(
          promptOnQtThread)
+
+################################################################################
+class DlgAutomations(ArmoryDialog, ServerPush):
+   """
+   Modal to render automation notifications.
+   See runAutomationContext and cleanup in class DbSetupService
+   """
+   def __init__(self, parent, main, withNode: bool):
+      ArmoryDialog.__init__(self, parent, main)
+      ServerPush.__init__(self)
+
+      #setup modal
+      layout = QtWidgets.QVBoxLayout()
+      self.progressDesc = "Progressing..."
+      self.progressLabel = QtWidgets.QLabel(self.progressDesc)
+      layout.addWidget(self.progressLabel)
+      self.setLayout(layout)
+
+      if withNode:
+         self.setWindowTitle("Automating Bitcoin Core and ArmoryDB")
+      else:
+         self.setWindowTitle("Automating ArmoryDB")
+
+   def updateLabel(self, descLine):
+      self.progressDesc += f"\n - {descLine}"
+      self.progressLabel.setText(self.progressDesc)
+      self.setVisible(True)
+
+   def parseProtoPacket(self, protoPacket):
+      """override of ServerPush method"""
+      which = protoPacket.which()
+      if which == "cleanup":
+         TheSignalExecution.executeMethod(self.reject)
+
+      elif which == "automation":
+         TheSignalExecution.executeMethod(
+            self.updateLabel, protoPacket.automation.which())

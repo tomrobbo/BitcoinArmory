@@ -30,17 +30,65 @@ namespace Armory
 
    namespace Bridge
    {
-      using BdvPtr = std::shared_ptr<AsyncClient::BlockDataViewer>;
-   #ifdef _WIN32
-      extern void* autoDbHandle;
-   #else
-      extern int autoDbPid;
-   #endif
+      enum class AutomationStep : int
+      {
+         SpawnNode,
+         SpawnDb,
+         ConnectToDb,
+         ShutdownDb,
+         ShutdownNode,
+         Done,
+         Cleanup
+      };
+
+      class AutomationContext
+      {
+         using CallbackFunc = std::function<void(AutomationStep)>;
+
+      private:
+         const std::filesystem::path satoshiDir_;
+         const std::filesystem::path satoshiBin_;
+         const std::filesystem::path dbDir_;
+         const bool automateNode_;
+         const bool automateDb_;
+
+         std::shared_ptr<Wallets::AuthorizedPeers> peers_;
+         uint32_t dbPort_ = UINT32_MAX;
+         bool hasRun_ = false;
+
+      #ifdef _WIN32
+         void* autoDbHandle_ = nullptr;
+         void* autoSatoshiHandle_ = nullptr;
+      #else
+         int autoDbPid_ = -1;
+         int autoSatoshiPid_ = -1;
+      #endif
+
+      private:
+         void automateDb(void);
+         void automateSatoshi(void);
+         void cleanupDb(void);
+         void cleanupSatoshi(void);
+
+      public:
+         AutomationContext(
+            const std::filesystem::path&,
+            const std::filesystem::path&,
+            const std::filesystem::path&,
+            bool, bool
+         );
+
+         bool run(const CallbackFunc&);
+         void cleanup(const CallbackFunc&);
+
+         bool isDbRunning(void);
+         bool isSatoshiRunning(void);
+         uint32_t getDbPort(void) const;
+         std::shared_ptr<Wallets::AuthorizedPeers> getPeersDb(void) const;
+      };
 
       /* db helpers */
-      std::pair<std::shared_ptr<Wallets::AuthorizedPeers>, uint32_t> spawnDb(
-         const std::filesystem::path&, const std::filesystem::path&);
-      bool isDbRunning(void);
+      using BdvPtr = std::shared_ptr<AsyncClient::BlockDataViewer>;
 
       BdvPtr setupClientConnection(
          std::shared_ptr<Wallets::AuthorizedPeers>,

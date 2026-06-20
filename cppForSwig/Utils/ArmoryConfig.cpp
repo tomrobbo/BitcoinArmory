@@ -1030,12 +1030,7 @@ void Pathing::processArgs(const std::map<std::string, std::string>& args,
    }
 
    //test all paths
-   auto testPath = [](const fs::path& path, int mode)->bool
-   {
-      return FileUtils::pathExists(path, mode);
-   };
-
-   if (!testPath(Armory::Config::getDataDir(), 6)) {
+   if (!FileUtils::pathExists(Armory::Config::getDataDir(), 6)) {
       throw DbErrorMsg({Armory::Config::getDataDir().string() +
          " is not a valid datadir path"});
    }
@@ -1052,13 +1047,13 @@ void Pathing::processArgs(const std::map<std::string, std::string>& args,
 
    //create dbdir if set automatically
    if (autoDbDir) {
-      if (!testPath(dbDir_, 0)) {
+      if (!FileUtils::pathExists(dbDir_, 0)) {
          fs::create_directory(dbDir_);
       }
    }
 
    //now for the regular test, let it throw if it fails
-   if (!testPath(dbDir_, 6)) {
+   if (!FileUtils::pathExists(dbDir_, 6)) {
       std::string errMsg = dbDir_.string() + " is not a valid db path";
       throw DbErrorMsg(errMsg); 
    }
@@ -1069,7 +1064,7 @@ void Pathing::processArgs(const std::map<std::string, std::string>& args,
    */
 
    if (!NetworkSettings::isOffline()) {
-      if (!testPath(blkFilePath_, 2)) {
+      if (!FileUtils::pathExists(blkFilePath_, 2)) {
          throw DbErrorMsg({ blkFilePath_.string() +
             " is not a valid blockchain data path" });
       }

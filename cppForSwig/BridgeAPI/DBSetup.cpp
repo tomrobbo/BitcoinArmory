@@ -299,6 +299,299 @@ namespace {
          return { false, e.what() };
       }
    }
+
+   /////////////////////////////////////////////////////////////////////////////
+   class ShutdownCallback : public RemoteCallback
+   {
+   private:
+      std::unique_ptr<std::promise<bool>> promPtr_;
+      std::future<bool> fut_;
+
+   public:
+      ShutdownCallback()
+      {
+         promPtr_ = std::make_unique<std::promise<bool>>();
+         fut_ = promPtr_->get_future();
+      }
+
+      //virtuals
+      void run(BdmNotification) override
+      {}
+
+      void progress(BDMPhase,
+         const std::vector<std::string>&,
+         float, unsigned, unsigned
+      ) override
+      {}
+
+      void disconnected() override
+      {
+         promPtr_->set_value(true);
+      }
+
+      void waitOnDisconnect()
+      {
+         fut_.get();
+      }
+   };
+}
+
+////////////////////////////////////////////////////////////////////////////////
+BdvPtr Armory::Bridge::setupClientConnection(
+   std::shared_ptr<Wallets::AuthorizedPeers> peers,
+   const std::string& ip, const std::string& port, bool oneWayAuth,
+   const std::function<bool(const BinaryData&)>& presentPubKeyFunc,
+   std::shared_ptr<RemoteCallback> cbPtr)
+{
+   //sanity check
+   if (peers == nullptr) {
+      throw std::runtime_error("null peers db");
+   }
+
+   //setup bdv obj
+   BdvPtr bdvPtr = AsyncClient::BlockDataViewer::getNewBDV(
+      ip, port,
+      peers, oneWayAuth,
+      cbPtr
+   );
+
+   if (presentPubKeyFunc) {
+      bdvPtr->setCheckServerKeyPromptLambda(presentPubKeyFunc);
+   }
+
+   //connect to db
+   if (!bdvPtr->connectToRemote()) {
+      return nullptr;
+   }
+   bdvPtr->registerWithDB(
+      Config::BitcoinSettings::getMagicBytes().toHexStr());
+
+   //notify setup is done
+   return bdvPtr;
+}
+
+BdvPtr Armory::Bridge::setupClientConnection(
+   std::shared_ptr<Wallets::AuthorizedPeers> peers,
+   const Wallets::PeerKey& peerObj,
+   std::shared_ptr<RemoteCallback> cbPtr)
+{
+   auto peerNames = peers->getPeerNameMap(peerObj.isOneWay());
+   for (const auto& peerName : peerNames) {
+      if (std::memcmp(peerObj.getKey().getPtr(),
+         peerName.second.pubkey,
+         BIP151PUBKEYSIZE) != 0) {
+         continue;
+      }
+
+      auto ipAndPort = getIpAndPortFromPeerName(peerName.first);
+      auto bdvPtr = setupClientConnection(peers,
+         ipAndPort.first, ipAndPort.second,
+         peerObj.isOneWay(), {},
+         cbPtr
+      );
+      if (bdvPtr != nullptr) {
+         return bdvPtr;
+      }
+   }
+   return nullptr;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+std::filesystem::path Node::Core::findDatadir()
+{
+   auto home = FileUtils::getUserHomePath();
+   for (const auto& candidate : satoshiDirCandidates) {
+      std::filesystem::path dataDir = home / candidate;
+
+      //look for /blocks folder
+      auto blocksDir = getBlocksDir(dataDir);
+      if (validateBlocksDir(blocksDir).first == true) {
+         return dataDir;
+      }
+   }
+   throw std::runtime_error("could not find a valid satoshi datadir");
+}
+
+std::filesystem::path Node::Core::findBinary()
+{
+   //look for bitcoind
+   for (const auto& candidate : satoshiDirCandidates) {
+      auto binPath = std::filesystem::path{candidate} / bitcoind;
+      if (validateSatoshiBinary(binPath).first == true) {
+         return binPath;
+      }
+   }
+   throw std::runtime_error("could not find a valid satoshi binary");}
+
+////////
+Node::Core::DatadirState Node::Core::validateDatadir(
+   const std::filesystem::path& datadir)
+{
+   auto satoshiDir = getSatoshiDatadir(datadir);
+   auto blocksDirValidation = validateBlocksDir(satoshiDir);
+   if (blocksDirValidation.first == false) {
+      throw std::runtime_error(
+         std::format("{} is not a valid satoshi datadir", satoshiDir.string()));
+   }
+
+   //inspect files in the folder
+   bool hasCookie = false;
+   std::vector<std::string> confLines;
+   for (const auto& entry : std::filesystem::directory_iterator{satoshiDir}) {
+      if (!entry.is_regular_file()) {
+         continue;
+      }
+
+      auto fpath = entry.path();
+      const auto& fName = fpath.filename();
+      if (fName == bitcoinConfFile) {
+         confLines = Config::SettingsUtils::getLines(fpath);
+      } else if (fName == cookieFile) {
+         hasCookie = true;
+      }
+   }
+
+   bool isPruned = false;
+   bool hasRpcLog = false;
+   bool hasRpcPass = false;
+   for (const auto& confLine : confLines) {
+      auto keyval = Config::SettingsUtils::getKeyValFromLine(confLine, '=');
+      if (keyval.first == prunedKey) {
+         const auto& val = keyval.second;
+         int result = INT32_MAX;
+         auto charConvResult = std::from_chars(
+            val.data(), val.data() + val.size(), result);
+         if (charConvResult.ec == std::errc{} && result != 0) {
+            isPruned = true;
+         }
+      } else if (keyval.first == rpcLogKey) {
+         if (!keyval.second.empty()) {
+            hasRpcLog = true;
+         }
+      } else if (keyval.second == rpcPassKey) {
+         if (!keyval.second.empty()) {
+            hasRpcPass = true;
+         }
+      }
+   }
+
+   //TODO: cookie detection has to be more subtle
+
+   return DatadirState{
+      satoshiDir,
+      blocksDirValidation.second,
+      isPruned
+   };
+}
+
+Node::Core::BinaryState Node::Core::validateBinary(
+   const std::filesystem::path& binPath)
+{
+   auto result = validateSatoshiBinary(binPath);
+   if (result.first == false) {
+      throw std::runtime_error(result.second);
+   }
+   return { binPath, result.second };
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// AutomationContext
+AutomationContext::AutomationContext(
+   const std::filesystem::path& satoshiDir,
+   const std::filesystem::path& satoshiBin,
+   const std::filesystem::path& dbDir,
+   bool automateNode, bool automateDb) :
+   satoshiDir_{satoshiDir}, satoshiBin_{satoshiBin}, dbDir_{dbDir},
+   automateNode_{automateNode}, automateDb_{automateDb}
+{}
+
+uint32_t AutomationContext::getDbPort() const
+{
+   return dbPort_;
+}
+
+std::shared_ptr<Wallets::AuthorizedPeers> AutomationContext::getPeersDb() const
+{
+   return peers_;
+}
+
+////////
+void AutomationContext::automateSatoshi()
+{
+   //sanity check
+   if (autoSatoshiPid_ != -1) {
+      throw std::runtime_error("already have an instance of Core");
+   }
+
+   /*TODO:
+   Force rpc log/pass when automating core.
+   rpcuser can be passed as a cli arg.
+   rpcpassword can be passed via stdin using "-stdin -stdinrpcpass".
+   stdin can be replaced by a pipe via posix_spawn
+   */
+
+   //setup argv
+   auto binpathStr = satoshiBin_.string();
+   auto datadirStr = std::format("--datadir={}", satoshiDir_.string());
+   char* argv[] = {
+      //first arg has to be binary's path
+      binpathStr.data(),
+      //satoshi datadir
+      datadirStr.data(),
+      //null terminator
+      (char*)nullptr
+   };
+
+   //spawn the node
+   int result = posix_spawn(&autoSatoshiPid_, argv[0], nullptr, nullptr, argv, nullptr);
+   if (result != 0 || autoSatoshiPid_ == -1) {
+      throw std::runtime_error(
+         "failed to spawn bitcoind with error: " + std::string{strerror(errno)});
+   }
+}
+
+bool AutomationContext::isSatoshiRunning()
+{
+   if (autoSatoshiPid_ == -1) {
+      return false;
+   }
+
+   siginfo_t processInfo;
+   memset(&processInfo, 0, sizeof(processInfo));
+   if (waitid(P_PID, (pid_t)autoSatoshiPid_, &processInfo, WEXITED | WNOHANG) != 0) {
+      return false;
+   }
+
+   if (processInfo.si_pid == 0) {
+      return true;
+   }
+   if (processInfo.si_code == CLD_EXITED || processInfo.si_code == CLD_KILLED) {
+      autoSatoshiPid_ = -1;
+      return false;
+   }
+   return true;
+}
+
+void AutomationContext::cleanupSatoshi()
+{
+   /*
+   if we started the core node, connect to it via RPC and shut it down
+   */
+
+   //TODO: use callback to notify of shutdown progression
+
+   if (autoSatoshiPid_ == -1) {
+      //not our node
+      return;
+   }
+
+   //connect to RPC
+
+   //request shutdown
+
+   //wait on pid
+   int waitpid_status;
+   waitpid(autoSatoshiPid_, &waitpid_status, 0);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -473,11 +766,7 @@ Bridge::spawnDb(const std::filesystem::path& satoshiPath,
    return { peers, port };
 }
 #else
-int Armory::Bridge::autoDbPid = -1;
-
-std::pair<std::shared_ptr<Wallets::AuthorizedPeers>, uint32_t>
-Bridge::spawnDb(const std::filesystem::path& satoshiPath,
-   const std::filesystem::path& dbDir)
+void AutomationContext::automateDb()
 {
    /*
    Use posix_spawn, which wraps around fork() & execve() to spawn an instance
@@ -506,7 +795,7 @@ Bridge::spawnDb(const std::filesystem::path& satoshiPath,
    */
 
    //sanity check
-   if (autoDbPid != -1) {
+   if (autoDbPid_ != -1) {
       throw std::runtime_error("already have an instance of ArmoryDB");
    }
 
@@ -518,19 +807,19 @@ Bridge::spawnDb(const std::filesystem::path& satoshiPath,
    }
 
    //1. setup ephemeral authPeers
-   auto peers = std::make_shared<Wallets::AuthorizedPeers>();
-   const auto& pubkey = peers->getOwnPublicKey();
+   peers_ = std::make_shared<Wallets::AuthorizedPeers>();
+   const auto& pubkey = peers_->getOwnPublicKey();
    BinaryDataRef keyRef{pubkey.pubkey, 33};
    std::string keyStr{ "CALLER_PUBKEY=" + keyRef.toHexStr() };
 
    //generate random db port & set it
-   uint32_t port = (rand() % 10000) + 50000;
-   auto portStr = std::to_string(port);
+   dbPort_ = (rand() % 10000) + 50000;
+   auto portStr = std::to_string(dbPort_);
    std::string dbPortStr{ "--armorydb-port=" + portStr };
    Armory::Config::NetworkSettings::setDbPort(portStr);
 
    //db paths
-   std::string dbDirStr{ "--dbdir=" + dbDir.string() };
+   std::string dbDirStr{ "--dbdir=" + dbDir_.string() };
    std::string dataDir{ "--datadir=" + Config::getDataDir().string() };
 
    //btc network
@@ -551,7 +840,7 @@ Bridge::spawnDb(const std::filesystem::path& satoshiPath,
 
    //core settings
    std::string satoshiDir{
-      "--satoshi-datadir=" + satoshiPath.string() };
+      "--satoshi-datadir=" + satoshiDir_.string() };
    std::string satoshiPort{
       "--satoshi-port=" + Config::NetworkSettings::btcPort() };
    std::string rpcPort{
@@ -601,8 +890,8 @@ Bridge::spawnDb(const std::filesystem::path& satoshiPath,
    };
 
    //spawn the db
-   int result = posix_spawn(&autoDbPid, argv[0], nullptr, nullptr, argv, envp);
-   if (result != 0 || autoDbPid == -1) {
+   int result = posix_spawn(&autoDbPid_, argv[0], nullptr, nullptr, argv, envp);
+   if (result != 0 || autoDbPid_ == -1) {
       throw std::runtime_error(
          "failed to spawn armorydb with error: " + std::string{strerror(errno)});
    }
@@ -630,7 +919,7 @@ Bridge::spawnDb(const std::filesystem::path& satoshiPath,
 
       //add db key to custom store
       std::string addr{"127.0.0.1:" + portStr};
-      peers->addPeer(serverPubkey, {addr}, {}, false);
+      peers_->addPeer(serverPubkey, {addr}, {}, false);
       break;
    }
 
@@ -647,14 +936,11 @@ Bridge::spawnDb(const std::filesystem::path& satoshiPath,
       //fs::remove returns false if there was nothing to remove.
       //it will throw on failure.
    }
-
-   //return ephemeral key store
-   return { peers, port };
 }
 #endif
 
 ////
-bool Armory::Bridge::isDbRunning()
+bool AutomationContext::isDbRunning()
 {
 #ifdef _WIN32
    if (autoDbHandle == INVALID_HANDLE_VALUE) {
@@ -668,13 +954,13 @@ bool Armory::Bridge::isDbRunning()
       return false;
    }
 #else
-   if (autoDbPid == -1) {
+   if (autoDbPid_ == -1) {
       return false;
    }
 
    siginfo_t processInfo;
    memset(&processInfo, 0, sizeof(processInfo));
-   if (waitid(P_PID, (pid_t)autoDbPid, &processInfo, WEXITED | WNOHANG) != 0) {
+   if (waitid(P_PID, (pid_t)autoDbPid_, &processInfo, WEXITED | WNOHANG) != 0) {
       return false;
    }
 
@@ -682,169 +968,79 @@ bool Armory::Bridge::isDbRunning()
       return true;
    }
    if (processInfo.si_code == CLD_EXITED || processInfo.si_code == CLD_KILLED) {
-      autoDbPid = -1;
+      autoDbPid_ = -1;
       return false;
    }
 #endif
-
    return true;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-BdvPtr Armory::Bridge::setupClientConnection(
-   std::shared_ptr<Wallets::AuthorizedPeers> peers,
-   const std::string& ip, const std::string& port, bool oneWayAuth,
-   const std::function<bool(const BinaryData&)>& presentPubKeyFunc,
-   std::shared_ptr<RemoteCallback> cbPtr)
-{
-   //sanity check
-   if (peers == nullptr) {
-      throw std::runtime_error("null peers db");
-   }
-
-   //setup bdv obj
-   BdvPtr bdvPtr = AsyncClient::BlockDataViewer::getNewBDV(
-      ip, port,
-      peers, oneWayAuth,
-      cbPtr
-   );
-
-   if (presentPubKeyFunc) {
-      bdvPtr->setCheckServerKeyPromptLambda(presentPubKeyFunc);
-   }
-
-   //connect to db
-   if (!bdvPtr->connectToRemote()) {
-      return nullptr;
-   }
-   bdvPtr->registerWithDB(
-      Config::BitcoinSettings::getMagicBytes().toHexStr());
-
-   //notify setup is done
-   return bdvPtr;
-}
-
 ////////
-BdvPtr Armory::Bridge::setupClientConnection(
-   std::shared_ptr<Wallets::AuthorizedPeers> peers,
-   const Wallets::PeerKey& peerObj,
-   std::shared_ptr<RemoteCallback> cbPtr)
+void AutomationContext::cleanupDb()
 {
-   auto peerNames = peers->getPeerNameMap(peerObj.isOneWay());
-   for (const auto& peerName : peerNames) {
-      if (std::memcmp(peerObj.getKey().getPtr(),
-         peerName.second.pubkey,
-         BIP151PUBKEYSIZE) != 0) {
-         continue;
-      }
-
-      auto ipAndPort = getIpAndPortFromPeerName(peerName.first);
-      auto bdvPtr = setupClientConnection(peers,
-         ipAndPort.first, ipAndPort.second,
-         peerObj.isOneWay(), {},
-         cbPtr
-      );
-      if (bdvPtr != nullptr) {
-         return bdvPtr;
-      }
+   if (autoDbPid_ == -1) {
+      //not our db
+      return;
    }
-   return nullptr;
+
+   //create bdv object
+   auto callback = std::make_shared<ShutdownCallback>();
+   auto port = std::to_string(dbPort_);
+   auto bdvPtr = setupClientConnection(peers_,
+      "127.0.0.1", port,
+      false, nullptr, callback);
+   if (bdvPtr == nullptr) {
+      throw std::runtime_error("automatedDb connection failed");
+   }
+
+   //request db shutdown, wait on d/c notif
+   bdvPtr->shutdown();
+   callback->waitOnDisconnect();
+   bdvPtr.reset();
+
+   //wait on db shutdown
+   while (isDbRunning()) {
+      std::this_thread::sleep_for(100ms);
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::filesystem::path Node::Core::findDatadir()
+bool AutomationContext::run(const CallbackFunc& notifyStep)
 {
-   auto home = FileUtils::getUserHomePath();
-   for (const auto& candidate : satoshiDirCandidates) {
-      std::filesystem::path dataDir = home / candidate;
-
-      //look for /blocks folder
-      auto blocksDir = getBlocksDir(dataDir);
-      if (validateBlocksDir(blocksDir).first == true) {
-         return dataDir;
-      }
+   if (hasRun_) {
+      throw std::runtime_error("context already in use");
    }
-   throw std::runtime_error("could not find a valid satoshi datadir");
+   hasRun_ = true;
+
+   if (automateDb_) {
+      //we always automate the db if we automate the node
+      if (automateNode_) {
+         notifyStep(AutomationStep::SpawnNode);
+         automateSatoshi();
+      }
+      notifyStep(AutomationStep::SpawnDb);
+      automateDb();
+      return true;
+   } else {
+      return false;
+   }
 }
 
-std::filesystem::path Node::Core::findBinary()
+void AutomationContext::cleanup(const CallbackFunc& notifyStep)
 {
-   //look for bitcoind
-   for (const auto& candidate : satoshiDirCandidates) {
-      auto binPath = std::filesystem::path{candidate} / bitcoind;
-      if (validateSatoshiBinary(binPath).first == true) {
-         return binPath;
-      }
+   if (!hasRun_) {
+      notifyStep(AutomationStep::Done);
+      return;
    }
-   throw std::runtime_error("could not find a valid satoshi binary");}
+   hasRun_ = false;
 
-////////
-Node::Core::DatadirState Node::Core::validateDatadir(
-   const std::filesystem::path& datadir)
-{
-   auto satoshiDir = getSatoshiDatadir(datadir);
-   auto blocksDirValidation = validateBlocksDir(satoshiDir);
-   if (blocksDirValidation.first == false) {
-      throw std::runtime_error(
-         std::format("{} is not a valid satoshi datadir", satoshiDir.string()));
+   if (automateDb_) {
+      notifyStep(AutomationStep::ShutdownDb);
+      cleanupDb();
    }
-
-   //inspect files in the folder
-   bool hasCookie = false;
-   std::vector<std::string> confLines;
-   for (const auto& entry : std::filesystem::directory_iterator{satoshiDir}) {
-      if (!entry.is_regular_file()) {
-         continue;
-      }
-
-      auto fpath = entry.path();
-      const auto& fName = fpath.filename();
-      if (fName == bitcoinConfFile) {
-         confLines = Config::SettingsUtils::getLines(fpath);
-      } else if (fName == cookieFile) {
-         hasCookie = true;
-      }
+   if (automateNode_) {
+      notifyStep(AutomationStep::ShutdownNode);
+      cleanupSatoshi();
    }
-
-   bool isPruned = false;
-   bool hasRpcLog = false;
-   bool hasRpcPass = false;
-   for (const auto& confLine : confLines) {
-      auto keyval = Config::SettingsUtils::getKeyValFromLine(confLine, '=');
-      if (keyval.first == prunedKey) {
-         const auto& val = keyval.second;
-         int result = INT32_MAX;
-         auto charConvResult = std::from_chars(
-            val.data(), val.data() + val.size(), result);
-         if (charConvResult.ec == std::errc{} && result != 0) {
-            isPruned = true;
-         }
-      } else if (keyval.first == rpcLogKey) {
-         if (!keyval.second.empty()) {
-            hasRpcLog = true;
-         }
-      } else if (keyval.second == rpcPassKey) {
-         if (!keyval.second.empty()) {
-            hasRpcPass = true;
-         }
-      }
-   }
-
-   //TODO: cookie detection has to be more subtle
-
-   return DatadirState{
-      satoshiDir,
-      blocksDirValidation.second,
-      isPruned
-   };
-}
-
-Node::Core::BinaryState Node::Core::validateBinary(
-   const std::filesystem::path& binPath)
-{
-   auto result = validateSatoshiBinary(binPath);
-   if (result.first == false) {
-      throw std::runtime_error(result.second);
-   }
-   return { binPath, result.second };
+   notifyStep(AutomationStep::Done);
 }

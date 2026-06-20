@@ -1529,22 +1529,151 @@ namespace {
       return waitOnConnection(refId);
    }
 
-   bool automateDb(std::shared_ptr<Bridge::CppBridge> bridge,
+   int automateDb(std::shared_ptr<Bridge::CppBridge> bridge,
       const std::filesystem::path& satoshiDir,
       const std::filesystem::path& dbDir)
    {
+      //setup automation context
       uint64_t refId = rand();
-      capnp::MallocMessageBuilder message;
-      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
-      toBridge.setReferenceId(refId);
-      auto request = toBridge.initSetup();
-      auto autoDbReq = request.initAutomateDb();
-      autoDbReq.setSatoshiPath(satoshiDir.string());
-      autoDbReq.setDbDir(dbDir.string());
+      {
+         capnp::MallocMessageBuilder message;
+         auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+         toBridge.setReferenceId(refId);
+         auto request = toBridge.initSetup();
+         auto autoDbReq = request.initInitAutomationContext();
+         autoDbReq.setSatoshiDir(satoshiDir.string());
+         autoDbReq.setDbDir(dbDir.string());
+         autoDbReq.setAutomateDb();
+         auto rawReq = serializeCapnp(message);
+         pushRequest(bridge, rawReq);
+      }
 
-      auto rawReq = serializeCapnp(message);
-      pushRequest(bridge, rawReq);
-      return waitOnConnection(refId);
+      //validate reply
+      {
+         auto reply = waitOnReply();
+         kj::ArrayPtr<const capnp::word> words(
+            reinterpret_cast<const capnp::word*>(reply->data.getPtr()),
+            reply->data.getSize() / sizeof(capnp::word));
+         capnp::FlatArrayMessageReader reader(words);
+
+         auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+         if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+            return -1;
+         }
+         auto response = fromBridge.getReply();
+         if (!response.getSuccess() || response.getReferenceId() != refId) {
+            return -2;
+         }
+      }
+
+      //run automation context
+      refId = rand();
+      auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
+      {
+         capnp::MallocMessageBuilder message;
+         auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+         toBridge.setReferenceId(refId);
+         auto request = toBridge.initSetup();
+         request.setRunAutomationContext(callbackId);
+         auto rawReq = serializeCapnp(message);
+         pushRequest(bridge, rawReq);
+      }
+
+      bool gotSuccess = false, gotSetupDone = false, gotCleanup = false;
+      int step = 0;
+      while (!gotSuccess || !gotSetupDone || !gotCleanup) {
+         auto reply = waitOnReply();
+         kj::ArrayPtr<const capnp::word> words(
+            reinterpret_cast<const capnp::word*>(reply->data.getPtr()),
+            reply->data.getSize() / sizeof(capnp::word));
+         capnp::FlatArrayMessageReader reader(words);
+
+         auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+         switch (fromBridge.which())
+         {
+            case Codec::Bridge::FromBridge::NOTIFICATION:
+            {
+               auto notif = fromBridge.getNotification();
+               switch (notif.which()) {
+                  case Codec::Bridge::Notification::SETUP_DONE:
+                     gotSetupDone = true;
+                     break;
+
+                  case Codec::Bridge::Notification::CLEANUP:
+                  {
+                     gotCleanup = true;
+                     break;
+                  }
+
+                  case Codec::Bridge::Notification::DISCONNECTED:
+                     return -4;
+
+                  case Codec::Bridge::Notification::AUTOMATION:
+                  {
+                     if (notif.getCallbackId() != callbackId) {
+                        return -5;
+                     }
+                     auto automationStep = notif.getAutomation();
+                     switch (automationStep.which())
+                     {
+                        case Codec::Bridge::Notification::AutomationContextNotif::SPAWN_DB:
+                        {
+                           if (step != 0) {
+                              return -6;
+                           }
+                           step = 1;
+                           break;
+                        }
+
+                        case Codec::Bridge::Notification::AutomationContextNotif::CONNECT_TO_DB:
+                        {
+                           if (step != 1) {
+                              return -7;
+                           }
+                           step = 2;
+                           break;
+                        }
+
+                        case Codec::Bridge::Notification::AutomationContextNotif::DONE:
+                        {
+                           if (step != 2) {
+                              return -8;
+                           }
+                           step = 3;
+                           break;
+                        }
+
+                        default:
+                           return -9;
+                     }
+                     break;
+                  }
+
+                  default:
+                     throw std::runtime_error("unexpected connection notif which");
+               }
+               break;
+            }
+
+            case Codec::Bridge::FromBridge::REPLY:
+            {
+               auto repCapnp = fromBridge.getReply();
+               if (repCapnp.getReferenceId() != refId) {
+                  throw std::runtime_error("referenceId mismatch");
+               }
+               if (repCapnp.getSuccess() == false) {
+                  std::cout << std::string(repCapnp.getError()) << std::endl;
+                  return -20;
+               }
+               gotSuccess = true;
+               break;
+            }
+
+            default:
+               return -21;
+         }
+      }
+      return step == 3 ? 0 : -100;
    }
 
    bool registerWallets(std::shared_ptr<Bridge::CppBridge> bridge)
@@ -1644,7 +1773,7 @@ namespace {
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
       auto request = toBridge.initSetup();
-      request.setGoOnline();
+      request.setBeginDbSession();
       auto rawReq = serializeCapnp(message);
       pushRequest(bridge, rawReq);
 
@@ -12534,62 +12663,160 @@ protected:
       Config::reset();
    }
 
-   bool disconnectFromDb(bool cleanup)
+   int disconnectFromDb()
    {
-      if (cleanup) {
-         //command db to shutdown
-         uint64_t refId = rand();
-         capnp::MallocMessageBuilder message;
-         auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
-         toBridge.setReferenceId(refId);
-         auto request = toBridge.initSetup();
-         request.setCleanupDb();
+      //command db to shutdown
+      uint64_t refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto request = toBridge.initSetup();
+      auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
+      request.setCleanupAutomationContext(callbackId);
 
-         auto rawReq = serializeCapnp(message);
-         pushRequest(bridge_, rawReq);
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge_, rawReq);
 
-         //grab reply to cleanupDb
+      bool cleanup = false, hasReply = false, disconnected = false;
+      int step = 0;
+      while (!cleanup || !hasReply || !disconnected) {
          auto reply = waitOnReply();
          kj::ArrayPtr<const capnp::word> words(
             reinterpret_cast<const capnp::word*>(reply->data.getPtr()),
             reply->data.getSize() / sizeof(capnp::word));
          capnp::FlatArrayMessageReader reader(words);
+
          auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+         switch (fromBridge.which())
+         {
+            case Codec::Bridge::FromBridge::NOTIFICATION:
+            {
+               auto notif = fromBridge.getNotification();
+               switch (notif.which()) {
+                  case Codec::Bridge::Notification::DISCONNECTED:
+                  {
+                     if (disconnected) {
+                        return -1;
+                     }
+                     disconnected = true;
+                     break;
+                  }
 
-         if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
-            return false;
-         }
-         auto repCapnp = fromBridge.getReply();
-         if (!repCapnp.getSuccess()) {
-            return false;
-         }
-      } else {
-         //only disconnect client from db
-         uint64_t refId = rand();
-         capnp::MallocMessageBuilder message;
-         auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
-         toBridge.setReferenceId(refId);
-         auto request = toBridge.initSetup();
-         request.setDisconnect();
+                  case Codec::Bridge::Notification::CLEANUP:
+                  {
+                     if (cleanup) {
+                        return -2;
+                     }
+                     cleanup = true;
+                     break;
+                  }
 
-         auto rawReq = serializeCapnp(message);
-         pushRequest(bridge_, rawReq);
+                  case Codec::Bridge::Notification::AUTOMATION:
+                  {
+                     if (notif.getCallbackId() != callbackId) {
+                        return -300;
+                     }
+                     auto automationNotif = notif.getAutomation();
+                     switch (automationNotif.which()) {
+                        case Codec::Bridge::Notification::AutomationContextNotif::SHUTDOWN_DB:
+                        {
+                           if (step != 0) {
+                              return -3;
+                           }
+                           step = 1;
+                           break;
+                        }
+
+                        case Codec::Bridge::Notification::AutomationContextNotif::DONE:
+                        {
+                           if (step != 1) {
+                              return -4;
+                           }
+                           step = 2;
+                           break;
+                        }
+
+                        default:
+                           return -5;
+                     }
+                     break;
+                  }
+               }
+               break;
+            }
+
+            case Codec::Bridge::FromBridge::REPLY:
+            {
+               if (hasReply) {
+                  return -6;
+               }
+               auto replyCapnp = fromBridge.getReply();
+               if (replyCapnp.getReferenceId() != refId ||
+                  replyCapnp.getSuccess() == false) {
+                  return -7;
+               }
+               hasReply = true;
+               break;
+            }
+
+            default:
+               return -8;
+         }
       }
+      if (step != 2) {
+         return -9;
+      }
+      return 0;
+   }
 
-      //expecting disconnected notif
+   std::filesystem::path validateSatoshiDir(
+      const std::filesystem::path& satoshiDir)
+   {
+      uint64_t refId = rand();
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto request = toBridge.initSetup();
+      auto satoshiReq = request.initSatoshiHelper();
+      satoshiReq.setValidateDir(satoshiDir.string());
+
+      auto rawReq = serializeCapnp(message);
+      pushRequest(bridge_, rawReq);
+
       auto reply = waitOnReply();
-      auto words = kj::ArrayPtr<const capnp::word>{
+      kj::ArrayPtr<const capnp::word> words(
          reinterpret_cast<const capnp::word*>(reply->data.getPtr()),
-         reply->data.getSize() / sizeof(capnp::word)
-      };
-      auto reader = capnp::FlatArrayMessageReader{words};
-      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+         reply->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader reader(words);
 
-      if (fromBridge.which() != Codec::Bridge::FromBridge::NOTIFICATION) {
-         return false;
+      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+         throw std::runtime_error("not a reply");
       }
-      auto notif = fromBridge.getNotification();
-      return notif.which() == Codec::Bridge::Notification::DISCONNECTED;
+
+      auto replyCapnp = fromBridge.getReply();
+      if (replyCapnp.getReferenceId() != refId ||
+         replyCapnp.getSuccess() == false) {
+         throw std::runtime_error(std::format(
+            "validate error: {}", std::string{replyCapnp.getError()}));
+      }
+      if (replyCapnp.which() != Codec::Bridge::RpcReply::SETUP) {
+         throw std::runtime_error("unexpected reply which");
+      }
+      auto setupReply = replyCapnp.getSetup();
+      if (setupReply.which() !=
+         Codec::Bridge::DbSetupReply::SATOSHI_HELPER) {
+         throw std::runtime_error("unexpected setup which");
+      }
+
+      auto helperReply = setupReply.getSatoshiHelper();
+      if (helperReply.which() !=
+         Codec::Bridge::DbSetupReply::SatoshiReply::VALIDATE_DIR) {
+         throw std::runtime_error("unexpected satoshi which");
+      }
+
+      auto validationReply = helperReply.getValidateDir();
+      return std::filesystem::path{validationReply.getPath()};
    }
 
 protected:
@@ -12618,8 +12845,22 @@ TEST_F(BridgeBlocksAutoDBTests, Connect)
    ASSERT_FALSE(accountId.empty());
 
    //setup connection to db
-   ASSERT_TRUE(automateDb(bridge_, blkdir_, ldbdir_));
-   ASSERT_TRUE(Bridge::isDbRunning());
+   std::filesystem::path validatedSatoshiDir;
+   try {
+      /*
+      SatoshiDir is the path to the node home folder.
+      If the validation call is passed a path the `/blocks` suffix appended,
+      it should be strip in the reply (the validation call returns the "legal"
+      path as part of its reply).
+      We cover that behavior here.
+      */
+      validatedSatoshiDir = validateSatoshiDir(blkdir_ / "blocks");
+   } catch (const std::exception& e) {
+      ASSERT_TRUE(false) << e.what();
+   }
+   ASSERT_FALSE(validatedSatoshiDir.empty());
+   ASSERT_EQ(automateDb(bridge_, validatedSatoshiDir, ldbdir_), 0);
+   ASSERT_TRUE(bridge_->isDbRunning());
    ASSERT_TRUE(registerWallets(bridge_));
    ASSERT_EQ(goOnline(bridge_), 5);
 
@@ -12639,10 +12880,10 @@ TEST_F(BridgeBlocksAutoDBTests, Connect)
    }
 
    //cleanup
-   ASSERT_TRUE(disconnectFromDb(true));
+   ASSERT_EQ(disconnectFromDb(), 0);
 
    //confirm db is down
-   while (Bridge::isDbRunning()) {
+   while (bridge_->isDbRunning()) {
       std::this_thread::sleep_for(100ms);
    }
 }
@@ -12663,8 +12904,8 @@ TEST_F(BridgeBlocksAutoDBTests, Connect_NoCleanup)
    ASSERT_FALSE(accountId.empty());
 
    //setup connection to db
-   ASSERT_TRUE(automateDb(bridge_, blkdir_, ldbdir_));
-   ASSERT_TRUE(Bridge::isDbRunning());
+   ASSERT_EQ(automateDb(bridge_, blkdir_, ldbdir_), 0);
+   ASSERT_TRUE(bridge_->isDbRunning());
    ASSERT_TRUE(registerWallets(bridge_));
    ASSERT_EQ(goOnline(bridge_), 5);
 
@@ -12684,10 +12925,10 @@ TEST_F(BridgeBlocksAutoDBTests, Connect_NoCleanup)
    }
 
    /* ephemeral db should clean itself up after the client disconnects */
-   ASSERT_TRUE(disconnectFromDb(false));
+   bridge_->disconnectFromDb();
 
    //confirm db is down
-   while (Bridge::isDbRunning()) {
+   while (bridge_->isDbRunning()) {
       std::this_thread::sleep_for(100ms);
    }
 }
@@ -12720,7 +12961,8 @@ protected:
          auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
          toBridge.setReferenceId(refId);
          auto request = toBridge.initSetup();
-         request.setLoadPeersDb(callbackId);
+         auto peersRequest = request.initPeersHelper();
+         peersRequest.setLoadPeersDb(callbackId);
 
          auto rawReq = serializeCapnp(message);
          pushRequest(bridge_, rawReq);
@@ -12786,7 +13028,8 @@ protected:
          auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
          toBridge.setReferenceId(refId);
          auto request = toBridge.initSetup();
-         request.setLoadPeersDb(callbackId);
+         auto peersRequest = request.initPeersHelper();
+         peersRequest.setLoadPeersDb(callbackId);
 
          auto rawReq = serializeCapnp(message);
          pushRequest(bridge_, rawReq);
@@ -12855,7 +13098,8 @@ protected:
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
       auto request = toBridge.initSetup();
-      request.setListPeers();
+      auto peersRequest = request.initPeersHelper();
+      peersRequest.setListPeers();
 
       auto rawReq = serializeCapnp(message);
       pushRequest(bridge_, rawReq);
@@ -12902,7 +13146,8 @@ protected:
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
       auto request = toBridge.initSetup();
-      auto peerCapnp = request.initAddPeer();
+      auto peersRequest = request.initPeersHelper();
+      auto peerCapnp = peersRequest.initAddPeer();
       peerCapnp.setKey(peer.toHumanReadable());
       auto namesCapnp = peerCapnp.initNames(names.size());
       for (unsigned i = 0; i < names.size(); i++) {
@@ -12935,7 +13180,8 @@ protected:
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
       auto request = toBridge.initSetup();
-      request.setRemovePeer(key);
+      auto peersRequest = request.initPeersHelper();
+      peersRequest.setRemovePeer(key);
 
       auto rawReq = serializeCapnp(message);
       pushRequest(bridge_, rawReq);
@@ -12962,7 +13208,8 @@ protected:
       auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
       toBridge.setReferenceId(refId);
       auto request = toBridge.initSetup();
-      auto labelReq = request.initSetLabel();
+      auto peersRequest = request.initPeersHelper();
+      auto labelReq = peersRequest.initSetLabel();
       labelReq.setKey(key);
       labelReq.setLabel(label);
 
