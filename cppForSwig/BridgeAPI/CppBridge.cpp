@@ -870,22 +870,27 @@ void CppBridge::exportPrivateKeys(const Wallets::WalletId& wltId,
                   entry.privKey = SecureBinaryData(privKey);
                   entry.index = assetSingle->getIndex();
 
-                  //public key (compressed)
-                  try {
-                     auto pubKeyPtr = assetSingle->getPubKey();
-                     if (pubKeyPtr != nullptr) {
-                        entry.pubKey = pubKeyPtr->getCompressedKey();
-                     }
-                  } catch (const std::exception&) {
-                     //no public key available, leave empty
-                  }
-
-                  //human readable address and type, derived on the fly for
-                  //the account's default address type
+                  //human readable address, type and public key, derived on the
+                  //fly for the account's default address type
                   try {
                      auto addrEntry = accPtr->getAddressEntryForID(assetID);
                      if (addrEntry != nullptr) {
                         entry.addrType = (uint32_t)addrEntry->getType();
+
+                        //public key is dictated by the address entry
+                        try {
+                           auto addrNested = std::dynamic_pointer_cast<
+                              AddressEntry_Nested>(addrEntry);
+                           if (addrNested != nullptr) {
+                              entry.pubKey = addrNested->getPredecessor()->
+                                 getPreimage();
+                           } else {
+                              entry.pubKey = addrEntry->getPreimage();
+                           }
+                        } catch (const AddressException&) {
+                           //no public key for this address type, leave empty
+                        }
+
                         try {
                            entry.addressString = addrEntry->getAddress();
                         } catch (const AddressException&) {
