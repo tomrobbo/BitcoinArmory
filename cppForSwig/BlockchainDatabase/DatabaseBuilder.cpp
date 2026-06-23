@@ -443,7 +443,7 @@ BlockOffset Builder::parseForNewHeaders(const ProgressCallback& progress)
          topBlockOffset = BlockOffset{blockFiles_->getFirstID(), 0};
       }
       bdl = std::make_shared<BlockDataLoader>(blockFiles_, topBlockOffset);
-      LOGINFO << "looking for new headers starting file " <<
+      LOGINFO << "looking for new headers starting in file " <<
          topBlockOffset.fileID() << ", offset " << topBlockOffset.offset();
    } catch (const BlockDataExhausted&) {
       return {UINT16_MAX, SIZE_MAX};
@@ -496,7 +496,7 @@ BlockOffset Builder::parseForNewHeaders(const ProgressCallback& progress)
          parseBlockFile(fileCopy, deserHeader);
          total.fetch_add(headers.size(), std::memory_order_relaxed);
          for (auto& header : headers) {
-            header->setBlockFileNum(fileCopy.fileID);
+            header->setBlockFileId(fileCopy.fileID);
             header->setBlockFileOffset(header->getOffset() + fileCopy.offset);
          }
          auto added = blockchain_->stageNewHeaders(headers);
@@ -1059,7 +1059,7 @@ void Builder::verifyTransactions()
                auto txid = brr.get_uint16_t(BE);
 
                //get block data
-               auto blockFileNum = bhPtr->getBlockFileNum();
+               auto blockFileNum = bhPtr->getBlockFileId();
                auto fileCopy = bdl.getNextCopy();
 
                auto getID = [bhPtr](const BinaryData&)->unsigned int
@@ -1116,7 +1116,7 @@ void Builder::verifyTransactions()
          //grab blockheight
          thisHeight = stateStruct->blockHeight_.fetch_add(1, memory_order_relaxed);
          auto blockheader = blockchain_->getHeaderByHeight(thisHeight, 0xFF);
-         auto fileMap = getFileMap(blockheader->getBlockFileNum());
+         auto fileMap = getFileMap(blockheader->getBlockFileId());
 
          auto getID = [blockheader](const BinaryData&)->unsigned int
          {

@@ -256,7 +256,7 @@ bool BlockchainScanner::scan(ScannerContext& ctx, int32_t scanFrom)
          try {
             std::shared_ptr<BlockHeader> currentHeader =
                blockchain_->getHeaderByHeight(startHeight);
-            firstBlockFileID = currentHeader->getBlockFileNum();
+            firstBlockFileID = currentHeader->getBlockFileId();
 
             targetBlockFileID = 0;
             targetHeight = startHeight;
@@ -266,11 +266,11 @@ bool BlockchainScanner::scan(ScannerContext& ctx, int32_t scanFrom)
                currentHeader = blockchain_->getHeaderByHeight(++targetHeight);
                tallySize += currentHeader->getBlockSize();
 
-               if (currentHeader->getBlockFileNum() < firstBlockFileID) {
-                  firstBlockFileID = currentHeader->getBlockFileNum();
+               if (currentHeader->getBlockFileId() < firstBlockFileID) {
+                  firstBlockFileID = currentHeader->getBlockFileId();
                }
-               if (currentHeader->getBlockFileNum() > targetBlockFileID) {
-                  targetBlockFileID = currentHeader->getBlockFileNum();
+               if (currentHeader->getBlockFileId() > targetBlockFileID) {
+                  targetBlockFileID = currentHeader->getBlockFileId();
                }
             }
          } catch (const std::range_error& e) {
@@ -282,8 +282,8 @@ bool BlockchainScanner::scan(ScannerContext& ctx, int32_t scanFrom)
                return false;
             } else {
                targetHeight = topBlock->getBlockHeight();
-               if (targetBlockFileID < topBlock->getBlockFileNum()) {
-                  targetBlockFileID = topBlock->getBlockFileNum();
+               if (targetBlockFileID < topBlock->getBlockFileId()) {
+                  targetBlockFileID = topBlock->getBlockFileId();
                }
             }
          }
@@ -511,7 +511,7 @@ std::shared_ptr<BlockData> BlockchainScanner::getBlockData(
 {
    //grab block file map
    auto blockheader = blockchain_->getHeaderByHeight(height);
-   auto filenum = blockheader->getBlockFileNum();
+   auto filenum = blockheader->getBlockFileId();
    auto mapIter = batch->fileCopies.find(filenum);
    if (mapIter == batch->fileCopies.end()) {
       LOGERR << "Missing file map for output scan, this is unexpected";
@@ -710,7 +710,7 @@ void BlockchainScanner::commitBatches()
    auto getGlobalOffsetForBlock = [bc=blockchain_](unsigned height)->size_t
    {
       auto header = bc->getHeaderByHeight(height);
-      size_t val = header->getBlockFileNum();
+      size_t val = header->getBlockFileId();
       val *= 128 * 1024 * 1024;
       val += header->getOffset();
       return val;

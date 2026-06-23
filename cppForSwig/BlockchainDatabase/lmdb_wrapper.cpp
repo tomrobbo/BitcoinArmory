@@ -704,8 +704,9 @@ void LMDBBlockDatabase::readAllHeaders(
       ldbIter.resetReaders();
       auto keyRef = ldbIter.getKeyRef();
       if (keyRef.getSize() != 4) {
-         LOGERR << "How did we get a header key that is not uint32?"
-            << " (" << keyRef.getSize() << ")";
+         LOGERR << std::format(
+            "How did we get a header key that is not uint32? ({})",
+            keyRef.getSize());
          continue;
       }
 
@@ -727,7 +728,7 @@ void LMDBBlockDatabase::readAllHeaders(
       regHead->setBlockSize(brrVal.get_uint32_t());
       regHead->setNumTx(brrVal.get_uint32_t());
       regHead->setBlockFileOffset(brrVal.get_uint64_t());
-      regHead->setBlockFileNum(brrVal.get_uint16_t());
+      regHead->setBlockFileId(brrVal.get_uint16_t());
       regHead->setUniqueID(uniqueID);
       regHead->setMerkleValid((bool)brrVal.get_uint8_t());
 
@@ -736,10 +737,7 @@ void LMDBBlockDatabase::readAllHeaders(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Puts bare header into HEADERS DB.  Use "putStoredHeader" to add to both
-// (which actually calls this method as the first step)
-//
-// Returns the duplicateID of the header just inserted
+// Puts bare header into HEADERS DB
 void LMDBBlockDatabase::putBareHeader(const StoredHeader& sbh)
 {
    if (!sbh.isInitialized()) {
@@ -797,7 +795,7 @@ bool LMDBBlockDatabase::getStoredHeader(
    try {
       //open block file
       auto path = FileUtils::getBlkFilename(
-         Config::Pathing::blkFilePath(), bh->getBlockFileNum());
+         Config::Pathing::blkFilePath(), bh->getBlockFileId());
       auto fileMap = FileUtils::FileMap(path, false);
       BinaryRefReader brr(fileMap.ptr() + bh->getOffset(), bh->getBlockSize());
 
