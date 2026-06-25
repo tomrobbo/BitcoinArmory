@@ -23,7 +23,7 @@ import qtdialogs.qtdefines as qtdefines
 from qtdialogs.setupmanager.WalletTab import WalletTab
 from qtdialogs.setupmanager.CoreTab import CoreTab
 from qtdialogs.setupmanager.DatabaseTab import (
-   DatabaseTab, SCENARIO_DB_LOCAL, SCENARIO_DB_NONE,
+   DatabaseTab, SCENARIO_DB_AUTOMATED, SCENARIO_DB_OFFLINE,
    SCENARIO_REMOTE_IP, SCENARIO_REMOTE_PEER
 )
 
@@ -65,6 +65,7 @@ class DlgSetupManager(ArmoryDialog):
       self.setupMainLayout()
       self.loadSettings()
       self.connectSignals()
+      self._handleCoreTabActivation()
 
       # Peers DB auto-load happens in onBridgeReady
       # (bridge isn't available during __init__)
@@ -162,7 +163,7 @@ class DlgSetupManager(ArmoryDialog):
       scenario = dbSettings['scenario']
 
       # Offline mode is always valid - no connection needed
-      if scenario == SCENARIO_DB_NONE:
+      if scenario == SCENARIO_DB_OFFLINE:
          LOGINFO("Offline mode - no connection validation needed")
          #TODO: set instance wide offline flag
          self._saveAndAccept()
@@ -247,6 +248,7 @@ class DlgSetupManager(ArmoryDialog):
       if not checked:
          return
       self._autoLoadPeersIfNeeded()
+      self._handleCoreTabActivation()
 
    def onRemoteSubModeChanged(self, index):
       """Handle remote sub-mode combo changes.
@@ -300,6 +302,15 @@ class DlgSetupManager(ArmoryDialog):
          self.databaseTab.remoteSubModeCombo \
             .setCurrentIndex(0)
 
+   def _handleCoreTabActivation(self):
+      scenario = self.databaseTab.getScenario()
+      coreTabIndex = self.tabWidget.indexOf(self.coreTab)
+      if scenario == SCENARIO_DB_AUTOMATED:
+         #core automation only relevant if db is automated too
+         self.tabWidget.setTabEnabled(coreTabIndex, True)
+      else:
+         self.tabWidget.setTabEnabled(coreTabIndex, False)
+
    def onTestConnectionRequested(self):
       """
       Handle test connection request from DatabaseTab.
@@ -329,7 +340,7 @@ class DlgSetupManager(ArmoryDialog):
       params = self.getDbConnectionParams()
       scenario = params['scenario']
 
-      if scenario == SCENARIO_DB_NONE:
+      if scenario == SCENARIO_DB_OFFLINE:
          QtWidgets.QMessageBox.information(
             self,
             self.tr('Offline Mode'),
@@ -421,7 +432,7 @@ class DlgSetupManager(ArmoryDialog):
          self._setSettingIfChanged(
             'DBScenarioDefault', dbScenario)
 
-      if dbScenario == SCENARIO_DB_LOCAL:
+      if dbScenario == SCENARIO_DB_AUTOMATED:
          dbTypeVal = 'DB_SUPER' \
             if dbSettings['typeDisp'] == 'Supernode' \
             else 'DB_BARE'
@@ -450,11 +461,11 @@ class DlgSetupManager(ArmoryDialog):
       """Get database connection parameters from UI."""
       dbSettings = self.databaseTab.collectSettings()
       coreSettings = self.coreTab.collectSettings()
-      scenario = SCENARIO_DB_NONE if CLI_OPTIONS.offline == True \
+      scenario = SCENARIO_DB_OFFLINE if CLI_OPTIONS.offline == True \
          else dbSettings['scenario']
       params = {'scenario': scenario}
 
-      if scenario == SCENARIO_DB_LOCAL:
+      if scenario == SCENARIO_DB_AUTOMATED:
          params['satoshiPath'] = coreSettings['corePath']
          params['dbPath'] = dbSettings['dbPath']
       elif scenario == SCENARIO_REMOTE_PEER:
@@ -484,11 +495,11 @@ class DlgSetupManager(ArmoryDialog):
       scenario = params['scenario']
       LOGINFO(f"Initiating DB connection: scenario={scenario}")
 
-      if scenario == SCENARIO_DB_NONE:
+      if scenario == SCENARIO_DB_OFFLINE:
          LOGINFO("Offline mode - no database connection")
          return (True, None)
 
-      elif scenario == SCENARIO_DB_LOCAL:
+      elif scenario == SCENARIO_DB_AUTOMATED:
          return self._connectLocalDb(params)
       elif scenario == SCENARIO_REMOTE_PEER:
          success, error = self._connectToPeer(params)

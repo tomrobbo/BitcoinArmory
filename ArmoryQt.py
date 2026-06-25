@@ -106,7 +106,7 @@ from qtdialogs.MsgBoxWithDNAA import MsgBoxWithDNAA
 from qtdialogs.DlgUniversalRestoreSelect import DlgUniversalRestoreSelect
 from qtdialogs.DlgWalletMigration import DlgWalletMigration
 from qtdialogs.setupmanager import DlgSetupManager, DlgAutomations, \
-   SCENARIO_DB_NONE
+   SCENARIO_DB_OFFLINE
 
 from ui.QtExecuteSignal import TheSignalExecution
 from armorymodels import AllWalletsDispModel, AllWalletsCheckboxDelegate, \
@@ -1251,6 +1251,7 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
       dlgSettings = DlgSettings(self, self)
       dlgSettings.exec_()
 
+   ########
    def openSetupManager(self):
       LOGDEBUG('openSetupManager')
       dlg = DlgSetupManager(self, self)
@@ -1258,7 +1259,7 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
          return
 
       dbSettings = dlg.databaseTab.collectSettings()
-      if dbSettings['scenario'] == SCENARIO_DB_NONE:
+      if dbSettings['scenario'] == SCENARIO_DB_OFFLINE:
          CLI_OPTIONS.offline = True
       elif dlg.connectionSuccess:
          if not self.dbConnectionEstablishedBySetup:
@@ -4020,7 +4021,6 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
          return
 
       sdmStr = self.getSDMStateStr()
-
       bdmState = TheBDM.getState()
       descr  = ''
       descr1 = ''
@@ -5112,12 +5112,13 @@ if True:
       os._exit(0)
 
    dbSettings = dlg.databaseTab.collectSettings()
-   if dbSettings['scenario'] == SCENARIO_DB_NONE:
+   if dbSettings['scenario'] == SCENARIO_DB_OFFLINE:
       CLI_OPTIONS.offline = True
+      TheBDM.setState(BDM_OFFLINE)
 
    dbConnectionEstablished = (
       dlg.connectionSuccess
-      and dbSettings['scenario'] != SCENARIO_DB_NONE
+      and dbSettings['scenario'] != SCENARIO_DB_OFFLINE
    )
 
    wallets = loadWalletsForMainApp()

@@ -18,10 +18,10 @@ from armorycolors import htmlColor
 import qtdialogs.qtdefines as qtdefines
 
 # Database scenario constants
-SCENARIO_DB_LOCAL = "Automate ArmoryDB"
+SCENARIO_DB_AUTOMATED = "Automate ArmoryDB"
 SCENARIO_REMOTE_IP = "Connect to IP"
 SCENARIO_REMOTE_PEER = "Connect to Peer"
-SCENARIO_DB_NONE = "Offline"
+SCENARIO_DB_OFFLINE = "Offline"
 
 def isRemoteScenario(scenario):
    return scenario in (SCENARIO_REMOTE_IP, SCENARIO_REMOTE_PEER)
@@ -233,7 +233,7 @@ class DatabaseTab(QtWidgets.QWidget):
       # Default scenario and checkbox
       self.setDefaultCheckbox = None
       self.defaultHintLabel = None
-      self._savedDefaultScenario = SCENARIO_DB_LOCAL
+      self._savedDefaultScenario = SCENARIO_DB_AUTOMATED
 
       # State tracking
       self.peersDbLoaded = False
@@ -633,8 +633,8 @@ class DatabaseTab(QtWidgets.QWidget):
             return SCENARIO_REMOTE_PEER
          return SCENARIO_REMOTE_IP
       elif checkedId == 2:
-         return SCENARIO_DB_NONE
-      return SCENARIO_DB_LOCAL
+         return SCENARIO_DB_OFFLINE
+      return SCENARIO_DB_AUTOMATED
 
    def onModeChanged(self, radioId, checked):
       """Show/hide sections based on radio selection."""
@@ -672,7 +672,7 @@ class DatabaseTab(QtWidgets.QWidget):
       Informational only. Actual connection is via bridge.
       """
       scenario = self.getScenario()
-      if scenario == SCENARIO_DB_LOCAL:
+      if scenario == SCENARIO_DB_AUTOMATED:
          dbType = self.databaseTypeCombo.currentText()
          ramUsage = self.ramUsageEdit.text() or '50'
          threadCount = \
@@ -807,10 +807,10 @@ class DatabaseTab(QtWidgets.QWidget):
    def _showDefaultHint(self, dbScenario):
       """Place the 'default' hint next to the saved radio."""
       rowMap = {
-         SCENARIO_DB_LOCAL: self.autoDbRow,
+         SCENARIO_DB_AUTOMATED: self.autoDbRow,
          SCENARIO_REMOTE_IP: self.connectRow,
          SCENARIO_REMOTE_PEER: self.connectRow,
-         SCENARIO_DB_NONE: self.offlineRow,
+         SCENARIO_DB_OFFLINE: self.offlineRow,
       }
       targetRow = rowMap.get(
          dbScenario, self.autoDbRow)
@@ -942,7 +942,7 @@ class DatabaseTab(QtWidgets.QWidget):
          os.path.normpath(ARMORY_DB_DIR))
 
       dbScenario = TheSettings.getSettingOrSetDefault(
-         'DBScenarioDefault', SCENARIO_DB_LOCAL)
+         'DBScenarioDefault', SCENARIO_DB_AUTOMATED)
       # Migrate old scenario names
       if dbScenario == "Remote Database":
          oldMode = TheSettings.getSettingOrSetDefault(
@@ -965,7 +965,7 @@ class DatabaseTab(QtWidgets.QWidget):
             self.remoteSubModeCombo.setCurrentIndex(1)
          else:
             self.remoteSubModeCombo.setCurrentIndex(0)
-      elif dbScenario == SCENARIO_DB_NONE:
+      elif dbScenario == SCENARIO_DB_OFFLINE:
          self.offlineRadio.setChecked(True)
       else:
          self.autoDbRadio.setChecked(True)
@@ -1001,7 +1001,7 @@ class DatabaseTab(QtWidgets.QWidget):
 
       # Scenario-specific settings
       dbScenario = self.getScenario()
-      if dbScenario == SCENARIO_DB_LOCAL:
+      if dbScenario == SCENARIO_DB_AUTOMATED:
          dbTypeSetting = \
             TheSettings.getSettingOrSetDefault(
                'DBType', 'DB_BARE')
@@ -1030,7 +1030,7 @@ class DatabaseTab(QtWidgets.QWidget):
    def collectSettings(self):
       """Return current database config from UI."""
       scenario = self.getScenario()
-      isLocal = scenario == SCENARIO_DB_LOCAL
+      isLocal = scenario == SCENARIO_DB_AUTOMATED
       isPeer = scenario == SCENARIO_REMOTE_PEER
       isIp = scenario == SCENARIO_REMOTE_IP
 
@@ -1070,7 +1070,7 @@ class DatabaseTab(QtWidgets.QWidget):
    def validate(self):
       """Validate database tab settings."""
       scenario = self.getScenario()
-      if scenario == SCENARIO_DB_LOCAL:
+      if scenario == SCENARIO_DB_AUTOMATED:
          ramText = self.ramUsageEdit.text().strip()
          threadText = self.threadCountEdit.text().strip()
          if ramText:
