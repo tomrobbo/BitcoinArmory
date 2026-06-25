@@ -986,15 +986,13 @@ class BridgeWalletWrapper(ProtoWrapper):
 
    ####
    def createBackupStringForWallet(self,
-      callbackFunc, passphrase, serverPushObj):
+      callbackFunc, serverPushObj=None):
       packet = self._getPacket()
       req = packet.wallet.init("createBackupString")
-      if passphrase:
-         req.passphrase = passphrase
-      elif serverPushObj:
-         req.callbackId = serverPushObj.callbackId
+      if serverPushObj:
+         req.private = serverPushObj.callbackId
       else:
-         raise Exception("[createBackupStringForWallet] invalid args")
+         req.public = None
       self.send(packet, callback=callbackFunc)
 
    ####

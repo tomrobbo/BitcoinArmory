@@ -658,10 +658,9 @@ class PyBtcWallet(object):
       return onlineWallet
 
    ####
-   def createBackupString(self, callback,
-      passphrase: str=None, unlockHandler: callable=None):
-      return self.bridgeWalletObj.createBackupStringForWallet(callback,
-         passphrase, unlockHandler)
+   def createBackupString(self, callback, unlockHandler=None):
+      return self.bridgeWalletObj.createBackupStringForWallet(
+         callback, unlockHandler)
 
    #############################################################################
    ## helpers
