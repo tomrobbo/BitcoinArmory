@@ -23,6 +23,7 @@
 #include <BlockchainDatabase/txio.h>
 
 #include <Wallets/Seeds/Backups.h>
+#include <Wallets/Seeds/Seeds.h>
 #include <Wallets/IOHeader.h>
 #include <Wallets/WalletIdTypes.h>
 #include <Wallets/KDF.h>
@@ -69,6 +70,14 @@ namespace
       auto bytes = flat.asBytes();
       return BinaryData(bytes.begin(), bytes.end());
    }
+
+   std::string inferAccountDisplayName(
+      const std::shared_ptr<Accounts::AddressAccount>&,
+      const Wallets::AddressAccountId&);
+   std::string inferSeedTypeName(
+      const std::shared_ptr<Wallets::AssetWallet_Single>&);
+   std::string inferDerivationScheme(
+      const std::shared_ptr<Accounts::AddressAccount>&);
 
    void addressToCapnp(WalletData::AddressData::Builder& capnAddress,
       std::shared_ptr<AddressEntry> addrPtr,
@@ -211,6 +220,10 @@ namespace
       }
       capnWallet.setDefaultAddressType(
          (uint32_t)accPtr->getDefaultAddressType());
+
+      capnWallet.setAccountName(inferAccountDisplayName(accPtr, accId));
+      capnWallet.setSeedTypeName(inferSeedTypeName(wltSingle));
+      capnWallet.setDerivationScheme(inferDerivationScheme(accPtr));
 
       //address use count
       auto assetAccountPtr = accPtr->getOuterAccount();
@@ -764,7 +777,139 @@ namespace {
       std::string addressString;
       uint32_t addrType = 0;
       int32_t index = 0;
+      std::string accountId;
+      bool isUsed = false;
    };
+
+   std::string formatDerivationPath(const std::vector<uint32_t>& path)
+   {
+      if (path.empty()) {
+         return {};
+      }
+      std::string result = "m";
+      for (const auto node : path) {
+         result += '/';
+         if (node >= 0x80000000) {
+            result += std::to_string(node & 0x7FFFFFFF);
+            result += '\'';
+         } else {
+            result += std::to_string(node);
+         }
+      }
+      return result;
+   }
+
+   std::string bip32NameFromRootPath(const std::vector<uint32_t>& rootPath)
+   {
+      // Account roots may be stored at the external-chain level
+      // (purpose'/coin'/account'/0), so read purpose/coin/account from the
+      // first three path elements.
+      if (rootPath.size() < 3) {
+         return "BIP32";
+      }
+      const auto coinType = Armory::Config::BitcoinSettings::getCoinType();
+      if (rootPath[1] != coinType || !(rootPath[2] & 0x80000000)) {
+         return "BIP32";
+      }
+      switch (rootPath[0]) {
+         case 0x8000002C:
+            return "BIP44";
+         case 0x80000031:
+            return "BIP49";
+         case 0x80000054:
+            return "BIP84";
+         default:
+            return "BIP32";
+      }
+   }
+
+   std::string inferAccountDisplayName(
+      const std::shared_ptr<Accounts::AddressAccount>& accPtr,
+      const Wallets::AddressAccountId& accId)
+   {
+      if (accPtr->isLegacy()) {
+         return "Armory Legacy";
+      }
+      try {
+         auto outerAcc = accPtr->getOuterAccount();
+         auto root = outerAcc->getRoot();
+         auto rootBip32 = std::dynamic_pointer_cast<
+            Assets::AssetEntry_BIP32Root>(root);
+         if (rootBip32 != nullptr) {
+            return bip32NameFromRootPath(rootBip32->getDerivationPath());
+         }
+      } catch (const std::exception&) {
+      }
+      const auto hex = accId.toHexStr();
+      if (hex.size() > 8) {
+         return hex.substr(0, 8) + "...";
+      }
+      return hex;
+   }
+
+   std::string inferSeedTypeName(
+      const std::shared_ptr<Wallets::AssetWallet_Single>& wltSingle)
+   {
+      if (wltSingle == nullptr) {
+         return {};
+      }
+      auto root = wltSingle->getRoot();
+      if (auto legacyRoot = std::dynamic_pointer_cast<
+         Assets::AssetEntry_ArmoryLegacyRoot>(root)) {
+         switch (legacyRoot->getSeedType()) {
+            case Seeds::LegacyType::Armory135:
+               return "Armory Legacy (1.35)";
+            case Seeds::LegacyType::Armory200:
+               return "Armory Legacy (2.00)";
+            default:
+               return "Armory Legacy";
+         }
+      }
+      if (std::dynamic_pointer_cast<Assets::AssetEntry_BIP32Root>(root)) {
+         std::set<std::string> purposeNames;
+         for (const auto& accId : wltSingle->getAccountIDs()) {
+            auto accPtr = wltSingle->getAccountForID(accId);
+            if (accPtr == nullptr || accPtr->isLegacy()) {
+               continue;
+            }
+            try {
+               auto outerAcc = accPtr->getOuterAccount();
+               auto accRoot = outerAcc->getRoot();
+               auto rootBip32 = std::dynamic_pointer_cast<
+                  Assets::AssetEntry_BIP32Root>(accRoot);
+               if (rootBip32 != nullptr) {
+                  purposeNames.insert(
+                     bip32NameFromRootPath(rootBip32->getDerivationPath()));
+               }
+            } catch (const std::exception&) {
+            }
+         }
+         if (purposeNames.size() == 1) {
+            return *purposeNames.begin();
+         }
+         return "BIP32";
+      }
+      return {};
+   }
+
+   std::string inferDerivationScheme(
+      const std::shared_ptr<Accounts::AddressAccount>& accPtr)
+   {
+      if (accPtr->isLegacy()) {
+         return {};
+      }
+      try {
+         auto outerAcc = accPtr->getOuterAccount();
+         auto root = outerAcc->getRoot();
+         auto rootBip32 = std::dynamic_pointer_cast<
+            Assets::AssetEntry_BIP32Root>(root);
+         if (rootBip32 != nullptr) {
+            return formatDerivationPath(rootBip32->getDerivationPath());
+         }
+      } catch (const std::exception&) {
+      }
+      return {};
+   }
 
    void fillExportedKeyMetadata(ExportedKeyData& entry,
       const std::shared_ptr<Accounts::AddressAccount>& accPtr,
@@ -806,15 +951,25 @@ namespace {
 
    std::vector<ExportedKeyData> collectExportedKeys(
       const std::shared_ptr<Wallets::AssetWallet_Single>& wltSingle,
+      const Wallets::AddressAccountId& scopeAccId,
       bool includePrivateKeys,
       const std::function<Passphrase::Result(
          const std::set<Wallets::EncryptionKeyId>&)>& decryptLbd)
    {
       std::vector<ExportedKeyData> exportedKeys;
 
+      std::vector<Wallets::AddressAccountId> accountIdsToWalk;
+      if (scopeAccId.isValid()) {
+         accountIdsToWalk.push_back(scopeAccId);
+      } else {
+         for (const auto& addrAccId : wltSingle->getAccountIDs()) {
+            accountIdsToWalk.push_back(addrAccId);
+         }
+      }
+
       auto walkWallet = [&]()
       {
-         for (const auto& addrAccId : wltSingle->getAccountIDs()) {
+         for (const auto& addrAccId : accountIdsToWalk) {
             auto accPtr = wltSingle->getAccountForID(addrAccId);
             if (!accPtr) {
                continue;
@@ -855,6 +1010,8 @@ namespace {
                   ExportedKeyData entry;
                   entry.assetId = assetID.getSerializedKey(PROTO_ASSETID_PREFIX);
                   entry.index = assetSingle->getIndex();
+                  entry.accountId = addrAccId.toHexStr();
+                  entry.isUsed = accPtr->isAssetInUse(assetID);
 
                   if (includePrivateKeys) {
                      const auto& privKey =
@@ -895,6 +1052,8 @@ namespace {
       capnKey.setAddressString(entry.addressString);
       capnKey.setAddrType(entry.addrType);
       capnKey.setIndex(entry.index);
+      capnKey.setAccountId(entry.accountId);
+      capnKey.setIsUsed(entry.isUsed);
    }
 
    BinaryData buildExportedKeysReply(MessageId msgId,
@@ -925,9 +1084,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 void CppBridge::exportKeys(const Wallets::WalletId& wltId,
+   const Wallets::AddressAccountId& accId,
    bool includePrivateKeys, const CallbackId& callbackId, MessageId msgId)
 {
-   auto func = [this, wltId, includePrivateKeys, callbackId, msgId]()
+   auto func = [this, wltId, accId, includePrivateKeys, callbackId, msgId]()
    {
       std::vector<ExportedKeyData> exportedKeys;
       std::string error;
@@ -967,9 +1127,9 @@ void CppBridge::exportKeys(const Wallets::WalletId& wltId,
             auto lbd = passPromptObj->getLambda();
             ExportKeysCleanup cleanupGuard{passPromptObj};
 
-            exportedKeys = collectExportedKeys(wltSingle, true, lbd);
+            exportedKeys = collectExportedKeys(wltSingle, accId, true, lbd);
          } else {
-            exportedKeys = collectExportedKeys(wltSingle, false,
+            exportedKeys = collectExportedKeys(wltSingle, accId, false,
                [](const std::set<Wallets::EncryptionKeyId>&)->Passphrase::Result{
                   return {{}, false};
                });

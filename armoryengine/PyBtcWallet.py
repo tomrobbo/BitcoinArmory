@@ -167,6 +167,9 @@ class PyBtcWallet(object):
       self.watchingOnly = payload.watchingOnly
       self.addressTypes = payload.addressTypes
       self.defaultAddressType = payload.defaultAddressType
+      self.accountName = getattr(payload, 'accountName', '') or ''
+      self.seedTypeName = getattr(payload, 'seedTypeName', '') or ''
+      self.derivationScheme = getattr(payload, 'derivationScheme', '') or ''
       self.kdfMemoryReq = payload.kdfMemReq * (1024**2)
 
       #addrMap and chainIndexMap
@@ -664,18 +667,21 @@ class PyBtcWallet(object):
          passphrase, unlockHandler)
 
    ####
-   def exportKeys(self, callback, publicOnly=False, unlockHandler=None):
+   def exportKeys(self, callback, publicOnly=False, unlockHandler=None,
+      omitAccountId=False):
       return self.bridgeWalletObj.exportKeys(
-         callback, publicOnly=publicOnly, unlockHandler=unlockHandler)
+         callback, publicOnly=publicOnly, unlockHandler=unlockHandler,
+         omitAccountId=omitAccountId)
 
    ####
-   def exportPrivateKeys(self, callback, unlockHandler):
+   def exportPrivateKeys(self, callback, unlockHandler, omitAccountId=False):
       return self.exportKeys(callback, publicOnly=False,
-         unlockHandler=unlockHandler)
+         unlockHandler=unlockHandler, omitAccountId=omitAccountId)
 
    ####
-   def exportPublicKeys(self, callback):
-      return self.exportKeys(callback, publicOnly=True)
+   def exportPublicKeys(self, callback, omitAccountId=False):
+      return self.exportKeys(callback, publicOnly=True,
+         omitAccountId=omitAccountId)
 
    #############################################################################
    ## helpers

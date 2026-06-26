@@ -74,6 +74,10 @@ struct WalletData {
 
    addressData          @12: List(AddressData);
    comments             @13: List(Comment);
+
+   accountName          @16: Text;
+   seedTypeName         @17: Text;
+   derivationScheme     @18: Text;
 }
 
 struct WalletImportPreview {
@@ -520,6 +524,8 @@ struct WalletReply {
       addressString  @3 : Text;
       addrType       @4 : UInt32;
       index          @5 : Int32;
+      accountId      @6 : Text;
+      isUsed         @7 : Bool;
    }
 
    # reply

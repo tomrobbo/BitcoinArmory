@@ -668,7 +668,8 @@ void WalletManager::unlockControlHeader(const std::string& path,
       throw std::runtime_error("tried to unlock control header with empty id/lambda");
    }
 
-   auto iter = walletFiles_.find(path);
+   const auto fileKey = std::filesystem::path(path).filename().string();
+   auto iter = walletFiles_.find(fileKey);
    if (iter == walletFiles_.end()) {
       throw std::runtime_error("this file is not a known wallet: " + path);
    }

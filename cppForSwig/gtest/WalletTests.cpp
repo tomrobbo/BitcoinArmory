@@ -7061,6 +7061,43 @@ TEST_F(WalletsTest, MultiplePassphrase)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+TEST_F(WalletsTest, BIP32Name_HardenedAccountIndex)
+{
+   using namespace Armory::Accounts;
+   const auto coinType = Armory::Config::BitcoinSettings::getCoinType();
+
+   {
+      std::vector<unsigned> path = { 0x8000002C, coinType, 0x80000000 };
+      auto account = AccountType_BIP32::makeFromDerPaths(0x12345678, {path});
+      EXPECT_EQ(account->name(), "BIP44");
+   }
+
+   {
+      std::vector<unsigned> path = { 0x8000002C, coinType, 0x80000001 };
+      auto account = AccountType_BIP32::makeFromDerPaths(0x12345678, {path});
+      EXPECT_EQ(account->name(), "BIP44");
+   }
+
+   {
+      std::vector<unsigned> path = { 0x80000031, coinType, 0x80000001 };
+      auto account = AccountType_BIP32::makeFromDerPaths(0x12345678, {path});
+      EXPECT_EQ(account->name(), "BIP49");
+   }
+
+   {
+      std::vector<unsigned> path = { 0x80000054, coinType, 0x80000002 };
+      auto account = AccountType_BIP32::makeFromDerPaths(0x12345678, {path});
+      EXPECT_EQ(account->name(), "BIP84");
+   }
+
+   {
+      std::vector<unsigned> path = { 0x8000002C, coinType, 1 };
+      auto account = AccountType_BIP32::makeFromDerPaths(0x12345678, {path});
+      EXPECT_EQ(account->name(), "BIP32");
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 TEST_F(WalletsTest, BIP32_Chain)
 {
    //BIP32 test 1 seed

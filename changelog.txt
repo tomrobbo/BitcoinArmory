@@ -2,6 +2,12 @@ Unreleased (0.97_rc2)
 == Added ==
    - Add exportKeys bridge request supporting public-only and passphrase-gated private key export.
    - Add Address Type column to the wallet key list dialog.
+   - Add accountId and isUsed fields to exported key metadata.
+   - Add accountName, seedTypeName, and derivationScheme fields to WalletData bridge payloads.
+   - Add Account column to the main wallet lobby table.
+   - Add account name and address type fields to the wallet properties dialog.
+   - Add multi-account export scope prompt, rich header metadata, large-wallet warning, and hide-unused filter to the key list dialog.
+   - Add WalletMap.getAccountsForWallet helper for sibling-account lookup.
 
 == Changed ==
    - Show key list public data on dialog open without unlocking the wallet.
@@ -11,6 +17,18 @@ Unreleased (0.97_rc2)
    - Show private key export failures in the key list dialog without clearing public data.
    - Stop unchecking the Public Key column when private keys are loaded in the key list dialog.
    - Guard private key export against duplicate unlock prompts when both priv-key columns are toggled quickly.
+   - Restrict key export to the requested account when accountId is set on the wallet request.
+   - Omit accountId from export bridge requests when exporting all accounts in a wallet file.
+   - Show human-readable account names in export-all key list section headers.
+   - Treat closing the multi-account export scope prompt as cancel rather than export-all.
+   - Enable public key export for watch-only wallets in the key list dialog.
+   - Clear cached private key bytes and text box contents when the key list dialog closes.
+   - Fix BIP32 account naming to accept any hardened account index, not only account 0'.
+   - Derive seedTypeName from account purpose names instead of labeling multi-account wallets BIP32 Structured.
+   - Fix bip32NameFromRootPath to infer BIP purpose from the first three derivation path elements.
+   - Fix unlockControlHeader to look up wallet files by filename.
+   - Fix setup manager unlock and migrate button handlers to capture each wallet row.
+   - Fix unlock dialog handling of multiple encryption keys in one control-header unlock.
 
 v0.96.5, released December 23rd 2018
 == Added ==
