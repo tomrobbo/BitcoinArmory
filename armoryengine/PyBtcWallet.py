@@ -667,6 +667,10 @@ class PyBtcWallet(object):
    def exportPrivateKeys(self, callback, unlockHandler):
       return self.bridgeWalletObj.exportPrivateKeys(callback, unlockHandler)
 
+   ####
+   def exportPublicKeys(self, callback):
+      return self.bridgeWalletObj.exportPublicKeys(callback)
+
    #############################################################################
    ## helpers
    def getLinearAddrList(self, withImported=True, withAddrPool=False):

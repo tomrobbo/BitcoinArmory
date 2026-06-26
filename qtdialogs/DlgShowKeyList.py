@@ -10,6 +10,8 @@
 #                                                                            #
 ##############################################################################
 
+from html import escape
+
 from qtpy import QtCore, QtWidgets
 
 from qtdialogs.ArmoryDialog import ArmoryDialog
@@ -20,7 +22,8 @@ from qtdialogs.qtdefines import (
 )
 from armoryengine.AddressUtils import encodePrivKeyBase58
 from armoryengine.ArmoryUtils import (
-   RightNow, binary_to_hex, hash160, unixTimeToFormatStr, LOGERROR,
+   RightNow, binary_to_hex, getNameForAddrType, hash160,
+   unixTimeToFormatStr, LOGERROR,
 )
 from armoryengine.Settings import TheSettings
 
@@ -28,11 +31,10 @@ from armoryengine.Settings import TheSettings
 ################################################################################
 class DlgShowKeyList(ArmoryDialog):
    """
-   Lists every key in the wallet. All wallets are bridge wallets: the private
-   keys (and their public metadata) are fetched from CppBridge through the
-   exportPrivateKeys callback flow, which prompts for the passphrase when the
-   wallet is encrypted. The list is rendered directly from the export reply so
-   that every key is shown, regardless of address use state.
+   Lists every key in the wallet. Public metadata is fetched from CppBridge
+   through exportPublicKeys without unlocking the wallet. Private keys are
+   fetched only when the user explicitly enables a private-key column, via
+   exportPrivateKeys and the unlock callback flow.
    """
    def __init__(self, wlt, parent=None, main=None):
       super(DlgShowKeyList, self).__init__(parent, main)
@@ -41,10 +43,13 @@ class DlgShowKeyList(ArmoryDialog):
       self.watchingOnly = bool(getattr(self.wlt, 'watchingOnly', False))
 
       # exported keys, populated asynchronously from the bridge. Each entry is
-      # a dict: assetId, privKey, pubKey (bytes), address (str), index (int).
+      # a dict: assetId, privKey, pubKey (bytes), address (str), index (int),
+      # addrType (int).
       self._entries = []
       self.havePriv = False
       self._unlockHandler = None
+      self._privKeysLoaded = False
+      self._privateExportInProgress = False
 
       self.strDescrReg = (self.tr(
          'The textbox below shows all keys that are part of this wallet, '
@@ -76,6 +81,7 @@ class DlgShowKeyList(ArmoryDialog):
       # Column selection checkboxes
       self.chkList = {}
       self.chkList['AddrStr']    = QtWidgets.QCheckBox(self.tr('Address String'))
+      self.chkList['AddrType']   = QtWidgets.QCheckBox(self.tr('Address Type'))
       self.chkList['PubKeyHash'] = QtWidgets.QCheckBox(self.tr('Hash160'))
       self.chkList['PrivHexBE']  = QtWidgets.QCheckBox(self.tr('Private Key (Plain Hex)'))
       self.chkList['PrivB58']    = QtWidgets.QCheckBox(self.tr('Private Key (Plain Base58)'))
@@ -83,25 +89,24 @@ class DlgShowKeyList(ArmoryDialog):
       self.chkList['ChainIndex'] = QtWidgets.QCheckBox(self.tr('Chain Index'))
 
       self.chkList['AddrStr'   ].setChecked(True)
+      self.chkList['AddrType'  ].setChecked(True)
       self.chkList['PubKeyHash'].setChecked(False)
       self.chkList['PrivB58'   ].setChecked(False)
       self.chkList['PrivHexBE' ].setChecked(False)
       self.chkList['PubKey'    ].setChecked(True)
       self.chkList['ChainIndex'].setChecked(False)
 
-      namelist = ['AddrStr', 'PubKeyHash', 'PrivB58',
+      namelist = ['AddrStr', 'AddrType', 'PubKeyHash', 'PrivB58',
                   'PrivHexBE', 'PubKey', 'ChainIndex']
 
       for name in self.chkList.keys():
-         self.chkList[name].toggled.connect(self.rewriteList)
+         if name in ('PrivB58', 'PrivHexBE'):
+            self.chkList[name].toggled.connect(self._onPrivColumnToggled)
+         else:
+            self.chkList[name].toggled.connect(self.rewriteList)
 
       self.chkOmitSpaces = QtWidgets.QCheckBox(self.tr('Omit spaces in key data'))
       self.chkOmitSpaces.toggled.connect(self.rewriteList)
-
-      # The private key columns become available once the export completes.
-      # Watch-only wallets never expose private keys.
-      self.chkList['PrivHexBE'].setEnabled(False)
-      self.chkList['PrivB58'  ].setEnabled(False)
 
       std = (self.main.usermode == USERMODE.Standard)
       adv = (self.main.usermode == USERMODE.Advanced)
@@ -152,49 +157,122 @@ class DlgShowKeyList(ArmoryDialog):
          self.txtBox.setText(self.tr(
             'This is a watch-only wallet: it holds no private keys.'))
       else:
-         self._startBridgeExport()
+         self._startPublicExport()
 
    #############################################################################
-   def _startBridgeExport(self):
+   def _parseExportItems(self, items):
+      entries = []
+      for item in items:
+         entries.append({
+            'assetId': bytes(item.assetId),
+            'privKey': bytes(item.privKey),
+            'pubKey':  bytes(item.publicKey),
+            'address': item.addressString,
+            'index':   item.index,
+            'addrType': item.addrType,
+         })
+      return entries
+
+   #############################################################################
+   def _startPublicExport(self):
+      def onKeysReceived(reply):
+         if reply.success:
+            self._entries = self._parseExportItems(reply.wallet.exportPublicKeys)
+            self.executeMethod(self._onPublicKeysReady)
+         else:
+            err = getattr(reply, 'error', None) or self.tr('Export failed.')
+            LOGERROR('exportPublicKeys failed: %s', err)
+            self.executeMethod(self._onPublicExportFailed, str(err))
+
+      self.wlt.exportPublicKeys(onKeysReceived)
+
+   #############################################################################
+   def _startPrivateExport(self):
       from qtdialogs.DlgUnlockWallet import UnlockWalletHandler
       self._unlockHandler = UnlockWalletHandler(
          self.wlt.walletId, self.tr('Export Key List'), self)
 
       def onKeysReceived(reply):
          if reply.success:
-            entries = []
-            for item in reply.wallet.exportPrivateKeys:
-               entries.append({
-                  'assetId': bytes(item.assetId),
-                  'privKey': bytes(item.privKey),
-                  'pubKey':  bytes(item.publicKey),
-                  'address': item.addressString,
-                  'index':   item.index,
-               })
-            self._entries = entries
-            self.executeMethod(self._onKeysReady)
+            self._mergePrivateKeys(reply.wallet.exportPrivateKeys)
+            self._privKeysLoaded = True
+            self._privateExportInProgress = False
+            self.executeMethod(self._onPrivateKeysReady)
          else:
             err = getattr(reply, 'error', None) or self.tr('Export failed.')
             LOGERROR('exportPrivateKeys failed: %s', err)
-            self.executeMethod(self._onExportFailed, str(err))
+            self.executeMethod(self._onPrivateExportFailed, str(err))
 
       self.wlt.exportPrivateKeys(onKeysReceived, self._unlockHandler)
 
    #############################################################################
-   def _onExportFailed(self, errMsg):
+   def _mergePrivateKeys(self, items):
+      privByAsset = {}
+      for item in items:
+         assetId = bytes(item.assetId)
+         privByAsset[assetId] = bytes(item.privKey)
+
+      if len(privByAsset) != len(self._entries):
+         LOGERROR('private export returned %d keys, expected %d',
+            len(privByAsset), len(self._entries))
+
+      for entry in self._entries:
+         privKey = privByAsset.get(entry['assetId'])
+         if privKey is not None:
+            entry['privKey'] = privKey
+
+   #############################################################################
+   def _onPublicExportFailed(self, errMsg):
       self.txtBox.setText(
-         self.tr('Could not export private keys from this wallet.') +
+         self.tr('Could not export public key data from this wallet.') +
          '\n\n' + errMsg)
 
    #############################################################################
-   def _onKeysReady(self):
-      # Enable and pre-check the private key columns now that keys are present.
-      self.chkList['PrivB58'  ].setEnabled(True)
-      self.chkList['PrivB58'  ].setChecked(True)
-      self.chkList['PrivHexBE'].setEnabled(True)
-      self.chkList['PrivHexBE'].setChecked(True)
-      self.chkList['PubKey'   ].setChecked(False)
+   def _onPrivateExportFailed(self, errMsg):
+      self._privateExportInProgress = False
+      for name in ('PrivB58', 'PrivHexBE'):
+         chk = self.chkList[name]
+         chk.blockSignals(True)
+         chk.setChecked(False)
+         chk.blockSignals(False)
       self.rewriteList()
+      self.lblDescr.setText(
+         self.strDescrReg +
+         '<br><br><font color="red">' +
+         self.tr('Private key export was not completed:') +
+         '</font> ' + escape(errMsg))
+
+   #############################################################################
+   def _onPublicKeysReady(self):
+      self.rewriteList()
+
+   #############################################################################
+   def _onPrivateKeysReady(self):
+      for name in ('PrivB58', 'PrivHexBE'):
+         self.chkList[name].blockSignals(True)
+         self.chkList[name].setChecked(True)
+         self.chkList[name].blockSignals(False)
+      self.chkList['PubKey'].blockSignals(True)
+      self.chkList['PubKey'].setChecked(False)
+      self.chkList['PubKey'].blockSignals(False)
+      self.rewriteList()
+
+   #############################################################################
+   def _onPrivColumnToggled(self, checked):
+      if not checked:
+         self.rewriteList()
+         return
+
+      if self._privKeysLoaded or self._privateExportInProgress:
+         self.rewriteList()
+         return
+
+      sender = self.sender()
+      sender.blockSignals(True)
+      sender.setChecked(False)
+      sender.blockSignals(False)
+      self._privateExportInProgress = True
+      self._startPrivateExport()
 
    #############################################################################
    def rewriteList(self, *args):
@@ -218,9 +296,13 @@ class DlgShowKeyList(ArmoryDialog):
       for entry in self._entries:
          privKey = entry['privKey']
          pubKey  = entry['pubKey']
+         addrType = entry.get('addrType', 0)
 
          if self.chkList['AddrStr'].isChecked():
             L.append((entry['address'] or self.tr('(no address)')))
+         # addrType 0 means metadata was unavailable, not AddressEntryType::Default
+         if self.chkList['AddrType'].isChecked() and addrType:
+            L.append('   AddrType  : ' + getNameForAddrType(addrType))
          if self.chkList['PubKeyHash'].isChecked() and pubKey:
             L.append('   Hash160   : ' + fmtBin(hash160(pubKey)))
          if self.chkList['PrivB58'].isChecked() and privKey:
@@ -277,6 +359,7 @@ class DlgShowKeyList(ArmoryDialog):
    def cleanup(self):
       # Drop the plaintext private keys held in the entry cache.
       self._entries = []
+      self._privateExportInProgress = False
 
    #############################################################################
    def accept(self):

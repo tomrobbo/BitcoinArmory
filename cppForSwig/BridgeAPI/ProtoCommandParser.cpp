@@ -685,6 +685,12 @@ namespace
             break;
          }
 
+         case WalletRequest::EXPORT_PUBLIC_KEYS:
+         {
+            bridge->exportPublicKeys(walletId, referenceId);
+            break;
+         }
+
          default:
             capnp::MallocMessageBuilder message;
             auto fromBridge = message.initRoot<FromBridge>();

@@ -199,6 +199,7 @@ namespace Armory
             const CallbackId&, MessageId);
          void exportPrivateKeys(const Wallets::WalletId&,
             const CallbackId&, MessageId);
+         void exportPublicKeys(const Wallets::WalletId&, MessageId);
 
          //ledgers
          const std::string& getLedgerDelegateId(void);

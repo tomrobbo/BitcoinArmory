@@ -491,6 +491,7 @@ struct WalletRequest {
       forkWatchingOnly              @20: Types.CallbackId;
       hasImports                    @21: Void;
       exportPrivateKeys             @22: Types.CallbackId;
+      exportPublicKeys              @23: Void;
    }
 }
 
@@ -541,6 +542,8 @@ struct WalletReply {
       forkWatchingOnly              @15: Text; #path to new WO wallet
       hasImports                    @16: Bool;
       exportPrivateKeys             @17: List(ExportedPrivateKey);
+      # Reuses ExportedPrivateKey; privKey is empty for public-only export.
+      exportPublicKeys              @18: List(ExportedPrivateKey);
    }
 }
 

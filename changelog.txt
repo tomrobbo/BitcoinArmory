@@ -1,3 +1,21 @@
+Unreleased (0.97_rc2)
+== Added ==
+   - Add exportPublicKeys bridge request to export address and public-key metadata without unlocking the wallet.
+   - Add Address Type column to the wallet key list dialog.
+
+== Changed ==
+   - Refactor CppBridge key export into a shared walker used by private and public export paths.
+   - Encode nested address types in exported key metadata the same way as addressToCapnp.
+   - Show public key list data on dialog open; request private keys only when a private-key column is enabled.
+   - Extend BridgeWalletTests export helpers to assert asset ids, public keys, addresses, indices, and address types.
+   - Add ExportPublicKeysNoUnlock and ExportPublicKeysLegacy bridge wallet tests.
+   - Skip empty privKey in capnp export replies for the public export path.
+   - Guard private key export against duplicate unlock prompts when both priv-key columns are toggled quickly.
+   - Show private key export failures in the key list dialog without clearing public data.
+   - Escape bridge error text in the key list dialog HTML label.
+   - Reset private export in-progress state when the key list dialog closes.
+   - Assert addrType metadata in ExportPublicKeysLegacy and restored-wallet export tests.
+
 v0.96.5, released December 23rd 2018
 == Added ==
    - You can now set the database path from the Settings menu.
