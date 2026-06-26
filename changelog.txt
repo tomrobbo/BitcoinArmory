@@ -4,6 +4,7 @@ Unreleased (0.97_rc2)
    - Add Address Type column to the wallet key list dialog.
 
 == Changed ==
+   - Replace exportPrivateKeys and exportPublicKeys bridge requests with a single exportKeys request supporting public-only and with-private-keys modes.
    - Refactor CppBridge key export into a shared walker used by private and public export paths.
    - Encode nested address types in exported key metadata the same way as addressToCapnp.
    - Show public key list data on dialog open; request private keys only when a private-key column is enabled.
@@ -15,6 +16,11 @@ Unreleased (0.97_rc2)
    - Escape bridge error text in the key list dialog HTML label.
    - Reset private export in-progress state when the key list dialog closes.
    - Assert addrType metadata in ExportPublicKeysLegacy and restored-wallet export tests.
+   - Rename assertExportedKeyMatchesExpected to expectExportedKeyMatchesExpected in bridge export tests.
+   - Assert exact key counts and full export-set equality in bridge export tests.
+   - Extract buildExpectedExportKeys helper for reuse across bridge export tests.
+   - List eligible and default address types in the key list export header.
+   - Stop unchecking the Public Key column when private keys are loaded in the key list dialog.
 
 v0.96.5, released December 23rd 2018
 == Added ==

@@ -664,12 +664,18 @@ class PyBtcWallet(object):
          passphrase, unlockHandler)
 
    ####
+   def exportKeys(self, callback, publicOnly=False, unlockHandler=None):
+      return self.bridgeWalletObj.exportKeys(
+         callback, publicOnly=publicOnly, unlockHandler=unlockHandler)
+
+   ####
    def exportPrivateKeys(self, callback, unlockHandler):
-      return self.bridgeWalletObj.exportPrivateKeys(callback, unlockHandler)
+      return self.exportKeys(callback, publicOnly=False,
+         unlockHandler=unlockHandler)
 
    ####
    def exportPublicKeys(self, callback):
-      return self.bridgeWalletObj.exportPublicKeys(callback)
+      return self.exportKeys(callback, publicOnly=True)
 
    #############################################################################
    ## helpers

@@ -8,6 +8,7 @@
 
 #include <cstdlib>
 #include <queue>
+#include <set>
 #include <algorithm>
 
 #include "TestUtils.h"
@@ -1157,7 +1158,7 @@ namespace {
 
 
    //-----------------------------------------------------------------------
-   // exportPrivateKeys / exportPublicKeys helpers
+   // exportKeys helpers
    //-----------------------------------------------------------------------
    constexpr uint8_t PROTO_ASSETID_PREFIX = 0xAF;
 
@@ -1231,7 +1232,50 @@ namespace {
       }
    }
 
-   void assertExportedKeyMatchesExpected(const ExportedKey& exported,
+   std::pair<size_t, std::map<BinaryData, ExportedKey>> buildExpectedExportKeys(
+      const Wallets::AssetWallet_Single& assetWlt)
+   {
+      size_t expectedKeyCount = 0;
+      std::map<BinaryData, ExportedKey> expectedKeys;
+
+      for (const auto& addrAccId : assetWlt.getAccountIDs()) {
+         auto accPtr = assetWlt.getAccountForID(addrAccId);
+         if (!accPtr) {
+            continue;
+         }
+         for (const auto& assetAccId : accPtr->getAccountIdSet()) {
+            auto assetAcc = accPtr->getAccountForID(assetAccId);
+            if (!assetAcc) {
+               continue;
+            }
+            auto lastIdx = assetAcc->getLastComputedIndex();
+            for (int32_t i = 0; i <= lastIdx; i++) {
+               auto assetPtr = assetAcc->getAssetForKey(i);
+               if (!assetPtr || !assetPtr->hasPrivateKey()) {
+                  continue;
+               }
+               auto assetSingle = std::dynamic_pointer_cast<
+                  Assets::AssetEntry_Single>(assetPtr);
+               if (!assetSingle) {
+                  continue;
+               }
+               ++expectedKeyCount;
+               const auto& assetID = assetPtr->getID();
+
+               ExportedKey expected;
+               expected.assetId = assetID.getSerializedKey(
+                  PROTO_ASSETID_PREFIX);
+               expected.index = assetSingle->getIndex();
+               fillExpectedExportMetadata(expected, accPtr, assetID);
+               expectedKeys.emplace(expected.assetId, std::move(expected));
+            }
+         }
+      }
+
+      return {expectedKeyCount, std::move(expectedKeys)};
+   }
+
+   void expectExportedKeyMatchesExpected(const ExportedKey& exported,
       const ExportedKey& expected)
    {
       EXPECT_EQ(exported.assetId, expected.assetId);
@@ -1241,17 +1285,41 @@ namespace {
       EXPECT_EQ(exported.pubKey, expected.pubKey);
    }
 
-   ExportResult exportPrivateKeys(
+   void verifyExportSetMatchesExpected(
+      const std::vector<ExportedKey>& exported,
+      const std::map<BinaryData, ExportedKey>& expected,
+      bool requirePrivateKeys = false)
+   {
+      ASSERT_EQ(exported.size(), expected.size());
+      std::set<BinaryData> seenIds;
+      for (const auto& key : exported) {
+         EXPECT_GE(key.assetId.getSize(), 1ULL);
+         if (requirePrivateKeys) {
+            EXPECT_GE(key.privKey.getSize(), 32ULL);
+         } else {
+            EXPECT_TRUE(key.privKey.empty());
+         }
+
+         auto it = expected.find(key.assetId);
+         ASSERT_NE(it, expected.end())
+            << "unexpected asset id: " << key.assetId.toHexStr();
+         expectExportedKeyMatchesExpected(key, it->second);
+         seenIds.insert(key.assetId);
+      }
+      EXPECT_EQ(seenIds.size(), expected.size());
+   }
+
+   ExportResult exportKeys(
       std::shared_ptr<Bridge::CppBridge> bridge,
       const std::string& walletId,
-      const std::string& passphrase,
+      bool publicOnly,
+      const std::string& passphrase = {},
       bool provideCorrectPass = true)
    {
       ExportResult out;
       auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
       uint64_t refId = rand();
 
-      //send export request
       {
          capnp::MallocMessageBuilder message;
          auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
@@ -1259,16 +1327,45 @@ namespace {
          auto request = toBridge.initWallet();
          request.setWalletId(walletId);
 
-         request.setExportPrivateKeys(callbackId);
+         auto exportReq = request.initExportKeys();
+         if (publicOnly) {
+            exportReq.setPublicDataOnly();
+         } else {
+            exportReq.setWithPrivateKeys(callbackId);
+         }
 
          auto rawReq = serializeCapnp(message);
          pushRequest(bridge, rawReq);
       }
 
-      //Process the notification flow until the terminal reply arrives.
-      //The flow is deterministic: either the wallet unlocks and a
-      //successful reply shows up, or the unlock is rejected, a cleanup
-      //notification is sent and the reply reports success == false.
+      if (publicOnly) {
+         auto result = waitOnReply();
+         kj::ArrayPtr<const capnp::word> words(
+            reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+            result->data.getSize() / sizeof(capnp::word));
+         capnp::FlatArrayMessageReader reader(words);
+         auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+
+         if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+            out.error = "unexpected message type";
+            return out;
+         }
+
+         auto reply = fromBridge.getReply();
+         out.success = reply.getSuccess();
+         if (!out.success) {
+            out.error = reply.getError();
+            return out;
+         }
+
+         auto walletReply = reply.getWallet();
+         auto capnKeys = walletReply.getExportKeys();
+         for (auto k : capnKeys) {
+            out.keys.emplace_back(parseCapnExportedKey(k));
+         }
+         return out;
+      }
+
       while (true) {
          auto result = waitOnReply();
          kj::ArrayPtr<const capnp::word> words(
@@ -1278,7 +1375,6 @@ namespace {
 
          auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
 
-         //terminal message: the only place a reply is parsed
          if (fromBridge.which() == Codec::Bridge::FromBridge::REPLY) {
             auto reply = fromBridge.getReply();
             out.success = reply.getSuccess();
@@ -1286,7 +1382,7 @@ namespace {
                out.error = reply.getError();
             } else {
                auto walletReply = reply.getWallet();
-               auto capnKeys = walletReply.getExportPrivateKeys();
+               auto capnKeys = walletReply.getExportKeys();
                for (auto k : capnKeys) {
                   out.keys.emplace_back(parseCapnExportedKey(k));
                }
@@ -1320,7 +1416,6 @@ namespace {
             auto rawNotif = serializeCapnp(notifMsg);
             pushRequest(bridge, rawNotif);
          } else if (notifType == Codec::Bridge::Notification::CLEANUP) {
-            //unlock rejected; keep reading for the terminal reply
             continue;
          } else {
             out.error = "unexpected notification type";
@@ -1331,50 +1426,20 @@ namespace {
       return out;
    }
 
+   ExportResult exportPrivateKeys(
+      std::shared_ptr<Bridge::CppBridge> bridge,
+      const std::string& walletId,
+      const std::string& passphrase,
+      bool provideCorrectPass = true)
+   {
+      return exportKeys(bridge, walletId, false, passphrase, provideCorrectPass);
+   }
+
    ExportResult exportPublicKeys(
       std::shared_ptr<Bridge::CppBridge> bridge,
       const std::string& walletId)
    {
-      ExportResult out;
-      uint64_t refId = rand();
-
-      {
-         capnp::MallocMessageBuilder message;
-         auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
-         toBridge.setReferenceId(refId);
-         auto request = toBridge.initWallet();
-         request.setWalletId(walletId);
-         request.setExportPublicKeys();
-
-         auto rawReq = serializeCapnp(message);
-         pushRequest(bridge, rawReq);
-      }
-
-      auto result = waitOnReply();
-      kj::ArrayPtr<const capnp::word> words(
-         reinterpret_cast<const capnp::word*>(result->data.getPtr()),
-         result->data.getSize() / sizeof(capnp::word));
-      capnp::FlatArrayMessageReader reader(words);
-      auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
-
-      if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
-         out.error = "unexpected message type";
-         return out;
-      }
-
-      auto reply = fromBridge.getReply();
-      out.success = reply.getSuccess();
-      if (!out.success) {
-         out.error = reply.getError();
-         return out;
-      }
-
-      auto walletReply = reply.getWallet();
-      auto capnKeys = walletReply.getExportPublicKeys();
-      for (auto k : capnKeys) {
-         out.keys.emplace_back(parseCapnExportedKey(k));
-      }
-      return out;
+      return exportKeys(bridge, walletId, true);
    }
 
    WalletData extendAddressPool(
@@ -5757,10 +5822,7 @@ TEST_F(BridgeWalletTests, ChangeWalletPassphrase)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BridgeWalletTests, ExportPrivateKeysEncrypted)
 {
-   /* 1. create an encrypted wallet and count its full set of private keys.
-      The count is derived by walking the wallet the same way the bridge
-      does, so the export can be checked against every computed key rather
-      than an arbitrary lower bound. */
+   /* 1. create an encrypted wallet and count its full set of private keys. */
    std::string walletId;
    std::string privPass{"privPass1"};
    unsigned lookup = 4;
@@ -5780,38 +5842,10 @@ TEST_F(BridgeWalletTests, ExportPrivateKeysEncrypted)
       auto assetWlt = Wallets::AssetWallet_Single::createFromSeed(
          std::move(seed), params);
       walletId = assetWlt->getID();
-
-      for (const auto& addrAccId : assetWlt->getAccountIDs()) {
-         auto accPtr = assetWlt->getAccountForID(addrAccId);
-         ASSERT_NE(accPtr, nullptr);
-         for (const auto& assetAccId : accPtr->getAccountIdSet()) {
-            auto assetAcc = accPtr->getAccountForID(assetAccId);
-            ASSERT_NE(assetAcc, nullptr);
-            auto lastIdx = assetAcc->getLastComputedIndex();
-            for (int32_t i = 0; i <= lastIdx; i++) {
-               auto assetPtr = assetAcc->getAssetForKey(i);
-               if (assetPtr && assetPtr->hasPrivateKey()) {
-                  ++expectedKeyCount;
-                  auto assetSingle = std::dynamic_pointer_cast<
-                     Assets::AssetEntry_Single>(assetPtr);
-                  ASSERT_NE(assetSingle, nullptr);
-                  const auto& assetID = assetPtr->getID();
-
-                  ExportedKey expected;
-                  expected.assetId = assetID.getSerializedKey(
-                     PROTO_ASSETID_PREFIX);
-                  expected.index = assetSingle->getIndex();
-                  fillExpectedExportMetadata(expected, accPtr, assetID);
-                  expectedKeys.emplace(expected.assetId, std::move(expected));
-               }
-            }
-         }
-      }
+      std::tie(expectedKeyCount, expectedKeys) = buildExpectedExportKeys(*assetWlt);
    }
    ASSERT_FALSE(walletId.empty());
-   //the wallet must hold more than a single key, otherwise the "export all"
-   //behaviour is not actually being exercised
-   ASSERT_GT(expectedKeyCount, 1ULL);
+   ASSERT_EQ(expectedKeyCount, static_cast<size_t>(lookup));
 
    /* 2. load into bridge */
    auto wltList = listWallets(bridge_);
@@ -5826,18 +5860,11 @@ TEST_F(BridgeWalletTests, ExportPrivateKeysEncrypted)
    {
       auto result = exportPrivateKeys(bridge_, walletId, privPass, true);
       ASSERT_TRUE(result.success) << "export failed: " << result.error;
-      ASSERT_EQ(result.keys.size(), expectedKeyCount);
+      verifyExportSetMatchesExpected(result.keys, expectedKeys, true);
 
       for (const auto& exported : result.keys) {
-         EXPECT_GE(exported.assetId.getSize(), 1ULL);
-         EXPECT_GE(exported.privKey.getSize(), 32ULL);
-         auto it = expectedKeys.find(exported.assetId);
-         ASSERT_NE(it, expectedKeys.end())
-            << "unexpected asset id: " << exported.assetId.toHexStr();
-         assertExportedKeyMatchesExpected(exported, it->second);
          originalKeys.emplace(exported.assetId, exported.privKey);
       }
-      ASSERT_EQ(originalKeys.size(), result.keys.size());
    }
 
    /* 4. export with wrong passphrase: unlock is rejected */
@@ -5868,14 +5895,10 @@ TEST_F(BridgeWalletTests, ExportPrivateKeysEncrypted)
    {
       auto result = exportPrivateKeys(bridge_, walletId, privPass, true);
       ASSERT_TRUE(result.success) << "export failed: " << result.error;
+      verifyExportSetMatchesExpected(result.keys, expectedKeys, true);
 
       std::map<BinaryData, BinaryData> restoredKeys;
       for (const auto& exported : result.keys) {
-         auto it = expectedKeys.find(exported.assetId);
-         ASSERT_NE(it, expectedKeys.end())
-            << "restored an unexpected asset id: "
-            << exported.assetId.toHexStr();
-         assertExportedKeyMatchesExpected(exported, it->second);
          restoredKeys.emplace(exported.assetId, exported.privKey);
       }
 
@@ -5921,35 +5944,9 @@ TEST_F(BridgeWalletTests, ExportPublicKeysNoUnlock)
       auto assetWlt = Wallets::AssetWallet_Single::createFromSeed(
          std::move(seed), params);
       walletId = assetWlt->getID();
-
-      for (const auto& addrAccId : assetWlt->getAccountIDs()) {
-         auto accPtr = assetWlt->getAccountForID(addrAccId);
-         ASSERT_NE(accPtr, nullptr);
-         for (const auto& assetAccId : accPtr->getAccountIdSet()) {
-            auto assetAcc = accPtr->getAccountForID(assetAccId);
-            ASSERT_NE(assetAcc, nullptr);
-            auto lastIdx = assetAcc->getLastComputedIndex();
-            for (int32_t i = 0; i <= lastIdx; i++) {
-               auto assetPtr = assetAcc->getAssetForKey(i);
-               if (assetPtr && assetPtr->hasPrivateKey()) {
-                  ++expectedKeyCount;
-                  auto assetSingle = std::dynamic_pointer_cast<
-                     Assets::AssetEntry_Single>(assetPtr);
-                  ASSERT_NE(assetSingle, nullptr);
-                  const auto& assetID = assetPtr->getID();
-
-                  ExportedKey expected;
-                  expected.assetId = assetID.getSerializedKey(
-                     PROTO_ASSETID_PREFIX);
-                  expected.index = assetSingle->getIndex();
-                  fillExpectedExportMetadata(expected, accPtr, assetID);
-                  expectedKeys.emplace(expected.assetId, std::move(expected));
-               }
-            }
-         }
-      }
+      std::tie(expectedKeyCount, expectedKeys) = buildExpectedExportKeys(*assetWlt);
    }
-   ASSERT_GT(expectedKeyCount, 1ULL);
+   ASSERT_EQ(expectedKeyCount, static_cast<size_t>(lookup));
 
    auto wltList = listWallets(bridge_);
    ASSERT_EQ(wltList.size(), 1ULL);
@@ -5958,15 +5955,7 @@ TEST_F(BridgeWalletTests, ExportPublicKeysNoUnlock)
 
    auto result = exportPublicKeys(bridge_, walletId);
    ASSERT_TRUE(result.success) << "export failed: " << result.error;
-   ASSERT_EQ(result.keys.size(), expectedKeyCount);
-
-   for (const auto& exported : result.keys) {
-      EXPECT_TRUE(exported.privKey.empty());
-      auto it = expectedKeys.find(exported.assetId);
-      ASSERT_NE(it, expectedKeys.end())
-         << "unexpected asset id: " << exported.assetId.toHexStr();
-      assertExportedKeyMatchesExpected(exported, it->second);
-   }
+   verifyExportSetMatchesExpected(result.keys, expectedKeys, false);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

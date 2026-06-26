@@ -177,7 +177,7 @@ class DlgShowKeyList(ArmoryDialog):
    def _startPublicExport(self):
       def onKeysReceived(reply):
          if reply.success:
-            self._entries = self._parseExportItems(reply.wallet.exportPublicKeys)
+            self._entries = self._parseExportItems(reply.wallet.exportKeys)
             self.executeMethod(self._onPublicKeysReady)
          else:
             err = getattr(reply, 'error', None) or self.tr('Export failed.')
@@ -194,7 +194,7 @@ class DlgShowKeyList(ArmoryDialog):
 
       def onKeysReceived(reply):
          if reply.success:
-            self._mergePrivateKeys(reply.wallet.exportPrivateKeys)
+            self._mergePrivateKeys(reply.wallet.exportKeys)
             self._privKeysLoaded = True
             self._privateExportInProgress = False
             self.executeMethod(self._onPrivateKeysReady)
@@ -252,9 +252,6 @@ class DlgShowKeyList(ArmoryDialog):
          self.chkList[name].blockSignals(True)
          self.chkList[name].setChecked(True)
          self.chkList[name].blockSignals(False)
-      self.chkList['PubKey'].blockSignals(True)
-      self.chkList['PubKey'].setChecked(False)
-      self.chkList['PubKey'].blockSignals(False)
       self.rewriteList()
 
    #############################################################################
@@ -290,6 +287,13 @@ class DlgShowKeyList(ArmoryDialog):
          RightNow(), self.main.getPreferredDateFormat()))
       L.append('Wallet ID:     ' + self.wlt.walletId)
       L.append('Wallet Name:   ' + self.wlt.labelName)
+      addrTypes = self.wlt.getAddressTypes()
+      if addrTypes:
+         typeNames = [getNameForAddrType(t) for t in addrTypes]
+         L.append('Eligible types:' + ' ' + ', '.join(typeNames))
+      defaultType = self.wlt.getDefaultAddressType()
+      if defaultType:
+         L.append('Default type:  ' + getNameForAddrType(defaultType))
       L.append('')
 
       self.havePriv = False

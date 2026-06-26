@@ -899,7 +899,7 @@ namespace {
 
    BinaryData buildExportedKeysReply(MessageId msgId,
       const std::vector<ExportedKeyData>& exportedKeys,
-      const std::string& error, bool publicExport)
+      const std::string& error)
    {
       capnp::MallocMessageBuilder message;
       auto fromBridge = message.initRoot<FromBridge>();
@@ -912,18 +912,10 @@ namespace {
       } else {
          reply.setSuccess(true);
          auto walletReply = reply.initWallet();
-         if (publicExport) {
-            auto capnKeys = walletReply.initExportPublicKeys(exportedKeys.size());
-            for (size_t i = 0; i < exportedKeys.size(); i++) {
-               auto capnKey = capnKeys[i];
-               populateExportedKey(capnKey, exportedKeys[i]);
-            }
-         } else {
-            auto capnKeys = walletReply.initExportPrivateKeys(exportedKeys.size());
-            for (size_t i = 0; i < exportedKeys.size(); i++) {
-               auto capnKey = capnKeys[i];
-               populateExportedKey(capnKey, exportedKeys[i]);
-            }
+         auto capnKeys = walletReply.initExportKeys(exportedKeys.size());
+         for (size_t i = 0; i < exportedKeys.size(); i++) {
+            auto capnKey = capnKeys[i];
+            populateExportedKey(capnKey, exportedKeys[i]);
          }
       }
 
@@ -932,10 +924,10 @@ namespace {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void CppBridge::exportPrivateKeys(const Wallets::WalletId& wltId,
-   const CallbackId& callbackId, MessageId msgId)
+void CppBridge::exportKeys(const Wallets::WalletId& wltId,
+   bool includePrivateKeys, const CallbackId& callbackId, MessageId msgId)
 {
-   auto func = [this, wltId, callbackId, msgId]()
+   auto func = [this, wltId, includePrivateKeys, callbackId, msgId]()
    {
       std::vector<ExportedKeyData> exportedKeys;
       std::string error;
@@ -963,63 +955,31 @@ void CppBridge::exportPrivateKeys(const Wallets::WalletId& wltId,
             throw std::runtime_error("wallet is not an AssetWallet_Single");
          }
 
-         if (!wltSingle->getRoot()->hasPrivateKey()) {
-            throw std::runtime_error("this is a WO wallet");
+         if (includePrivateKeys) {
+            if (!wltSingle->getRoot()->hasPrivateKey()) {
+               throw std::runtime_error("this is a WO wallet");
+            }
+
+            passPromptObj = std::make_shared<BridgePassphrasePrompt>(
+               callbackId, [this](ServerPushWrapper wrapper){
+                  this->callbackWriter(wrapper);
+               });
+            auto lbd = passPromptObj->getLambda();
+            ExportKeysCleanup cleanupGuard{passPromptObj};
+
+            exportedKeys = collectExportedKeys(wltSingle, true, lbd);
+         } else {
+            exportedKeys = collectExportedKeys(wltSingle, false,
+               [](const std::set<Wallets::EncryptionKeyId>&)->Passphrase::Result{
+                  return {{}, false};
+               });
          }
-
-         passPromptObj = std::make_shared<BridgePassphrasePrompt>(
-            callbackId, [this](ServerPushWrapper wrapper){
-               this->callbackWriter(wrapper);
-            });
-         auto lbd = passPromptObj->getLambda();
-         ExportKeysCleanup cleanupGuard{passPromptObj};
-
-         exportedKeys = collectExportedKeys(wltSingle, true, lbd);
 
       } catch (const std::exception& e) {
          error = e.what();
       }
 
-      auto serialized = buildExportedKeysReply(
-         msgId, exportedKeys, error, false);
-      this->writeToClient(serialized);
-   };
-
-   std::thread thr(func);
-   if (thr.joinable()) {
-      thr.detach();
-   }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void CppBridge::exportPublicKeys(const Wallets::WalletId& wltId,
-   MessageId msgId)
-{
-   auto func = [this, wltId, msgId]()
-   {
-      std::vector<ExportedKeyData> exportedKeys;
-      std::string error;
-
-      try {
-         auto wltContainer = wltManager_->getWalletContainer(wltId);
-         auto wltPtr = wltContainer->getWalletPtr();
-         auto wltSingle = std::dynamic_pointer_cast<
-            Wallets::AssetWallet_Single>(wltPtr);
-         if (!wltSingle) {
-            throw std::runtime_error("wallet is not an AssetWallet_Single");
-         }
-
-         exportedKeys = collectExportedKeys(wltSingle, false,
-            [](const std::set<Wallets::EncryptionKeyId>&)->Passphrase::Result{
-               return {{}, false};
-            });
-
-      } catch (const std::exception& e) {
-         error = e.what();
-      }
-
-      auto serialized = buildExportedKeysReply(
-         msgId, exportedKeys, error, true);
+      auto serialized = buildExportedKeysReply(msgId, exportedKeys, error);
       this->writeToClient(serialized);
    };
 

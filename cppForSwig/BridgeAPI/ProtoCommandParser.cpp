@@ -678,16 +678,17 @@ namespace
             break;
          }
 
-         case WalletRequest::EXPORT_PRIVATE_KEYS:
+         case WalletRequest::EXPORT_KEYS:
          {
-            std::string callbackId{request.getExportPrivateKeys()};
-            bridge->exportPrivateKeys(walletId, callbackId, referenceId);
-            break;
-         }
-
-         case WalletRequest::EXPORT_PUBLIC_KEYS:
-         {
-            bridge->exportPublicKeys(walletId, referenceId);
+            auto exportRequest = request.getExportKeys();
+            const bool includePrivateKeys = exportRequest.which() ==
+               WalletRequest::ExportKeyRequest::WITH_PRIVATE_KEYS;
+            std::string callbackId;
+            if (includePrivateKeys) {
+               callbackId = exportRequest.getWithPrivateKeys();
+            }
+            bridge->exportKeys(walletId, includePrivateKeys,
+               callbackId, referenceId);
             break;
          }
 

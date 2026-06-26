@@ -460,6 +460,13 @@ struct WalletRequest {
       description    @1 : Text;
    }
 
+   struct ExportKeyRequest {
+      union {
+         publicDataOnly @0 : Void;
+         withPrivateKeys @1 : Types.CallbackId;
+      }
+   }
+
    walletId                         @0 : Types.WalletId;
    accountId                        @1 : Types.AccountId;
    union {
@@ -490,8 +497,7 @@ struct WalletRequest {
       getUnlockTime                 @19: Void;
       forkWatchingOnly              @20: Types.CallbackId;
       hasImports                    @21: Void;
-      exportPrivateKeys             @22: Types.CallbackId;
-      exportPublicKeys              @23: Void;
+      exportKeys                    @22: ExportKeyRequest;
    }
 }
 
@@ -541,9 +547,8 @@ struct WalletReply {
       getUnlockTime                 @14: UInt32; #unlock time in ms
       forkWatchingOnly              @15: Text; #path to new WO wallet
       hasImports                    @16: Bool;
-      exportPrivateKeys             @17: List(ExportedPrivateKey);
-      # Reuses ExportedPrivateKey; privKey is empty for public-only export.
-      exportPublicKeys              @18: List(ExportedPrivateKey);
+      # privKey is empty for public-only export.
+      exportKeys                    @17: List(ExportedPrivateKey);
    }
 }
 
