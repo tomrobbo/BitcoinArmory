@@ -1275,6 +1275,50 @@ namespace {
       return {expectedKeyCount, std::move(expectedKeys)};
    }
 
+   void fillExpectedPrivateKeys(
+      Wallets::AssetWallet_Single& assetWlt,
+      const SecureBinaryData& privPass,
+      std::map<BinaryData, ExportedKey>& expectedKeys)
+   {
+      auto lock = assetWlt.lockDecryptedContainer(
+         [&privPass](const std::set<Wallets::EncryptionKeyId>&)->Passphrase::Result
+         { return {privPass, true}; }
+      );
+
+      for (const auto& addrAccId : assetWlt.getAccountIDs()) {
+         auto accPtr = assetWlt.getAccountForID(addrAccId);
+         if (!accPtr) {
+            continue;
+         }
+         for (const auto& assetAccId : accPtr->getAccountIdSet()) {
+            auto assetAcc = accPtr->getAccountForID(assetAccId);
+            if (!assetAcc) {
+               continue;
+            }
+            auto lastIdx = assetAcc->getLastComputedIndex();
+            for (int32_t i = 0; i <= lastIdx; i++) {
+               auto assetPtr = assetAcc->getAssetForKey(i);
+               if (!assetPtr || !assetPtr->hasPrivateKey()) {
+                  continue;
+               }
+               auto assetSingle = std::dynamic_pointer_cast<
+                  Assets::AssetEntry_Single>(assetPtr);
+               if (!assetSingle) {
+                  continue;
+               }
+               const auto& assetID = assetPtr->getID();
+               auto serId = assetID.getSerializedKey(PROTO_ASSETID_PREFIX);
+               auto it = expectedKeys.find(serId);
+               if (it == expectedKeys.end()) {
+                  continue;
+               }
+               it->second.privKey = assetWlt.getDecryptedPrivateKeyForAsset(
+                  assetSingle);
+            }
+         }
+      }
+   }
+
    void expectExportedKeyMatchesExpected(const ExportedKey& exported,
       const ExportedKey& expected)
    {
@@ -1294,15 +1338,21 @@ namespace {
       std::set<BinaryData> seenIds;
       for (const auto& key : exported) {
          EXPECT_GE(key.assetId.getSize(), 1ULL);
-         if (requirePrivateKeys) {
-            EXPECT_GE(key.privKey.getSize(), 32ULL);
-         } else {
-            EXPECT_TRUE(key.privKey.empty());
-         }
 
          auto it = expected.find(key.assetId);
          ASSERT_NE(it, expected.end())
             << "unexpected asset id: " << key.assetId.toHexStr();
+
+         if (requirePrivateKeys) {
+            EXPECT_GE(key.privKey.getSize(), 32ULL);
+            ASSERT_FALSE(it->second.privKey.empty())
+               << "expected private key missing for asset "
+               << key.assetId.toHexStr();
+            EXPECT_EQ(key.privKey, it->second.privKey);
+         } else {
+            EXPECT_TRUE(key.privKey.empty());
+         }
+
          expectExportedKeyMatchesExpected(key, it->second);
          seenIds.insert(key.assetId);
       }
@@ -5843,6 +5893,8 @@ TEST_F(BridgeWalletTests, ExportPrivateKeysEncrypted)
          std::move(seed), params);
       walletId = assetWlt->getID();
       std::tie(expectedKeyCount, expectedKeys) = buildExpectedExportKeys(*assetWlt);
+      fillExpectedPrivateKeys(*assetWlt,
+         SecureBinaryData::fromString(privPass), expectedKeys);
    }
    ASSERT_FALSE(walletId.empty());
    ASSERT_EQ(expectedKeyCount, static_cast<size_t>(lookup));
