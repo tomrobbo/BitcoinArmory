@@ -149,9 +149,11 @@ void WebSocketClient::writeService()
       }
 
       SerializedMessage ws_msg;
+      //read id before message is moved-from below
+      auto msgId = message->id_;
       ws_msg.construct(std::move(message),
          bip151Connection_.get(),
-         message->id_);
+         msgId);
       writeQueue_->push_back(ws_msg);
    }
 }
