@@ -755,13 +755,181 @@ void CppBridge::forkWatchingOnly(const Wallets::WalletId& wltId,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void CppBridge::exportPrivateKeys(const Wallets::WalletId& wltId,
-   const CallbackId& callbackId, MessageId msgId)
-{
-   auto func = [this, wltId, callbackId, msgId]()
+namespace {
+   struct ExportedKeyData
    {
-      // (assetId serialized with PROTO_ASSETID_PREFIX, private key copy)
-      std::vector<std::pair<BinaryData, SecureBinaryData>> keyPairs;
+      BinaryData assetId;
+      SecureBinaryData privKey;
+      BinaryData pubKey;
+      std::string addressString;
+      uint32_t addrType = 0;
+      int32_t index = 0;
+   };
+
+   void fillExportedKeyMetadata(ExportedKeyData& entry,
+      const std::shared_ptr<Accounts::AddressAccount>& accPtr,
+      const Wallets::AssetId& assetID)
+   {
+      try {
+         auto addrEntry = accPtr->getAddressEntryForID(assetID);
+         if (addrEntry == nullptr) {
+            return;
+         }
+
+         uint32_t addrType = (uint32_t)addrEntry->getType();
+         auto addrNested = std::dynamic_pointer_cast<
+            AddressEntry_Nested>(addrEntry);
+         if (addrNested != nullptr) {
+            addrType |= (uint32_t)addrNested->getPredecessor()->getType();
+         }
+         entry.addrType = addrType;
+
+         try {
+            if (addrNested != nullptr) {
+               entry.pubKey = addrNested->getPredecessor()->getPreimage();
+            } else {
+               entry.pubKey = addrEntry->getPreimage();
+            }
+         } catch (const AddressException&) {
+            //no public key for this address type, leave empty
+         }
+
+         try {
+            entry.addressString = addrEntry->getAddress();
+         } catch (const AddressException&) {
+            //address type yields no human readable string
+         }
+      } catch (const std::exception&) {
+         //asset has no instantiable address, leave blank
+      }
+   }
+
+   std::vector<ExportedKeyData> collectExportedKeys(
+      const std::shared_ptr<Wallets::AssetWallet_Single>& wltSingle,
+      bool includePrivateKeys,
+      const std::function<Passphrase::Result(
+         const std::set<Wallets::EncryptionKeyId>&)>& decryptLbd)
+   {
+      std::vector<ExportedKeyData> exportedKeys;
+
+      auto walkWallet = [&]()
+      {
+         for (const auto& addrAccId : wltSingle->getAccountIDs()) {
+            auto accPtr = wltSingle->getAccountForID(addrAccId);
+            if (!accPtr) {
+               continue;
+            }
+
+            for (const auto& assetAccId : accPtr->getAccountIdSet()) {
+               auto assetAcc = accPtr->getAccountForID(assetAccId);
+               if (!assetAcc) {
+                  continue;
+               }
+
+               switch (assetAcc->type()) {
+                  case Accounts::AssetAccountType::Plain:
+                  case Accounts::AssetAccountType::Imports:
+                     break;
+
+                  case Accounts::AssetAccountType::ECDH:
+                  case Accounts::AssetAccountType::ImportsWO:
+                     continue;
+
+                  default:
+                     LOGWARN << "trying to export keys" <<
+                        " from unsupported account type";
+                     continue;
+               }
+
+               auto lastIdx = assetAcc->getLastComputedIndex();
+               for (int32_t i = lastIdx; i >= 0; i--) {
+                  auto assetPtr = assetAcc->getAssetForKey(i);
+                  auto assetSingle = std::dynamic_pointer_cast<
+                     Assets::AssetEntry_Single>(assetPtr);
+                  if (!assetSingle) {
+                     continue;
+                  }
+
+                  const auto& assetID = assetPtr->getID();
+
+                  ExportedKeyData entry;
+                  entry.assetId = assetID.getSerializedKey(PROTO_ASSETID_PREFIX);
+                  entry.index = assetSingle->getIndex();
+
+                  if (includePrivateKeys) {
+                     const auto& privKey =
+                        wltSingle->getDecryptedPrivateKeyForAsset(assetSingle);
+                     entry.privKey = SecureBinaryData(privKey);
+                  }
+
+                  fillExportedKeyMetadata(entry, accPtr, assetID);
+                  exportedKeys.emplace_back(std::move(entry));
+               }
+            }
+         }
+      };
+
+      if (includePrivateKeys) {
+         auto lock = wltSingle->lockDecryptedContainer(decryptLbd);
+         walkWallet();
+      } else {
+         walkWallet();
+      }
+
+      return exportedKeys;
+   }
+
+   void populateExportedKey(WalletReply::ExportedPrivateKey::Builder& capnKey,
+      const ExportedKeyData& entry)
+   {
+      capnKey.setAssetId(capnp::Data::Builder(
+         (uint8_t*)entry.assetId.getPtr(), entry.assetId.getSize()));
+      if (!entry.privKey.empty()) {
+         capnKey.setPrivKey(capnp::Data::Builder(
+            (uint8_t*)entry.privKey.getPtr(), entry.privKey.getSize()));
+      }
+      if (!entry.pubKey.empty()) {
+         capnKey.setPublicKey(capnp::Data::Builder(
+            (uint8_t*)entry.pubKey.getPtr(), entry.pubKey.getSize()));
+      }
+      capnKey.setAddressString(entry.addressString);
+      capnKey.setAddrType(entry.addrType);
+      capnKey.setIndex(entry.index);
+   }
+
+   BinaryData buildExportedKeysReply(MessageId msgId,
+      const std::vector<ExportedKeyData>& exportedKeys,
+      const std::string& error)
+   {
+      capnp::MallocMessageBuilder message;
+      auto fromBridge = message.initRoot<FromBridge>();
+      auto reply = fromBridge.initReply();
+      reply.setReferenceId(msgId);
+
+      if (!error.empty()) {
+         reply.setSuccess(false);
+         reply.setError(error);
+      } else {
+         reply.setSuccess(true);
+         auto walletReply = reply.initWallet();
+         auto capnKeys = walletReply.initExportKeys(exportedKeys.size());
+         for (size_t i = 0; i < exportedKeys.size(); i++) {
+            auto capnKey = capnKeys[i];
+            populateExportedKey(capnKey, exportedKeys[i]);
+         }
+      }
+
+      return serializeCapnp(message);
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void CppBridge::exportKeys(const Wallets::WalletId& wltId,
+   bool includePrivateKeys, const CallbackId& callbackId, MessageId msgId)
+{
+   auto func = [this, wltId, includePrivateKeys, callbackId, msgId]()
+   {
+      std::vector<ExportedKeyData> exportedKeys;
       std::string error;
 
       std::shared_ptr<BridgePassphrasePrompt> passPromptObj;
@@ -787,112 +955,32 @@ void CppBridge::exportPrivateKeys(const Wallets::WalletId& wltId,
             throw std::runtime_error("wallet is not an AssetWallet_Single");
          }
 
-         if (!wltSingle->getRoot()->hasPrivateKey()) {
-            throw std::runtime_error("this is a WO wallet");
-         }
-
-         //setup passphrase prompt
-         passPromptObj = std::make_shared<BridgePassphrasePrompt>(
-            callbackId, [this](ServerPushWrapper wrapper){
-               this->callbackWriter(wrapper);
-            });
-         auto lbd = passPromptObj->getLambda();
-         ExportKeysCleanup cleanupGuard{passPromptObj};
-
-         //lock the decrypted container for the entire batch operation;
-         //the unlock lambda lifetime is tied to this lock
-         auto lock = wltSingle->lockDecryptedContainer(lbd);
-
-         //export every private key in the wallet, walking all address
-         //accounts and their asset accounts. Keys are exported
-         //indiscriminately of address use state so that offline instances
-         //get the full set.
-         for (const auto& addrAccId : wltSingle->getAccountIDs()) {
-            auto accPtr = wltSingle->getAccountForID(addrAccId);
-            if (!accPtr) {
-               continue;
+         if (includePrivateKeys) {
+            if (!wltSingle->getRoot()->hasPrivateKey()) {
+               throw std::runtime_error("this is a WO wallet");
             }
 
-            for (const auto& assetAccId : accPtr->getAccountIdSet()) {
-               auto assetAcc = accPtr->getAccountForID(assetAccId);
-               if (!assetAcc) {
-                  continue;
-               }
+            passPromptObj = std::make_shared<BridgePassphrasePrompt>(
+               callbackId, [this](ServerPushWrapper wrapper){
+                  this->callbackWriter(wrapper);
+               });
+            auto lbd = passPromptObj->getLambda();
+            ExportKeysCleanup cleanupGuard{passPromptObj};
 
-               //check this account carries private keys
-               switch (assetAcc->type()) {
-                  //these accounts have private keys
-                  case Accounts::AssetAccountType::Plain:
-                  case Accounts::AssetAccountType::Imports:
-                     break;
-
-                  //these accounts do not carry private keys
-                  case Accounts::AssetAccountType::ECDH:
-                  case Accounts::AssetAccountType::ImportsWO:
-                     continue;
-
-                  default:
-                     LOGWARN << "trying to export private keys" <<
-                        " from unsupported account type";
-                     continue;
-               }
-
-               //getDecryptedPrivateKeyForAsset will fill missing private keys
-               //run backwards the assets to compute missing keys in batch
-               //rather than sequentially
-               //TODO: add progressCallback logic to extend/fillPrivateKey
-               auto lastIdx = assetAcc->getLastComputedIndex();
-               for (int32_t i = lastIdx; i >= 0; i--) {
-                  auto assetPtr = assetAcc->getAssetForKey(i);
-                  auto assetSingle = std::dynamic_pointer_cast<
-                     Assets::AssetEntry_Single>(assetPtr);
-                  if (!assetSingle) {
-                     continue;
-                  }
-
-                  const auto& assetID = assetPtr->getID();
-                  const auto& serAssetId = assetID.getSerializedKey(
-                     PROTO_ASSETID_PREFIX);
-                  const auto& privKey =
-                     wltSingle->getDecryptedPrivateKeyForAsset(assetSingle);
-
-                  keyPairs.emplace_back(serAssetId, SecureBinaryData(privKey));
-               }
-            }
+            exportedKeys = collectExportedKeys(wltSingle, true, lbd);
+         } else {
+            exportedKeys = collectExportedKeys(wltSingle, false,
+               [](const std::set<Wallets::EncryptionKeyId>&)->Passphrase::Result{
+                  return {{}, false};
+               });
          }
-         //lock released, DecryptedDataContainer wiped
 
       } catch (const std::exception& e) {
          error = e.what();
       }
 
-      //build reply
-      capnp::MallocMessageBuilder message;
-      auto fromBridge = message.initRoot<FromBridge>();
-      auto reply = fromBridge.initReply();
-      reply.setReferenceId(msgId);
-
-      if (!error.empty()) {
-         reply.setSuccess(false);
-         reply.setError(error);
-      } else {
-         reply.setSuccess(true);
-         auto walletReply = reply.initWallet();
-         auto capnKeys = walletReply.initExportPrivateKeys(keyPairs.size());
-         for (size_t i = 0; i < keyPairs.size(); i++) {
-            auto capnKey = capnKeys[i];
-            const auto& id  = keyPairs[i].first;
-            const auto& key = keyPairs[i].second;
-            capnKey.setAssetId(capnp::Data::Builder(
-               (uint8_t*)id.getPtr(), id.getSize()));
-            capnKey.setPrivKey(capnp::Data::Builder(
-               (uint8_t*)key.getPtr(), key.getSize()));
-         }
-      }
-
-      auto serialized = serializeCapnp(message);
+      auto serialized = buildExportedKeysReply(msgId, exportedKeys, error);
       this->writeToClient(serialized);
-      //keyPairs destroyed here; SecureBinaryData destructor zeroes memory
    };
 
    std::thread thr(func);

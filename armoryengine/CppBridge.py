@@ -1109,10 +1109,22 @@ class BridgeWalletWrapper(ProtoWrapper):
       return reply.wallet.hasImports
 
    ####
-   def exportPrivateKeys(self, callback: callable, unlockHandler):
+   def exportKeys(self, callback: callable, publicOnly=False, unlockHandler=None):
       packet = self._getPacket()
-      packet.wallet.exportPrivateKeys = unlockHandler.callbackId
+      exportReq = packet.wallet.init('exportKeys')
+      if publicOnly:
+         exportReq.publicDataOnly = None
+      else:
+         exportReq.withPrivateKeys = unlockHandler.callbackId
       self.send(packet, callback=callback)
+
+   ####
+   def exportPrivateKeys(self, callback: callable, unlockHandler):
+      self.exportKeys(callback, publicOnly=False, unlockHandler=unlockHandler)
+
+   ####
+   def exportPublicKeys(self, callback: callable):
+      self.exportKeys(callback, publicOnly=True)
 
 ################################################################################
 class BridgeCoinSelectionWrapper(ProtoWrapper):

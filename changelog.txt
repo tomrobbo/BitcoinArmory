@@ -1,3 +1,17 @@
+Unreleased (0.97_rc2)
+== Added ==
+   - Add exportKeys bridge request supporting public-only and passphrase-gated private key export.
+   - Add Address Type column to the wallet key list dialog.
+
+== Changed ==
+   - Show key list public data on dialog open without unlocking the wallet.
+   - Request private keys only when a private-key column is enabled.
+   - List eligible and default address types in the key list export header.
+   - Fix exported public key compression for legacy address types.
+   - Show private key export failures in the key list dialog without clearing public data.
+   - Stop unchecking the Public Key column when private keys are loaded in the key list dialog.
+   - Guard private key export against duplicate unlock prompts when both priv-key columns are toggled quickly.
+
 v0.96.5, released December 23rd 2018
 == Added ==
    - You can now set the database path from the Settings menu.

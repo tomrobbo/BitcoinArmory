@@ -537,21 +537,8 @@ class DlgWalletDetails(ArmoryDialog):
          pass  # not sure that I don't handle everything in the dialog itself
 
    def execKeyList(self):
-      if self.wlt.useEncryption and self.wlt.isLocked:
-         dlg = DlgUnlockWallet(self.wlt, self, self.main, self.tr('Unlock Private Keys'))
-         if not dlg.exec_():
-            if self.main.usermode == USERMODE.Expert:
-               QtWidgets.QMessageBox.warning(self, self.tr('Unlock Failed'), self.tr(
-                  'Wallet was not unlocked.  The public keys and addresses '
-                  'will still be shown, but private keys will not be available '
-                  'unless you reopen the dialog with the correct passphrase'),
-                  QtWidgets.QMessageBox.Ok)
-            else:
-               QtWidgets.QMessageBox.warning(self, self.tr('Unlock Failed'), self.tr(
-                  'Wallet could not be unlocked to display individual keys.'),
-                  QtWidgets.QMessageBox.Ok)
-               return
-
+      # DlgShowKeyList drives the unlock itself through the CppBridge callback
+      # flow, so there is no need to unlock the wallet here.
       dlg = DlgShowKeyList(self.wlt, self, self.main)
       dlg.exec_()
 
