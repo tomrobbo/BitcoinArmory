@@ -50,18 +50,16 @@ struct RpcBroadcastPacket
 class BDV_Payload
 {
 private:
+   const uint32_t messageId_;
    BinaryData packetData_;
    BdvPtr bdvPtr_;
    const Armory::Types::BdvId bdvID_;
    const btc_pubkey_& pubkey_;
-   uint32_t messageID_ = UINT32_MAX;
 
 public:
    BDV_Payload(BinaryData, BdvPtr, Armory::Types::BdvId, const btc_pubkey_&);
 
    uint32_t getMessageID(void) const;
-   void setMessageID(uint32_t);
-
    uint64_t getBdvID(void) const;
    const btc_pubkey_& getPubkey(void) const;
 

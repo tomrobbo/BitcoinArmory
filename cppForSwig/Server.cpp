@@ -20,29 +20,24 @@
 using namespace Armory;
 
 ///////////////////////////////////////////////////////////////////////////////
-PendingMessage::PendingMessage(uint64_t id, uint32_t msgid,
+// PendingMessage
+PendingMessage::PendingMessage(uint64_t id,
    std::unique_ptr<Network::Socket_WritePayload> ptr) :
-   id(id), msgid(msgid), payload(std::move(ptr))
+   id(id), payload(std::move(ptr))
 {}
 
 ///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-//// WebSocketServer
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
+// WebSocketServer
 std::atomic<WebSocketServer*> WebSocketServer::instance_;
 std::mutex WebSocketServer::mu_;
 std::promise<bool> WebSocketServer::shutdownPromise_;
 std::shared_future<bool> WebSocketServer::shutdownFuture_;
 
-///////////////////////////////////////////////////////////////////////////////
 WebSocketServer::WebSocketServer()
 {}
 
-///////////////////////////////////////////////////////////////////////////////
 static struct lws_protocols protocols[] = {
-   /* first protocol must always be HTTP handler */
-
+   /* first protocol for server must always be HTTP handler */
    {
       "http-only",   /* name */
       callback_http, /* callback */
@@ -54,28 +49,27 @@ static struct lws_protocols protocols[] = {
    },
    {
       "armory-bdm-protocol",
-      WebSocketServer::callback,
+      WebSocketServer::lwsServiceHandler,
       sizeof(struct per_session_data__bdv),
       per_session_data__bdv::rcv_size,
       2,
       nullptr,
       0
    },
-
-{ NULL, NULL, 0, 0, 0, NULL, 0 } /* terminator */
+   /* terminator */
+   { NULL, NULL, 0, 0, 0, NULL, 0 }
 };
 
-///////////////////////////////////////////////////////////////////////////////
-int callback_http(struct lws *, enum lws_callback_reasons,
-   void *, void *, size_t)
+int callback_http(struct lws*, enum lws_callback_reasons,
+   void*, void*, size_t)
 {
    return 0;
 }
 
-///////////////////////////////////////////////////////////////////////////////
-int WebSocketServer::callback(struct lws *wsi,
+///////
+int WebSocketServer::lwsServiceHandler(struct lws* wsi,
    enum lws_callback_reasons reason,
-   void *user, void *in, size_t len)
+   void* user, void* in, size_t len)
 {
    auto* session_data = (struct per_session_data__bdv *)user;
 
@@ -526,14 +520,14 @@ void WebSocketServer::clientInterruptThread()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-void WebSocketServer::write(const uint64_t& id, const uint32_t& msgid,
+void WebSocketServer::write(const uint64_t& id,
    std::unique_ptr<Network::Socket_WritePayload> payload)
 {
    if (payload == nullptr) {
       return;
    }
 
-   auto msg = std::make_unique<PendingMessage>(id, msgid, std::move(payload));
+   auto msg = std::make_unique<PendingMessage>(id, std::move(payload));
    auto instance = getInstance();
    instance->msgQueue_.push_back(std::move(msg));
 }
@@ -614,7 +608,7 @@ void WebSocketServer::prepareWriteThread()
 
       Network::SerializedMessage ws_msg;
       ws_msg.construct(std::move(msg->payload),
-         statePtr->bip151Connection_.get(), msg->msgid);
+         statePtr->bip151Connection_.get());
 
       //push to write map
       writeToSocket(statePtr->wsiPtr_, ws_msg);

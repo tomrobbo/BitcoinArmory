@@ -35,6 +35,14 @@ using namespace std::chrono_literals;
 #define SCRATCHPAD_SIZE 4048
 
 namespace {
+   uint32_t readMessageId(const BinaryData& packet) {
+      if (!packet.empty()) {
+         return Network::WebSocketMessagePartial::readMessageId(packet);
+      }
+      return UINT32_MAX;
+   }
+
+   /////////////////////////////////////////////////////////////////////////////
    using namespace Armory::Codec::BDV;
 
    void txioToCapn(const TxIOPair& txio,
@@ -593,31 +601,18 @@ namespace {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-//BDV_Payload
+// BDV_Payload
 BDV_Payload::BDV_Payload(BinaryData packet, BdvPtr bdv,
    Types::BdvId id, const btc_pubkey_& key) :
-   packetData_(std::move(packet)), bdvPtr_(bdv), bdvID_(id), pubkey_(key)
+   messageId_{readMessageId(packet)}, packetData_(std::move(packet)),
+   bdvPtr_(bdv), bdvID_(id), pubkey_(key)
 {}
 
-///////////////////////////////////////////////////////////////////////////////
 uint32_t BDV_Payload::getMessageID() const
 {
-   if (messageID_ == UINT32_MAX) {
-      throw std::runtime_error("messageID is unset");
-   }
-   return messageID_;
+   return messageId_;
 }
 
-////
-void BDV_Payload::setMessageID(uint32_t msgId)
-{
-   if (messageID_ != UINT32_MAX) {
-      throw std::runtime_error("messageID is already set");
-   }
-   messageID_ = msgId;
-}
-
-///////////////////////////////////////////////////////////////////////////////
 uint64_t BDV_Payload::getBdvID() const
 {
    return bdvID_;
@@ -629,7 +624,7 @@ const btc_pubkey_& BDV_Payload::getPubkey() const
    return pubkey_;
 }
 
-///////////////////////////////////////////////////////////////////////////////
+////////
 const BinaryData& BDV_Payload::getData() const
 {
    return packetData_;
@@ -640,20 +635,19 @@ BinaryData&& BDV_Payload::moveData()
    return std::move(packetData_);
 }
 
-///////////////////////////////////////////////////////////////////////////////
+////////
 BdvPtr BDV_Payload::getBdvPtr() const
 {
    return bdvPtr_;
 }
 
-////
 BdvPtr&& BDV_Payload::moveBdvPtr()
 {
    return std::move(bdvPtr_);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-//BDV_Server_Object
+// BDV_Server_Object
 void BDV_Server_Object::setup()
 {
    started_.store(0, std::memory_order_relaxed);
@@ -825,7 +819,8 @@ void BDV_Server_Object::init()
    auto flat = capnp::messageToFlatArray(message);
    auto bytes = flat.asBytes();
    std::vector<uint8_t> replyRaw(bytes.begin(), bytes.end());
-   notifications_->push(std::make_unique<Network::WritePayload_Raw>(replyRaw));
+   notifications_->push(std::make_unique<Network::WritePayload_Raw>(
+      WEBSOCKET_CALLBACK_ID, replyRaw));
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1040,6 +1035,7 @@ void BDV_Server_Object::processNotification(
 
    notifications_->push(
       std::make_unique<Network::WritePayload_Capnp>(
+         WEBSOCKET_CALLBACK_ID,
          std::move(message), std::move(firstSegment)));
 }
 
@@ -1085,54 +1081,37 @@ Network::WebSocketMessagePartial BDV_Server_Object::preparePayload(
       return {};
    }
 
-   auto nextId = lastValidMessageId_ + 1;
-   if (!packet->getData().empty()) {
-      //grab and check the packet's message id
-      auto msgId = Network::WebSocketMessagePartial::readMessageId(
-         packet->getData());
-      if (msgId != UINT32_MAX) {
-         //get the PartialMessage object for this id
-         auto msgIter = messageMap_.find(msgId);
-         if (msgIter == messageMap_.end()) {
-            //create this PartialMessage if it's missing
-            msgIter = messageMap_.emplace(
-               msgId, Network::WebSocketMessagePartial()).first;
-         }
-         auto& msgRef = msgIter->second;
+   auto msgId = packet->getMessageID();
+   if (msgId != UINT32_MAX) {
+      //get the PartialMessage object for this id
+      auto msgIter = messageMap_.find(msgId);
+      if (msgIter == messageMap_.end()) {
+         //create this PartialMessage if it's missing
+         msgIter = messageMap_.emplace(
+            msgId, Network::WebSocketMessagePartial()).first;
+      }
+      auto& msgRef = msgIter->second;
 
-         //try to reconstruct the message
-         auto packetData = packet->moveData();
-         auto parsed = msgRef.parsePacket(packetData);
-         if (!parsed) {
-            //failed to reconstruct from this packet, this
-            //shouldn't happen anymore
-            LOGWARN << "failed to parse packet, reinjecting. " <<
-               "!This shouldn't happen anymore!";
+      //try to reconstruct the message
+      auto packetData = packet->moveData();
+      auto parsed = msgRef.parsePacket(packetData);
+      if (!parsed) {
+         //failed to reconstruct from this packet, this
+         //shouldn't happen anymore
+         LOGWARN << "failed to parse packet, reinjecting. " <<
+            "!This shouldn't happen anymore!";
+         return {};
+      }
 
-            return {};
-         }
-
-         //some verbose, this can be removed later
-         if (msgIter->second.isReady()) {
-            if (msgId >= lastValidMessageId_ + 10) {
-               LOGWARN << "completed a message that exceeds the counter by " <<
-                  msgId - lastValidMessageId_;
-            }
-
-            if (msgId != nextId) {
-               return {};
-            }
-         } else {
-            return {};
-         }
+      //some verbose, this can be removed later
+      if (!msgIter->second.isReady()) {
+         return {};
       }
    }
 
-   //grab the expected next message
-   auto msgIter = messageMap_.find(nextId);
-
-   //exit if we dont have this message id
-   if (msgIter == messageMap_.end()) {
+   //ensure we process messages in order
+   auto msgIter = messageMap_.begin();
+   if (msgIter == messageMap_.end() || msgIter->first != msgId) {
       return {};
    }
 
@@ -1147,11 +1126,8 @@ Network::WebSocketMessagePartial BDV_Server_Object::preparePayload(
    //clean up from message map
    messageMap_.erase(msgIter);
 
-   //update ids
-   lastValidMessageId_ = nextId;
-   packet->setMessageID(nextId);
-
-   //return the message to be processed
+   //track last valid id and return
+   lastValidMessageId_ = msgId;
    return msgObj;
 }
 
@@ -1539,12 +1515,15 @@ void Clients::parseStandAlonePayload(std::shared_ptr<BDV_Payload> payloadPtr)
          staticRequest, request.getMsgId(), this,
          payloadPtr->getBdvID(), payloadPtr->getPubkey());
       if (builderPtr != nullptr) {
-         WebSocketServer::write(payloadPtr->getBdvID(), 0,
+         WebSocketServer::write(payloadPtr->getBdvID(),
             std::make_unique<Network::WritePayload_Capnp>(
+               payloadPtr->getMessageID(),
                std::move(builderPtr), std::vector<uint8_t>{})
          );
       }
-   } catch (const std::runtime_error&) {}
+   } catch (const std::runtime_error& e) {
+      LOGDEBUG << "failed to parse msg with error: " << e.what();
+   }
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1560,7 +1539,7 @@ void Clients::messageParserThread()
 
       //sanity check
       if (payloadPtr == nullptr) {
-         LOGERR << "????????? empty payload";
+         LOGDEBUG << "[Clients::messageParserThread] null payload";
          continue;
       }
 
@@ -1575,12 +1554,8 @@ void Clients::messageParserThread()
       if (bdvPtr && !bdvPtr->packetProcess_threadLock_.compare_exchange_weak(
          zero, 1, std::memory_order_relaxed, std::memory_order_relaxed)) {
          //Failed to grab lock, there's already a thread processing a payload
-         //for this bdv. Insert the payload back into the queue. Another 
-         //thread will eventually pick it up and successfully grab the lock 
-         if (payloadPtr == nullptr) {
-            LOGERR << "!!!!!! empty payload at reinsertion";
-         }
-
+         //for this bdv. Insert the payload back into the queue. Another
+         //thread will eventually pick it up and successfully grab the lock
          packetQueue_.push_back(std::move(payloadPtr));
          continue;
       }
@@ -1599,20 +1574,17 @@ void Clients::messageParserThread()
 
       //check if the map has the next message
       {
-         auto msgIter = bdvPtr->messageMap_.find(
-            bdvPtr->lastValidMessageId_ + 1);
-         
-         if (msgIter != bdvPtr->messageMap_.end() &&
-            msgIter->second.isReady()) {
+         auto iter = bdvPtr->messageMap_.find(bdvPtr->lastValidMessageId_ + 1);
+         if (iter != bdvPtr->messageMap_.end() && iter->second.isReady()) {
             /*
             We have the next message and it is ready, push a packet
             with no data on the queue to assign this bdv a new processing
             thread.
 
             This is done because we don't want one bdv to hog a thread
-            constantly if it has a lot of queue up messages. It should
+            constantly if it has a lot of queued up messages. It should
             complete for a thread like all other bdv objects, regardless
-            of the its message queue depth.
+            of its message queue depth.
             */
             auto flagPacket = std::make_shared<BDV_Payload>(
                BinaryData{}, bdvPtr, payloadPtr->getBdvID(),
@@ -1627,7 +1599,7 @@ void Clients::messageParserThread()
       //write return value if any
       if (result != nullptr) {
          WebSocketServer::write(
-            payloadPtr->getBdvID(), payloadPtr->getMessageID(),
+            payloadPtr->getBdvID(),
             std::move(result)
          );
       }
@@ -1801,7 +1773,9 @@ std::unique_ptr<Network::Socket_WritePayload> Clients::processCommand(
             payload->getBdvID(), payload->getPubkey());
          if (builderPtr != nullptr) {
             return std::make_unique<Network::WritePayload_Capnp>(
-               std::move(builderPtr), std::vector<uint8_t>{});
+               payload->getMessageID(), std::move(builderPtr),
+               std::vector<uint8_t>{}
+            );
          }
          break;
       }
@@ -1820,7 +1794,8 @@ std::unique_ptr<Network::Socket_WritePayload> Clients::processCommand(
                auto flat = capnp::messageToFlatArray(*builder.builder);
                auto bytes = flat.asBytes();
                std::vector<uint8_t> firstSegment(bytes.begin(), bytes.end());
-               return std::make_unique<Network::WritePayload_Raw>(firstSegment);
+               return std::make_unique<Network::WritePayload_Raw>(
+                  payload->getMessageID(), firstSegment);
             } else {
                /*
                Message lives across multiple segments, we have to pass it to a
@@ -1828,6 +1803,7 @@ std::unique_ptr<Network::Socket_WritePayload> Clients::processCommand(
                first segment
                */
                return std::make_unique<Network::WritePayload_Capnp>(
+                  payload->getMessageID(),
                   std::move(builder.builder),
                   std::move(bdvPtr->getScratchPad())
                );
@@ -1942,7 +1918,7 @@ Callback::~Callback()
 void WS_Callback::push(std::unique_ptr<Network::Socket_WritePayload> payload)
 {
    //write to socket
-   WebSocketServer::write(bdvID_, WEBSOCKET_CALLBACK_ID, std::move(payload));
+   WebSocketServer::write(bdvID_, std::move(payload));
 }
 
 ///////////////////////////////////////////////////////////////////////////////

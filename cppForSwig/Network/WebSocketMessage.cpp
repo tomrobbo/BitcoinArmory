@@ -327,8 +327,9 @@ void SerializedMessage::construct(const BinaryDataRef& data,
 
 ///////////////////////////////////////////////////////////////////////////////
 void SerializedMessage::construct(std::unique_ptr<Socket_WritePayload> payload,
-   BIP151Connection* connPtr, uint32_t id)
+   BIP151Connection* connPtr)
 {
+   uint32_t id = payload->id;
    if (payload->isSingleSegment()) {
       std::vector<uint8_t> data;
       payload->serialize(data);
@@ -733,7 +734,7 @@ uint32_t WebSocketMessagePartial::readMessageId(const BinaryData& data)
       return UINT32_MAX;
    }
 
-   BinaryRefReader brr(data);
+   BinaryRefReader brr(data.getRef());
    brr.advance(4);
    return brr.get_uint32_t();
 }

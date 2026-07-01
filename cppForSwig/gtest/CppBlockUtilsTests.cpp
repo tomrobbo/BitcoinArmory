@@ -1711,7 +1711,7 @@ TEST_F(BlockUtilsBare, BlockXor)
    std::filesystem::remove(blk0dat_);
    std::filesystem::rename(xoredFilePath, blk0dat_);
 
-   //create xor file
+   //create xor file, this is where the xorkey sits
    {
       std::fstream xorFile;
       xorFile.open(blkdir_ / "blocks" / "xor.dat", std::ios::out | std::ios::binary);
@@ -1760,6 +1760,7 @@ TEST_F(BlockUtilsBare, BlockXor)
    auto getBal = [bdm](const BinaryData& scrAddr)->uint64_t
    { return DBTestUtils::getScrAddrBalance(scrAddr, bdm); };
 
+   //check balances
    EXPECT_EQ(getBal(TestChain::scrAddrA), 50 * COIN);
    EXPECT_EQ(getBal(TestChain::scrAddrB), 70 * COIN);
    EXPECT_EQ(getBal(TestChain::scrAddrC), 20 * COIN);
@@ -1771,6 +1772,10 @@ TEST_F(BlockUtilsBare, BlockXor)
    EXPECT_EQ(getBal(TestChain::lb1ScrAddrP2SH), 25 * COIN);
    EXPECT_EQ(getBal(TestChain::lb2ScrAddr), 30 * COIN);
    EXPECT_EQ(getBal(TestChain::lb2ScrAddrP2SH), 0 * COIN);
+
+   //pull a tx
+   auto tx = DBTestUtils::getTx(TestChain::hash43, bdm);
+   ASSERT_EQ(tx.getThisHash(), TestChain::hash43);
 
    //cleanup
    bdvPtr.reset();
