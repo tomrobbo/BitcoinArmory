@@ -56,6 +56,9 @@ namespace Armory
          uint32_t dbPort_ = UINT32_MAX;
          bool hasRun_ = false;
 
+         std::string rpcLogin_;
+         std::string rpcPass_;
+
       #ifdef _WIN32
          void* autoDbHandle_ = nullptr;
          void* autoSatoshiHandle_ = nullptr;

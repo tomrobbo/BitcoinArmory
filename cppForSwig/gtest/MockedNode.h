@@ -156,7 +156,7 @@ public:
    );
 
    //virtuals
-   void shutdown(void) override;
+   bool shutdown(void) override;
    Node::RpcState testConnection(void) override;
    bool canPoll(void) const override;
    void waitOnChainSync(std::function<void(void)>);

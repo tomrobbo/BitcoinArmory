@@ -962,8 +962,10 @@ NodeRPC_UnitTest::NodeRPC_UnitTest(
    primaryNode_(primaryNode), watcherNode_(watcherNode)
 {}
 
-void NodeRPC_UnitTest::shutdown()
-{}
+bool NodeRPC_UnitTest::shutdown()
+{
+   return true;
+}
 
 Node::RpcState NodeRPC_UnitTest::testConnection()
 {

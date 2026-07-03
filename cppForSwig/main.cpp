@@ -59,34 +59,9 @@ int main(int argc, char* argv[])
    }
 
    auto logFilePath = Config::Pathing::logFilePath(LOG_FILE_NAME).string();
-   std::cout << "logging in " << logFilePath << std::endl;
-   auto logLevel = Config::NetworkSettings::ephemeralPeers() ?
-      LogLvlWarn : LogLvlDebug;
-   STARTLOGGING(logFilePath, logLevel);
-   LOGENABLESTDOUT();
-
-   LOGINFO << "Running on " << Config::DBSettings::threadCount() << " threads";
-   LOGINFO << "Ram usage level: " << Config::DBSettings::ramUsage();
-
-   //init state
-   Config::DBSettings::setServiceType(SERVICE_WEBSOCKET);
-   BlockDataManagerThread bdmThread;
-
-   if (!Config::DBSettings::checkChain()) {
-      //check we can listen on this ip:port
-      if (Network::SimpleSocket::checkSocket(
-         "127.0.0.1", Config::NetworkSettings::dbPort())) {
-         LOGERR << "There is already a process listening on port " <<
-            Config::NetworkSettings::dbPort();
-         LOGERR << "ArmoryDB cannot start under these conditions. Shutting down!";
-         LOGERR << "Make sure to shutdown the conflicting process" <<
-            "before trying again (most likely another ArmoryDB instance)";
-         exit(-2);
-      }
-   }
-   LOGINFO << "datadir: " << Config::getDataDir().string();
-
+   STARTLOGGING(logFilePath, LogLvlDebug);
    if (Config::NetworkSettings::ephemeralPeers()) {
+      LOGDISABLESTDOUT();
       if (Config::NetworkSettings::oneWayAuth()) {
          LOGERR << "--ephemeral and --oneWayAuth are mutually exclusive for db";
          exit(-3);
@@ -104,6 +79,9 @@ int main(int argc, char* argv[])
    } else {
       //setup remote peers db, this will block the init process until
       //peers db is unlocked
+      LOGENABLESTDOUT();
+      LOGINFO << "logging in " << logFilePath;
+
       auto serverPeersFile = Config::getDataDir() / SERVER_AUTH_PEER_FILENAME;
       if (!FileUtils::pathExists(serverPeersFile, 0) &&
          !Config::NetworkSettings::ephemeralPeers()) {
@@ -131,6 +109,27 @@ int main(int argc, char* argv[])
          Config::NetworkSettings::oneWayAuth(), true};
       LOGINFO << "This is my key: " << myKey.toHumanReadable();
    }
+
+   LOGINFO << "Running on " << Config::DBSettings::threadCount() << " threads";
+   LOGINFO << "Ram usage level: " << Config::DBSettings::ramUsage();
+
+   //init state
+   Config::DBSettings::setServiceType(SERVICE_WEBSOCKET);
+   BlockDataManagerThread bdmThread;
+
+   if (!Config::DBSettings::checkChain()) {
+      //check we can listen on this ip:port
+      if (Network::SimpleSocket::checkSocket(
+         "127.0.0.1", Config::NetworkSettings::dbPort())) {
+         LOGERR << "There is already a process listening on port " <<
+            Config::NetworkSettings::dbPort();
+         LOGERR << "ArmoryDB cannot start under these conditions. Shutting down!";
+         LOGERR << "Make sure to shutdown the conflicting process" <<
+            "before trying again (most likely another ArmoryDB instance)";
+         exit(-2);
+      }
+   }
+   LOGINFO << "datadir: " << Config::getDataDir().string();
 
    //start blockchain service
    bdmThread.start(Config::DBSettings::initMode());

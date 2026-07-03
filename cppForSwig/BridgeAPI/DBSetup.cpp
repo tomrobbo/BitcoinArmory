@@ -23,10 +23,12 @@
 #include <Utils/ArmoryConfig.h>
 #include <Utils/FileUtils.h>
 #include <Utils/Cryptography.h>
+#include <Utils/JSON_codec.h>
 
 #include <Wallets/IOHeader.h>
 #include <Wallets/AuthorizedPeers.h>
 #include <AsyncClient.h>
+#include <Node/nodeRPC.h>
 
 using namespace Armory;
 using namespace Armory::Bridge;
@@ -200,39 +202,8 @@ namespace {
    }
 
    std::pair<bool, std::string> validateSatoshiBinary(
-      const std::filesystem::path& binPath)
-   {
-      /*
-      Run `bitcoin --version`, grab stdout.
-      Parse it for the version string.
-
-      popen version, invokes a shell, too wide net; prefer posix_spawn
-      */
-
-      if (!FileUtils::pathExists(binPath, 8)) {
-         return { false, std::format(
-            "{} is not an executable", binPath.string()) };
-      }
-
-      std::string command = binPath.string() + " --version";
-      FILE* readStream = popen(command.c_str(), "r");
-
-      std::string output;
-      char buffer[256];
-      while (fgets(buffer, 255, readStream) != nullptr) {
-         output.append(buffer);
-      }
-
-      pclose(readStream);
-      try {
-         return { true, getVersionStringFromOutput(output) };
-      } catch (const std::exception& e) {
-         return { false, e.what() };
-      }
-   }
-
-   std::pair<bool, std::string> validateSatoshiBinary_ps(
-      const std::filesystem::path& binPath)
+      const std::filesystem::path& binPath,
+      const std::filesystem::path& dataDir)
    {
       /*
       Run `bitcoin --version`, grab stdout.
@@ -245,13 +216,35 @@ namespace {
             "{} is not an executable", binPath.string()) };
       }
 
+      /***
+      bitcoind will fail to detect the datadir when ran from fork/execv.
+      We need to feed it the fully qualified datadir path.
+      bitcoind wants to create the wallets folder regardless of start
+      condition so pass it the correct datadir if we know it, or a
+      temp folder.
+      ***/
+      std::filesystem::path targetDir = dataDir;
+      if (dataDir.empty()) {
+         auto randomFragemnt = Cryptography::PRNG::fortuna.generateRandom(4);
+         targetDir = std::filesystem::temp_directory_path() / randomFragemnt.toHexStr();
+         std::filesystem::create_directory(targetDir);
+      }
+
+      if (!targetDir.is_absolute()) {
+         //is this a fully qualified path?
+         targetDir = std::filesystem::absolute(dataDir);
+      }
+      auto dataDirStr = std::format("--datadir={}", targetDir.string());
+
       //bitcoind --version
       auto binPathStr = binPath.string();
       char* argv[] = {
          //first arg has to be binary's path
          binPathStr.data(),
          //version arg
+         dataDirStr.data(),
          (char*)"--version"sv.data(),
+         (char*)"--disablewallet"sv.data(),
          //mandatory terminator
          (char*)nullptr
       };
@@ -273,7 +266,7 @@ namespace {
       if (result == 0 && pid != -1) {
          //read the pipe, with 2sec timeout
          struct pollfd pfd{ stdout_pipe[0], POLLIN };
-         if (poll(&pfd, 1, 2000) > 0) {
+         while (poll(&pfd, 1, 2000) > 0) {
             stdout_str.resize(1024);
             auto bytesread = read(stdout_pipe[0], stdout_str.data(), 1023);
             if (bytesread > 0) {
@@ -292,6 +285,10 @@ namespace {
       close(stdout_pipe[0]);
       close(stdout_pipe[1]);
       posix_spawn_file_actions_destroy(&ps_actions);
+
+      if (dataDir.empty()) {
+         std::filesystem::remove_all(targetDir);
+      }
 
       try {
          return { true, getVersionStringFromOutput(stdout_str) };
@@ -343,6 +340,8 @@ BdvPtr Armory::Bridge::setupClientConnection(
    const std::function<bool(const BinaryData&)>& presentPubKeyFunc,
    std::shared_ptr<RemoteCallback> cbPtr)
 {
+   LOGINFO << "connecting to ArmoryDB by IP";
+
    //sanity check
    if (peers == nullptr) {
       throw std::runtime_error("null peers db");
@@ -375,6 +374,8 @@ BdvPtr Armory::Bridge::setupClientConnection(
    const Wallets::PeerKey& peerObj,
    std::shared_ptr<RemoteCallback> cbPtr)
 {
+   LOGINFO << "connecting to ArmoryDB by peer";
+
    auto peerNames = peers->getPeerNameMap(peerObj.isOneWay());
    for (const auto& peerName : peerNames) {
       if (std::memcmp(peerObj.getKey().getPtr(),
@@ -417,7 +418,7 @@ std::filesystem::path Node::Core::findBinary()
    //look for bitcoind
    for (const auto& candidate : satoshiDirCandidates) {
       auto binPath = std::filesystem::path{candidate} / bitcoind;
-      if (validateSatoshiBinary(binPath).first == true) {
+      if (validateSatoshiBinary(binPath, {}).first == true) {
          return binPath;
       }
    }
@@ -487,7 +488,7 @@ Node::Core::DatadirState Node::Core::validateDatadir(
 Node::Core::BinaryState Node::Core::validateBinary(
    const std::filesystem::path& binPath)
 {
-   auto result = validateSatoshiBinary(binPath);
+   auto result = validateSatoshiBinary(binPath, {});
    if (result.first == false) {
       throw std::runtime_error(result.second);
    }
@@ -530,24 +531,61 @@ void AutomationContext::automateSatoshi()
    stdin can be replaced by a pipe via posix_spawn
    */
 
+   //randomize rpc log and pass
+   rpcLogin_ = Cryptography::PRNG::fortuna.generateRandom(16).toHexStr();
+   rpcPass_ = Cryptography::PRNG::fortuna.generateRandom(16).toHexStr();
+
    //setup argv
-   auto binpathStr = satoshiBin_.string();
-   auto datadirStr = std::format("--datadir={}", satoshiDir_.string());
+   auto binpathArg = satoshiBin_.string();
+   auto datadirArg = std::format("--datadir={}", satoshiDir_.string());
+   auto rpcUserArg = std::format("--rpcuser={}", rpcLogin_);
    char* argv[] = {
       //first arg has to be binary's path
-      binpathStr.data(),
+      binpathArg.data(),
       //satoshi datadir
-      datadirStr.data(),
+      datadirArg.data(),
+      //rpc user
+      rpcUserArg.data(),
+      //extra spots, for testnet and stdin manipulation
+      nullptr, nullptr,
       //null terminator
-      (char*)nullptr
+      nullptr
    };
 
-   //spawn the node
-   int result = posix_spawn(&autoSatoshiPid_, argv[0], nullptr, nullptr, argv, nullptr);
-   if (result != 0 || autoSatoshiPid_ == -1) {
-      throw std::runtime_error(
-         "failed to spawn bitcoind with error: " + std::string{strerror(errno)});
+   int lastIndex = 3;
+   if (Config::BitcoinSettings::getMode() == Config::NETWORK_MODE_TESTNET) {
+      argv[lastIndex++] = (char*)"--testnet"sv.data();
    }
+   //enable reading rpc pass from stdin
+   argv[lastIndex] = (char*)"--stdin --stdinrpcpass"sv.data();
+
+   //hijack core's stdin
+   int stdin_pipe[2];
+   if (pipe(stdin_pipe) != 0) {
+      throw std::runtime_error("failed to setup pipes");
+   }
+
+   //tell posix_spawn to substitute child's fd 2 (stdin) with our pipe
+   posix_spawn_file_actions_t ps_actions;
+   posix_spawn_file_actions_init(&ps_actions);
+   posix_spawn_file_actions_adddup2(&ps_actions, stdin_pipe[0], 2);
+
+   //spawn the node
+   int result = posix_spawn(&autoSatoshiPid_, argv[0], &ps_actions, nullptr, argv, nullptr);
+   if (result != 0 || autoSatoshiPid_ == -1) {
+      throw std::runtime_error(std::format(
+         "failed to spawn bitcoind with error: {}", strerror(errno)));
+   }
+
+   //feed it the rpc pass
+   if (write(stdin_pipe[1], rpcPass_.data(), rpcPass_.size()) != rpcPass_.size()) {
+      throw std::runtime_error("error while writing to Core's stdin");
+   }
+
+   //cleanup pipes and posix_spawn data
+   close(stdin_pipe[0]);
+   close(stdin_pipe[1]);
+   posix_spawn_file_actions_destroy(&ps_actions);
 }
 
 bool AutomationContext::isSatoshiRunning()
@@ -575,7 +613,7 @@ bool AutomationContext::isSatoshiRunning()
 void AutomationContext::cleanupSatoshi()
 {
    /*
-   if we started the core node, connect to it via RPC and shut it down
+   If we started the core node, connect to it via RPC and ask it to shutdown
    */
 
    //TODO: use callback to notify of shutdown progression
@@ -585,13 +623,21 @@ void AutomationContext::cleanupSatoshi()
       return;
    }
 
-   //connect to RPC
+   try {
+      //connect to RPC
+      auto rpc = Node::Core::RPC::Client(false, rpcLogin_, rpcPass_);
 
-   //request shutdown
+      //request shutdown
+      if (!rpc.shutdown()) {
+         LOGERR << "rpc shutdown request was rejected by node";
+      }
 
-   //wait on pid
-   int waitpid_status;
-   waitpid(autoSatoshiPid_, &waitpid_status, 0);
+      //wait on pid
+      int waitpid_status;
+      waitpid(autoSatoshiPid_, &waitpid_status, 0);
+   } catch (const JSON::Exception& e) {
+      LOGERR << "rpc shutdown request failed with error: " << e.what();
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -602,6 +648,26 @@ std::pair<std::shared_ptr<Wallets::AuthorizedPeers>, uint32_t>
 Bridge::spawnDb(const std::filesystem::path& satoshiPath,
    const std::filesystem::path& dbDir)
 {
+   /*
+   Use CreateProcess to spawn an instance of ArmoryDB, with tailored CLI args,
+   environment and ephemeral AEAD 2-way handshake.
+
+   Keys are prepared following these steps:
+      1. CppBridge creates an ephemeral key store and adds its public key to
+         the tailored envvar served to ArmoryDB via CreateProcess.
+      2. CppBridge creates a random key file in the datadir and locks it.
+         The handle is made inheritable and sent to ArmoryDB via envvars.
+      3. ArmoryDB detects automation via the --ephemeral CLI arg.
+         It creates an ephemeral key store, reads the caller pubkey from
+         envvars, adds it to the store and sets it as the store's master key.
+      4. ArmoryDB grabs the key file fd from envvars and writes its pubkey
+         there. This should work by virtue of opened handle sharing
+         rules set via CreateProcess and CreateFile.
+      5. CppBridge detects changes to the key file, grabs the pubkey and
+         injects it into its own store. The lock is released, the file closed
+         and removed.
+   */
+
    //sanity check
    if (autoDbHandle != INVALID_HANDLE_VALUE) {
       throw std::runtime_error("already have an instance of ArmoryDB");
@@ -768,6 +834,8 @@ Bridge::spawnDb(const std::filesystem::path& satoshiPath,
 #else
 void AutomationContext::automateDb()
 {
+   LOGINFO << "spawning ArmoryDB";
+
    /*
    Use posix_spawn, which wraps around fork() & execve() to spawn an instance
    of ArmoryDB, with tailored CLI args, environment and ephemeral AEAD 2-way
@@ -776,22 +844,13 @@ void AutomationContext::automateDb()
    Keys are prepared following these steps:
       1. CppBridge creates an ephemeral key store and adds its public key to
          the tailored envvar served to ArmoryDB via execve/posix_spawn.
-      2. CppBridge creates a random key file in the datadir and locks it.
-         The open file descriptor is sent to ArmoryDB via envvars as well.
+      2. CppBridge spawn ArmoryDB, replacing stdout by a pipe.
       3. ArmoryDB detects automation via the --ephemeral CLI arg.
          It creates an ephemeral key store, reads the caller pubkey from
          envvars, adds it to the store and sets it as the store's master key.
-      4. ArmoryDB grabs the key file fd from envvars and writes its pubkey
-         there. This should work by virtue of opened file descriptors sharing
-         rules for fork(), which posix_spawn() inherits.
+      4. ArmoryDB writes its public key to stdout.
       5. CppBridge detects changes to the key file, grabs the pubkey and
-         injects it into its own store. The lock is released, the file closed
-         and removed.
-
-   Note:
-      On Windows, we implement the same design but use WinAPI specific calls,
-      namely CreateProcess to spawn ArmoryDB and CreateFile to acquire a file
-      handle that is inheritable by the child, instead of a file descriptor.
+         injects it into its own store. The pipe is cleaned up.
    */
 
    //sanity check
@@ -819,8 +878,8 @@ void AutomationContext::automateDb()
    Armory::Config::NetworkSettings::setDbPort(portStr);
 
    //db paths
-   std::string dbDirStr{ "--dbdir=" + dbDir_.string() };
-   std::string dataDir{ "--datadir=" + Config::getDataDir().string() };
+   std::string dbDirArg{ "--dbdir=" + dbDir_.string() };
+   std::string dataDirArg{ "--datadir=" + Config::getDataDir().string() };
 
    //btc network
    std::string network;
@@ -854,88 +913,80 @@ void AutomationContext::automateDb()
       //ephemeral mode, custom port to listen to
       (char*)"--ephemeral"sv.data(), dbPortStr.data(),
       //datadir, dbdir
-      dataDir.data(), dbDirStr.data(),
+      dataDirArg.data(), dbDirArg.data(),
       //network & core settings
       network.data(), satoshiDir.data(), satoshiPort.data(), rpcPort.data(),
       (char*)nullptr
    };
 
-   //2. randomize a file name
-   std::filesystem::path keyFilePath{ Config::getDataDir() /
-      std::string{ "keyFile_" +
-         Cryptography::PRNG::fortuna.generateRandom(7).toHexStr()
-      }};
+   //2. replace ArmoryDB's stdout by a pipe
+   int stdout_pipe[2];
+   if (pipe(stdout_pipe) != 0) {
+      throw std::runtime_error("failed to setup pipes");
+   }
 
-   //open file and lock it
-   auto fd = open(
-      keyFilePath.c_str(),
-      O_CREAT | O_EXCL | O_RSYNC | O_RDWR,
-      S_IRWXU | S_IRUSR);
-   if (fd == -1) {
-      throw std::runtime_error("failed to create autodb key file");
-   }
-   if (flock(fd, LOCK_EX) != 0) {
-      throw std::runtime_error(
-         "failed to lock key file with error: " + std::string{strerror(errno)});
-   }
-   if (getFileSize(fd) != 0) {
-      throw std::runtime_error("autodb key file isnt fresh");
-   }
-   std::string keyFileFd{ "KEYFILE_FD=" + std::to_string(fd) };
+   //tell posix_spawn to substitute child's fd 1 (stdout) with our pipe
+   posix_spawn_file_actions_t ps_actions;
+   posix_spawn_file_actions_init(&ps_actions);
+   posix_spawn_file_actions_adddup2(&ps_actions, stdout_pipe[1], 1);
 
    //setup envp
+   auto rpcLogEnvArg = std::format("CORERPCLOG={}", rpcLogin_);
+   auto rpcPassEnvArg = std::format("CORERPCPASS={}", rpcPass_);
    char* envp[] = {
-      keyStr.data(), keyFileFd.data(),
+      keyStr.data(),
+      (char*)nullptr,
+      (char*)nullptr,
       (char*)nullptr
    };
 
+   if (automateNode_) {
+      //feed custom rpc log/pass via envvars if we automate the node too
+      envp[1] = rpcLogEnvArg.data();
+      envp[2] = rpcPassEnvArg.data();
+   }
+
    //spawn the db
-   int result = posix_spawn(&autoDbPid_, argv[0], nullptr, nullptr, argv, envp);
+   int result = posix_spawn(&autoDbPid_, argv[0], &ps_actions, nullptr, argv, envp);
    if (result != 0 || autoDbPid_ == -1) {
       throw std::runtime_error(
-         "failed to spawn armorydb with error: " + std::string{strerror(errno)});
+         "failed to spawn ArmoryDB with error: " + std::string{strerror(errno)});
    }
 
-   //5. wait for db to set pubkey in shared file
-   unsigned count = 0;
-   while (true) {
-      if (count >= 100) {
+   //5. wait for db to push pubkey through stdout
+   unsigned count = 0; bool gotKey = false;
+   struct pollfd pfd{ stdout_pipe[0], POLLIN };
+   while (poll(&pfd, 1, 500) > 0) {
+      //grab db pubkey from pipe
+      std::string stdOutStr; stdOutStr.resize(100);
+      auto bytesread = read(stdout_pipe[0], stdOutStr.data(), 99);
+      if (bytesread > 0) {
+         stdOutStr.resize(bytesread);
+         SecureBinaryData serverPubkey{READHEX(stdOutStr)};
+         std::string addr{"127.0.0.1:" + portStr};
+         try {
+            peers_->addPeer(serverPubkey, {addr}, {}, false);
+            gotKey = true;
+            break;
+         } catch (const Wallets::AuthorizedPeersException& e) {
+            std::cout << e.what();
+            continue;
+         }
+      }
+
+      if (count++ >= 10) {
          throw std::runtime_error("autodb handshake timeout");
       }
-
-      if (getFileSize(fd) != 33) {
-         //key file hasnt changed, keep polling
-         std::this_thread::sleep_for(100ms);
-         ++count;
-         continue;
-      }
-
-      //grab db pubkey from shared file
-      SecureBinaryData serverPubkey(33);
-      lseek(fd, 0, SEEK_SET);
-      if (read(fd, serverPubkey.getPtr(), 33) != 33) {
-         throw std::runtime_error("failed to read pubkey from key file");
-      }
-
-      //add db key to custom store
-      std::string addr{"127.0.0.1:" + portStr};
-      peers_->addPeer(serverPubkey, {addr}, {}, false);
-      break;
    }
 
-   //clean up the file
-   if (flock(fd, LOCK_UN) != 0) {
-      throw std::runtime_error("failed to unlock key file");
-   }
-   if (close(fd) != 0) {
-      throw std::runtime_error("failed to close key file");
+   if (!gotKey) {
+      throw std::runtime_error("failed to grab public key from db");
    }
 
-   if (!std::filesystem::remove(keyFilePath)) {
-      throw std::runtime_error("key file did not exists!");
-      //fs::remove returns false if there was nothing to remove.
-      //it will throw on failure.
-   }
+   //cleanup pipes and posix_spawn data
+   close(stdout_pipe[0]);
+   close(stdout_pipe[1]);
+   posix_spawn_file_actions_destroy(&ps_actions);
 }
 #endif
 

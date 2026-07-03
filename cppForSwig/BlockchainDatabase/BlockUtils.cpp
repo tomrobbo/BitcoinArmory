@@ -184,9 +184,9 @@ void BlockDataManager::openDatabase()
    try {
       iface_->openDatabases();
    } catch (const std::runtime_error &e) {
-      std::stringstream ss;
-      ss << "DB failed to open, reporting the following error: " << e.what();
-      throw std::runtime_error(ss.str());
+      throw std::runtime_error(std::format(
+         "DB failed to open, with error: {}", e.what()
+      ));
    }
 }
 

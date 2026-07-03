@@ -101,6 +101,7 @@ int WebSocketServer::callback(struct lws *wsi,
       case LWS_CALLBACK_ESTABLISHED:
       {
          auto bdid = Cryptography::PRNG::generateRandomStrong(8);
+         LOGINFO << "new connection: " << bdid.toHexStr();
          session_data->id_ = *(uint64_t*)bdid.getPtr();
 
          auto instance = WebSocketServer::getInstance();
@@ -115,6 +116,7 @@ int WebSocketServer::callback(struct lws *wsi,
       case LWS_CALLBACK_CLOSED:
       {
          auto instance = WebSocketServer::getInstance();
+         LOGINFO << std::format("connection closed: {:x}", session_data->id_);
          instance->clients_->unregisterBDV(session_data->id_);
          instance->eraseId(session_data->id_, wsi);
 
@@ -210,7 +212,8 @@ int WebSocketServer::callback(struct lws *wsi,
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-void WebSocketServer::initAuthPeers(const Wallets::IO::ReadOnlyFileParams& params)
+void WebSocketServer::initAuthPeers(
+   const Wallets::IO::ReadOnlyFileParams& params)
 {
    //init auth peer object
    if (!Config::NetworkSettings::ephemeralPeers()) {
@@ -258,16 +261,6 @@ void WebSocketServer::initAuthPeers(const Wallets::IO::ReadOnlyFileParams& param
          exit(-2);
       }
       CloseHandle(fHandle);
-   #else
-      //grab inherited key file descriptor
-      std::string fdStr{std::getenv("KEYFILE_FD")};
-      int fd = std::stoi(fdStr);
-
-      //write own pubkey to file
-      if (::write(fd, ownKey.pubkey, 33) != 33) {
-         LOGERR << "failed to set server autodb pubkey";
-         exit(-2);
-      }
    #endif
    }
 }
@@ -446,6 +439,25 @@ void WebSocketServer::webSocketService(int port)
 
    pendingWritesIter_ = pendingWrites_.begin();
    run_.store(1, std::memory_order_relaxed);
+
+#ifndef _WIN32
+   if (Config::NetworkSettings::ephemeralPeers()) {
+      /*
+      DB is automated by client, output pubkey to stdout to complete AEAD
+      key share.
+      We do this at this stage to make sure the server is ready and listening
+      before the client tries to connect.
+      */
+      const auto& ownKey = authorizedPeers_->getOwnPublicKey();
+      BinaryDataRef ownKeyRef(ownKey.pubkey, 33);
+      LOGINFO << "outputing ephemeral public key to stdout: " << ownKeyRef.toHexStr();
+      std::cout << ownKeyRef.toHexStr() << std::endl;
+
+      //set stdout to nullptr to suppress any further cout
+      std::cout.rdbuf(nullptr);
+   }
+#endif
+
    try {
       while (run_.load(std::memory_order_relaxed) != 0 && n >= 0) {
          n = lws_service(contextPtr_, 10000);

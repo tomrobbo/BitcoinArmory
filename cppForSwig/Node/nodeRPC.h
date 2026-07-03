@@ -154,7 +154,7 @@ namespace Node
          public:
             Iface(void);
             virtual ~Iface(void) = 0;
-            virtual void shutdown(void) = 0;
+            virtual bool shutdown(void) = 0;
 
             virtual int broadcastTx(const BinaryDataRef&, std::string&) = 0;
             virtual bool canPoll(void) const = 0;
@@ -174,7 +174,9 @@ namespace Node
          class Client : public Iface
          {
          private:
+            const bool canPoll_;
             std::string basicAuthString64_;
+            bool canResetAuthString_;
 
             RpcState previousState_ = RpcState::Disabled;
             std::condition_variable pollCondVar_;
@@ -182,7 +184,6 @@ namespace Node
             std::atomic<bool> run_ = { true };
 
          private:
-            std::string getAuthString(void);
             std::string queryRPC(JSON::Object&);
             std::string queryRPC(Armory::Network::HttpSocket&, JSON::Object&);
             void pollThread(void);
@@ -195,13 +196,13 @@ namespace Node
             bool updateChainStatus(void);
 
          public:
-            Client(void);
+            Client(bool, const std::string&, const std::string&);
             ~Client(void);
 
             bool setupConnection(Armory::Network::HttpSocket&);
 
             //virtuals
-            void shutdown(void) override;
+            bool shutdown(void) override;
             RpcState testConnection(void) override;
             bool canPoll(void) const override;
 

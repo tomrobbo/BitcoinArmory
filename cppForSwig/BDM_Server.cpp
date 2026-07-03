@@ -1418,7 +1418,7 @@ bool Clients::registerBDV(const std::string& magicWord, Types::BdvId bdvId)
 
    //add to BDVs map
    BDVs_.add(newBDV);
-   LOGINFO << "registered bdv: " << bdvId;
+   LOGINFO << std::format("registered bdv: {:x}", bdvId);
    return true;
 }
 
@@ -1464,7 +1464,7 @@ void Clients::unregisterBDVThread()
 
       //done
       bdvPtr.reset();
-      LOGINFO << "unregistered bdv: " << bdvId;
+      LOGINFO << std::format("unregistered bdv: {:x}", bdvId);
    }
 }
 

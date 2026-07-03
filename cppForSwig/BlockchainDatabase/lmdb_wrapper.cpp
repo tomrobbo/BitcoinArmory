@@ -38,7 +38,7 @@
 using namespace Armory;
 
 extern const std::vector<DB_SELECT> SUPERNODEDBS{
-   DB_SELECT::HEADERS, DB_SELECT::SCRADDR,
+   DB_SELECT::SCRADDR,
    DB_SELECT::ZERO_CONF
 };
 extern const std::vector<DB_SELECT> SUPERNODEHASHTABLES{
@@ -47,7 +47,7 @@ extern const std::vector<DB_SELECT> SUPERNODEHASHTABLES{
 };
 
 extern const std::vector<DB_SELECT> FULLNODEDBS{
-   DB_SELECT::HEADERS, DB_SELECT::SCRADDR,
+   DB_SELECT::SCRADDR,
    DB_SELECT::TXOUTS, DB_SELECT::TXINS,
    DB_SELECT::KNOWNHASHES, DB_SELECT::ZERO_CONF
 };
@@ -56,7 +56,7 @@ extern const std::vector<DB_SELECT> FULLNODEHASHTABLES{
 };
 
 extern const std::vector<DB_SELECT> BARENODEDBS{
-   DB_SELECT::HEADERS, DB_SELECT::SCRADDR,
+   DB_SELECT::SCRADDR,
    DB_SELECT::TXOUTS, DB_SELECT::TXINS,
    DB_SELECT::KNOWNHASHES, DB_SELECT::TXHINTS,
    DB_SELECT::ZERO_CONF
@@ -494,6 +494,35 @@ void LMDBBlockDatabase::openDatabases()
          break;
    }
 
+   //always open the HEADERS db first
+   try {
+      const auto& dbName = DatabaseContainer::getDbName(DB_SELECT::HEADERS);
+      dbMap_.emplace(DB_SELECT::HEADERS,
+         std::make_shared<DatabaseContainer>(
+            dbDir_, dbName, MAPSIZES.at(DB_SELECT::HEADERS)));
+      openDB(DB_SELECT::HEADERS);
+
+      //check/seed headers SDBI
+      auto sdbi = getStoredDBInfo(DB_SELECT::HEADERS, 0xFFFF);
+      if (Config::BitcoinSettings::getMagicBytes() != sdbi.magicBytes) {
+         LOGERR << "magic bytes mismatch, aborting";
+         exit(-2);
+      } else if (Config::DBSettings::getDbType() != sdbi.armoryType) {
+         LOGERR << "db type mismatch, aborting";
+         exit(-3);
+      }
+   } catch (const LmdbWrapperException&) {
+      //fresh db, seed headers sdbi
+      StoredDBInfo sdbi;
+      sdbi.armoryType = Config::DBSettings::getDbType();
+      sdbi.magicBytes = Config::BitcoinSettings::getMagicBytes();
+      auto tx = beginTransaction(DB_SELECT::HEADERS, LMDB::Mode::ReadWrite);
+      putStoredDBInfo(DB_SELECT::HEADERS, sdbi, 0xFFFF);
+   } catch (const LMDB::Exception& e) {
+      LOGERR << "Fatal error when opening HEADERS db: " << e.what();
+      exit(-4);
+   }
+
    //regular dbs
    for (const auto& currDb : dbSet) {
       const auto& dbName = DatabaseContainer::getDbName(currDb);
@@ -521,25 +550,6 @@ void LMDBBlockDatabase::openDatabases()
          db->open();
          emplaceResult.first->second[index] = db;
       }
-   }
-
-   //check/seed headers SDBI
-   try {
-      auto sdbi = getStoredDBInfo(DB_SELECT::HEADERS, 0xFFFF);
-      if (Config::BitcoinSettings::getMagicBytes() != sdbi.magicBytes) {
-         LOGERR << "magic bytes mismatch, aborting";
-         exit(-2);
-      } else if (Config::DBSettings::getDbType() != sdbi.armoryType) {
-         LOGERR << "db type mismatch, aborting";
-         exit(-3);
-      }
-   } catch (const LmdbWrapperException&) {
-      //fresh db, seed headers sdbi
-      StoredDBInfo sdbi;
-      sdbi.armoryType = Config::DBSettings::getDbType();
-      sdbi.magicBytes = Config::BitcoinSettings::getMagicBytes();
-      auto tx = beginTransaction(DB_SELECT::HEADERS, LMDB::Mode::ReadWrite);
-      putStoredDBInfo(DB_SELECT::HEADERS, sdbi, 0xFFFF);
    }
    dbIsOpen_ = true;
 }

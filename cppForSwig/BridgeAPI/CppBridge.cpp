@@ -1314,9 +1314,9 @@ void CppBridge::runAutomationContext(CallbackId cbId, MessageId refId)
          return;
       }
 
+      //run the context
       auto notifyFunc = getAutomationNotifFunc(this, cbId);
       try {
-         //run context
          if (!automationContext_->run(notifyFunc)) {
             //no automation, return
             reply.setSuccess(true);
@@ -1342,6 +1342,7 @@ void CppBridge::runAutomationContext(CallbackId cbId, MessageId refId)
          notifyFunc(AutomationStep::Done);
          reply.setSuccess(true);
       } catch (const std::exception& e) {
+         LOGWARN << "automation context failure: " << e.what();
          reply.setSuccess(false);
          reply.setError(e.what());
       }
