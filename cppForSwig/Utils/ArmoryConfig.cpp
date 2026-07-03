@@ -468,7 +468,7 @@ BdmInitMode DBSettings::initMode_ = BdmInitMode::RESUME;
 ARMORY_DB_TYPE DBSettings::armoryDbType_ = ARMORY_DB_TYPE::Bare;
 SOCKET_SERVICE DBSettings::service_ = SERVICE_WEBSOCKET;
 
-unsigned DBSettings::ramUsage_ = 4;
+unsigned DBSettings::ramUsage_ = DEFAULT_RAM_USAGE;
 unsigned DBSettings::threadCount_ = std::thread::hardware_concurrency();
 unsigned DBSettings::zcThreadCount_ = DEFAULT_ZCTHREAD_COUNT;
 unsigned DBSettings::rewindCount_ = 100;
@@ -692,7 +692,7 @@ void DBSettings::reset()
    armoryDbType_ = ARMORY_DB_TYPE::Full;
    service_ = SERVICE_WEBSOCKET;
 
-   ramUsage_ = 4;
+   ramUsage_ = DEFAULT_RAM_USAGE;
    threadCount_ = std::thread::hardware_concurrency();
    zcThreadCount_ = DEFAULT_ZCTHREAD_COUNT;
 
@@ -927,7 +927,16 @@ void NetworkSettings::createNodes()
          *(uint32_t*)magicBytes.getPtr(), true
       );
 
-      rpcNode_ = std::make_shared<Node::Core::RPC::Client>();
+      //is rpc log/pass set via envvars?
+      std::string rpcUser, rpcPass;
+      auto rpcUserPtr = std::getenv("CORERPCLOG");
+      auto rpcPassPtr = std::getenv("CORERPCPASS");
+      if (rpcUserPtr != nullptr && rpcPassPtr != nullptr) {
+         rpcUser = std::string{ rpcUserPtr };
+         rpcPass = std::string{ rpcPassPtr };
+      }
+      rpcNode_ = std::make_shared<Node::Core::RPC::Client>(
+         true, rpcUser, rpcPass);
    } else {
       auto primary = std::make_shared<NodeUnitTest>(
          *(uint32_t*)magicBytes.getPtr(), false

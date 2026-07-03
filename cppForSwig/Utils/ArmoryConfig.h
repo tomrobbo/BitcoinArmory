@@ -26,10 +26,8 @@
 #include "BitcoinSettings.h"
 
 #define DEFAULT_ZCTHREAD_COUNT 100
+#define DEFAULT_RAM_USAGE 8
 #define WEBSOCKET_PORT 7681
-
-#define BROADCAST_ID_LENGTH 6
-#define REGISTER_ID_LENGH 5
 
 namespace Node
 {
