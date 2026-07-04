@@ -11402,6 +11402,7 @@ TEST_F(BackupTests, BackupStrings_BIP32)
    std::filesystem::path newHomeDir("./newhomedir");
    FileUtils::removeDirectory(newHomeDir);
    std::filesystem::create_directory(newHomeDir);
+   unsigned restoreLookup = 10;
 
    std::filesystem::path filename;
    {
@@ -11415,7 +11416,7 @@ TEST_F(BackupTests, BackupStrings_BIP32)
             newHomeDir,
             Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newPass)},
             Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString(newCtrl)},
-            nullptr, 10});
+            nullptr, restoreLookup});
       ASSERT_NE(restoreResult.wltPtr, nullptr);
 
       std::unique_ptr<Seeds::WalletBackup> backupData2;
@@ -11442,8 +11443,42 @@ TEST_F(BackupTests, BackupStrings_BIP32)
       EXPECT_EQ(backupEasy16->getWalletId(), backupEasy16_2->getWalletId());
       filename = restoreResult.wltPtr->getDbFilename();
    }
-
    EXPECT_TRUE(compareWalletWithBackup(assetWlt, filename, newPass, newCtrl));
+
+   /* BIP32 wallets should extend both main and change paths on restore */
+   auto controlPassLbd = [&newCtrl](
+      const std::set<EncryptionKeyId>&)->Passphrase::Result
+   {
+      return { SecureBinaryData::fromString(newCtrl), true };
+   };
+   auto restoredWlt = AssetWallet::loadMainWalletFromFile(
+      IO::ReadOnlyFileParams{filename, controlPassLbd});
+   ASSERT_NE(restoredWlt, nullptr);
+
+   //iterate through address accounts
+   for (const auto& addrAccId : restoredWlt->getAccountIDs()) {
+      auto addrAccPtr = restoredWlt->getAccountForID(addrAccId);
+      ASSERT_NE(addrAccPtr, nullptr);
+
+      //sanity checks
+      ASSERT_GE(addrAccPtr->getAccountIdSet().size(), 2);
+      auto outerAccId = addrAccPtr->getOuterAccountID();
+      auto innerAccId = addrAccPtr->getInnerAccountID();
+      ASSERT_TRUE(outerAccId.isValid());
+      ASSERT_TRUE(innerAccId.isValid());
+      ASSERT_NE(outerAccId, innerAccId);
+
+      auto outerAcc = addrAccPtr->getAccountForID(outerAccId);
+      ASSERT_NE(outerAcc, nullptr);
+      auto innerAcc = addrAccPtr->getAccountForID(innerAccId);
+      ASSERT_NE(innerAcc, nullptr);
+
+      //both main and change asset accounts should be extended on restore
+      ASSERT_EQ(outerAcc->getAssetCount(), restoreLookup);
+      ASSERT_EQ(innerAcc->getAssetCount(), restoreLookup);
+   }
+
+   //cleanup
    FileUtils::removeDirectory(newHomeDir);
 }
 
