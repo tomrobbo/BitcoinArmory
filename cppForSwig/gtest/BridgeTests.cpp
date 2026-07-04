@@ -5133,7 +5133,7 @@ TEST_F(BridgeWalletTests, RestoreWallet_Legacy)
    EXPECT_TRUE(wltData.encrypted);
    EXPECT_FALSE(wltData.watchingOnly);
    EXPECT_EQ(wltData.addresses.size(), 1);
-   EXPECT_EQ(wltData.lookup, 500);
+   EXPECT_EQ(wltData.lookup, 501);
    EXPECT_EQ(wltData.kdfMemReq, 32);
 
    //request KDF unlock time
@@ -5242,9 +5242,10 @@ TEST_F(BridgeWalletTests, RestoreWallet_BIP32)
    const std::string passphrase{"privPassTest"};
 
    //restore the wallet
+   unsigned restoreLookup = 500;
    auto restoreData = restoreWallet(bridge_, lines, walletId,
       Codec::Bridge::WalletBackup::Type::ARMORY200_B,
-      passphrase, 0ms, 32, false, 500);
+      passphrase, 0ms, 32, false, restoreLookup);
 
    //get the wallet data & validate it
    auto wltData = getWalletData(bridge_, walletId, {});
@@ -5256,8 +5257,40 @@ TEST_F(BridgeWalletTests, RestoreWallet_BIP32)
    EXPECT_TRUE(wltData.encrypted);
    EXPECT_FALSE(wltData.watchingOnly);
    EXPECT_EQ(wltData.addresses.size(), 1);
-   EXPECT_EQ(wltData.lookup, 499);
+   EXPECT_EQ(wltData.lookup, restoreLookup);
    EXPECT_EQ(wltData.kdfMemReq, 32);
+
+   //open and inspect the wallet
+   {
+      auto restoredWlt = Wallets::AssetWallet::loadMainWalletFromFile(
+         Wallets::IO::ReadOnlyFileParams{wltData.path, nullptr});
+      ASSERT_NE(restoredWlt, nullptr);
+
+      //iterate through address accounts
+      for (const auto& addrAccId : restoredWlt->getAccountIDs()) {
+         auto addrAccPtr = restoredWlt->getAccountForID(addrAccId);
+         ASSERT_NE(addrAccPtr, nullptr);
+
+         //sanity checks
+         ASSERT_GE(addrAccPtr->getAccountIdSet().size(), 2);
+         auto outerAccId = addrAccPtr->getOuterAccountID();
+         auto innerAccId = addrAccPtr->getInnerAccountID();
+         ASSERT_TRUE(outerAccId.isValid());
+         ASSERT_TRUE(innerAccId.isValid());
+         ASSERT_NE(outerAccId, innerAccId);
+
+         auto outerAcc = addrAccPtr->getAccountForID(outerAccId);
+         ASSERT_NE(outerAcc, nullptr);
+         auto innerAcc = addrAccPtr->getAccountForID(innerAccId);
+         ASSERT_NE(innerAcc, nullptr);
+
+         //both main and change asset accounts should be extended on restore
+         EXPECT_EQ(outerAcc->getAssetCount(), restoreLookup);
+         EXPECT_EQ(innerAcc->getAssetCount(), restoreLookup);
+         EXPECT_EQ(outerAcc->getLastComputedIndex(), restoreLookup - 1);
+         EXPECT_EQ(innerAcc->getLastComputedIndex(), restoreLookup - 1);
+      }
+   }
 
    //grab backup strings via passphrase
    try {
@@ -5300,7 +5333,7 @@ TEST_F(BridgeWalletTests, RestoreWallet_LegacyWO)
    EXPECT_FALSE(wltData.encrypted);
    EXPECT_TRUE(wltData.watchingOnly);
    EXPECT_EQ(wltData.addresses.size(), 1);
-   EXPECT_EQ(wltData.lookup, 500);
+   EXPECT_EQ(wltData.lookup, 501);
    EXPECT_EQ(wltData.kdfMemReq, 0);
 
    //grab backup strings
@@ -12620,34 +12653,35 @@ TEST_F(BridgeChainDataTests, RestoreSynchronize)
    });
 
    //restore bip32 wlt
+   unsigned restoreLookup = 500;
    restoreWallet(bridge_, bip32Backup, bip32WltId,
       Codec::Bridge::WalletBackup::Type::ARMORY200_B,
-      "pass2", 50ms, 0, false, 500);
+      "pass2", 50ms, 0, false, restoreLookup);
 
    {
       bip32AccIdIter = bip32AccIds.begin();
       auto wltData1 = getWalletData(bridge_, bip32WltId, *bip32AccIdIter++);
       EXPECT_EQ(wltData1.useCount, 0);
-      EXPECT_EQ(wltData1.lookup, 499);
+      EXPECT_EQ(wltData1.lookup, restoreLookup);
 
       auto wltData2 = getWalletData(bridge_, bip32WltId, *bip32AccIdIter++);
       EXPECT_EQ(wltData2.useCount, -1);
-      EXPECT_EQ(wltData2.lookup, 499);
+      EXPECT_EQ(wltData2.lookup, restoreLookup);
 
       auto wltData3 = getWalletData(bridge_, bip32WltId, *bip32AccIdIter);
       EXPECT_EQ(wltData3.useCount, -1);
-      EXPECT_EQ(wltData3.lookup, 499);
+      EXPECT_EQ(wltData3.lookup, restoreLookup);
    }
 
    //restore legacy wlt
    restoreWallet(bridge_, legacyBackup, legacyWltId,
       Codec::Bridge::WalletBackup::Type::ARMORY200_A,
-      "pass3", 50ms, 0, false, 500);
+      "pass3", 50ms, 0, false, restoreLookup);
 
    {
       auto wltData4 = getWalletData(bridge_, legacyWltId, *legacyAccIds.begin());
       EXPECT_EQ(wltData4.useCount, 0);
-      EXPECT_EQ(wltData4.lookup, 500);
+      EXPECT_EQ(wltData4.lookup, restoreLookup + 1);
    }
 
    //go online
@@ -12667,7 +12701,7 @@ TEST_F(BridgeChainDataTests, RestoreSynchronize)
       EXPECT_EQ(wltBal[2], 1 * COIN);
       EXPECT_EQ(wltBal[3], 1);
       EXPECT_EQ(wltData1.useCount, 5);
-      EXPECT_EQ(wltData1.lookup, 499);
+      EXPECT_EQ(wltData1.lookup, restoreLookup);
       EXPECT_EQ(nextAddr1.addrStr, addrBip32Acc1Next.addrStr);
 
       wltBal = getWalletBalance(bridge_, bip32WltId, *bip32AccIdIter);
@@ -12679,7 +12713,7 @@ TEST_F(BridgeChainDataTests, RestoreSynchronize)
       EXPECT_EQ(wltBal[2], 2 * COIN);
       EXPECT_EQ(wltBal[3], 1);
       EXPECT_EQ(wltData2.useCount, 3);
-      EXPECT_EQ(wltData2.lookup, 499);
+      EXPECT_EQ(wltData2.lookup, restoreLookup);
       EXPECT_EQ(nextAddr2.addrStr, addrBip32Acc2Next.addrStr);
 
       wltBal = getWalletBalance(bridge_, bip32WltId, *bip32AccIdIter);
@@ -12691,7 +12725,7 @@ TEST_F(BridgeChainDataTests, RestoreSynchronize)
       EXPECT_EQ(wltBal[2], 3 * COIN);
       EXPECT_EQ(wltBal[3], 1);
       EXPECT_EQ(wltData3.useCount, 7);
-      EXPECT_EQ(wltData3.lookup, 499);
+      EXPECT_EQ(wltData3.lookup, restoreLookup);
       EXPECT_EQ(nextAddr3.addrStr, addrBip32Acc3Next.addrStr);
 
       wltBal = getWalletBalance(bridge_, legacyWltId, *legacyAccIds.begin());
@@ -12703,7 +12737,7 @@ TEST_F(BridgeChainDataTests, RestoreSynchronize)
       EXPECT_EQ(wltBal[2], 4 * COIN);
       EXPECT_EQ(wltBal[3], 1);
       EXPECT_EQ(wltData4.useCount, 4);
-      EXPECT_EQ(wltData4.lookup, 500);
+      EXPECT_EQ(wltData4.lookup, restoreLookup + 1);
       EXPECT_EQ(nextAddr4.addrStr, addrLegacyNext.addrStr);
 
       //check legacy wallet address type

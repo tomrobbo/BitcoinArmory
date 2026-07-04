@@ -1954,13 +1954,14 @@ void CppBridge::restoreWallet(
          } else {
             //we dont have an existing wallet to merge into the new one,
             //extend the address chain for some baseline count
-            progFunc(std::make_unique<Wallets::Progress::ExtendChain>(500));
+            unsigned lookup = 500;
+            progFunc(std::make_unique<Wallets::Progress::ExtendChain>(lookup));
             if (isWO) {
-               restoreResult.wltPtr->extendPublicChain(499);
+               restoreResult.wltPtr->extendPublicChain(lookup);
             } else {
                auto lock = restoreResult.wltPtr->lockDecryptedContainer(
                   params.setPrivPassObj.getUnlockFunc());
-               restoreResult.wltPtr->extendPrivateChainToIndex(499);
+               restoreResult.wltPtr->extendPrivateChain(lookup);
             }
             restoreResult.wltPtr.reset();
          }

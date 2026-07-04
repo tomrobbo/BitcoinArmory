@@ -11474,8 +11474,10 @@ TEST_F(BackupTests, BackupStrings_BIP32)
       ASSERT_NE(innerAcc, nullptr);
 
       //both main and change asset accounts should be extended on restore
-      ASSERT_EQ(outerAcc->getAssetCount(), restoreLookup);
-      ASSERT_EQ(innerAcc->getAssetCount(), restoreLookup);
+      EXPECT_EQ(outerAcc->getAssetCount(), restoreLookup);
+      EXPECT_EQ(innerAcc->getAssetCount(), restoreLookup);
+      EXPECT_EQ(outerAcc->getLastComputedIndex(), restoreLookup - 1);
+      EXPECT_EQ(innerAcc->getLastComputedIndex(), restoreLookup - 1);
    }
 
    //cleanup
