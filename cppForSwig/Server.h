@@ -153,6 +153,7 @@ private:
 
    //default to 2-way auth
    bool oneWayAuth_ = false;
+   bool async_ = false;
 
 public:
    void writeToSocket(struct lws*, Armory::Network::SerializedMessage&);

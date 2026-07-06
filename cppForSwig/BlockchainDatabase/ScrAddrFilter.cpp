@@ -216,7 +216,11 @@ void ScrAddrFilter::mergeAddresses(AddrMap addrMap, bool updateMerkleRoot)
 Hash32 ScrAddrFilter::headerHashToScanFrom()
 {
    auto sdbi = getSDBI();
-   if (!merkleRoot_.valid() || !sdbi.metaHash.valid()) {
+   LOGDEBUG << "address merkle root: " << merkleRoot_.toHexStr();
+   LOGDEBUG << "in sdbi: " << sdbi.metaHash.toHexStr();
+   LOGDEBUG << "top scanned hash " << sdbi.topScannedBlkHash.toHexStr();
+
+   if (!sdbi.metaHash.valid() || merkleRoot_ != sdbi.metaHash) {
       merkleRoot_ = computeMerkleRoot();
       sdbi.metaHash = merkleRoot_;
       auto tx = lmdb_->beginTransaction(DB_SELECT::SCRADDR, LMDB::Mode::ReadWrite);
@@ -257,6 +261,8 @@ void ScrAddrFilter::updateAddressMerkle()
 
 void ScrAddrFilter::updateScannedHash(const Hash32& hash)
 {
+   LOGDEBUG << "updating top scanned hash to " << hash.toHexStr();
+
    auto tx = lmdb_->beginTransaction(DB_SELECT::SCRADDR, LMDB::Mode::ReadWrite);
    auto sdbi = getSDBI();
    sdbi.topScannedBlkHash = hash;

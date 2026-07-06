@@ -268,6 +268,9 @@ bool Builder::init()
    loadBlockHeadersFromDB(progress_);
 
    LOGINFO << "organizing chain";
+   if (progress_) {
+      progress_(BDMPhase_OrganizingChain, 0, UINT32_MAX, 0);
+   }
    blockchain_->organize(true, false);
 
    TIMER_START("updateblocksindb");

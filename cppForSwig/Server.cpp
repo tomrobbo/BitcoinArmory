@@ -116,6 +116,9 @@ int WebSocketServer::callback(struct lws *wsi,
       case LWS_CALLBACK_CLOSED:
       {
          auto instance = WebSocketServer::getInstance();
+         if (instance == nullptr) {
+            return 0;
+         }
          LOGINFO << std::format("connection closed: {:x}", session_data->id_);
          instance->clients_->unregisterBDV(session_data->id_);
          instance->eraseId(session_data->id_, wsi);
@@ -333,14 +336,18 @@ void WebSocketServer::start(std::shared_ptr<BlockDataManager> bdm, bool async)
    if (async) {
       auto loopthr = [instance, port](void)->void
       {
+         instance->async_ = true;
          instance->webSocketService(port);
+         instance_.store(nullptr, std::memory_order_relaxed);
       };
       auto fut = instance->isReadyProm_.get_future();
       instance->threads_.push_back(std::thread(loopthr));
       fut.get();
-      return;
+   } else {
+      instance->webSocketService(port);
+      instance_.store(nullptr, std::memory_order_relaxed);
+      delete instance;
    }
-   instance->webSocketService(port);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -351,12 +358,10 @@ void WebSocketServer::shutdown()
       return;
    }
 
-   auto ptr = instance_.load(std::memory_order_relaxed);
-   if (ptr == nullptr) {
+   auto instance = instance_.load(std::memory_order_relaxed);
+   if (instance == nullptr) {
       return;
    }
-
-   auto instance = getInstance();
    if (instance->run_.load(std::memory_order_relaxed) == 0) {
       return;
    }
@@ -374,10 +379,12 @@ void WebSocketServer::shutdown()
          thr.join();
       }
    }
-
    instance->threads_.clear();
-   instance_.store(nullptr, std::memory_order_relaxed);
-   delete instance;
+
+   if (instance->async_) {
+      while (instance_.load(std::memory_order_relaxed) != nullptr);
+      delete instance;
+   }
 
    try {
       shutdownPromise_.set_value(true);
@@ -757,6 +764,9 @@ void WebSocketServer::updateWriteMap()
 bool WebSocketServer::isMasterKey(const btc_pubkey& pubkey)
 {
    auto instance = getInstance();
+   if (instance == nullptr) {
+      return false;
+   }
    if (instance->authorizedPeers_ == nullptr) {
       return false;
    }
