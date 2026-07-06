@@ -1336,7 +1336,7 @@ void CppBridge::runAutomationContext(CallbackId cbId, MessageId refId)
          if (bdvPtr_ == nullptr) {
             throw std::runtime_error("automatedDb connection failed");
          }
-         wltManager_->setBdvPtr(bdvPtr_);
+         wltManager_->setBdvPtr(bdvPtr_, true);
 
          //reply to caller
          notifyFunc(AutomationStep::Done);

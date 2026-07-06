@@ -173,6 +173,7 @@ namespace AsyncClient
 
       void registerWithDB(const std::string&);
       void unregisterFromDB(void);
+      void start(void);
       void shutdown(void);
       void shutdownNode(void);
 

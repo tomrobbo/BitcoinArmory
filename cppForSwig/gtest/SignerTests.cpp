@@ -311,6 +311,7 @@ TEST_F(SignerTest, Signer_Test)
    initBDM();
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    auto bdm = theBDMt_->bdm();
    auto bdvID = DBTestUtils::registerBDV(
       clients_, Config::BitcoinSettings::getMagicBytes());
@@ -383,6 +384,7 @@ TEST_F(SignerTest, SpendTest_SizeEstimates)
    initBDM();
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    auto bdvID = DBTestUtils::registerBDV(
       clients_, Config::BitcoinSettings::getMagicBytes());
 
@@ -744,6 +746,7 @@ TEST_F(SignerTest, SpendTest_P2WPKH)
    initBDM();
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    auto bdm = theBDMt_->bdm();
    auto bdvID = DBTestUtils::registerBDV(
       clients_, Config::BitcoinSettings::getMagicBytes());
@@ -977,6 +980,7 @@ TEST_F(SignerTest, SpendTest_MixedInputTypes)
    initBDM();
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    auto bdm = theBDMt_->bdm();
    auto bdvID = DBTestUtils::registerBDV(
       clients_, Config::BitcoinSettings::getMagicBytes());
@@ -1224,6 +1228,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_1of3)
    initBDM();
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    auto bdm = theBDMt_->bdm();
    auto bdvID = DBTestUtils::registerBDV(
       clients_, Config::BitcoinSettings::getMagicBytes());
@@ -1493,6 +1498,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_2of3_NativeP2WSH)
    initBDM();
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    auto bdm = theBDMt_->bdm();
    auto bdvID = DBTestUtils::registerBDV(
       clients_, Config::BitcoinSettings::getMagicBytes());
@@ -1863,6 +1869,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs)
    initBDM();
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    auto bdm = theBDMt_->bdm();
    auto bdvID = DBTestUtils::registerBDV(
       clients_, Config::BitcoinSettings::getMagicBytes());
@@ -2131,6 +2138,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs_Strings)
    initBDM();
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    auto bdm = theBDMt_->bdm();
    auto bdvID = DBTestUtils::registerBDV(
       clients_, Config::BitcoinSettings::getMagicBytes());
@@ -2398,6 +2406,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_DifferentInputs_StringsLegacy)
    initBDM();
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    auto bdm = theBDMt_->bdm();
    auto bdvID = DBTestUtils::registerBDV(
       clients_, Config::BitcoinSettings::getMagicBytes());
@@ -2682,6 +2691,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning)
    initBDM();
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    auto bdm = theBDMt_->bdm();
    auto bdvID = DBTestUtils::registerBDV(
       clients_, Config::BitcoinSettings::getMagicBytes());
@@ -2979,6 +2989,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning_GetUnsignedTx)
    initBDM();
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    auto bdm = theBDMt_->bdm();
    auto bdvID = DBTestUtils::registerBDV(
       clients_, Config::BitcoinSettings::getMagicBytes());
@@ -3318,6 +3329,7 @@ TEST_F(SignerTest, SpendTest_MultipleSigners_ParallelSigning_GetUnsignedTx_Neste
    initBDM();
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    auto bdm = theBDMt_->bdm();
    auto bdvID = DBTestUtils::registerBDV(
       clients_, Config::BitcoinSettings::getMagicBytes());
@@ -3710,6 +3722,7 @@ TEST_F(SignerTest, GetUnsignedTxId)
    initBDM();
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    auto bdm = theBDMt_->bdm();
    auto bdvID = DBTestUtils::registerBDV(
       clients_, Config::BitcoinSettings::getMagicBytes());
@@ -4062,6 +4075,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2WPKH)
    initBDM();
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    auto bdm = theBDMt_->bdm();
    auto bdvID = DBTestUtils::registerBDV(
       clients_, Config::BitcoinSettings::getMagicBytes());
@@ -4306,6 +4320,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2WPKH_WOResolution_fromWOCopy)
    initBDM();
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    auto bdm = theBDMt_->bdm();
    auto bdvID = DBTestUtils::registerBDV(
       clients_, Config::BitcoinSettings::getMagicBytes());
@@ -4584,6 +4599,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2WPKH_WOResolution_fromXPub)
    initBDM();
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    auto bdm = theBDMt_->bdm();
    auto bdvID = DBTestUtils::registerBDV(
       clients_, Config::BitcoinSettings::getMagicBytes());
@@ -4837,6 +4853,7 @@ TEST_F(SignerTest, Wallet_SpendTest_Nested_P2PK)
    initBDM();
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    auto bdm = theBDMt_->bdm();
    auto bdvID = DBTestUtils::registerBDV(
       clients_, Config::BitcoinSettings::getMagicBytes());
@@ -5049,6 +5066,7 @@ TEST_F(SignerTest, SpendTest_FromAccount_Reload)
    initBDM();
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    auto bdm = theBDMt_->bdm();
    auto bdvID = DBTestUtils::registerBDV(
       clients_, Config::BitcoinSettings::getMagicBytes());
@@ -5394,6 +5412,7 @@ TEST_F(SignerTest, SpendTest_BIP32_Accounts)
    initBDM();
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    auto bdm = theBDMt_->bdm();
    auto bdvID = DBTestUtils::registerBDV(
       clients_, Config::BitcoinSettings::getMagicBytes());
@@ -5655,6 +5674,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Armory135)
    initBDM();
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    auto bdm = theBDMt_->bdm();
    auto bdvID = DBTestUtils::registerBDV(
       clients_, Config::BitcoinSettings::getMagicBytes());
@@ -5882,6 +5902,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_BIP32)
    initBDM();
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    auto bdm = theBDMt_->bdm();
    auto bdvID = DBTestUtils::registerBDV(
       clients_, Config::BitcoinSettings::getMagicBytes());
@@ -6110,6 +6131,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_Salted)
    initBDM();
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    auto bdm = theBDMt_->bdm();
    auto bdvID = DBTestUtils::registerBDV(
       clients_, Config::BitcoinSettings::getMagicBytes());
@@ -6370,6 +6392,7 @@ TEST_F(SignerTest, SpendTest_FromExtendedAddress_ECDH)
 
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    auto bdm = theBDMt_->bdm();
    auto bdvID = DBTestUtils::registerBDV(
       clients_, Config::BitcoinSettings::getMagicBytes());
@@ -6624,6 +6647,7 @@ TEST_F(SignerTest, SpendTest_InjectSignature)
    initBDM();
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    auto bdm = theBDMt_->bdm();
    auto bdvID = DBTestUtils::registerBDV(
       clients_, Config::BitcoinSettings::getMagicBytes());
@@ -6969,6 +6993,7 @@ TEST_F(SignerTest, SpendTest_InjectSignature_Multisig)
    initBDM();
    clients_->init();
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    auto bdm = theBDMt_->bdm();
    auto bdvID = DBTestUtils::registerBDV(
       clients_, Config::BitcoinSettings::getMagicBytes());

@@ -52,6 +52,11 @@ protected:
       return bdm_->isRunning();
    }
 
+   bool bdmIsReady() const override
+   {
+      return bdm_->isReady();
+   }
+
    Hash32 applyBlockRangeToDB(
       uint32_t startBlock, const std::vector<std::string>& wltIDs,
       bool reportProgress) override
@@ -64,7 +69,7 @@ protected:
          }
          auto notifPtr = std::make_unique<BDV_Notification_Progress>(
             phase, prog, time, numericProgress, wltIDs);
-         bdm_->notificationStack_.push_back(std::move(notifPtr));
+         bdm_->notificationStack.push_back(std::move(notifPtr));
       };
       auto result = bdm_->applyBlockRangeToDB(progress, startBlock, *this);
       if (!result.valid()) {
@@ -75,7 +80,7 @@ protected:
             BDV_NOTIF_BROADCAST, BDM_FATAL_ERROR_CODE, BinaryData{},
             std::string{"fatal error while scanning"}
          );
-         bdm_->notificationStack_.push_back(std::move(notifPtr));
+         bdm_->notificationStack.push_back(std::move(notifPtr));
       }
       return result;
    }
@@ -96,31 +101,29 @@ protected:
 BlockDataManager::BlockDataManager(std::function<bool(void)> shutdownLbd) :
    shutdownLbd_(shutdownLbd)
 {
+   BDMstate_.store((int)BDMState::Uninitialized, std::memory_order_relaxed);
    blockchain_ = std::make_shared<Blockchain>(
       Config::BitcoinSettings::getGenesisBlockHash());
    blockchainData_ = std::make_shared<BlockchainData>(blockchain_);
    blockFiles_ = std::make_shared<BlockFiles>(Config::Pathing::blkFilePath());
    iface_ = new LMDBBlockDatabase(Config::Pathing::dbDir());
    nodeStatusPollMutex_ = std::make_shared<std::mutex>();
+   startPromise_ = std::make_unique<std::promise<bool>>();
 
    try {
-      openDatabase();
-
-      processNode_ = Config::NetworkSettings::bitcoinNodes().first;
-      watchNode_ = Config::NetworkSettings::bitcoinNodes().second;
-      nodeRPC_ = Config::NetworkSettings::rpcNode();
-      if (processNode_ == nullptr) {
+      processNode = Config::NetworkSettings::bitcoinNodes().first;
+      watchNode = Config::NetworkSettings::bitcoinNodes().second;
+      nodeRPC = Config::NetworkSettings::rpcNode();
+      if (processNode == nullptr) {
          throw DbErrorMsg("invalid node type in bdmConfig");
       }
 
       zeroConfCont_ = std::make_shared<ZeroConf::ZeroConfContainer>(
-         iface_, blockchain_, blockchainData_, processNode_,
+         iface_, blockchain_, blockchainData_, processNode,
          Config::DBSettings::zcThreadCount());
-      zeroConfCont_->setWatcherNode(watchNode_);
+      zeroConfCont_->setWatcherNode(watchNode);
 
       scrAddrData_ = std::make_shared<BDM_ScrAddrFilter>(this);
-   } catch (const std::exception& e) {
-      std::cout << "db open error: " << e.what() << std::endl;
    } catch (...) {
       exceptPtr_ = std::current_exception();
    }
@@ -137,8 +140,8 @@ void BlockDataManager::cleanup()
    zeroConfCont_.reset();
    blockFiles_.reset();
    dbBuilder_.reset();
-   processNode_.reset();
-   watchNode_.reset();
+   processNode.reset();
+   watchNode.reset();
    scrAddrData_.reset();
 
    if (iface_ != nullptr) {
@@ -148,16 +151,33 @@ void BlockDataManager::cleanup()
    iface_ = nullptr;
 }
 
+////////
+void BlockDataManager::signalStart(bool success)
+{
+   try {
+      startPromise_->set_value(success);
+   } catch (const std::future_error&) {
+      //promise already set, nothing to do
+   }
+}
+
+bool BlockDataManager::waitOnStartSignal()
+{
+   auto fut = startPromise_->get_future();
+   return fut.get();
+}
+
+////////
 void BlockDataManager::shutdown()
 {
    disableZeroConf();
-   notificationStack_.terminate();
+   notificationStack.terminate();
 
-   if (processNode_) {
-      processNode_->shutdown();
+   if (processNode) {
+      processNode->shutdown();
    }
-   if (watchNode_) {
-      watchNode_->shutdown();
+   if (watchNode) {
+      watchNode->shutdown();
    }
    if (scrAddrData_) {
       scrAddrData_->shutdown();
@@ -180,14 +200,7 @@ void BlockDataManager::openDatabase()
       LOGERR << "ERROR: Genesis Block Hash not set!";
       throw std::runtime_error("ERROR: Genesis Block Hash not set!");
    }
-
-   try {
-      iface_->openDatabases();
-   } catch (const std::runtime_error &e) {
-      throw std::runtime_error(std::format(
-         "DB failed to open, with error: {}", e.what()
-      ));
-   }
+   iface_->openDatabases();
 }
 
 void BlockDataManager::resetDatabases(BdmInitMode mode)
@@ -201,7 +214,12 @@ void BlockDataManager::resetDatabases(BdmInitMode mode)
       case BdmInitMode::RESCAN:
       {
          iface_->resetHistoryDatabases();
-         scrAddrData_->updateScannedHash(Hash32{});
+         try {
+            scrAddrData_->updateScannedHash(Hash32{});
+         } catch (const LmdbWrapperException&) {
+            //no addresses yet in the filter, reset it entirely
+            scrAddrData_->resetSDBI();
+         }
          break;
       }
 
@@ -231,7 +249,7 @@ bool BlockDataManager::loadDiskState(const ProgressCallback &progress)
    std::promise<bool> readyProm;
    scrAddrData_->start(readyProm.get_future());
 
-   BDMstate_ = BDMState::Initializing;
+   BDMstate_.store((int)BDMState::Initializing, std::memory_order_relaxed);
    dbBuilder_ = std::make_shared<Database::Builder>(*this, progress);
    if (!dbBuilder_->init()) {
       //fatal error in db startup, terminate bdm
@@ -243,7 +261,7 @@ bool BlockDataManager::loadDiskState(const ProgressCallback &progress)
       checkTransactionCount_ = dbBuilder_->getCheckedTxCount();
    }
 
-   BDMstate_ = BDMState::Ready;
+   BDMstate_.store((int)BDMState::Ready, std::memory_order_relaxed);
    readyProm.set_value(true);
    LOGINFO << "BDM is ready";
    return true;
@@ -314,34 +332,34 @@ void BlockDataManager::disableZeroConf()
 ////////
 std::shared_ptr<Node::Status> BlockDataManager::getNodeStatus() const
 {
-   if (processNode_ == nullptr) {
+   if (processNode == nullptr) {
       return nullptr;
    }
 
    auto nss = std::make_shared<Node::Status>();
-   if (processNode_->connected()) {
+   if (processNode->connected()) {
       nss->state = Node::NodeState::Online;
    }
 
-   if (processNode_->isSegWit()) {
+   if (processNode->isSegWit()) {
       nss->segWitEnabled = true;
    }
 
-   if (nodeRPC_ == nullptr) {
+   if (nodeRPC == nullptr) {
       return nss;
    }
 
-   nss->rpcState = nodeRPC_->testConnection();
+   nss->rpcState = nodeRPC->testConnection();
    if (nss->rpcState != Node::RpcState::Online) {
       pollNodeStatus();
    }
-   nss->chainStatus = nodeRPC_->getChainStatus();
+   nss->chainStatus = nodeRPC->getChainStatus();
    return nss;
 }
 
 void BlockDataManager::pollNodeStatus() const
 {
-   if (!nodeRPC_->canPoll()) {
+   if (!nodeRPC->canPoll()) {
       return;
    }
    std::unique_lock<std::mutex> lock(*nodeStatusPollMutex_, std::defer_lock);
@@ -352,7 +370,7 @@ void BlockDataManager::pollNodeStatus() const
 
    auto poll_thread = [this](void)->void
    {
-      auto nodeRPC = this->nodeRPC_;
+      auto nodeRPC = this->nodeRPC;
       auto mutexPtr = this->nodeStatusPollMutex_;
       std::unique_lock<std::mutex> lock(*mutexPtr);
 
@@ -377,32 +395,24 @@ void BlockDataManager::blockUntilReady() const
 {
    while (true) {
       try {
-         isReadyFuture_.wait();
+         isReadyFuture.wait();
          return;
       } catch (const std::future_error&) {
-         std::this_thread::sleep_for(1s);
+         std::this_thread::sleep_for(100ms);
       }
    }
 }
 
 bool BlockDataManager::isReady() const
 {
-   bool isready = false;
-
-   while (true) {
-      try {
-         isready = isReadyFuture_.wait_for(0s) == std::future_status::ready;
-         break;
-      } catch (const std::future_error&) {
-         std::this_thread::sleep_for(1s);
-      }
-   }
-   return isready;
+   return (BDMState)BDMstate_.load(std::memory_order_relaxed) ==
+      BDMState::Ready;
 }
 
 bool BlockDataManager::isRunning() const
 {
-   return BDMstate_ != BDMState::Uninitialized;
+   return (BDMState)BDMstate_.load(std::memory_order_relaxed) !=
+      BDMState::Uninitialized;
 }
 
 ////////

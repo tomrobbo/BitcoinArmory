@@ -248,6 +248,15 @@ void WalletManager::setBdvCallback(
    {
       switch (notif->type)
       {
+         case NotifType::REGISTERED:
+         {
+            if (automatesDB_) {
+               //if we automate the db, we have to tell it to start scanning
+               bdvPtr_->start();
+            }
+            return;
+         }
+
          case NotifType::PUSH:
          {
             auto pushPtr = std::dynamic_pointer_cast<NotifStruct_Push>(notif);
@@ -293,8 +302,10 @@ std::shared_ptr<Callback> WalletManager::getBdvCallback() const
 
 ////
 void WalletManager::setBdvPtr(
-   std::shared_ptr<AsyncClient::BlockDataViewer> bdvPtr)
+   std::shared_ptr<AsyncClient::BlockDataViewer> bdvPtr,
+   bool autoDB)
 {
+   automatesDB_ = autoDB;
    bdvPtr_ = bdvPtr;
    for (auto& wltIt : wallets_) {
       for (auto& accIt : wltIt.second) {

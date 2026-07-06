@@ -127,6 +127,7 @@ namespace Armory
 
          static bool reportProgress_;
          static bool checkChain_;
+         static bool disableZC_;
          static bool clearMempool_;
          static bool checkTxHints_;
 
@@ -150,6 +151,7 @@ namespace Armory
          static unsigned rewindCount(void);
 
          static bool checkChain(void);
+         static bool enableZC(void);
          static BdmInitMode initMode(void);
          static bool clearMempool(void);
          static bool reportProgress(void);

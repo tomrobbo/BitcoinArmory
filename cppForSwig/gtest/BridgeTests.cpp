@@ -1766,7 +1766,7 @@ namespace {
       return false;
    }
 
-   int goOnline(std::shared_ptr<Bridge::CppBridge> bridge)
+   int goOnline(std::shared_ptr<Bridge::CppBridge> bridge, bool preReg = false)
    {
       uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
@@ -1794,7 +1794,19 @@ namespace {
          auto notif = fromBridge.getNotification();
          switch (notif.which()) {
             case Codec::Bridge::Notification::SCAN_PROGRESS:
+            {
+               if (preReg) {
+               auto scanProg = notif.getScanProgress();
+                  auto progIds = scanProg.getIds();
+                  if (progIds.size() > 0) {
+                     for (auto progId : progIds) {
+                        std::cout << "got progId " << std::string(progId) << std::endl;
+                     }
+                     return -10;
+                  }
+               }
                break;
+            }
 
             case Codec::Bridge::Notification::READY:
             {
@@ -3967,6 +3979,7 @@ TEST_F(WalletManagerWebsocketsTests, Connect)
 
    //start blockchain db & go online
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    bdvPtr->goOnline();
 
    //expecting ready notif
@@ -6070,6 +6083,7 @@ TEST_F(BridgeWalletsWithDBTests, Connect)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
@@ -6112,6 +6126,7 @@ TEST_F(BridgeWalletsWithDBTests, CycleConnection)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
@@ -6174,6 +6189,7 @@ TEST_F(BridgeWalletsWithDBTests, CycleConnection)
    ASSERT_TRUE(connectToIp(bridge_, "127.0.0.1", "9001", serverPubkey_));
    ASSERT_TRUE(registerWallets(bridge_));
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
@@ -6226,6 +6242,7 @@ TEST_F(BridgeWalletsWithDBTests, DeleteWallet)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
@@ -6336,6 +6353,7 @@ TEST_F(BridgeWalletsWithDBTests, ExtendAddressChain)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
@@ -6414,6 +6432,7 @@ TEST_F(BridgeWalletsWithDBTests, AddNewAddress)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
@@ -6748,6 +6767,7 @@ TEST_F(BridgeChainDataTests, Check5Blocks_BCDE)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check wallet balance
@@ -6792,6 +6812,7 @@ TEST_F(BridgeChainDataTests, ChangeFilters_ALFB_BCDE)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check main ledger
@@ -6874,6 +6895,7 @@ TEST_F(BridgeChainDataTests, BlocksOutOfOrder_BCDE)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 2);
 
    //check wallet balance
@@ -6946,6 +6968,7 @@ TEST_F(BridgeChainDataTests, AddBlocks_BCDE)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 3);
 
    /* block 3 */
@@ -7057,6 +7080,7 @@ TEST_F(BridgeChainDataTests, AddBlocks_BC_DE)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 3);
 
    /* block 3 */
@@ -7241,6 +7265,7 @@ TEST_F(BridgeChainDataTests, AddBlocks_BCDE_AFLB)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 3);
 
    /* block 3 */
@@ -7800,6 +7825,7 @@ TEST_F(BridgeChainDataTests, Reorg_BCDE)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 3);
 
    /* block 3 */
@@ -7941,6 +7967,7 @@ TEST_F(BridgeChainDataTests, Reorg_BCDE_DifferentOrder)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 3);
 
    /* block 3 */
@@ -8051,6 +8078,7 @@ TEST_F(BridgeChainDataTests, Reorg_BC_DE)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 3);
 
    /* block 3 */
@@ -8285,6 +8313,7 @@ TEST_F(BridgeChainDataTests, Reorg_BCDE_AFLB)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 3);
 
    /* block 3 */
@@ -9007,6 +9036,7 @@ TEST_F(BridgeChainDataTests, Reorg_SpendBeforeBranchPoint)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check wallet balance
@@ -9288,6 +9318,7 @@ TEST_F(BridgeChainDataTests, AddressBook)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
@@ -9367,6 +9398,7 @@ TEST_F(BridgeChainDataTests, getUTXOs)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //grab BCDE utxos
@@ -9498,6 +9530,7 @@ TEST_F(BridgeChainDataTests, ZeroConf)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check wallet balance
@@ -9731,6 +9764,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_Replace)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
@@ -9930,6 +9964,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_Chain)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
@@ -10154,6 +10189,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_StaggeredChain)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check wallet balance
@@ -10668,6 +10704,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_ChainRBF)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check wallet balance
@@ -11170,6 +11207,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_Reload)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check balances
@@ -11441,6 +11479,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_Reorg)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 4);
 
    TestUtils::setBlocks({ "0", "1", "2", "3", "4A", "4", "5" }, blk0dat_);
@@ -11773,6 +11812,7 @@ TEST_F(BridgeChainDataTests, DISABLED_ZeroConf_RegisterWallet)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check wallet balance
@@ -12005,6 +12045,7 @@ TEST_F(BridgeChainDataTests, RestoreSynchronize)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //get signed tx
@@ -12285,6 +12326,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_SpendNew)
 
    //start db, go online and wait on ready notif
    theBDMt_->start(Config::DBSettings::initMode());
+   theBDMt_->bdm()->blockUntilReady();
    ASSERT_EQ(goOnline(bridge_), 5);
 
    //check wallet balance
@@ -12928,6 +12970,126 @@ TEST_F(BridgeBlocksAutoDBTests, Connect_NoCleanup)
    bridge_->disconnectFromDb();
 
    //confirm db is down
+   while (bridge_->isDbRunning()) {
+      std::this_thread::sleep_for(100ms);
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(BridgeBlocksAutoDBTests, DontOverscan)
+{
+   /*
+   An automated db should wait for the parent signal before parsing the chain.
+   This is to ensure it doesn't scan twice on startup if the set of registered
+   addresses deviates between starts.
+
+   This can happen if the wallets are manipulated in offline mode between two
+   online runs.
+   */
+
+   //run first instance of the db
+   auto wltList = listWallets(bridge_);
+   ASSERT_EQ(wltList.size(), 1);
+   auto wltId = wltList.begin()->second.walletId;
+   ASSERT_FALSE(wltId.empty());
+   ASSERT_EQ(wltId, walletId_);
+   auto wallets = loadWallets(bridge_);
+   ASSERT_EQ(wallets.size(), 1);
+
+   ASSERT_EQ(wallets.begin()->second.walletId, wltId);
+   auto accountId = wallets.begin()->second.accountId;
+   ASSERT_FALSE(accountId.empty());
+
+   //setup connection to db
+   ASSERT_EQ(automateDb(bridge_, blkdir_, ldbdir_), 0);
+   ASSERT_TRUE(bridge_->isDbRunning());
+   ASSERT_TRUE(registerWallets(bridge_));
+   ASSERT_EQ(goOnline(bridge_, true), 5);
+
+   //check balances
+   auto balances = getAddrBalances(bridge_, wltId, accountId);
+   ASSERT_EQ(balances.size(), 4);
+
+   try {
+      for (const auto& balPair : balances) {
+         const auto& addrBal = TestChain::testAddrBalances[5].at(balPair.first);
+         EXPECT_EQ(addrBal[0], balPair.second[0]);
+         EXPECT_EQ(addrBal[1], balPair.second[1]);
+         EXPECT_EQ(addrBal[2], balPair.second[2]);
+      }
+   } catch (const std::exception&) {
+      ASSERT_TRUE(false);
+   }
+
+   //cleanup
+   ASSERT_EQ(disconnectFromDb(), 0);
+
+   //confirm db is down
+   while (bridge_->isDbRunning()) {
+      std::this_thread::sleep_for(100ms);
+   }
+
+   //add a wallet
+   auto pubKeyF = Cryptography::ECDSA::computePublicKey(TestChain::privKeyAddrF);
+   auto walletId_AFLB = createWOWallet(homedir_,
+      { pubKeyF }, {
+         TestChain::scrAddrA,
+         TestChain::lb1ScrAddr, TestChain::lb1ScrAddrP2SH,
+         TestChain::lb2ScrAddr, TestChain::lb2ScrAddrP2SH
+      }
+   );
+
+   wltList = listWallets(bridge_);
+   ASSERT_EQ(wltList.size(), 1);
+   auto wltId2 = wltList.begin()->second.walletId;
+   ASSERT_FALSE(wltId2.empty());
+   ASSERT_NE(wltId2, walletId_);
+   ASSERT_EQ(wltId2, walletId_AFLB);
+   wallets = loadWallets(bridge_);
+   ASSERT_EQ(wallets.size(), 2);
+   std::string accountId_AFLB;
+   for (const auto& wlt : wallets) {
+      if (wlt.second.walletId == walletId_AFLB) {
+         accountId_AFLB = wlt.second.accountId;
+      }
+   }
+   ASSERT_FALSE(accountId_AFLB.empty());
+
+   //start 2nd db instance
+   ASSERT_EQ(automateDb(bridge_, blkdir_, ldbdir_), 0);
+   ASSERT_TRUE(bridge_->isDbRunning());
+   ASSERT_TRUE(registerWallets(bridge_));
+   ASSERT_EQ(goOnline(bridge_, true), 5);
+
+   //check balances
+   auto balances1 = getAddrBalances(bridge_, wltId, accountId);
+   ASSERT_EQ(balances.size(), 4);
+   try {
+      for (const auto& balPair : balances1) {
+         const auto& addrBal = TestChain::testAddrBalances[5].at(balPair.first);
+         EXPECT_EQ(addrBal[0], balPair.second[0]);
+         EXPECT_EQ(addrBal[1], balPair.second[1]);
+         EXPECT_EQ(addrBal[2], balPair.second[2]);
+      }
+   } catch (const std::exception&) {
+      ASSERT_TRUE(false);
+   }
+
+   auto balances2 = getAddrBalances(bridge_, walletId_AFLB, accountId_AFLB);
+   ASSERT_EQ(balances.size(), 4);
+   try {
+      for (const auto& balPair : balances2) {
+         const auto& addrBal = TestChain::testAddrBalances[5].at(balPair.first);
+         EXPECT_EQ(addrBal[0], balPair.second[0]);
+         EXPECT_EQ(addrBal[1], balPair.second[1]);
+         EXPECT_EQ(addrBal[2], balPair.second[2]);
+      }
+   } catch (const std::exception&) {
+      ASSERT_TRUE(false);
+   }
+
+   //last cleanup
+   ASSERT_EQ(disconnectFromDb(), 0);
    while (bridge_->isDbRunning()) {
       std::this_thread::sleep_for(100ms);
    }

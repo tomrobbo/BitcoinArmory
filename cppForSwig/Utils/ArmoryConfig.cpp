@@ -475,6 +475,7 @@ unsigned DBSettings::rewindCount_ = 100;
 
 bool DBSettings::reportProgress_ = true;
 bool DBSettings::checkChain_ = false;
+bool DBSettings::disableZC_ = false;
 bool DBSettings::clearMempool_ = false;
 bool DBSettings::checkTxHints_ = false;
 
@@ -519,6 +520,18 @@ unsigned DBSettings::rewindCount()
 bool DBSettings::checkChain()
 {
    return checkChain_;
+}
+
+bool DBSettings::enableZC()
+{
+   if (disableZC_) {
+      if (service_ == SERVICE_UNITTEST ||
+         service_ == SERVICE_UNITTEST_WITHWS) {
+         //only permit zc disabling in test runs
+         return false;
+      }
+   }
+   return true;
 }
 
 BdmInitMode DBSettings::initMode()
@@ -577,6 +590,12 @@ void DBSettings::processArgs(const std::map<std::string, std::string>& args)
    iter = args.find("checkchain");
    if (iter != args.end()) {
       checkChain_ = true;
+   }
+
+   iter = args.find("disable-zc");
+   if (iter != args.end()) {
+      //only has an effect while running unit tests
+      disableZC_ = true;
    }
 
    iter = args.find("clear-mempool");
