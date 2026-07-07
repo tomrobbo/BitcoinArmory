@@ -270,6 +270,7 @@ class DlgShowKeyList(ArmoryDialog):
             'addrType': item.addrType,
             'accountId': item.accountId,
             'isUsed': item.isUsed,
+            'chainRole': getattr(item, 'chainRole', '') or '',
          })
       return entries
 
@@ -403,14 +404,15 @@ class DlgShowKeyList(ArmoryDialog):
       addrTypes = self.wlt.getAddressTypes()
       if addrTypes:
          typeNames = [getNameForAddrType(t) for t in addrTypes]
-         L.append('Eligible types:' + ' ' + ', '.join(typeNames))
+         L.append('Eligible address type:' + ' ' + ', '.join(typeNames))
       defaultType = self.wlt.getDefaultAddressType()
       if defaultType:
-         L.append('Default type:  ' + getNameForAddrType(defaultType))
+         L.append('Default address types: ' + getNameForAddrType(defaultType))
       L.append('')
 
       hideUnused = self.chkHideUnused.isChecked()
       lastAccountId = None
+      lastChainRole = None
       self.havePriv = False
       for entry in self._entries:
          if hideUnused and not entry.get('isUsed', False):
@@ -424,6 +426,15 @@ class DlgShowKeyList(ArmoryDialog):
             L.append('--- Account: ' + self._accountLabel(entryAccountId) +
                ' ---')
             lastAccountId = entryAccountId
+            lastChainRole = None
+
+         chainRole = entry.get('chainRole', '')
+         if chainRole and chainRole != lastChainRole:
+            if lastChainRole is not None or \
+                  (self._omitAccountId and entryAccountId):
+               L.append('')
+            L.append('--- ' + chainRole + ' ---')
+            lastChainRole = chainRole
 
          privKey = entry['privKey']
          pubKey  = entry['pubKey']

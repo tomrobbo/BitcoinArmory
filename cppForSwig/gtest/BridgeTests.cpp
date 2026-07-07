@@ -1171,7 +1171,26 @@ namespace {
       int32_t index = 0;
       std::string accountId;
       bool isUsed = false;
+      std::string chainRole;
    };
+
+   std::string chainRoleForAssetAccount(
+      const std::shared_ptr<Accounts::AddressAccount>& accPtr,
+      const Wallets::AssetAccountId& assetAccId)
+   {
+      const auto& outerId = accPtr->getOuterAccountID();
+      const auto& innerId = accPtr->getInnerAccountID();
+      if (outerId == innerId) {
+         return {};
+      }
+      if (assetAccId == outerId) {
+         return "Receive";
+      }
+      if (assetAccId == innerId) {
+         return "Change";
+      }
+      return {};
+   }
 
    struct ExportResult {
       bool success = false;
@@ -1198,6 +1217,7 @@ namespace {
       key.index = k.getIndex();
       key.accountId = std::string(k.getAccountId());
       key.isUsed = k.getIsUsed();
+      key.chainRole = std::string(k.getChainRole());
       return key;
    }
 
@@ -1270,6 +1290,7 @@ namespace {
                expected.assetId = assetID.getSerializedKey(
                   PROTO_ASSETID_PREFIX);
                expected.index = assetSingle->getIndex();
+               expected.chainRole = chainRoleForAssetAccount(accPtr, assetAccId);
                fillExpectedExportMetadata(expected, accPtr, assetID);
                expectedKeys.emplace(expected.assetId, std::move(expected));
             }
@@ -1331,6 +1352,7 @@ namespace {
       EXPECT_EQ(exported.addressString, expected.addressString);
       EXPECT_EQ(exported.addrType, expected.addrType);
       EXPECT_EQ(exported.pubKey, expected.pubKey);
+      EXPECT_EQ(exported.chainRole, expected.chainRole);
    }
 
    void verifyExportSetMatchesExpected(
@@ -6179,6 +6201,18 @@ TEST_F(BridgeWalletTests, ExportPublicKeysScopedToAccount)
       EXPECT_EQ(key.accountId, accId);
       EXPECT_TRUE(key.privKey.empty());
    }
+
+   bool hasReceive = false;
+   bool hasChange = false;
+   for (const auto& key : scopedResult.keys) {
+      if (key.chainRole == "Receive") {
+         hasReceive = true;
+      } else if (key.chainRole == "Change") {
+         hasChange = true;
+      }
+   }
+   EXPECT_TRUE(hasReceive);
+   EXPECT_TRUE(hasChange);
 
    size_t scopedTotal = 0;
    for (const auto& id : accIds) {

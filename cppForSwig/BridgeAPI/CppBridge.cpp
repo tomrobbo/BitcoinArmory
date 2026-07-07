@@ -779,7 +779,26 @@ namespace {
       int32_t index = 0;
       std::string accountId;
       bool isUsed = false;
+      std::string chainRole;
    };
+
+   std::string chainRoleForAssetAccount(
+      const std::shared_ptr<Accounts::AddressAccount>& accPtr,
+      const Wallets::AssetAccountId& assetAccId)
+   {
+      const auto& outerId = accPtr->getOuterAccountID();
+      const auto& innerId = accPtr->getInnerAccountID();
+      if (outerId == innerId) {
+         return {};
+      }
+      if (assetAccId == outerId) {
+         return "Receive";
+      }
+      if (assetAccId == innerId) {
+         return "Change";
+      }
+      return {};
+   }
 
    std::string formatDerivationPath(const std::vector<uint32_t>& path)
    {
@@ -1012,6 +1031,7 @@ namespace {
                   entry.index = assetSingle->getIndex();
                   entry.accountId = addrAccId.toHexStr();
                   entry.isUsed = accPtr->isAssetInUse(assetID);
+                  entry.chainRole = chainRoleForAssetAccount(accPtr, assetAccId);
 
                   if (includePrivateKeys) {
                      const auto& privKey =
@@ -1054,6 +1074,7 @@ namespace {
       capnKey.setIndex(entry.index);
       capnKey.setAccountId(entry.accountId);
       capnKey.setIsUsed(entry.isUsed);
+      capnKey.setChainRole(entry.chainRole);
    }
 
    BinaryData buildExportedKeysReply(MessageId msgId,

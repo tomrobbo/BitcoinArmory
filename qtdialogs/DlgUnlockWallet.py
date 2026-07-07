@@ -119,7 +119,6 @@ class DlgUnlockWallet(ArmoryDialog):
       self.changeScramble()
       self.redrawKeys()
       self.encryptionKeyIds = []
-      self._lastPassphrase = None
 
       self.edtPasswd.textChanged.connect(self.updateUnlockButton)
       self.updateUnlockButton()
@@ -284,7 +283,6 @@ class DlgUnlockWallet(ArmoryDialog):
    #############################################################################
    def acceptPassphrase(self):
       passphraseStr = str(self.edtPasswd.text())
-      self._lastPassphrase = passphraseStr
 
       self.reply(passphraseStr)
       passphraseStr = ''
@@ -297,7 +295,6 @@ class DlgUnlockWallet(ArmoryDialog):
    #############################################################################
    def rejectPassphrase(self):
       self.edtPasswd.setText('')
-      self._lastPassphrase = None
       self.reply("")
       self.reject()
 
@@ -309,21 +306,15 @@ class DlgUnlockWallet(ArmoryDialog):
    def setIds(self, ids):
       if not ids:
          self.reject()
-         return
 
-      if self.encryptionKeyIds and self.encryptionKeyIds != ids:
-         # Same unlock operation, another encryption key to prompt for.
+      if not self.encryptionKeyIds:
          self.encryptionKeyIds = ids
-         if self._lastPassphrase:
-            self.reply(self._lastPassphrase)
-            return
-         self.edtPasswd.setText('')
-         self.updateUnlockButton()
-         self.exec_()
-         return
 
-      self.encryptionKeyIds = ids
-      self.exec_()
+      if self.encryptionKeyIds == ids:
+         self.exec_()
+      else:
+         self.recycle()
+         self.show()
 
    #############################################################################
    def updateUnlockButton(self):

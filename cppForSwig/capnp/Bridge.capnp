@@ -526,6 +526,7 @@ struct WalletReply {
       index          @5 : Int32;
       accountId      @6 : Text;
       isUsed         @7 : Bool;
+      chainRole      @8 : Text;
    }
 
    # reply

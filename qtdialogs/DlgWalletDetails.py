@@ -705,9 +705,9 @@ class DlgWalletDetails(ArmoryDialog):
 
       labelNames[WLTFIELDS.AccountName] = QtWidgets.QLabel(self.tr('Account:'))
       labelNames[WLTFIELDS.AddressTypes] = QtWidgets.QLabel(
-         self.tr('Address Types:'))
+         self.tr('Eligible address type:'))
       labelNames[WLTFIELDS.DefaultAddrType] = QtWidgets.QLabel(
-         self.tr('Default Address Type:'))
+         self.tr('Default address types:'))
 
       # TODO:  Add wallet path/location to this!
 
