@@ -130,7 +130,7 @@ namespace Armory
          static bool disableZC_;
          static bool clearMempool_;
          static bool checkTxHints_;
-
+         static bool automatedNode_;
          static uint64_t xorKey_;
 
       private:
@@ -156,6 +156,7 @@ namespace Armory
          static bool clearMempool(void);
          static bool reportProgress(void);
          static bool checkTxHints(void);
+         static bool automatedNode(void);
 
          static bool isXored(void);
          static void setXorKey(uint64_t);

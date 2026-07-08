@@ -108,6 +108,9 @@ void Armory::Config::printHelp(void)
                            instead to allow local clients to make use of elevated
                            commands, like shutdown. Expects client pubkey in
                            envvars under CALLER_PUBKEY. Enforces 2-way auth.
+--automated-node           Tells the DB whether the network node is automated by
+                           the client. This affects the synchronization sequence
+                           and only has an effect along with --ephemeral
 --armorydb-port            DB port to connect to.
 --armorydb-ip              DB IP to connect to.
 --clear-mempool            Delete all zero confirmation transactions from the DB.
@@ -478,6 +481,7 @@ bool DBSettings::checkChain_ = false;
 bool DBSettings::disableZC_ = false;
 bool DBSettings::clearMempool_ = false;
 bool DBSettings::checkTxHints_ = false;
+bool DBSettings::automatedNode_ = false;
 
 uint64_t DBSettings::xorKey_ = 0;
 
@@ -552,6 +556,14 @@ bool DBSettings::reportProgress()
 bool DBSettings::checkTxHints()
 {
    return checkTxHints_;
+}
+
+bool DBSettings::automatedNode()
+{
+   if (NetworkSettings::ephemeralPeers()) {
+      return automatedNode_;
+   }
+   return false;
 }
 
 ////////
@@ -672,6 +684,11 @@ void DBSettings::processArgs(const std::map<std::string, std::string>& args)
          rewindCount_ = val;
       }
    }
+
+   iter = args.find("automated-node");
+   if (iter != args.end()) {
+      automatedNode_ = true;
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -718,6 +735,7 @@ void DBSettings::reset()
    reportProgress_ = true;
    checkChain_ = false;
    clearMempool_ = false;
+   automatedNode_ = false;
 
    xorKey_ = 0;
 }

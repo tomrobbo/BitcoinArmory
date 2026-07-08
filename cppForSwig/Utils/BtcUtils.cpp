@@ -283,6 +283,18 @@ BinaryData BtcUtils::getBotchedArmoryHMAC256(
    return BtcUtils::getSha256(bw.getData());
 }
 
+BinaryData BtcUtils::getSaltedRpcPass(
+   const std::string& salt, const std::string& pass)
+{
+   BinaryData salted; salted.resize(32);
+   Cryptography::Hash::getHMAC256(
+      BinaryDataRef::fromString(salt),
+      BinaryDataRef::fromString(pass),
+      salted.getPtr()
+   );
+   return salted;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // merkle tree
 std::vector<BinaryData> BtcUtils::calculateMerkleTree(

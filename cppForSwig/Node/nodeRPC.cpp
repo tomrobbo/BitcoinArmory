@@ -139,7 +139,7 @@ RPC::Client::Client(bool pollForFees,
    canPoll_{pollForFees}, canResetAuthString_{true}
 {
    if (!rpcUser.empty() && !rpcPass.empty()) {
-      basicAuthString64_ = BtcUtils::base64_encode(std::format("{}+{}",
+      basicAuthString64_ = BtcUtils::base64_encode(std::format("{}:{}",
          rpcUser, rpcPass));
       canResetAuthString_ = false;
    }
@@ -455,7 +455,7 @@ bool RPC::Client::updateChainStatus()
 }
 
 ////////
-void RPC::Client::waitOnChainSync(std::function<void(void)> callbck)
+void RPC::Client::waitOnChainSync(std::function<void(void)> callbck, bool force)
 {
    nodeChainStatus_.reset();
    callbck();
@@ -464,7 +464,7 @@ void RPC::Client::waitOnChainSync(std::function<void(void)> callbck)
       //keep trying as long as the node is initializing
       auto state = testConnection();
       if (state != RpcState::Error_28) {
-         if (state != RpcState::Online) {
+         if (state != RpcState::Online && !force) {
             return;
          }
          break;
@@ -718,7 +718,7 @@ bool ChainStatus::processState(const JSON::Object& jsonObj)
       prevPctInt_ = pct_int;
    }
 
-   if (pct_ >= 0.9995) {
+   if (pct_ >= 0.9999999) {
       state_ = ChainState::Ready;
       return true;
    }

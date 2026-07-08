@@ -977,7 +977,7 @@ bool NodeRPC_UnitTest::canPoll() const
    return false;
 }
 
-void NodeRPC_UnitTest::waitOnChainSync(std::function<void(void)>)
+void NodeRPC_UnitTest::waitOnChainSync(std::function<void(void)>, bool)
 {}
 
 ////////

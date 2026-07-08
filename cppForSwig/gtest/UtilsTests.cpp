@@ -1997,6 +1997,16 @@ TEST_F(BtcUtilsTest, ScriptToOpCodes)
       EXPECT_EQ(output[i], opstr[i]);
 }
 
+TEST_F(BtcUtilsTest, RpcAuthString)
+{
+   std::string pass{"Ksahl_4ahyDnoaD83Um2Lcdst3QHN6O_04awLyatMkI"};
+   std::string salt{"7dcceaa76f9c1e1795cc8cbc83153f40"};
+   std::string saltedPass{"c1b469f5f1deeb0b0c4755a70a8c81f621058c6af32ee7380d0fb65a98e4b795"};
+
+   auto hmac = BtcUtils::getSaltedRpcPass(salt, pass);
+   EXPECT_EQ(hmac.toHexStr(), saltedPass);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 class BlockObjTest : public ::testing::Test

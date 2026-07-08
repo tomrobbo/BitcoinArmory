@@ -4539,26 +4539,15 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
 
          for progId in idList:
             self.walletSideScanProgress[progId] = prog*100
-            if len(progId) > 0:
-               if self.wallets.hasWallet(progId):
-                  wlt = self.wallets[progId]
-                  wlt.disableWalletUI()
-                  if progId in self.walletDialogDict:
-                     self.walletDialogDict[progId].reject()
-                     del self.walletDialogDict[progId]
-                  hasWallet = True
-
-               elif progId in self.lockboxIDMap:
-                  lbID = self.lockboxIDMap[progId]
-                  self.allLockboxes[lbID].isEnabled = False
-                  hasLockbox = True
-
-               elif progId in self.progressCallbacks:
-                  progressObj = self.progressCallbacks[progId]
-                  progressObj.UpdateDlg(HBar=prog*100, phase=phase)
-
-               else:
-                  LOGWARN("Unknown progress callback id")
+            try:
+               wlt = self.wallets.get(progId)
+               wlt.disableWalletUI()
+               if progId in self.walletDialogDict:
+                  self.walletDialogDict[progId].reject()
+                  del self.walletDialogDict[progId]
+               hasWallet = True
+            except Exception as e:
+               LOGWARN(f"error processing progressId ({progId}): {str(e)}")
 
          if hasWallet:
             self.changeWltFilter()

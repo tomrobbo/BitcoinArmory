@@ -159,7 +159,7 @@ namespace Node
             virtual int broadcastTx(const BinaryDataRef&, std::string&) = 0;
             virtual bool canPoll(void) const = 0;
             virtual RpcState testConnection() = 0;
-            virtual void waitOnChainSync(std::function<void(void)>) = 0;
+            virtual void waitOnChainSync(std::function<void(void)>, bool) = 0;
             virtual FeeEstimateResult getFeeByte(
                unsigned, const std::string&) const = 0;
 
@@ -208,7 +208,7 @@ namespace Node
 
             FeeEstimateResult getFeeByte(unsigned, const std::string&) const override;
             int broadcastTx(const BinaryDataRef&, std::string&) override;
-            void waitOnChainSync(std::function<void(void)>) override;
+            void waitOnChainSync(std::function<void(void)>, bool) override;
          };
       } //namespace RPC
    } //namespace Core

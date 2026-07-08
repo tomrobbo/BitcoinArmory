@@ -21,6 +21,7 @@
 
 #include "DBSetup.h"
 #include <Utils/ArmoryConfig.h>
+#include <Utils/BtcUtils.h>
 #include <Utils/FileUtils.h>
 #include <Utils/Cryptography.h>
 #include <Utils/JSON_codec.h>
@@ -186,6 +187,7 @@ namespace {
       }
       std::string_view header{output.c_str(), coreVersionHeader.size()};
       if (header != coreVersionHeader) {
+         LOGWARN << "node output: " << output;
          throw std::runtime_error("node executable output header mismatch");
       }
 
@@ -208,8 +210,6 @@ namespace {
       /*
       Run `bitcoin --version`, grab stdout.
       Parse it for the version string.
-
-      posix_spawn version, runs into permission issues, revisit later
       */
       if (!FileUtils::pathExists(binPath, 8)) {
          return { false, std::format(
@@ -524,30 +524,35 @@ void AutomationContext::automateSatoshi()
       throw std::runtime_error("already have an instance of Core");
    }
 
-   /*TODO:
-   Force rpc log/pass when automating core.
-   rpcuser can be passed as a cli arg.
-   rpcpassword can be passed via stdin using "-stdin -stdinrpcpass".
-   stdin can be replaced by a pipe via posix_spawn
-   */
+   LOGINFO << "spawning Bitcoin Core";
 
    //randomize rpc log and pass
    rpcLogin_ = Cryptography::PRNG::fortuna.generateRandom(16).toHexStr();
    rpcPass_ = Cryptography::PRNG::fortuna.generateRandom(16).toHexStr();
+   auto salt = Cryptography::PRNG::fortuna.generateRandom(16).toHexStr();
+   auto saltedPass = BtcUtils::getSaltedRpcPass(salt, rpcPass_);
+   auto rpcAuthArg = std::format("--rpcauth={}:{}${}",
+      rpcLogin_, salt, saltedPass.toHexStr());
 
    //setup argv
+   auto datadir = satoshiDir_;
+   if (Config::BitcoinSettings::getMode() == Config::NETWORK_MODE_TESTNET) {
+      if (satoshiDir_.stem() == "testnet3") {
+         datadir = satoshiDir_.parent_path();
+      }
+   }
+
    auto binpathArg = satoshiBin_.string();
-   auto datadirArg = std::format("--datadir={}", satoshiDir_.string());
-   auto rpcUserArg = std::format("--rpcuser={}", rpcLogin_);
+   auto datadirArg = std::format("--datadir={}", datadir.string());
    char* argv[] = {
       //first arg has to be binary's path
       binpathArg.data(),
       //satoshi datadir
       datadirArg.data(),
       //rpc user
-      rpcUserArg.data(),
-      //extra spots, for testnet and stdin manipulation
-      nullptr, nullptr,
+      rpcAuthArg.data(),
+      //extra spots, for testnet
+      nullptr,
       //null terminator
       nullptr
    };
@@ -556,36 +561,13 @@ void AutomationContext::automateSatoshi()
    if (Config::BitcoinSettings::getMode() == Config::NETWORK_MODE_TESTNET) {
       argv[lastIndex++] = (char*)"--testnet"sv.data();
    }
-   //enable reading rpc pass from stdin
-   argv[lastIndex] = (char*)"--stdin --stdinrpcpass"sv.data();
-
-   //hijack core's stdin
-   int stdin_pipe[2];
-   if (pipe(stdin_pipe) != 0) {
-      throw std::runtime_error("failed to setup pipes");
-   }
-
-   //tell posix_spawn to substitute child's fd 2 (stdin) with our pipe
-   posix_spawn_file_actions_t ps_actions;
-   posix_spawn_file_actions_init(&ps_actions);
-   posix_spawn_file_actions_adddup2(&ps_actions, stdin_pipe[0], 2);
 
    //spawn the node
-   int result = posix_spawn(&autoSatoshiPid_, argv[0], &ps_actions, nullptr, argv, nullptr);
+   int result = posix_spawn(&autoSatoshiPid_, argv[0], nullptr, nullptr, argv, nullptr);
    if (result != 0 || autoSatoshiPid_ == -1) {
       throw std::runtime_error(std::format(
          "failed to spawn bitcoind with error: {}", strerror(errno)));
    }
-
-   //feed it the rpc pass
-   if (write(stdin_pipe[1], rpcPass_.data(), rpcPass_.size()) != rpcPass_.size()) {
-      throw std::runtime_error("error while writing to Core's stdin");
-   }
-
-   //cleanup pipes and posix_spawn data
-   close(stdin_pipe[0]);
-   close(stdin_pipe[1]);
-   posix_spawn_file_actions_destroy(&ps_actions);
 }
 
 bool AutomationContext::isSatoshiRunning()
@@ -916,8 +898,15 @@ void AutomationContext::automateDb()
       dataDirArg.data(), dbDirArg.data(),
       //network & core settings
       network.data(), satoshiDir.data(), satoshiPort.data(), rpcPort.data(),
-      (char*)nullptr
+      //extra slot
+      nullptr,
+      //terminator
+      nullptr
    };
+
+   if (automateNode_) {
+      argv[9] = (char*)"--automated-node"sv.data();
+   }
 
    //2. replace ArmoryDB's stdout by a pipe
    int stdout_pipe[2];

@@ -381,11 +381,8 @@ class DlgSetupManager(ArmoryDialog):
       if not self.walletTab.validate():
          return False
 
-      coreTabIndex = self.tabWidget.indexOf(
-         self.coreTab)
+      coreTabIndex = self.tabWidget.indexOf(self.coreTab)
       if self.tabWidget.isTabEnabled(coreTabIndex):
-         if not self.coreTab.validateCorePath():
-            return False
          if not self.coreTab.validate():
             return False
 
@@ -411,14 +408,13 @@ class DlgSetupManager(ArmoryDialog):
       dbSettings = self.databaseTab.collectSettings()
 
       # Paths
-      self._setSettingIfChanged('CoreDataDir', coreSettings['corePath'])
       self._setSettingIfChanged('ArmoryDataDir', walletSettings['armoryPath'])
       self._setSettingIfChanged('DBDir', dbSettings['dbPath'])
-      self._setSettingIfChanged('SatoshiDatadir', coreSettings['corePath'])
+      self._setSettingIfChanged('SatoshiDatadir', coreSettings['datadir'])
+      self._setSettingIfChanged('SatoshiBin', coreSettings['binpath'])
 
       # Core settings
-      self._setSettingIfChanged('ManageSatoshi', coreSettings['manageSatoshi'])
-      self._setSettingIfChanged('NetworkMode', coreSettings['networkMode'])
+      self._setSettingIfChanged('ManageSatoshi', coreSettings['automate'])
       if coreSettings['p2pPort']:
          self._setSettingIfChanged('BitcoinP2PPort', coreSettings['p2pPort'])
       if coreSettings['rpcPort']:
@@ -466,8 +462,10 @@ class DlgSetupManager(ArmoryDialog):
       params = {'scenario': scenario}
 
       if scenario == SCENARIO_DB_AUTOMATED:
-         params['satoshiPath'] = coreSettings['corePath']
+         params['satoshiPath'] = coreSettings['datadir']
+         params['satoshiBin'] = coreSettings['binpath']
          params['dbPath'] = dbSettings['dbPath']
+         params['automateNode'] = coreSettings['automate']
       elif scenario == SCENARIO_REMOTE_PEER:
          params['peerKey'] = dbSettings['peerKey']
       elif scenario == SCENARIO_REMOTE_IP:
@@ -518,6 +516,7 @@ class DlgSetupManager(ArmoryDialog):
 
    def _connectLocalDb(self, params):
       """Initiate local (automated) database connection."""
+      print (f"params: {params}")
       satoshiDir = params.get('satoshiPath', '')
       satoshiBin = params.get('satoshiBin', '')
       dbDir = params.get('dbPath', '')

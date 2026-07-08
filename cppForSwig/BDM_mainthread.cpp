@@ -122,7 +122,11 @@ try {
 
    //if RPC is running, wait on node init
    try {
-      bdm->nodeRPC->waitOnChainSync(updateNodeStatusLambda);
+      LOGINFO << "Waiting on node sync";
+      bdm->nodeRPC->waitOnChainSync(
+         updateNodeStatusLambda,
+         DBSettings::automatedNode()
+      );
    } catch (const std::exception& e) {
       LOGINFO << "Error occured while querying the RPC for sync status";
       LOGINFO << "Message: " << e.what();
