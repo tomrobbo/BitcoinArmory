@@ -232,11 +232,11 @@ void WebSocketServer::initAuthPeers(
       instance->authorizedPeers_ = std::make_shared<Wallets::AuthorizedPeers>();
 
       //grab caller pubkey
-      auto callerKeyPtr = std::getenv("CALLER_PUBKEY");
+      auto callerKeyPtr = std::getenv("MASTER_PUBKEY");
       if (callerKeyPtr == nullptr) {
          throw std::runtime_error("caller key is not set");
       }
-      std::string callerPubKeyStr{std::getenv("CALLER_PUBKEY")};
+      std::string callerPubKeyStr{callerKeyPtr};
       auto callerPubKey = SecureBinaryData::CreateFromHex(callerPubKeyStr);
 
       //inject caller pubkey in the store
@@ -250,21 +250,6 @@ void WebSocketServer::initAuthPeers(
          throw std::runtime_error("ephemeral peers db setup snafu");
       }
       const auto& ownKey = instance->authorizedPeers_->getOwnPublicKey();
-
-   #ifdef _WIN32
-      //grab inherited key file handle
-      std::string handleStr{std::getenv("KEYFILE_HANDLE")};
-      uint64_t fd = std::stoi(handleStr);
-      auto fHandle = (HANDLE)fd;
-
-      DWORD bytesWritten = 0;
-      if (!WriteFile(fHandle, ownKey.pubkey, 33, &bytesWritten, NULL)
-         || bytesWritten != 33) {
-         LOGERR << "failed to set server autodb pubkey";
-         exit(-2);
-      }
-      CloseHandle(fHandle);
-   #endif
    }
 }
 

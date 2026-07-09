@@ -41,6 +41,26 @@ namespace Armory
          Cleanup
       };
 
+   #ifdef _WIN32
+      using instance_t = void*;
+   #else
+      using instance_t = int;
+   #endif
+
+      class ProcessInstance
+      {
+      private:
+         instance_t instance_;
+
+      public:
+         ProcessInstance(void);
+         ProcessInstance(instance_t);
+
+         bool isValid(void) const;
+         bool isRunning(void);
+         void wait(void) const;
+      };
+
       class AutomationContext
       {
          using CallbackFunc = std::function<void(AutomationStep)>;
@@ -59,13 +79,8 @@ namespace Armory
          std::string rpcLogin_;
          std::string rpcPass_;
 
-      #ifdef _WIN32
-         void* autoDbHandle_ = nullptr;
-         void* autoSatoshiHandle_ = nullptr;
-      #else
-         int autoDbPid_ = -1;
-         int autoSatoshiPid_ = -1;
-      #endif
+         ProcessInstance nodeInstance_;
+         ProcessInstance dbInstance_;
 
       private:
          void automateDb(void);
