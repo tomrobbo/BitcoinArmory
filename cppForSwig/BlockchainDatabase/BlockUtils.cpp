@@ -351,43 +351,10 @@ std::shared_ptr<Node::Status> BlockDataManager::getNodeStatus() const
 
    nss->rpcState = nodeRPC->testConnection();
    if (nss->rpcState != Node::RpcState::Online) {
-      pollNodeStatus();
+      return nss;
    }
    nss->chainStatus = nodeRPC->getChainStatus();
    return nss;
-}
-
-void BlockDataManager::pollNodeStatus() const
-{
-   if (!nodeRPC->canPoll()) {
-      return;
-   }
-   std::unique_lock<std::mutex> lock(*nodeStatusPollMutex_, std::defer_lock);
-
-   if (!lock.try_lock()) {
-      return;
-   }
-
-   auto poll_thread = [this](void)->void
-   {
-      auto nodeRPC = this->nodeRPC;
-      auto mutexPtr = this->nodeStatusPollMutex_;
-      std::unique_lock<std::mutex> lock(*mutexPtr);
-
-      unsigned count = 0;
-      while (nodeRPC->testConnection() != Node::RpcState::Online) {
-         ++count;
-         if (count > 10) {
-            break; //give up after 20sec
-         }
-         std::this_thread::sleep_for(2s);
-      }
-   };
-
-   std::thread pollThr(poll_thread);
-   if (pollThr.joinable()) {
-      pollThr.detach();
-   }
 }
 
 ////////

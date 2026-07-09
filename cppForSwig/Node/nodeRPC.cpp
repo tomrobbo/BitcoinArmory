@@ -458,11 +458,10 @@ bool RPC::Client::updateChainStatus()
 void RPC::Client::waitOnChainSync(std::function<void(void)> callbck, bool force)
 {
    nodeChainStatus_.reset();
-   callbck();
-
    while (true) {
       //keep trying as long as the node is initializing
       auto state = testConnection();
+      callbck();
       if (state != RpcState::Error_28) {
          if (state != RpcState::Online && !force) {
             return;
@@ -474,9 +473,9 @@ void RPC::Client::waitOnChainSync(std::function<void(void)> callbck, bool force)
       std::this_thread::sleep_for(1s);
    }
 
-   callbck();
 
    while (true) {
+      callbck();
       float blkSpeed = 0.0f;
       try {
          ReentrantLock lock(this);

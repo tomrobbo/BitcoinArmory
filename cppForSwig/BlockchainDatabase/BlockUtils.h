@@ -117,7 +117,6 @@ public:
 
 private:
    bool loadDiskState(const ProgressCallback&);
-   void pollNodeStatus(void) const;
 
 public:
    BlockDataManager(std::function<bool(void)>);

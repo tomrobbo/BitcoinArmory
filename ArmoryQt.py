@@ -3444,14 +3444,12 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
 
    #############################################################################
    def updateSyncProgress(self):
-
       if self.isShuttingDown:
          return
-
       sdmStr = self.getSDMStateStr()
+      bdmState = TheBDM.getState()
 
-      if TheBDM.getState()==BDM_SCANNING:
-
+      if bdmState == BDM_SCANNING:
          self.lblDashModeSync.setVisible(False)
          self.barProgressSync.setVisible(False)
          self.lblTimeLeftSync.setVisible(False)
@@ -4358,7 +4356,7 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
    #############################################################################
    def updateStatusBarText(self):
       if self.nodeStatus != None and \
-         self.nodeStatus.node== 'online':
+         self.nodeStatus.node == 'online':
 
          haveRPC = (self.nodeStatus.rpc == 'online')
          if haveRPC:
