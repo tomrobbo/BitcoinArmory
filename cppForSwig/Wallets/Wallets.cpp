@@ -1661,6 +1661,40 @@ std::shared_ptr<Seeds::EncryptedSeed> AssetWallet_Single::getEncryptedSeed() con
    return seed_;
 }
 
+////////
+std::string AssetWallet_Single::getSeedTypeDisplayName() const
+{
+   auto root = getRoot();
+   if (auto legacyRoot = std::dynamic_pointer_cast<
+      AssetEntry_ArmoryLegacyRoot>(root)) {
+      return legacyRoot->getDisplayName();
+   }
+   if (std::dynamic_pointer_cast<AssetEntry_BIP32Root>(root)) {
+      std::set<std::string> purposeNames;
+      for (const auto& accId : getAccountIDs()) {
+         auto accPtr = getAccountForID(accId);
+         if (accPtr == nullptr || accPtr->isLegacy()) {
+            continue;
+         }
+         try {
+            auto outerAcc = accPtr->getOuterAccount();
+            auto accRoot = outerAcc->getRoot();
+            auto rootBip32 = std::dynamic_pointer_cast<
+               AssetEntry_BIP32Root>(accRoot);
+            if (rootBip32 != nullptr) {
+               purposeNames.insert(rootBip32->getDisplayName());
+            }
+         } catch (const std::exception&) {
+         }
+      }
+      if (purposeNames.size() == 1) {
+         return *purposeNames.begin();
+      }
+      return "BIP32";
+   }
+   return {};
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 const AssetId& AssetWallet_Single::derivePrivKeyFromPath(
    const Signing::BIP32_AssetPath& path)

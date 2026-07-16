@@ -1291,6 +1291,46 @@ bool AddressAccount::isLegacy() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+std::string AddressAccount::getDisplayName() const
+{
+   if (isLegacy()) {
+      return "Armory Legacy";
+   }
+   try {
+      auto outerAcc = getOuterAccount();
+      auto root = outerAcc->getRoot();
+      auto rootBip32 = std::dynamic_pointer_cast<AssetEntry_BIP32Root>(root);
+      if (rootBip32 != nullptr) {
+         return rootBip32->getDisplayName();
+      }
+   } catch (const std::exception&) {
+   }
+   const auto hex = ID_.toHexStr();
+   if (hex.size() > 8) {
+      return hex.substr(0, 8) + "...";
+   }
+   return hex;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+std::string AddressAccount::getDerivationSchemeDisplay() const
+{
+   if (isLegacy()) {
+      return {};
+   }
+   try {
+      auto outerAcc = getOuterAccount();
+      auto root = outerAcc->getRoot();
+      auto rootBip32 = std::dynamic_pointer_cast<AssetEntry_BIP32Root>(root);
+      if (rootBip32 != nullptr) {
+         return rootBip32->getDerivationSchemeDisplay();
+      }
+   } catch (const std::exception&) {
+   }
+   return {};
+}
+
+////////////////////////////////////////////////////////////////////////////////
 AddressAccountPublicData::AddressAccountPublicData(
    const AddressAccountId& accId,
    const AssetAccountId& outId,

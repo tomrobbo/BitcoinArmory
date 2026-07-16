@@ -71,13 +71,9 @@ namespace
       return BinaryData(bytes.begin(), bytes.end());
    }
 
-   std::string inferAccountDisplayName(
-      const std::shared_ptr<Accounts::AddressAccount>&,
-      const Wallets::AddressAccountId&);
-   std::string inferSeedTypeName(
-      const std::shared_ptr<Wallets::AssetWallet_Single>&);
-   std::string inferDerivationScheme(
-      const std::shared_ptr<Accounts::AddressAccount>&);
+   std::string chainRoleForAssetAccount(
+      const std::shared_ptr<Accounts::AddressAccount>& accPtr,
+      const Wallets::AssetAccountId& assetAccId);
 
    void addressToCapnp(WalletData::AddressData::Builder& capnAddress,
       std::shared_ptr<AddressEntry> addrPtr,
@@ -221,9 +217,9 @@ namespace
       capnWallet.setDefaultAddressType(
          (uint32_t)accPtr->getDefaultAddressType());
 
-      capnWallet.setAccountName(inferAccountDisplayName(accPtr, accId));
-      capnWallet.setSeedTypeName(inferSeedTypeName(wltSingle));
-      capnWallet.setDerivationScheme(inferDerivationScheme(accPtr));
+      capnWallet.setAccountName(accPtr->getDisplayName());
+      capnWallet.setSeedTypeName(wltSingle->getSeedTypeDisplayName());
+      capnWallet.setDerivationScheme(accPtr->getDerivationSchemeDisplay());
 
       //address use count
       auto assetAccountPtr = accPtr->getOuterAccount();
@@ -653,7 +649,7 @@ void CppBridge::unlockControlHeader(const std::string& path,
       };
 
       try {
-         wltManager_->unlockControlHeader(path, lbd);
+         wltManager_->unlockControlHeader(std::filesystem::path(path), lbd);
          notifySuccess(true, {});
       } catch (const std::exception& e) {
          notifySuccess(false, e.what());
@@ -772,7 +768,7 @@ namespace {
    struct ExportedKeyData
    {
       BinaryData assetId;
-      SecureBinaryData privKey;
+      const SecureBinaryData* privKeyRef = nullptr;
       BinaryData pubKey;
       std::string addressString;
       uint32_t addrType = 0;
@@ -796,136 +792,6 @@ namespace {
       }
       if (assetAccId == innerId) {
          return "Change";
-      }
-      return {};
-   }
-
-   std::string formatDerivationPath(const std::vector<uint32_t>& path)
-   {
-      if (path.empty()) {
-         return {};
-      }
-      std::string result = "m";
-      for (const auto node : path) {
-         result += '/';
-         if (node >= 0x80000000) {
-            result += std::to_string(node & 0x7FFFFFFF);
-            result += '\'';
-         } else {
-            result += std::to_string(node);
-         }
-      }
-      return result;
-   }
-
-   std::string bip32NameFromRootPath(const std::vector<uint32_t>& rootPath)
-   {
-      // Account roots may be stored at the external-chain level
-      // (purpose'/coin'/account'/0), so read purpose/coin/account from the
-      // first three path elements.
-      if (rootPath.size() < 3) {
-         return "BIP32";
-      }
-      const auto coinType = Armory::Config::BitcoinSettings::getCoinType();
-      if (rootPath[1] != coinType || !(rootPath[2] & 0x80000000)) {
-         return "BIP32";
-      }
-      switch (rootPath[0]) {
-         case 0x8000002C:
-            return "BIP44";
-         case 0x80000031:
-            return "BIP49";
-         case 0x80000054:
-            return "BIP84";
-         default:
-            return "BIP32";
-      }
-   }
-
-   std::string inferAccountDisplayName(
-      const std::shared_ptr<Accounts::AddressAccount>& accPtr,
-      const Wallets::AddressAccountId& accId)
-   {
-      if (accPtr->isLegacy()) {
-         return "Armory Legacy";
-      }
-      try {
-         auto outerAcc = accPtr->getOuterAccount();
-         auto root = outerAcc->getRoot();
-         auto rootBip32 = std::dynamic_pointer_cast<
-            Assets::AssetEntry_BIP32Root>(root);
-         if (rootBip32 != nullptr) {
-            return bip32NameFromRootPath(rootBip32->getDerivationPath());
-         }
-      } catch (const std::exception&) {
-      }
-      const auto hex = accId.toHexStr();
-      if (hex.size() > 8) {
-         return hex.substr(0, 8) + "...";
-      }
-      return hex;
-   }
-
-   std::string inferSeedTypeName(
-      const std::shared_ptr<Wallets::AssetWallet_Single>& wltSingle)
-   {
-      if (wltSingle == nullptr) {
-         return {};
-      }
-      auto root = wltSingle->getRoot();
-      if (auto legacyRoot = std::dynamic_pointer_cast<
-         Assets::AssetEntry_ArmoryLegacyRoot>(root)) {
-         switch (legacyRoot->getSeedType()) {
-            case Seeds::LegacyType::Armory135:
-               return "Armory Legacy (1.35)";
-            case Seeds::LegacyType::Armory200:
-               return "Armory Legacy (2.00)";
-            default:
-               return "Armory Legacy";
-         }
-      }
-      if (std::dynamic_pointer_cast<Assets::AssetEntry_BIP32Root>(root)) {
-         std::set<std::string> purposeNames;
-         for (const auto& accId : wltSingle->getAccountIDs()) {
-            auto accPtr = wltSingle->getAccountForID(accId);
-            if (accPtr == nullptr || accPtr->isLegacy()) {
-               continue;
-            }
-            try {
-               auto outerAcc = accPtr->getOuterAccount();
-               auto accRoot = outerAcc->getRoot();
-               auto rootBip32 = std::dynamic_pointer_cast<
-                  Assets::AssetEntry_BIP32Root>(accRoot);
-               if (rootBip32 != nullptr) {
-                  purposeNames.insert(
-                     bip32NameFromRootPath(rootBip32->getDerivationPath()));
-               }
-            } catch (const std::exception&) {
-            }
-         }
-         if (purposeNames.size() == 1) {
-            return *purposeNames.begin();
-         }
-         return "BIP32";
-      }
-      return {};
-   }
-
-   std::string inferDerivationScheme(
-      const std::shared_ptr<Accounts::AddressAccount>& accPtr)
-   {
-      if (accPtr->isLegacy()) {
-         return {};
-      }
-      try {
-         auto outerAcc = accPtr->getOuterAccount();
-         auto root = outerAcc->getRoot();
-         auto rootBip32 = std::dynamic_pointer_cast<
-            Assets::AssetEntry_BIP32Root>(root);
-         if (rootBip32 != nullptr) {
-            return formatDerivationPath(rootBip32->getDerivationPath());
-         }
-      } catch (const std::exception&) {
       }
       return {};
    }
@@ -968,15 +834,12 @@ namespace {
       }
    }
 
-   std::vector<ExportedKeyData> collectExportedKeys(
+   void collectExportedKeys(
       const std::shared_ptr<Wallets::AssetWallet_Single>& wltSingle,
       const Wallets::AddressAccountId& scopeAccId,
       bool includePrivateKeys,
-      const std::function<Passphrase::Result(
-         const std::set<Wallets::EncryptionKeyId>&)>& decryptLbd)
+      std::vector<ExportedKeyData>& exportedKeys)
    {
-      std::vector<ExportedKeyData> exportedKeys;
-
       std::vector<Wallets::AddressAccountId> accountIdsToWalk;
       if (scopeAccId.isValid()) {
          accountIdsToWalk.push_back(scopeAccId);
@@ -1034,9 +897,8 @@ namespace {
                   entry.chainRole = chainRoleForAssetAccount(accPtr, assetAccId);
 
                   if (includePrivateKeys) {
-                     const auto& privKey =
-                        wltSingle->getDecryptedPrivateKeyForAsset(assetSingle);
-                     entry.privKey = SecureBinaryData(privKey);
+                     entry.privKeyRef =
+                        &wltSingle->getDecryptedPrivateKeyForAsset(assetSingle);
                   }
 
                   fillExportedKeyMetadata(entry, accPtr, assetID);
@@ -1046,14 +908,7 @@ namespace {
          }
       };
 
-      if (includePrivateKeys) {
-         auto lock = wltSingle->lockDecryptedContainer(decryptLbd);
-         walkWallet();
-      } else {
-         walkWallet();
-      }
-
-      return exportedKeys;
+      walkWallet();
    }
 
    void populateExportedKey(WalletReply::ExportedPrivateKey::Builder& capnKey,
@@ -1061,9 +916,9 @@ namespace {
    {
       capnKey.setAssetId(capnp::Data::Builder(
          (uint8_t*)entry.assetId.getPtr(), entry.assetId.getSize()));
-      if (!entry.privKey.empty()) {
+      if (entry.privKeyRef != nullptr && !entry.privKeyRef->empty()) {
          capnKey.setPrivKey(capnp::Data::Builder(
-            (uint8_t*)entry.privKey.getPtr(), entry.privKey.getSize()));
+            (uint8_t*)entry.privKeyRef->getPtr(), entry.privKeyRef->getSize()));
       }
       if (!entry.pubKey.empty()) {
          capnKey.setPublicKey(capnp::Data::Builder(
@@ -1111,7 +966,7 @@ void CppBridge::exportKeys(const Wallets::WalletId& wltId,
    auto func = [this, wltId, accId, includePrivateKeys, callbackId, msgId]()
    {
       std::vector<ExportedKeyData> exportedKeys;
-      std::string error;
+      BinaryData serialized;
 
       std::shared_ptr<BridgePassphrasePrompt> passPromptObj;
 
@@ -1147,20 +1002,18 @@ void CppBridge::exportKeys(const Wallets::WalletId& wltId,
                });
             auto lbd = passPromptObj->getLambda();
             ExportKeysCleanup cleanupGuard{passPromptObj};
-
-            exportedKeys = collectExportedKeys(wltSingle, accId, true, lbd);
+            auto lock = wltSingle->lockDecryptedContainer(lbd);
+            collectExportedKeys(wltSingle, accId, true, exportedKeys);
+            serialized = buildExportedKeysReply(msgId, exportedKeys, "");
          } else {
-            exportedKeys = collectExportedKeys(wltSingle, accId, false,
-               [](const std::set<Wallets::EncryptionKeyId>&)->Passphrase::Result{
-                  return {{}, false};
-               });
+            collectExportedKeys(wltSingle, accId, false, exportedKeys);
+            serialized = buildExportedKeysReply(msgId, exportedKeys, "");
          }
 
       } catch (const std::exception& e) {
-         error = e.what();
+         serialized = buildExportedKeysReply(msgId, {}, e.what());
       }
 
-      auto serialized = buildExportedKeysReply(msgId, exportedKeys, error);
       this->writeToClient(serialized);
    };
 
