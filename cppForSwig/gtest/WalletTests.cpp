@@ -7124,11 +7124,17 @@ TEST_F(WalletsTest, WalletDisplayNames)
       std::move(legacySeed), legacyParams);
    auto legacyAcc = legacyWlt->getAccountForID(legacyWlt->getMainAccountID());
    EXPECT_EQ(legacyAcc->getDisplayName(), "Armory Legacy");
-   EXPECT_TRUE(legacyAcc->getDerivationSchemeDisplay().empty());
+   EXPECT_EQ(legacyAcc->getDerivationSchemeDisplay(), "Armory Legacy");
    auto legacyRoot = std::dynamic_pointer_cast<Assets::AssetEntry_ArmoryLegacyRoot>(
       legacyWlt->getRoot());
    ASSERT_NE(legacyRoot, nullptr);
-   EXPECT_EQ(legacyRoot->getDisplayName(), legacyWlt->getSeedTypeDisplayName());
+   EXPECT_EQ(legacyRoot->getDisplayName(), "Armory Legacy (2.00)");
+   EXPECT_EQ(legacyWlt->getSeedTypeDisplayName(), "Armory Legacy (2.00)");
+
+   auto importAccId = legacyWlt->setupImportAccount();
+   auto importAcc = legacyWlt->getAccountForID(importAccId);
+   ASSERT_NE(importAcc, nullptr);
+   EXPECT_EQ(importAcc->getDerivationSchemeDisplay(), "N/A");
 
    SecureBinaryData bip32Seed = READHEX("000102030405060708090a0b0c0d0e0f");
    auto bip32Dir = homedir_ / "display_bip32";

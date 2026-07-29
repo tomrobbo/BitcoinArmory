@@ -1316,7 +1316,11 @@ std::string AddressAccount::getDisplayName() const
 std::string AddressAccount::getDerivationSchemeDisplay() const
 {
    if (isLegacy()) {
-      return {};
+      return "Armory Legacy";
+   }
+   if (ID_ == AddressAccountId{IMPORTS_ACCOUNT_PRIV} ||
+       ID_ == AddressAccountId{IMPORTS_ACCOUNT_PUB}) {
+      return "N/A";
    }
    try {
       auto outerAcc = getOuterAccount();

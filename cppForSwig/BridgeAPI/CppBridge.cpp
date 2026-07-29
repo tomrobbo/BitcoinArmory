@@ -768,7 +768,7 @@ namespace {
    struct ExportedKeyData
    {
       BinaryData assetId;
-      const SecureBinaryData* privKeyRef = nullptr;
+      BinaryDataRef privKeyRef;
       BinaryData pubKey;
       std::string addressString;
       uint32_t addrType = 0;
@@ -878,6 +878,10 @@ namespace {
                      continue;
                }
 
+               //getDecryptedPrivateKeyForAsset will fill missing private keys
+               //run backwards the assets to compute missing keys in batch
+               //rather than sequentially
+               //TODO: add progressCallback logic to extend/fillPrivateKey
                auto lastIdx = assetAcc->getLastComputedIndex();
                for (int32_t i = lastIdx; i >= 0; i--) {
                   auto assetPtr = assetAcc->getAssetForKey(i);
@@ -898,7 +902,7 @@ namespace {
 
                   if (includePrivateKeys) {
                      entry.privKeyRef =
-                        &wltSingle->getDecryptedPrivateKeyForAsset(assetSingle);
+                        wltSingle->getDecryptedPrivateKeyForAsset(assetSingle);
                   }
 
                   fillExportedKeyMetadata(entry, accPtr, assetID);
@@ -916,9 +920,9 @@ namespace {
    {
       capnKey.setAssetId(capnp::Data::Builder(
          (uint8_t*)entry.assetId.getPtr(), entry.assetId.getSize()));
-      if (entry.privKeyRef != nullptr && !entry.privKeyRef->empty()) {
+      if (!entry.privKeyRef.empty()) {
          capnKey.setPrivKey(capnp::Data::Builder(
-            (uint8_t*)entry.privKeyRef->getPtr(), entry.privKeyRef->getSize()));
+            (uint8_t*)entry.privKeyRef.getPtr(), entry.privKeyRef.getSize()));
       }
       if (!entry.pubKey.empty()) {
          capnKey.setPublicKey(capnp::Data::Builder(
