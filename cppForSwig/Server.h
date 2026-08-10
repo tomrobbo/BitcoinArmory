@@ -6,8 +6,7 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _SERVER_H_
-#define _SERVER_H_
+#pragma once
 
 #include <string>
 #include <memory>
@@ -33,8 +32,6 @@ namespace Armory
 {
    namespace Wallets
    {
-      class AuthorizedPeers;
-
       namespace IO
       {
          struct ReadOnlyFileParams;
@@ -45,6 +42,11 @@ namespace Armory
    {
       struct Socket_WritePayload;
       class SerializedMessage;
+   }
+
+   namespace NetworkPeers
+   {
+      class ServerStore;
    }
 }
 
@@ -143,7 +145,7 @@ private:
    Armory::Threading::BlockingQueue<std::unique_ptr<PendingMessage>> msgQueue_;
    Armory::Threading::BlockingQueue<uint64_t> clientConnectionInterruptQueue_;
 
-   std::shared_ptr<Armory::Wallets::AuthorizedPeers> authorizedPeers_;
+   std::shared_ptr<Armory::NetworkPeers::ServerStore> peerStore_;
    std::map<struct lws*, std::list<std::list<BinaryData>>> writeMap_;
    lws_context* contextPtr_;
    Armory::Threading::Queue<std::pair<struct lws*, std::list<BinaryData>>> writeQueue_;
@@ -180,8 +182,8 @@ public:
       void *user, void *in, size_t len);
 
    static void init(void);
-   static void initAuthPeers(const Armory::Wallets::IO::ReadOnlyFileParams&);
-   static void initAuthPeers(std::shared_ptr<Armory::Wallets::AuthorizedPeers>);
+   static void initPeerStore(const Armory::Wallets::IO::ReadOnlyFileParams&);
+   static void initPeerStore(std::shared_ptr<Armory::NetworkPeers::ServerStore>);
    static void start(std::shared_ptr<BlockDataManager>, bool);
    static void shutdown(void);
    static void waitOnShutdown(void);
@@ -196,5 +198,3 @@ public:
    void addId(const uint64_t&, struct lws* ptr);
    void eraseId(const uint64_t&, struct lws* ptr);
 };
-
-#endif

@@ -22,9 +22,9 @@ class RemoteCallback;
 
 namespace Armory
 {
-   namespace Wallets
+   namespace NetworkPeers
    {
-      class AuthorizedPeers;
+      class ClientStore;
       class PeerKey;
    }
 
@@ -72,7 +72,7 @@ namespace Armory
          const bool automateNode_;
          const bool automateDb_;
 
-         std::shared_ptr<Wallets::AuthorizedPeers> peers_;
+         std::shared_ptr<NetworkPeers::ClientStore> peers_;
          uint32_t dbPort_ = UINT32_MAX;
          bool hasRun_ = false;
 
@@ -102,21 +102,21 @@ namespace Armory
          bool isDbRunning(void);
          bool isSatoshiRunning(void);
          uint32_t getDbPort(void) const;
-         std::shared_ptr<Wallets::AuthorizedPeers> getPeersDb(void) const;
+         std::shared_ptr<NetworkPeers::ClientStore> getPeerStore(void) const;
       };
 
       /* db helpers */
       using BdvPtr = std::shared_ptr<AsyncClient::BlockDataViewer>;
 
       BdvPtr setupClientConnection(
-         std::shared_ptr<Wallets::AuthorizedPeers>,
+         std::shared_ptr<NetworkPeers::ClientStore>,
          const std::string&, const std::string&, bool,
          const std::function<bool(const BinaryData&)>&,
          std::shared_ptr<RemoteCallback>
       );
       BdvPtr setupClientConnection(
-         std::shared_ptr<Wallets::AuthorizedPeers>,
-         const Wallets::PeerKey&,
+         std::shared_ptr<NetworkPeers::ClientStore>,
+         const NetworkPeers::PeerKey&,
          std::shared_ptr<RemoteCallback>
       );
    } //namespace Bridge

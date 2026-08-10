@@ -34,7 +34,7 @@ CppBridgeSocket::CppBridgeSocket(
    serverName_(addr + ":" + port)
 {
    //setup auth peers db
-   authPeers_ = std::make_shared<Wallets::AuthorizedPeers>();
+   peers_ = std::make_shared<NetworkPeers::ClientStore>();
 
    auto uiPubKey = Config::NetworkSettings::uiPublicKey();
    if (uiPubKey.getSize() != 33) {
@@ -45,13 +45,14 @@ CppBridgeSocket::CppBridgeSocket(
    }
 
    //inject UI key (UI is the server, bridge connects to it)
-   authPeers_->addPeer(uiPubKey.getRef(), {serverName_}, {}, false);
-   auto lbds = Wallets::AuthorizedPeers::getAuthPeersLambdas(
-      authPeers_, false);
+   NetworkPeers::PeerKey uiKey{uiPubKey, NetworkPeers::PeerType::ServerTwoWay};
+   peers_->addPeer(uiKey, {serverName_}, {});
+   auto lbds = NetworkPeers::PeerStore::getAuthPeersLambdas(
+      peers_, false);
 
    //write own public key to cookie file
    {
-      const auto& ownKey = authPeers_->getOwnPublicKey();
+      const auto& ownKey = peers_->getOwnPublicKey();
       std::fstream file;
 
       //on windows, we need to explicitly open the cookie file in binary

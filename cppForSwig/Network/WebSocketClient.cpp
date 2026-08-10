@@ -41,16 +41,16 @@ static struct lws_protocols protocols[] =
 // WebSocketClient
 WebSocketClient::WebSocketClient(const std::string& addr,
    const std::string& port,
-   std::shared_ptr<Wallets::AuthorizedPeers> peers, bool oneWayAuth,
+   std::shared_ptr<NetworkPeers::ClientStore> peers, bool oneWayAuth,
    std::shared_ptr<RemoteCallback> cbPtr) :
    SocketPrototype(addr, port, false),
-   servName_(addr_ + ":" + port_), callbackPtr_(cbPtr), authPeers_(peers)
+   servName_(addr_ + ":" + port_), callbackPtr_(cbPtr), peerStore_(peers)
 {
    count_.store(0, std::memory_order_relaxed);
    requestID_.store(0, std::memory_order_relaxed);
    contextPtr_.store(0, std::memory_order_release);
 
-   auto lbds = Wallets::AuthorizedPeers::getAuthPeersLambdas(authPeers_, oneWayAuth);
+   auto lbds = NetworkPeers::PeerStore::getAuthPeersLambdas(peerStore_, oneWayAuth);
    bip151Connection_ = std::make_shared<BIP151Connection>(lbds, oneWayAuth);
 }
 
@@ -627,8 +627,12 @@ bool WebSocketClient::processAEADHandshake(const WebSocketMessagePartial& msgObj
 ////////
 void WebSocketClient::addPublicKey(const SecureBinaryData& pubkey, bool oneWay)
 {
+   NetworkPeers::PeerKey serverKey{pubkey, oneWay ?
+      NetworkPeers::PeerType::ServerOneWay :
+      NetworkPeers::PeerType::ServerTwoWay
+   };
    const std::string addrPort{ addr_ + ":" + port_ };
-   authPeers_->addPeer(pubkey, {addrPort}, {}, oneWay);
+   peerStore_->addPeer(serverKey, {addrPort}, {});
 }
 
 void WebSocketClient::setPubkeyPromptLambda(
@@ -651,7 +655,7 @@ void WebSocketClient::promptUser(
    {
       if (this->userPromptLambda_(key_copy)) {
          //the lambda returns true, the user accepted the key, add it to peers
-         this->authPeers_->addPeer(key_copy, {name}, {}, true);
+         this->addPublicKey(key_copy, true);
          serverPubkeyProm_->set_value(true);
       } else {
          //otherwise, we still have to set the promise so that the auth

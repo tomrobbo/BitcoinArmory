@@ -22,10 +22,8 @@
 #include "TerminalPassphrasePrompt.h"
 #include "BIP32_Node.h"
 
-using namespace Armory::Assets;
-using namespace Armory::Accounts;
-using namespace Armory::Wallets;
-using namespace Armory::Seeds;
+using namespace Armory;
+using namespace Armory::NetworkPeers;
 
 using namespace std::chrono_literals;
 using namespace std::string_view_literals;
@@ -33,79 +31,72 @@ using namespace std::string_view_literals;
 #define ARMORY_PEERKEY_VERSION   0x01
 
 ////////////////////////////////////////////////////////////////////////////////
-SecureBinaryData AuthorizedPeers::setOwnPrivateKey(SecureBinaryData& privateKey)
-{
-   //compute the public key
-   auto ownPubKey = Cryptography::ECDSA::computePublicKey(privateKey);
-   auto ownPubKey_compressed = Cryptography::ECDSA::compressPoint(ownPubKey);
-
-   //add to private keys map
-   privateKeys_.emplace(ownPubKey_compressed, std::move(privateKey));
-   return ownPubKey_compressed;
-}
-
-void AuthorizedPeers::initPeerMaps(const SecureBinaryData& pubkey)
-{
-   btc_pubkey btc_own;
-   btc_pubkey_init(&btc_own);
-   std::memcpy(btc_own.pubkey, pubkey.getPtr(), BIP151PUBKEYSIZE);
-   btc_own.compressed = true;
-   peerMapOneWay_ = std::make_unique<PeerMap>(wallet_, btc_own, true);
-   peerMapTwoWay_ = std::make_unique<PeerMap>(wallet_, btc_own, false);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-AuthorizedPeers::AuthorizedPeers(std::shared_ptr<AssetWallet> wltPtr) :
-   wallet_(wltPtr)
-{
-   initFromWallet();
-}
-
-////
-AuthorizedPeers::AuthorizedPeers(const IO::ReadOnlyFileParams& params)
-{
-   loadWallet(params);
-   initFromWallet();
-}
-
-////
-AuthorizedPeers::AuthorizedPeers()
+// PeerStore
+PeerStore::PeerStore()
 {
    //No filename was passed, create an ephemral peer db instead
    auto privateKey = Cryptography::PRNG::generateRandomStrong(32);
-   auto pubkey = setOwnPrivateKey(privateKey);
-   initPeerMaps(pubkey);
+   setOwnPrivateKey(privateKey);
 }
 
-AuthorizedPeers::AuthorizedPeers(SecureBinaryData& privateKey)
+PeerStore::PeerStore(SecureBinaryData& privateKey)
 {
    auto pubkey = setOwnPrivateKey(privateKey);
-   initPeerMaps(pubkey);
+}
+
+PeerStore::PeerStore(std::shared_ptr<Wallets::AssetWallet> wltPtr) :
+   wallet_(wltPtr)
+{}
+
+PeerStore::PeerStore(const Wallets::IO::ReadOnlyFileParams& params)
+{
+   loadWallet(params);
+}
+
+PeerStore::~PeerStore()
+{}
+
+////////
+SecureBinaryData PeerStore::setOwnPrivateKey(SecureBinaryData& privateKey)
+{
+   //compute compressed public key
+   auto ownPubKey = Cryptography::ECDSA::computePublicKey(privateKey, true);
+
+   //add to private keys map
+   privateKeys_.emplace(ownPubKey, std::move(privateKey));
+   return ownPubKey;
+}
+
+const SecureBinaryData& PeerStore::getPrivateKey(
+   const BinaryDataRef& pubkey) const
+{
+   auto iter = privateKeys_.find(pubkey);
+   if (iter == privateKeys_.end()) {
+      throw Exception("unknown private key");
+   }
+   return iter->second;
 }
 
 ////////
-void AuthorizedPeers::loadWallet(const IO::ReadOnlyFileParams& params)
+void PeerStore::loadWallet(const Wallets::IO::ReadOnlyFileParams& params)
 {
    if (!FileUtils::pathExists(params.filePath, 6)) {
-      throw PeerFileMissing();
+      throw FileMissing();
    }
-   wallet_ = AssetWallet::loadMainWalletFromFile(params);
+   wallet_ = Wallets::AssetWallet::loadMainWalletFromFile(params);
 }
 
-void AuthorizedPeers::initFromWallet()
+void PeerStore::initFromWallet()
 {
    if (wallet_ == nullptr) {
-      throw AuthorizedPeersException("failed to initialize peer wallet");
+      throw Exception("failed to initialize peer wallet");
    }
-   //grab all meta entries, populate public key map
-   auto peerAccount = wallet_->getMetaAccount(MetaAccountType::AuthPeers);
-   auto peerAssets = AuthPeerAssetConversion::getAssetMap(peerAccount.get());
 
    //get the private key
-   SecureBinaryData ownPubKey_compressed;
+   SecureBinaryData ownPubKey;
    {
       //create & set password lambda
-      auto passphrasePrompt = [](const std::set<EncryptionKeyId>&)
+      auto passphrasePrompt = [](const std::set<Wallets::EncryptionKeyId>&)
       ->Passphrase::Result
       {
          return {
@@ -117,9 +108,9 @@ void AuthorizedPeers::initFromWallet()
       //grab decryption container lock
       auto lock = wallet_->lockDecryptedContainer(passphrasePrompt);
 
-      auto walletSingle = std::dynamic_pointer_cast<AssetWallet_Single>(wallet_);
+      auto walletSingle = std::dynamic_pointer_cast<Wallets::AssetWallet_Single>(wallet_);
       if (walletSingle == nullptr) {
-         throw AuthorizedPeersException("unexpected wallet type");
+         throw Exception("unexpected wallet type");
       }
 
       //grab asset #1 on main peers chain (m'/PEERS_WALLET_BIP32_ACCOUNT'/0')
@@ -127,31 +118,30 @@ void AuthorizedPeers::initFromWallet()
          walletSingle->getMainAccountID());
       auto outerAccount = mainAcc->getOuterAccount();
       auto assetPtr = outerAccount->getAssetForKey(1);
-      auto assetSingle = std::dynamic_pointer_cast<AssetEntry_Single>(assetPtr);
+      auto assetSingle = std::dynamic_pointer_cast<Assets::AssetEntry_Single>(assetPtr);
 
       auto privateKey = wallet_->getDecryptedValue(
          assetSingle->getPrivKey());
-      ownPubKey_compressed = setOwnPrivateKey(privateKey);
+      ownPubKey = setOwnPrivateKey(privateKey);
    }
 
    //init peer maps
-   initPeerMaps(ownPubKey_compressed);
+   initPeerMap(ownPubKey);
+
+   /* TODO: these are pure virtual calls and this method is called from child ctors, deal with it */
+
+   //grab all meta entries, populate public key map
+   auto peerAccount = wallet_->getMetaAccount(Accounts::MetaAccountType::Peers);
+   auto peerAssets = Accounts::PeerAssetConversion::getAssetMap(peerAccount.get());
 
    //populate name key pairs
-   peerMapOneWay_->setupFromAssetMap(peerAssets);
-   peerMapOneWay_->grabKeyIndexes(peerAccount);
-   peerMapTwoWay_->setupFromAssetMap(peerAssets);
-   peerMapTwoWay_->grabKeyIndexes(peerAccount);
-
-   //set master key
-   if (peerAssets.masterKey.empty()) {
-      return;
-   }
-   masterKey_ = std::move(peerAssets.masterKey);
+   setupFromAssetMap(peerAssets);
+   grabKeyIndexes(peerAccount);
 }
 
-std::shared_ptr<AuthorizedPeers> AuthorizedPeers::createWallet(
-   const IO::CreateFileParams& params)
+////////
+std::shared_ptr<Wallets::AssetWallet> PeerStore::initOnDisk(
+   const Wallets::IO::CreateFileParams& params)
 {
    //Default peers wallet private keys password. Asset wallets always
    //encrypt private keys, we have to provide a password at creation.
@@ -159,14 +149,14 @@ std::shared_ptr<AuthorizedPeers> AuthorizedPeers::createWallet(
 
    //wrap around the provided CreateFileParams to create the AssetWallet
    //the peers db will run off of
-   IO::CreateWalletParams walletParams{
+   Wallets::IO::CreateWalletParams walletParams{
       params.filePath.parent_path(),
       Passphrase::SetNew{1ms, 0, privPass},
       params.setCtrlPassObj.copy(), nullptr,
       0, {}, {}
    };
 
-   std::shared_ptr<AssetWallet_Single> wallet;
+   std::shared_ptr<Wallets::AssetWallet_Single> wallet;
    {
       //Default peers wallet derivation path. Using m/'account/'0.
       std::vector<uint32_t> derPath;
@@ -174,19 +164,19 @@ std::shared_ptr<AuthorizedPeers> AuthorizedPeers::createWallet(
       derPath.push_back(0xF0000000);
 
       //generate bip32 node from random seed
-      wallet = AssetWallet_Single::createFromSeed(
-         std::make_unique<ClearTextSeed_BIP32>(
+      wallet = Wallets::AssetWallet_Single::createFromSeed(
+         std::make_unique<Seeds::ClearTextSeed_BIP32>(
             Cryptography::PRNG::generateRandomStrong(32),
-            SeedType::BIP32_Virgin),
+            Seeds::SeedType::BIP32_Virgin),
          walletParams);
-      auto wltSingle = std::dynamic_pointer_cast<AssetWallet_Single>(wallet);
+      auto wltSingle = std::dynamic_pointer_cast<Wallets::AssetWallet_Single>(wallet);
 
-      auto rootBip32 = std::dynamic_pointer_cast<AssetEntry_BIP32Root>(
+      auto rootBip32 = std::dynamic_pointer_cast<Assets::AssetEntry_BIP32Root>(
          wltSingle->getRoot());
       if (rootBip32 == nullptr) {
-         throw AuthorizedPeersException("[createWallet] invalid root");
+         throw Exception("[initOnDisk] invalid root");
       }
-      auto account = AccountType_BIP32::makeFromDerPaths(
+      auto account = Accounts::AccountType_BIP32::makeFromDerPaths(
          rootBip32->getSeedFingerprint(false), {derPath});
       account->setMain(true);
       account->setAddressLookup(2);
@@ -197,29 +187,175 @@ std::shared_ptr<AuthorizedPeers> AuthorizedPeers::createWallet(
    }
 
    //add the peers meta account
-   wallet->addMetaAccount(MetaAccountType::AuthPeers);
+   wallet->addMetaAccount(Accounts::MetaAccountType::Peers);
 
    //grab wallet filename
    auto currentname = wallet->getDbFilename();
 
-   //destroying the wallet will shutdown the underlying db object
+   //destroying the wallet object will shutdown the underlying db object
    wallet.reset();
 
    //rename peers wallet to desired name
    try {
       std::filesystem::rename(currentname, params.filePath);
    } catch (const std::filesystem::filesystem_error&) {
-      throw AuthorizedPeersException("failed to setup peers wallet");
+      throw Exception("failed to setup peers wallet");
    }
    currentname.append("-lock");
    std::filesystem::remove(currentname);
 
-   IO::ReadOnlyFileParams roFileParams{params.filePath,
+   Wallets::IO::ReadOnlyFileParams roFileParams{params.filePath,
       walletParams.setCtrlPassObj.getUnlockFunc()};
-   return std::make_shared<AuthorizedPeers>(roFileParams);
+   return Wallets::AssetWallet::loadMainWalletFromFile(roFileParams);
 }
 
-std::shared_ptr<AuthorizedPeers> AuthorizedPeers::getNarrowSet(
+////////
+const btc_pubkey& PeerStore::getOwnPublicKey() const
+{
+   const auto& nameMap = getPeerNameMap(false);
+   auto iter = nameMap.find("own");
+   if (iter == nameMap.end()) {
+      throw Exception("malformed authpeer object");
+   }
+   return iter->second;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ClientStore
+ClientStore::ClientStore() :
+   PeerStore()
+{
+   const auto& ownPubkey = privateKeys_.begin()->first;
+   initPeerMap(ownPubkey);
+}
+
+ClientStore::ClientStore(SecureBinaryData& privateKey) :
+   PeerStore(privateKey)
+{
+   const auto& ownPubkey = privateKeys_.begin()->first;
+   initPeerMap(ownPubkey);
+}
+
+ClientStore::ClientStore(const Wallets::IO::ReadOnlyFileParams& roFileParams) :
+   PeerStore(roFileParams)
+{
+   initFromWallet();
+}
+
+ClientStore::ClientStore(std::shared_ptr<Wallets::AssetWallet> wlt) :
+   PeerStore(wlt)
+{
+   initFromWallet();
+}
+
+////////
+void ClientStore::initPeerMap(const SecureBinaryData& pubkey)
+{
+   btc_pubkey btc_own;
+   btc_pubkey_init(&btc_own);
+   std::memcpy(btc_own.pubkey, pubkey.getPtr(), BIP151PUBKEYSIZE);
+   btc_own.compressed = true;
+   peerMapOneWay_ = std::make_unique<PeerMap>(wallet_, btc_own, true);
+   peerMapTwoWay_ = std::make_unique<PeerMap>(wallet_, btc_own, false);
+}
+
+////////
+void ClientStore::setupFromAssetMap(const Accounts::PeerAssetMap& assetMap)
+{
+   peerMapOneWay_->setupFromAssetMap(assetMap);
+   peerMapTwoWay_->setupFromAssetMap(assetMap);
+}
+
+void ClientStore::grabKeyIndexes(
+   std::shared_ptr<Accounts::MetaDataAccount> peerAccount)
+{
+   peerMapOneWay_->grabKeyIndexes(peerAccount);
+   peerMapTwoWay_->grabKeyIndexes(peerAccount);
+}
+
+////////
+void ClientStore::addPeer(const PeerKey& peerKey,
+   const std::vector<std::string>& names, const std::string& label)
+{
+   if (!peerKey.isServer()) {
+      throw Exception("client store only takes server keys");
+   }
+   if (peerKey.isOneWay()) {
+      peerMapOneWay_->addPeer(peerKey.getKey(), names, label);
+   } else {
+      peerMapTwoWay_->addPeer(peerKey.getKey(), names, label);
+   }
+}
+
+void ClientStore::erasePeer(const PeerKey& peerKey)
+{
+   //sanity check
+   if (!peerKey.isServer()) {
+      throw Exception("client store only carries server keys");
+   }
+   const auto& pubkey = peerKey.getKey();
+
+   if (peerKey.isOneWay()) {
+      peerMapOneWay_->eraseKey(pubkey);
+   } else {
+      peerMapTwoWay_->eraseKey(pubkey);
+   }
+   if (wallet_ == nullptr) {
+      return;
+   }
+
+   //update on disk
+   auto metaAccount = wallet_->getMetaAccount(Accounts::MetaAccountType::Peers);
+   auto uniqueTx = wallet_->getIface()->beginWriteTransaction(
+      wallet_->getDbName());
+   std::shared_ptr<Wallets::IO::DBIfaceTransaction> sharedTx(std::move(uniqueTx));
+   metaAccount->updateOnDisk(sharedTx);
+}
+
+////////
+void ClientStore::eraseName(const std::string& name, bool oneWay)
+{
+   auto* peerMap = oneWay ? peerMapOneWay_.get() : peerMapTwoWay_.get();
+   peerMap->eraseName(name);
+   if (wallet_ == nullptr) {
+      return;
+   }
+
+   auto metaAccount = wallet_->getMetaAccount(Accounts::MetaAccountType::Peers);
+   auto uniqueTx = wallet_->getIface()->beginWriteTransaction(
+      wallet_->getDbName());
+   std::shared_ptr<Wallets::IO::DBIfaceTransaction> sharedTx(std::move(uniqueTx));
+   metaAccount->updateOnDisk(sharedTx);
+}
+
+void ClientStore::eraseKey(const btc_pubkey& pubkey, bool oneWay)
+{
+   BinaryDataRef keyBdr{pubkey.pubkey, pubkey.compressed ? 33u : 65u};
+   eraseKey(keyBdr, oneWay);
+}
+
+void ClientStore::eraseKey(BinaryDataRef key, bool oneWay)
+{
+   if (oneWay) {
+      peerMapOneWay_->eraseKey(key);
+   } else {
+      peerMapTwoWay_->eraseKey(key);
+   }
+
+   if (wallet_ == nullptr) {
+      return;
+   }
+
+   //update on disk
+   auto metaAccount = wallet_->getMetaAccount(Accounts::MetaAccountType::Peers);
+   auto uniqueTx = wallet_->getIface()->beginWriteTransaction(
+      wallet_->getDbName());
+   std::shared_ptr<Wallets::IO::DBIfaceTransaction> sharedTx(std::move(uniqueTx));
+   metaAccount->updateOnDisk(sharedTx);
+}
+
+////////
+std::shared_ptr<ClientStore> ClientStore::getNarrowSet(
    const PeerKey& peerObj) const
 {
    /*
@@ -230,7 +366,7 @@ std::shared_ptr<AuthorizedPeers> AuthorizedPeers::getNarrowSet(
       peerMapOneWay_.get() : peerMapTwoWay_.get();
    const auto& keyMap = peerMap->getPublicKeyMap();
    if (keyMap.find(peerObj.getKey()) == keyMap.end()) {
-      throw AuthorizedPeersException("unknown peer");
+      throw Exception("unknown peer");
    }
 
    //get names for this key
@@ -243,19 +379,17 @@ std::shared_ptr<AuthorizedPeers> AuthorizedPeers::getNarrowSet(
       }
    }
    if (peerNames.empty()) {
-      throw AuthorizedPeersException("no name for this key");
+      throw Exception("no name for this key");
    }
 
    BinaryDataRef ownKeyRef{getOwnPublicKey().pubkey, BIP151PUBKEYSIZE};
    auto privateKey = getPrivateKey(ownKeyRef);
-   auto result = std::shared_ptr<AuthorizedPeers>(
-      new AuthorizedPeers(privateKey));
+   auto result = std::shared_ptr<ClientStore>(new ClientStore(privateKey));
    result->addPeer(peerObj, peerNames, {});
    return result;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-const std::map<std::string, btc_pubkey>& AuthorizedPeers::getPeerNameMap(
+const std::map<std::string, btc_pubkey>& ClientStore::getPeerNameMap(
    bool oneWay) const
 {
    return oneWay ?
@@ -263,57 +397,127 @@ const std::map<std::string, btc_pubkey>& AuthorizedPeers::getPeerNameMap(
       peerMapTwoWay_->getPeerNameMap();
 }
 
-////////////////////////////////////////////////////////////////////////////////
-const std::map<SecureBinaryData, std::string>&
-AuthorizedPeers::getPublicKeyMap(bool oneWay) const
+const std::map<SecureBinaryData, std::string>& ClientStore::getPublicKeyMap(
+   bool oneWay) const
 {
    return oneWay ?
       peerMapOneWay_->getPublicKeyMap() :
       peerMapTwoWay_->getPublicKeyMap();
 }
 
-////////////////////////////////////////////////////////////////////////////////
-const SecureBinaryData& AuthorizedPeers::getPrivateKey(
-   const BinaryDataRef& pubkey) const
+////////
+const std::string& ClientStore::getLabel(
+   const SecureBinaryData& key, bool oneWay) const
 {
-   auto iter = privateKeys_.find(pubkey);
-   if (iter == privateKeys_.end()) {
-      throw AuthorizedPeersException("unknown private key");
+   const auto& keyMap = oneWay ?
+      peerMapOneWay_->getPublicKeyMap() :
+      peerMapTwoWay_->getPublicKeyMap();
+   auto iter = keyMap.find(key);
+   if (iter == keyMap.end()) {
+      throw Exception("unknown peer key");
    }
    return iter->second;
 }
 
-void AuthorizedPeers::addPeer(const PeerKey& peerKey,
-   const std::vector<std::string>& names, const std::string& label)
+void ClientStore::setLabel(const PeerKey& key, const std::string& label)
 {
-   addPeer(peerKey.getKey(), names, label, peerKey.isOneWay());
-}
-
-////////
-void AuthorizedPeers::addPeer(const btc_pubkey& pubkey,
-   const std::vector<std::string>& names, const std::string& label, bool oneWay)
-{
-   SecureBinaryData keySbd{pubkey.pubkey, pubkey.compressed ? 33u : 65u};
-   addPeer(keySbd, names, label, oneWay);
-}
-
-////////
-void AuthorizedPeers::addPeer(const SecureBinaryData& pubkey,
-   const std::vector<std::string>& names, const std::string& label, bool oneWay)
-{
-   if (oneWay) {
-      peerMapOneWay_->addPeer(pubkey, names, label);
+   if (key.isOneWay()) {
+      peerMapOneWay_->setLabel(key.getKey(), label);
    } else {
-      peerMapTwoWay_->addPeer(pubkey, names, label);
+      peerMapTwoWay_->setLabel(key.getKey(), label);
    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void AuthorizedPeers::eraseName(const std::string& name, bool oneWay)
+// ServerStore
+ServerStore::ServerStore() :
+   PeerStore()
 {
-   auto* peerMap = oneWay ? peerMapOneWay_.get() : peerMapTwoWay_.get();
-   auto key = peerMap->eraseName(name);
+   const auto& ownPubkey = privateKeys_.begin()->first;
+   initPeerMap(ownPubkey);
+}
 
+ServerStore::ServerStore(std::shared_ptr<Wallets::AssetWallet> wlt) :
+   PeerStore(wlt)
+{
+   initFromWallet();
+}
+
+ServerStore::ServerStore(const Wallets::IO::ReadOnlyFileParams& roFileParams) :
+   PeerStore(roFileParams)
+{
+   initFromWallet();
+}
+
+////////
+void ServerStore::initPeerMap(const SecureBinaryData& pubkey)
+{
+   btc_pubkey btc_own;
+   btc_pubkey_init(&btc_own);
+   std::memcpy(btc_own.pubkey, pubkey.getPtr(), BIP151PUBKEYSIZE);
+   btc_own.compressed = true;
+   peerMap_ = std::make_unique<PeerMap>(wallet_, btc_own, true);
+}
+
+void ServerStore::setupFromAssetMap(const Accounts::PeerAssetMap& assetMap)
+{
+   peerMap_->setupFromAssetMap(assetMap);
+   if (!assetMap.masterKey.empty()) {
+      masterKey_ = std::move(assetMap.masterKey);
+   }
+}
+
+void ServerStore::grabKeyIndexes(
+   std::shared_ptr<Accounts::MetaDataAccount> peerAccount)
+{
+   peerMap_->grabKeyIndexes(peerAccount);
+}
+
+////////
+void ServerStore::addPeer(const PeerKey& peerKey,
+   const std::vector<std::string>& names, const std::string& label)
+{
+   if (peerKey.isServer()) {
+      throw Exception("server store only takes client keys");
+   }
+   peerMap_->addPeer(peerKey.getKey(), names, label);
+}
+
+void ServerStore::erasePeer(const PeerKey& peerKey)
+{
+   //sanity check
+   if (peerKey.isServer()) {
+      throw Exception("server store only carries client keys");
+   }
+   const auto& pubkey = peerKey.getKey();
+
+   //is this the master key?
+   bool cleanupMasterKey = false;
+   if (pubkey == masterKey_) {
+      masterKey_.clear();
+      cleanupMasterKey = true;
+   }
+
+   peerMap_->eraseKey(pubkey);
+   if (wallet_ == nullptr) {
+      return;
+   }
+
+   //update on disk
+   auto metaAccount = wallet_->getMetaAccount(Accounts::MetaAccountType::Peers);
+   auto uniqueTx = wallet_->getIface()->beginWriteTransaction(
+      wallet_->getDbName());
+   std::shared_ptr<Wallets::IO::DBIfaceTransaction> sharedTx(std::move(uniqueTx));
+   if (cleanupMasterKey) {
+      Accounts::PeerAssetConversion::clearMasterKeyAssets(metaAccount.get());
+   }
+   metaAccount->updateOnDisk(sharedTx);
+}
+
+////////
+void ServerStore::eraseName(const std::string& name, bool oneWay)
+{
+   auto key = peerMap_->eraseName(name);
    bool cleanupMasterKey = false;
    if (!masterKey_.empty() && std::memcmp(
       key.pubkey, masterKey_.getPtr(), BIP151PUBKEYSIZE)) {
@@ -325,196 +529,89 @@ void AuthorizedPeers::eraseName(const std::string& name, bool oneWay)
       return;
    }
 
-   auto metaAccount = wallet_->getMetaAccount(MetaAccountType::AuthPeers);
+   auto metaAccount = wallet_->getMetaAccount(Accounts::MetaAccountType::Peers);
    auto uniqueTx = wallet_->getIface()->beginWriteTransaction(
       wallet_->getDbName());
-   std::shared_ptr<IO::DBIfaceTransaction> sharedTx(std::move(uniqueTx));
+   std::shared_ptr<Wallets::IO::DBIfaceTransaction> sharedTx(std::move(uniqueTx));
    if (cleanupMasterKey) {
-      AuthPeerAssetConversion::clearMasterKeyAssets(metaAccount.get());
+      Accounts::PeerAssetConversion::clearMasterKeyAssets(metaAccount.get());
    }
    metaAccount->updateOnDisk(sharedTx);
 }
 
-////////////////////////////////////////////////////////////////////////////////
-void AuthorizedPeers::erasePeer(const PeerKey& peer)
+////////
+void ServerStore::eraseKey(const btc_pubkey& pubkey, bool oneWay)
 {
-   eraseKey(peer.getKey(), peer.isOneWay());
+   BinaryDataRef keyBdr{pubkey.pubkey, pubkey.compressed ? 33u : 65u};
+   eraseKey(keyBdr, oneWay);
 }
 
-void AuthorizedPeers::eraseKey(const btc_pubkey& pubkey, bool oneWay)
+void ServerStore::eraseKey(BinaryDataRef key, bool oneWay)
 {
-   size_t size = 65;
-   if (pubkey.compressed) {
-      size = 33;
-   }
-   SecureBinaryData keySbd(size);
-   std::memcpy(keySbd.getPtr(), pubkey.pubkey, size);
-   eraseKey(keySbd, oneWay);
-}
-
-void AuthorizedPeers::eraseKey(const SecureBinaryData& pubkey, bool oneWay)
-{
-   SecureBinaryData pubkey_cmp;
-   if (pubkey.getSize() == 65) {
-      pubkey_cmp = Cryptography::ECDSA::compressPoint(pubkey);
-   } else {
-      pubkey_cmp = pubkey;
-   }
-
    bool cleanupMasterKey = false;
-   if (pubkey_cmp == masterKey_) {
+   if (masterKey_ == key) {
       masterKey_.clear();
       cleanupMasterKey = true;
    }
-
-   if (oneWay) {
-      peerMapOneWay_->eraseKey(pubkey_cmp);
-   } else {
-      peerMapTwoWay_->eraseKey(pubkey_cmp);
-   }
+   peerMap_->eraseKey(key);
 
    if (wallet_ == nullptr) {
       return;
    }
 
    //update on disk
-   auto metaAccount = wallet_->getMetaAccount(MetaAccountType::AuthPeers);
+   auto metaAccount = wallet_->getMetaAccount(Accounts::MetaAccountType::Peers);
    auto uniqueTx = wallet_->getIface()->beginWriteTransaction(
       wallet_->getDbName());
-   std::shared_ptr<IO::DBIfaceTransaction> sharedTx(std::move(uniqueTx));
+   std::shared_ptr<Wallets::IO::DBIfaceTransaction> sharedTx(std::move(uniqueTx));
    if (cleanupMasterKey) {
-      AuthPeerAssetConversion::clearMasterKeyAssets(metaAccount.get());
+      Accounts::PeerAssetConversion::clearMasterKeyAssets(metaAccount.get());
    }
    metaAccount->updateOnDisk(sharedTx);
 }
 
-////////////////////////////////////////////////////////////////////////////////
-const btc_pubkey& AuthorizedPeers::getOwnPublicKey() const
+////////
+const std::map<std::string, btc_pubkey>& ServerStore::getPeerNameMap(
+   bool oneWay) const
 {
-   const auto& nameMap = peerMapOneWay_->getPeerNameMap();
-   auto iter = nameMap.find("own");
-   if (iter == nameMap.end()) {
-      throw AuthorizedPeersException("malformed authpeer object");
+   return peerMap_->getPeerNameMap();
+}
+
+const std::map<SecureBinaryData, std::string>& ServerStore::getPublicKeyMap(
+   bool oneWay) const
+{
+   return peerMap_->getPublicKeyMap();
+}
+
+////////
+bool ServerStore::setMasterKey(const PeerKey& mKey)
+{
+   /* blindly add the master key, the youngest asset takes precedence */
+
+   //sanity checks
+   if (mKey.isServer()) {
+      //only client keys can be masters
+      return false;
    }
-   return iter->second;
-}
 
-////////////////////////////////////////////////////////////////////////////////
-const std::string& AuthorizedPeers::getLabel(
-   const SecureBinaryData& key, bool oneWay) const
-{
-   const auto& keyMap = oneWay ?
-      peerMapOneWay_->getPublicKeyMap() :
-      peerMapTwoWay_->getPublicKeyMap();
-   auto iter = keyMap.find(key);
-   if (iter == keyMap.end()) {
-      throw std::runtime_error("unknown peer key");
-   }
-   return iter->second;
-}
-
-////
-void AuthorizedPeers::setLabel(const PeerKey& key, const std::string& label)
-{
-   setLabel(key.getKey(), label, key.isOneWay());
-}
-
-void AuthorizedPeers::setLabel(
-   const SecureBinaryData& key, const std::string& label, bool oneWay)
-{
-   if (oneWay) {
-      peerMapOneWay_->setLabel(key, label);
-   } else {
-      peerMapTwoWay_->setLabel(key, label);
-   }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-void AuthorizedPeers::changeControlPassphrase(const std::filesystem::path& path)
-{
-   //get a terminal prompt lambda
-   auto promptPtr = TerminalPassphrasePrompt::getLambda("peers db");
-
-   //load the wallet
-   auto wlt = AssetWallet::loadMainWalletFromFile(
-      IO::ReadOnlyFileParams{path, promptPtr});
-
-   //change passphrase lambda
-   auto changeLbd = [&promptPtr](void)->std::unique_ptr<Passphrase::Params>
-   {
-      auto result = promptPtr({ BinaryData::fromString("change-pass"sv) });
-      if (!result.success) {
-         throw std::runtime_error("authdb passphrase change was rejected");
-      }
-      return std::make_unique<Passphrase::Params>(
-         250ms, 0, std::move(result.passphrase));
-   };
-   Passphrase::SetNew changePassObj{changeLbd};
-
-   //change the passphrase
-   wlt->changeControlPassphrase(changePassObj, promptPtr);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-AuthPeersLambdas AuthorizedPeers::getAuthPeersLambdas(
-   std::shared_ptr<AuthorizedPeers> authPeers, bool oneWay)
-{
-   auto getMap = [authPeers, oneWay]()->const std::map<std::string, btc_pubkey>&
-   {
-      return authPeers->getPeerNameMap(oneWay);
-   };
-
-   auto getPrivKey = [authPeers](const BinaryDataRef& pubkey)
-   ->const SecureBinaryData&
-   {
-      return authPeers->getPrivateKey(pubkey);
-   };
-
-   auto getAuthSet = [authPeers, oneWay]()->
-   const std::map<SecureBinaryData, std::string>&
-   {
-      return authPeers->getPublicKeyMap(oneWay);
-   };
-
-   return AuthPeersLambdas(getMap, getPrivKey, getAuthSet);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-bool AuthorizedPeers::setMasterKey(const btc_pubkey& pubkey)
-{
-   SecureBinaryData keySbd{pubkey.pubkey, pubkey.compressed ? 33u : 65u};
-   return setMasterKey(keySbd);
-}
-
-////
-bool AuthorizedPeers::setMasterKey(const SecureBinaryData& pubkey)
-{
-   //blindly add the master key, the youngest asset takes precedence
+   const auto& pubkey = mKey.getKey();
    if (masterKey_ == pubkey) {
       return true;
    }
 
-   if (!Cryptography::ECDSA::verifyPublicKeyValid(pubkey)) {
-      //not a valid pubkey
+   const auto& keyMap = peerMap_->getPublicKeyMap();
+   if (keyMap.find(pubkey) == keyMap.end()) {
+      //master key isn't known to peers store, ignore
       return false;
-   }
-
-   const auto& keyMap1Way = getPublicKeyMap(true);
-   if (keyMap1Way.find(pubkey) == keyMap1Way.end()) {
-      const auto& keyMap2Way = getPublicKeyMap(false);
-      if (keyMap2Way.find(pubkey) == keyMap2Way.end()) {
-         //master key isn't known to peers store, ignore
-         return false;
-      }
    }
 
    //set in wallet
    if (wallet_ != nullptr) {
-      auto metaAccount = wallet_->getMetaAccount(MetaAccountType::AuthPeers);
+      auto metaAccount = wallet_->getMetaAccount(Accounts::MetaAccountType::Peers);
       auto uniqueTx = wallet_->getIface()->beginWriteTransaction(
          wallet_->getDbName());
-      std::shared_ptr<IO::DBIfaceTransaction> sharedTx(std::move(uniqueTx));
-      AuthPeerAssetConversion::addMasterKey(metaAccount.get(), pubkey, sharedTx);
+      std::shared_ptr<Wallets::IO::DBIfaceTransaction> sharedTx(std::move(uniqueTx));
+      Accounts::PeerAssetConversion::addMasterKey(metaAccount.get(), pubkey, sharedTx);
    }
 
    //set locally
@@ -522,8 +619,7 @@ bool AuthorizedPeers::setMasterKey(const SecureBinaryData& pubkey)
    return true;
 }
 
-////
-void AuthorizedPeers::eraseMasterKey()
+void ServerStore::eraseMasterKey()
 {
    if (masterKey_.empty()) {
       return;
@@ -534,27 +630,29 @@ void AuthorizedPeers::eraseMasterKey()
       return;
    }
 
-   auto metaAccount = wallet_->getMetaAccount(MetaAccountType::AuthPeers);
+   auto metaAccount = wallet_->getMetaAccount(Accounts::MetaAccountType::Peers);
    auto uniqueTx = wallet_->getIface()->beginWriteTransaction(
       wallet_->getDbName());
-   std::shared_ptr<IO::DBIfaceTransaction> sharedTx(std::move(uniqueTx));
-   AuthPeerAssetConversion::clearMasterKeyAssets(metaAccount.get());
+   std::shared_ptr<Wallets::IO::DBIfaceTransaction> sharedTx(std::move(uniqueTx));
+   Accounts::PeerAssetConversion::clearMasterKeyAssets(metaAccount.get());
    metaAccount->updateOnDisk(sharedTx);
 }
 
-////////////////////////////////////////////////////////////////////////////////
-bool AuthorizedPeers::isMasterKey(const btc_pubkey& pubkey) const
+bool ServerStore::isMasterKey(const btc_pubkey& pubkey) const
 {
    if (masterKey_.empty()) {
       return false;
    }
 
-   BinaryDataRef keyRef{pubkey.pubkey, pubkey.compressed ? 33u : 65u};
+   if (!pubkey.compressed) {
+      return false;
+   }
+   BinaryDataRef keyRef{pubkey.pubkey, 33u};
    return masterKey_.getRef() == keyRef;
 }
 
 ////
-bool AuthorizedPeers::isMasterKey(const SecureBinaryData& pubkey) const
+bool ServerStore::isMasterKey(const SecureBinaryData& pubkey) const
 {
    if (masterKey_.empty()) {
       return false;
@@ -562,16 +660,67 @@ bool AuthorizedPeers::isMasterKey(const SecureBinaryData& pubkey) const
    return masterKey_.getRef() == pubkey.getRef();
 }
 
+////////
+const std::string& ServerStore::getLabel(
+   const SecureBinaryData& key, bool oneWay) const
+{
+   const auto& keyMap = peerMap_->getPublicKeyMap();
+   auto iter = keyMap.find(key);
+   if (iter == keyMap.end()) {
+      throw Exception("unknown peer key");
+   }
+   return iter->second;
+}
+
+void ServerStore::setLabel(const PeerKey& key, const std::string& label)
+{
+   peerMap_->setLabel(key.getKey(), label);
+}
+
+////////
+AuthPeersLambdas PeerStore::getAuthPeersLambdas(
+   std::shared_ptr<PeerStore> store, bool oneWay)
+{
+   auto getMap = [store, oneWay]()->const std::map<std::string, btc_pubkey>&
+   {
+      return store->getPeerNameMap(oneWay);
+   };
+
+   auto getPrivKey = [store](const BinaryDataRef& pubkey)
+   ->const SecureBinaryData&
+   {
+      return store->getPrivateKey(pubkey);
+   };
+
+   auto getAuthSet = [store, oneWay]()->
+   const std::map<SecureBinaryData, std::string>&
+   {
+      return store->getPublicKeyMap(oneWay);
+   };
+
+   return AuthPeersLambdas(getMap, getPrivKey, getAuthSet);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // PeerKey
-PeerKey::PeerKey(BinaryDataRef pubkey, bool isOneWay, bool isServer) :
-   pubkey_(pubkey), oneWayAuth_(isOneWay), isServer_(isServer)
-{}
+PeerKey::PeerKey(BinaryDataRef pubkey, PeerType type) :
+   pubkey_(pubkey), type_{type}
+{
+   if (pubkey.getSize() != 33 ||
+      !Cryptography::ECDSA::verifyPublicKeyValid(pubkey)) {
+      //not a valid pubkey
+      throw Exception("invalid peer key");
+   }
+}
 
-PeerKey::PeerKey(const btc_pubkey& pubkey, bool isOneWay, bool isServer) :
-   pubkey_{pubkey.pubkey, BIP151PUBKEYSIZE},
-   oneWayAuth_(isOneWay), isServer_(isServer)
-{}
+PeerKey::PeerKey(const btc_pubkey& pubkey, PeerType type) :
+   pubkey_{pubkey.pubkey, BIP151PUBKEYSIZE}, type_{type}
+{
+   if (!Cryptography::ECDSA::verifyPublicKeyValid(pubkey)) {
+      //not a valid pubkey
+      throw Exception("invalid peer key");
+   }
+}
 
 const SecureBinaryData& PeerKey::getKey() const
 {
@@ -580,12 +729,27 @@ const SecureBinaryData& PeerKey::getKey() const
 
 bool PeerKey::isServer() const
 {
-   return isServer_;
+   switch (type_)
+   {
+      case PeerType::ServerOneWay:
+      case PeerType::ServerTwoWay:
+         return true;
+
+      default:
+         return false;
+   }
 }
 
 bool PeerKey::isOneWay() const
 {
-   return oneWayAuth_;
+   switch (type_)
+   {
+      case PeerType::ServerOneWay:
+         return true;
+
+      default:
+         return false;
+   }
 }
 
 ////////
@@ -606,31 +770,26 @@ std::string PeerKey::toHumanReadable() const
 
    /* header section */
 
-   if (isServer_) {
-      if (oneWayAuth_) {
+   switch (type_)
+   {
+      case PeerType::ServerOneWay:
          //AR1 v1
          *ptr |= 0x00411D01;
-      } else {
+         break;
+
+      case PeerType::ServerTwoWay:
          //AR2 v1
          *ptr |= 0x00811D01;
-      }
-   } else {
-      //ARc v1
-      *ptr |= 0x00011701;
-   }
+         break;
 
-   /*
-   BinaryWriter bw;
-   bw.reserve(36);
-   bw.put_uint16_t(ARMORY_PEERKEY_PREFIX, BE);
-   bw.put_uint8_t(ARMORY_PEERKEY_VERSION);
-   uint8_t mode = isServer_ ? 0 : ARMORY_PEERKEY_ISCLIENT;
-   if (oneWayAuth_ && isServer_) {
-      mode |= ARMORY_PEERKEY_ISONEWAY;
+      case PeerType::Client:
+         //ARc v1
+         *ptr |= 0x00011701;
+         break;
+
+      default:
+         throw std::runtime_error("unhandled peer type");
    }
-   bw.put_uint8_t(mode);
-   bw.put_BinaryDataRef(pubkey_.getRef());
-   */
 
    auto raw = bw.getDataRef();
    std::string_view rawView{raw.toCharPtr(), raw.getSize()};
@@ -639,6 +798,12 @@ std::string PeerKey::toHumanReadable() const
 
 PeerKey PeerKey::fromHumanReadable(const std::string& str)
 {
+   //sanity check
+   if (str.size() < 40) {
+      throw std::runtime_error("invalid peer key size");
+   }
+
+   //decode b64
    auto raw = BtcUtils::base64_decode(str);
    BinaryRefReader brr((const uint8_t*)raw.c_str(), raw.size());
 
@@ -670,41 +835,30 @@ PeerKey PeerKey::fromHumanReadable(const std::string& str)
       throw std::runtime_error("this isn't a peer key");
    }
 
-   bool oneWay = false;
-   bool isServer = false;
+   PeerType type;
    switch (val[2]) {
       case 28:
-      {
-         oneWay = false;
-         isServer = false;
+         type = PeerType::Client;
          break;
-      }
 
       case 53:
-      {
-         oneWay = true;
-         isServer = true;
+         type = PeerType::ServerOneWay;
          break;
-      }
 
       case 54:
-      {
-         oneWay = false;
-         isServer = true;
+         type = PeerType::ServerTwoWay;
          break;
-      }
 
       default:
          throw std::runtime_error("mangled peer key");
    }
 
    auto version = val[3];
-
    switch (version) {
       case 1:
       {
          auto pubkey = brr.get_BinaryDataRef(33);
-         return PeerKey{pubkey, oneWay, isServer};
+         return PeerKey{pubkey, type};
       }
 
       default:
@@ -714,14 +868,14 @@ PeerKey PeerKey::fromHumanReadable(const std::string& str)
 
 ////////////////////////////////////////////////////////////////////////////////
 // PeerMap
-PeerMap::PeerMap(std::shared_ptr<AssetWallet> wallet,
+PeerMap::PeerMap(std::shared_ptr<Wallets::AssetWallet> wallet,
    const btc_pubkey& ownKey, bool oneWay) :
    wallet_(wallet), oneWay_(oneWay)
 {
    nameToKeyMap_.emplace("own", ownKey);
 }
 
-void PeerMap::setupFromAssetMap(const Accounts::AuthPeerAssetMap& peerAssets)
+void PeerMap::setupFromAssetMap(const Accounts::PeerAssetMap& peerAssets)
 {
    const auto& nameMap = oneWay_ ?
       peerAssets.nameKeyMapOneWay : peerAssets.nameKeyMapTwoWay;
@@ -747,7 +901,7 @@ void PeerMap::grabKeyIndexes(
    std::shared_ptr<Accounts::MetaDataAccount> peerAccount)
 {
    //grab public key to index map
-   keyToAssetIndexMap_ = AuthPeerAssetConversion::getKeyIndexMap(
+   keyToAssetIndexMap_ = Accounts::PeerAssetConversion::getKeyIndexMap(
       peerAccount.get(), oneWay_);
 }
 
@@ -756,11 +910,11 @@ void PeerMap::addPeer(const SecureBinaryData& pubkey,
 {
    //sanity check
    if (!Cryptography::ECDSA::verifyPublicKeyValid(pubkey)) {
-      throw AuthorizedPeersException("peer lacks a valid public key");
+      throw Exception("peer lacks a valid public key");
    }
    for (const auto& name : names) {
       if (name == "own") {
-         throw AuthorizedPeersException("use of a reserved name");
+         throw Exception("use of a reserved name");
       }
    }
 
@@ -771,7 +925,7 @@ void PeerMap::addPeer(const SecureBinaryData& pubkey,
    } else if (pubkey.getSize() == BIP151PUBKEYSIZE) {
       pubkey_cmp = pubkey;
    } else {
-      throw AuthorizedPeersException("unexpected public key size");
+      throw Exception("unexpected public key size");
    }
 
    btc_pubkey btckey;
@@ -792,11 +946,11 @@ void PeerMap::addPeer(const SecureBinaryData& pubkey,
    }
 
    //get a dbtx for the wallet & add the pubkey with its names
-   auto peerAccount = wallet_->getMetaAccount(MetaAccountType::AuthPeers);
+   auto peerAccount = wallet_->getMetaAccount(Accounts::MetaAccountType::Peers);
    auto uniqueTx = wallet_->getIface()->beginWriteTransaction(
       wallet_->getDbName());
-   std::shared_ptr<IO::DBIfaceTransaction> sharedTx(std::move(uniqueTx));
-   auto index = AuthPeerAssetConversion::addAsset(
+   std::shared_ptr<Wallets::IO::DBIfaceTransaction> sharedTx(std::move(uniqueTx));
+   auto index = Accounts::PeerAssetConversion::addAsset(
       peerAccount.get(), pubkey_cmp, names, label, oneWay_, sharedTx);
 
    //track the asset index for the pubkey
@@ -812,7 +966,7 @@ void PeerMap::addPeer(const SecureBinaryData& pubkey,
 btc_pubkey PeerMap::eraseName(const std::string& name)
 {
    if (name == "own") {
-      throw AuthorizedPeersException("invalid name");
+      throw Exception("invalid name");
    }
 
    //find pubkey
@@ -863,11 +1017,11 @@ btc_pubkey PeerMap::eraseName(const std::string& name)
 
    //grab metadata account from wallet, cycle through assets, clean up
    //indexMap as we go
-   auto metaAccount = wallet_->getMetaAccount(MetaAccountType::AuthPeers);
+   auto metaAccount = wallet_->getMetaAccount(Accounts::MetaAccountType::Peers);
    auto setIter = indexIter->second.begin();
    while (setIter != indexIter->second.end()) {
       const auto& index = *setIter;
-      std::shared_ptr<MetaData> metaPtr;
+      std::shared_ptr<Assets::MetaData> metaPtr;
       try {
          metaPtr = metaAccount->getMetaDataByIndex(index);
       } catch (const std::exception&) {
@@ -875,7 +1029,7 @@ btc_pubkey PeerMap::eraseName(const std::string& name)
          continue;
       }
 
-      auto peerPtr = std::dynamic_pointer_cast<PeerPublicData>(metaPtr);
+      auto peerPtr = std::dynamic_pointer_cast<Assets::PeerPublicData>(metaPtr);
       if (peerPtr == nullptr) {
          indexIter->second.erase(setIter++);
          continue;
@@ -905,7 +1059,7 @@ void PeerMap::eraseKey(const SecureBinaryData& pubkey)
 {
    //make sure we're working with compressed keys only
    if (pubkey.getSize() != BIP151PUBKEYSIZE) {
-      throw AuthorizedPeersException("invalid pubkey size");
+      throw Exception("invalid pubkey size");
    }
 
    btc_pubkey btckey;
@@ -921,7 +1075,6 @@ void PeerMap::eraseKey(const SecureBinaryData& pubkey)
    if (wallet_ == nullptr) {
       //lacking a wallet to build a set of names for this pubkey, scoure the
       //name-key map linearly, clear it and we're done
-
       auto keyIter = nameToKeyMap_.begin();
       while (keyIter != nameToKeyMap_.end()) {
          if (std::memcmp(keyIter->second.pubkey,
@@ -941,18 +1094,18 @@ void PeerMap::eraseKey(const SecureBinaryData& pubkey)
    if (iter == keyToAssetIndexMap_.end()) {
       return;
    }
-   auto metaAccount = wallet_->getMetaAccount(MetaAccountType::AuthPeers);
+   auto metaAccount = wallet_->getMetaAccount(Accounts::MetaAccountType::Peers);
    std::set<std::string> namesToDelete;
 
    for (auto& index : iter->second) {
-      std::shared_ptr<MetaData> metaPtr;
+      std::shared_ptr<Assets::MetaData> metaPtr;
       try {
          metaPtr = metaAccount->getMetaDataByIndex(index);
       } catch (const std::exception&) {
          continue;
       }
 
-      auto peerPtr = std::dynamic_pointer_cast<PeerPublicData>(metaPtr);
+      auto peerPtr = std::dynamic_pointer_cast<Assets::PeerPublicData>(metaPtr);
       if (peerPtr == nullptr) {
          continue;
       }
@@ -975,7 +1128,7 @@ void PeerMap::setLabel(const SecureBinaryData& key, const std::string& label)
 {
    auto iter = keyMap_.find(key);
    if (iter == keyMap_.end()) {
-      throw std::runtime_error("unknown peer key");
+      throw Exception("unknown peer key");
    }
    iter->second = label;
 
@@ -986,21 +1139,21 @@ void PeerMap::setLabel(const SecureBinaryData& key, const std::string& label)
 
    //grab metadata account from wallet, cycle through assets, clean up
    //indexMap as we go
-   auto metaAccount = wallet_->getMetaAccount(MetaAccountType::AuthPeers);
+   auto metaAccount = wallet_->getMetaAccount(Accounts::MetaAccountType::Peers);
 
    //run through the set of wallet assets this pub key appears in
    auto indexIter = keyToAssetIndexMap_.find(key);
    auto setIter = indexIter->second.begin();
    while (setIter != indexIter->second.end()) {
       const auto& index = *setIter;
-      std::shared_ptr<MetaData> metaPtr;
+      std::shared_ptr<Assets::MetaData> metaPtr;
       try {
          metaPtr = metaAccount->getMetaDataByIndex(index);
       } catch (const std::exception&) {
          continue;
       }
 
-      auto peerPtr = std::dynamic_pointer_cast<PeerPublicData>(metaPtr);
+      auto peerPtr = std::dynamic_pointer_cast<Assets::PeerPublicData>(metaPtr);
       if (peerPtr == nullptr) {
          continue;
       }
@@ -1011,7 +1164,7 @@ void PeerMap::setLabel(const SecureBinaryData& key, const std::string& label)
 
    auto uniqueTx = wallet_->getIface()->beginWriteTransaction(
       wallet_->getDbName());
-   std::shared_ptr<IO::DBIfaceTransaction> sharedTx(std::move(uniqueTx));
+   std::shared_ptr<Wallets::IO::DBIfaceTransaction> sharedTx(std::move(uniqueTx));
    metaAccount->updateOnDisk(sharedTx);
 }
 

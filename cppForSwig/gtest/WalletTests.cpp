@@ -8886,68 +8886,60 @@ protected:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-TEST_F(WalletMetaDataTest, AuthPeers)
+TEST_F(WalletMetaDataTest, PeerStore)
 {
-   {
-      //unlocked auth peers
-      auto authPeers = AuthorizedPeers::createWallet(
-         IO::CreateFileParams{
-            homedir_ / "unlocked.peers",
-            Passphrase::SetNew{}
-      });
-      ASSERT_NE(authPeers, nullptr);
-   }
+   using namespace NetworkPeers;
 
-   auto authPeersPass = SecureBinaryData::fromString("authpeerpass");
-   auto peerPassLbd = [&authPeersPass]()->std::unique_ptr<Passphrase::Params>
+   auto peersWalletPass = SecureBinaryData::fromString("authpeerpass");
+   auto peerPassLbd = [&peersWalletPass]()->std::unique_ptr<Passphrase::Params>
    {
       return std::make_unique<Passphrase::Params>(
-         100ms, 0, authPeersPass);
+         100ms, 0, peersWalletPass);
    };
    IO::CreateFileParams createFileParams{homedir_ / "test.peers", {peerPassLbd}};
    IO::ReadOnlyFileParams roFileParams{
       homedir_ / "test.peers",
-      [&authPeersPass](const std::set<EncryptionKeyId>&)
+      [&peersWalletPass](const std::set<EncryptionKeyId>&)
       ->Passphrase::Result
-      { return { authPeersPass, true }; }
+      { return { peersWalletPass, true }; }
    };
-   AuthorizedPeers::createWallet(createFileParams);
-   auto authPeers = std::make_unique<AuthorizedPeers>(roFileParams);
+   PeerStore::initOnDisk(createFileParams);
+   auto clientPeers = std::make_unique<ClientStore>(roFileParams);
 
    //auth meta account expects valid pubkeys
    auto privKey1 = Cryptography::PRNG::generateRandomStrong(32);
-   auto pubkey1 = Cryptography::ECDSA::computePublicKey(privKey1);
-   auto pubkey1_compressed = Cryptography::ECDSA::compressPoint(pubkey1);
-   authPeers->addPeer(pubkey1,
-      {"1.1.1.1", "0123::4567::89ab::cdef::", "test.com"}, "key1", true);
+   auto pubkey1 = Cryptography::ECDSA::computePublicKey(privKey1, true);
+   clientPeers->addPeer(
+      PeerKey{pubkey1, PeerType::ServerOneWay},
+      {"1.1.1.1", "0123::4567::89ab::cdef::", "test.com"}, "key1");
 
    auto privKey2 = Cryptography::PRNG::generateRandomStrong(32);
-   auto pubkey2 = Cryptography::ECDSA::computePublicKey(privKey2);
-   auto pubkey2_compressed = Cryptography::ECDSA::compressPoint(pubkey2);
-   authPeers->addPeer(pubkey2_compressed,
-      {"2.2.2.2", "domain.com"}, "key2", true);
+   auto pubkey2 = Cryptography::ECDSA::computePublicKey(privKey2, true);
+   clientPeers->addPeer(
+      PeerKey{pubkey2, PeerType::ServerOneWay},
+      {"2.2.2.2", "domain.com"}, "key2");
 
    auto privKey3 = Cryptography::PRNG::generateRandomStrong(32);
-   auto pubkey3 = Cryptography::ECDSA::computePublicKey(privKey3);
-   auto pubkey3_compressed = Cryptography::ECDSA::compressPoint(pubkey3);
+   auto pubkey3 = Cryptography::ECDSA::computePublicKey(privKey3, true);
    std::string domain_name("anotherdomain.com");
-   authPeers->addPeer(pubkey3_compressed,
-      {"3.3.3.3", "test.com", domain_name}, "key3", true);
+   clientPeers->addPeer(
+      PeerKey{pubkey3, PeerType::ServerOneWay},
+      {"3.3.3.3", "test.com", domain_name}, "key3");
 
-   auto privKeyFail = Cryptography::PRNG::generateRandomStrong(32);
-   auto pubkeyFail = Cryptography::ECDSA::computePublicKey(privKeyFail);
-   auto pubkeyFail_compressed = Cryptography::ECDSA::compressPoint(pubkeyFail);
    try {
-      authPeers->addPeer(pubkey3_compressed,
-         {"10.10.10.10", "test.com", "own"}, {}, true);
-   } catch (const AuthorizedPeersException& e) {
+      auto privKeyFail = Cryptography::PRNG::generateRandomStrong(32);
+      auto pubkeyFail = Cryptography::ECDSA::computePublicKey(privKeyFail, true);
+      clientPeers->addPeer(
+         PeerKey{pubkeyFail, PeerType::ServerOneWay},
+         {"10.10.10.10", "test.com", "own"}, {});
+   } catch (const NetworkPeers::Exception& e) {
       ASSERT_EQ(e.what(), std::string{"use of a reserved name"});
    }
 
    {
       //check peer object has expected values
-      auto& peerMap = authPeers->getPeerNameMap(true);
-      auto& pubkeySet = authPeers->getPublicKeyMap(true);
+      auto& peerMap = clientPeers->getPeerNameMap(true);
+      auto& pubkeySet = clientPeers->getPublicKeyMap(true);
 
       {
          //first peer
@@ -8960,11 +8952,9 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
          //convert btc_pubkey to sbd
          SecureBinaryData pubkey1_sbd(iter1->second.pubkey, BIP151PUBKEYSIZE);
-         EXPECT_EQ(pubkey1_sbd, pubkey1_compressed);
-         EXPECT_NE(pubkey1_sbd, pubkey1);
-         EXPECT_TRUE(pubkeySet.find(pubkey1_compressed) != pubkeySet.end());
-
-         EXPECT_EQ(authPeers->getLabel(pubkey1_compressed, true), std::string{"key1"});
+         EXPECT_EQ(pubkey1_sbd, pubkey1);
+         EXPECT_TRUE(pubkeySet.find(pubkey1) != pubkeySet.end());
+         EXPECT_EQ(clientPeers->getLabel(pubkey1, true), std::string{"key1"});
       }
 
       {
@@ -8976,11 +8966,9 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
          //convert btc_pubkey to sbd
          SecureBinaryData pubkey2_sbd(iter1->second.pubkey, BIP151PUBKEYSIZE);
-         EXPECT_EQ(pubkey2_sbd, pubkey2_compressed);
-         EXPECT_NE(pubkey2_sbd, pubkey2);
-         EXPECT_TRUE(pubkeySet.find(pubkey2_compressed) != pubkeySet.end());
-
-         EXPECT_EQ(authPeers->getLabel(pubkey2_compressed, true), std::string{"key2"});
+         EXPECT_EQ(pubkey2_sbd, pubkey2);
+         EXPECT_TRUE(pubkeySet.find(pubkey2) != pubkeySet.end());
+         EXPECT_EQ(clientPeers->getLabel(pubkey2, true), std::string{"key2"});
       }
 
       {
@@ -8994,22 +8982,20 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
          //convert btc_pubkey to sbd
          SecureBinaryData pubkey3_sbd(iter1->second.pubkey, BIP151PUBKEYSIZE);
-         EXPECT_EQ(pubkey3_sbd, pubkey3_compressed);
-         EXPECT_NE(pubkey3_sbd, pubkey3);
-         EXPECT_TRUE(pubkeySet.find(pubkey3_compressed) != pubkeySet.end());
-
-         EXPECT_EQ(authPeers->getLabel(pubkey3_compressed, true), std::string{"key3"});
+         EXPECT_EQ(pubkey3_sbd, pubkey3);
+         EXPECT_TRUE(pubkeySet.find(pubkey3) != pubkeySet.end());
+         EXPECT_EQ(clientPeers->getLabel(pubkey3, true), std::string{"key3"});
       }
    }
 
    //delete auth peer object, reload and test again
-   authPeers.reset();
-   authPeers = std::make_unique<AuthorizedPeers>(roFileParams);
+   clientPeers.reset();
+   clientPeers = std::make_unique<ClientStore>(roFileParams);
 
    {
       //check peer object has expected values
-      auto& peerMap = authPeers->getPeerNameMap(true);
-      auto& pubkeySet = authPeers->getPublicKeyMap(true);
+      auto& peerMap = clientPeers->getPeerNameMap(true);
+      auto& pubkeySet = clientPeers->getPublicKeyMap(true);
 
       {
          //first peer
@@ -9022,11 +9008,9 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
          //convert btc_pubkey to sbd
          SecureBinaryData pubkey1_sbd(iter1->second.pubkey, BIP151PUBKEYSIZE);
-         EXPECT_EQ(pubkey1_sbd, pubkey1_compressed);
-         EXPECT_NE(pubkey1_sbd, pubkey1);
-         EXPECT_TRUE(pubkeySet.find(pubkey1_compressed) != pubkeySet.end());
-
-         EXPECT_EQ(authPeers->getLabel(pubkey1_compressed, true), std::string{"key1"});
+         EXPECT_EQ(pubkey1_sbd, pubkey1);
+         EXPECT_TRUE(pubkeySet.find(pubkey1) != pubkeySet.end());
+         EXPECT_EQ(clientPeers->getLabel(pubkey1, true), std::string{"key1"});
       }
 
       {
@@ -9038,11 +9022,9 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
          //convert btc_pubkey to sbd
          SecureBinaryData pubkey2_sbd(iter1->second.pubkey, BIP151PUBKEYSIZE);
-         EXPECT_EQ(pubkey2_sbd, pubkey2_compressed);
-         EXPECT_NE(pubkey2_sbd, pubkey2);
-         EXPECT_TRUE(pubkeySet.find(pubkey2_compressed) != pubkeySet.end());
-
-         EXPECT_EQ(authPeers->getLabel(pubkey2_compressed, true), std::string{"key2"});
+         EXPECT_EQ(pubkey2_sbd, pubkey2);
+         EXPECT_TRUE(pubkeySet.find(pubkey2) != pubkeySet.end());
+         EXPECT_EQ(clientPeers->getLabel(pubkey2, true), std::string{"key2"});
       }
 
       {
@@ -9056,38 +9038,37 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
          //convert btc_pubkey to sbd
          SecureBinaryData pubkey3_sbd(iter1->second.pubkey, BIP151PUBKEYSIZE);
-         EXPECT_EQ(pubkey3_sbd, pubkey3_compressed);
-         EXPECT_NE(pubkey3_sbd, pubkey3);
-         EXPECT_TRUE(pubkeySet.find(pubkey3_compressed) != pubkeySet.end());
-
-         EXPECT_EQ(authPeers->getLabel(pubkey3_compressed, true), std::string{"key3"});
+         EXPECT_EQ(pubkey3_sbd, pubkey3);
+         EXPECT_TRUE(pubkeySet.find(pubkey3) != pubkeySet.end());
+         EXPECT_EQ(clientPeers->getLabel(pubkey3, true), std::string{"key3"});
       }
    }
 
    //add more keys
    auto privKey4 = Cryptography::PRNG::generateRandomStrong(32);
-   auto pubkey4 = Cryptography::ECDSA::computePublicKey(privKey4);
-   auto pubkey4_compressed = Cryptography::ECDSA::compressPoint(pubkey4);
+   auto pubkey4 = Cryptography::ECDSA::computePublicKey(privKey4, true);
    btc_pubkey btckey4;
    btc_pubkey_init(&btckey4);
-   std::memcpy(btckey4.pubkey, pubkey4.getPtr(), 65);
-   btc_pubkey btckey4_cmp = Cryptography::ECDSA::compressPoint(btckey4);
-   authPeers->addPeer(btckey4, {"4.4.4.4", "more.com"}, "key4", false);
+   std::memcpy(btckey4.pubkey, pubkey4.getPtr(), 33);
+   btckey4.compressed = true;
+   clientPeers->addPeer(
+      PeerKey{btckey4, PeerType::ServerTwoWay},
+      {"4.4.4.4", "more.com"}, "key4");
 
    auto privKey5 = Cryptography::PRNG::generateRandomStrong(32);
-   auto pubkey5 = Cryptography::ECDSA::computePublicKey(privKey5);
-   auto pubkey5_compressed = Cryptography::ECDSA::compressPoint(pubkey5);
+   auto pubkey5 = Cryptography::ECDSA::computePublicKey(privKey5, true);
    btc_pubkey btckey5;
    btc_pubkey_init(&btckey5);
-   std::memcpy(btckey5.pubkey, pubkey5_compressed.getPtr(), 33);
+   std::memcpy(btckey5.pubkey, pubkey5.getPtr(), 33);
    btckey5.compressed = true;
-
-   authPeers->addPeer(btckey5, {"5.5.5.5", "newdomain.com"}, "key5", false);
+   clientPeers->addPeer(
+      PeerKey{btckey5, PeerType::ServerTwoWay},
+      {"5.5.5.5", "newdomain.com"}, "key5");
 
    {
       //check peer object has expected values
-      auto& peerMap = authPeers->getPeerNameMap(true);
-      auto& pubkeySet = authPeers->getPublicKeyMap(true);
+      auto& peerMap = clientPeers->getPeerNameMap(true);
+      auto& pubkeySet = clientPeers->getPublicKeyMap(true);
 
       {
          //first peer
@@ -9100,11 +9081,9 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
          //convert btc_pubkey to sbd
          SecureBinaryData pubkey1_sbd(iter1->second.pubkey, BIP151PUBKEYSIZE);
-         EXPECT_EQ(pubkey1_sbd, pubkey1_compressed);
-         EXPECT_NE(pubkey1_sbd, pubkey1);
-         EXPECT_TRUE(pubkeySet.find(pubkey1_compressed) != pubkeySet.end());
-
-         EXPECT_EQ(authPeers->getLabel(pubkey1_compressed, true), std::string{"key1"});
+         EXPECT_EQ(pubkey1_sbd, pubkey1);
+         EXPECT_TRUE(pubkeySet.find(pubkey1) != pubkeySet.end());
+         EXPECT_EQ(clientPeers->getLabel(pubkey1, true), std::string{"key1"});
       }
 
       {
@@ -9116,11 +9095,9 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
          //convert btc_pubkey to sbd
          SecureBinaryData pubkey2_sbd(iter1->second.pubkey, BIP151PUBKEYSIZE);
-         EXPECT_EQ(pubkey2_sbd, pubkey2_compressed);
-         EXPECT_NE(pubkey2_sbd, pubkey2);
-         EXPECT_TRUE(pubkeySet.find(pubkey2_compressed) != pubkeySet.end());
-
-         EXPECT_EQ(authPeers->getLabel(pubkey2_compressed, true), std::string{"key2"});
+         EXPECT_EQ(pubkey2_sbd, pubkey2);
+         EXPECT_TRUE(pubkeySet.find(pubkey2) != pubkeySet.end());
+         EXPECT_EQ(clientPeers->getLabel(pubkey2, true), std::string{"key2"});
       }
 
       {
@@ -9134,38 +9111,32 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
          //convert btc_pubkey to sbd
          SecureBinaryData pubkey3_sbd(iter1->second.pubkey, BIP151PUBKEYSIZE);
-         EXPECT_EQ(pubkey3_sbd, pubkey3_compressed);
-         EXPECT_NE(pubkey3_sbd, pubkey3);
-         EXPECT_TRUE(pubkeySet.find(pubkey3_compressed) != pubkeySet.end());
-
-         EXPECT_EQ(authPeers->getLabel(pubkey3_compressed, true), std::string{"key3"});
+         EXPECT_EQ(pubkey3_sbd, pubkey3);
+         EXPECT_TRUE(pubkeySet.find(pubkey3) != pubkeySet.end());
+         EXPECT_EQ(clientPeers->getLabel(pubkey3, true), std::string{"key3"});
       }
    }
 
    {
       //check peer object has expected values
-      auto& peerMap = authPeers->getPeerNameMap(false);
-      auto& pubkeySet = authPeers->getPublicKeyMap(false);
+      auto& peerMap = clientPeers->getPeerNameMap(false);
+      auto& pubkeySet = clientPeers->getPublicKeyMap(false);
 
       {
          //4th peer
-
          auto iter1 = peerMap.find("4.4.4.4");
          auto iter2 = peerMap.find("more.com");
 
          EXPECT_EQ(memcmp(iter1->second.pubkey, iter2->second.pubkey, BIP151PUBKEYSIZE), 0);
 
          //convert btc_pubkey to sbd
-         EXPECT_NE(memcmp(iter1->second.pubkey, btckey4.pubkey, BIP151PUBKEYSIZE), 0);
-         EXPECT_EQ(memcmp(iter1->second.pubkey, btckey4_cmp.pubkey, BIP151PUBKEYSIZE), 0);
-         EXPECT_TRUE(pubkeySet.find(pubkey4_compressed) != pubkeySet.end());
-
-         EXPECT_EQ(authPeers->getLabel(pubkey4_compressed, false), std::string{"key4"});
+         EXPECT_EQ(memcmp(iter1->second.pubkey, btckey4.pubkey, BIP151PUBKEYSIZE), 0);
+         EXPECT_TRUE(pubkeySet.find(pubkey4) != pubkeySet.end());
+         EXPECT_EQ(clientPeers->getLabel(pubkey4, false), std::string{"key4"});
       }
 
       {
          //5th peer
-
          auto iter1 = peerMap.find("5.5.5.5");
          auto iter2 = peerMap.find("newdomain.com");
 
@@ -9173,30 +9144,30 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
          //convert btc_pubkey to sbd
          EXPECT_EQ(memcmp(iter1->second.pubkey, btckey5.pubkey, BIP151PUBKEYSIZE), 0);
-         EXPECT_TRUE(pubkeySet.find(pubkey5_compressed) != pubkeySet.end());
-
-         EXPECT_EQ(authPeers->getLabel(pubkey5_compressed, false), std::string{"key5"});
+         EXPECT_TRUE(pubkeySet.find(pubkey5) != pubkeySet.end());
+         EXPECT_EQ(clientPeers->getLabel(pubkey5, false), std::string{"key5"});
       }
    }
 
    //remove entries, check again
-   authPeers->eraseName(domain_name, true);
-   authPeers->eraseKey(pubkey2, true);
-   authPeers->eraseName("5.5.5.5", false);
-   authPeers->eraseKey(btckey4, false);
-   authPeers->setLabel(pubkey1_compressed, "updated key1", true);
+   clientPeers->eraseName(domain_name, true);
+   clientPeers->eraseKey(pubkey2, true);
+   clientPeers->eraseName("5.5.5.5", false);
+   clientPeers->eraseKey(btckey4, false);
+   clientPeers->setLabel(
+      PeerKey{pubkey1, PeerType::ServerOneWay}, "updated key1");
    try {
-      authPeers->setLabel(pubkey2_compressed, "update key2", true);
+      clientPeers->setLabel(PeerKey{pubkey2, PeerType::ServerOneWay}, "update key2");
       ASSERT_TRUE(false);
    } catch (const std::exception& e) {
       EXPECT_EQ(e.what(), std::string{"unknown peer key"});
    }
-   authPeers->setLabel(pubkey5_compressed, "55key", false);
+   clientPeers->setLabel(PeerKey{pubkey5, PeerType::ServerTwoWay}, "55key");
 
    {
       //check peer object has expected values
-      auto& peerMap = authPeers->getPeerNameMap(true);
-      auto& pubkeySet = authPeers->getPublicKeyMap(true);
+      auto& peerMap = clientPeers->getPeerNameMap(true);
+      auto& pubkeySet = clientPeers->getPublicKeyMap(true);
 
       {
          //first peer
@@ -9209,11 +9180,9 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
          //convert btc_pubkey to sbd
          SecureBinaryData pubkey1_sbd(iter1->second.pubkey, BIP151PUBKEYSIZE);
-         EXPECT_EQ(pubkey1_sbd, pubkey1_compressed);
-         EXPECT_NE(pubkey1_sbd, pubkey1);
-         EXPECT_TRUE(pubkeySet.find(pubkey1_compressed) != pubkeySet.end());
-
-         EXPECT_EQ(authPeers->getLabel(pubkey1_compressed, true), std::string{"updated key1"});
+         EXPECT_EQ(pubkey1_sbd, pubkey1);
+         EXPECT_TRUE(pubkeySet.find(pubkey1) != pubkeySet.end());
+         EXPECT_EQ(clientPeers->getLabel(pubkey1, true), std::string{"updated key1"});
       }
 
       {
@@ -9223,10 +9192,10 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
          EXPECT_TRUE(iter1 == peerMap.end());
          EXPECT_TRUE(iter2 == peerMap.end());
-         EXPECT_TRUE(pubkeySet.find(pubkey2_compressed) == pubkeySet.end());
+         EXPECT_TRUE(pubkeySet.find(pubkey2) == pubkeySet.end());
 
          try {
-            authPeers->getLabel(pubkey2_compressed, true);
+            clientPeers->getLabel(pubkey2, true);
             ASSERT_TRUE(false);
          } catch (const std::exception& e) {
             EXPECT_EQ(e.what(), std::string{"unknown peer key"});
@@ -9244,18 +9213,16 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
          //convert btc_pubkey to sbd
          SecureBinaryData pubkey3_sbd(iter1->second.pubkey, BIP151PUBKEYSIZE);
-         EXPECT_EQ(pubkey3_sbd, pubkey3_compressed);
-         EXPECT_NE(pubkey3_sbd, pubkey3);
-         EXPECT_TRUE(pubkeySet.find(pubkey3_compressed) != pubkeySet.end());
-
-         EXPECT_EQ(authPeers->getLabel(pubkey3_compressed, true), std::string{"key3"});
+         EXPECT_EQ(pubkey3_sbd, pubkey3);
+         EXPECT_TRUE(pubkeySet.find(pubkey3) != pubkeySet.end());
+         EXPECT_EQ(clientPeers->getLabel(pubkey3, true), std::string{"key3"});
       }
    }
 
    {
       //check peer object has expected values
-      auto& peerMap = authPeers->getPeerNameMap(false);
-      auto& pubkeySet = authPeers->getPublicKeyMap(false);
+      auto& peerMap = clientPeers->getPeerNameMap(false);
+      auto& pubkeySet = clientPeers->getPublicKeyMap(false);
 
       {
          //4th peer
@@ -9264,10 +9231,10 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
          EXPECT_EQ(iter1, peerMap.end());
          EXPECT_EQ(iter2, peerMap.end());
-         EXPECT_TRUE(pubkeySet.find(pubkey4_compressed) == pubkeySet.end());
+         EXPECT_TRUE(pubkeySet.find(pubkey4) == pubkeySet.end());
 
          try {
-            authPeers->getLabel(pubkey4_compressed, false);
+            clientPeers->getLabel(pubkey4, false);
             ASSERT_TRUE(false);
          } catch (const std::exception& e) {
             EXPECT_EQ(e.what(), std::string{"unknown peer key"});
@@ -9282,21 +9249,20 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_EQ(iter1, peerMap.end());
 
          EXPECT_EQ(memcmp(iter2->second.pubkey, btckey5.pubkey, BIP151PUBKEYSIZE), 0);
-         EXPECT_TRUE(pubkeySet.find(pubkey5_compressed) != pubkeySet.end());
-
-         EXPECT_EQ(authPeers->getLabel(pubkey5_compressed, false), std::string{"55key"});
+         EXPECT_TRUE(pubkeySet.find(pubkey5) != pubkeySet.end());
+         EXPECT_EQ(clientPeers->getLabel(pubkey5, false), std::string{"55key"});
       }
 
    }
 
    //delete auth peer object, reload and test again
-   authPeers.reset();
-   authPeers = std::make_unique<AuthorizedPeers>(roFileParams);
+   clientPeers.reset();
+   clientPeers = std::make_unique<ClientStore>(roFileParams);
 
    {
       //check peer object has expected values
-      auto& peerMap = authPeers->getPeerNameMap(true);
-      auto& pubkeySet = authPeers->getPublicKeyMap(true);
+      auto& peerMap = clientPeers->getPeerNameMap(true);
+      auto& pubkeySet = clientPeers->getPublicKeyMap(true);
 
       {
          //first peer
@@ -9309,11 +9275,9 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
          //convert btc_pubkey to sbd
          SecureBinaryData pubkey1_sbd(iter1->second.pubkey, BIP151PUBKEYSIZE);
-         EXPECT_EQ(pubkey1_sbd, pubkey1_compressed);
-         EXPECT_NE(pubkey1_sbd, pubkey1);
-         EXPECT_TRUE(pubkeySet.find(pubkey1_compressed) != pubkeySet.end());
-
-         EXPECT_EQ(authPeers->getLabel(pubkey1_compressed, true), std::string{"updated key1"});
+         EXPECT_EQ(pubkey1_sbd, pubkey1);
+         EXPECT_TRUE(pubkeySet.find(pubkey1) != pubkeySet.end());
+         EXPECT_EQ(clientPeers->getLabel(pubkey1, true), std::string{"updated key1"});
       }
 
       {
@@ -9323,10 +9287,10 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
          EXPECT_TRUE(iter1 == peerMap.end());
          EXPECT_TRUE(iter2 == peerMap.end());
-         EXPECT_TRUE(pubkeySet.find(pubkey2_compressed) == pubkeySet.end());
+         EXPECT_TRUE(pubkeySet.find(pubkey2) == pubkeySet.end());
 
          try {
-            authPeers->getLabel(pubkey2_compressed, true);
+            clientPeers->getLabel(pubkey2, true);
             ASSERT_TRUE(false);
          } catch (const std::exception& e) {
             EXPECT_EQ(e.what(), std::string{"unknown peer key"});
@@ -9344,18 +9308,16 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
          //convert btc_pubkey to sbd
          SecureBinaryData pubkey3_sbd(iter1->second.pubkey, BIP151PUBKEYSIZE);
-         EXPECT_EQ(pubkey3_sbd, pubkey3_compressed);
-         EXPECT_NE(pubkey3_sbd, pubkey3);
-         EXPECT_TRUE(pubkeySet.find(pubkey3_compressed) != pubkeySet.end());
-
-         EXPECT_EQ(authPeers->getLabel(pubkey3_compressed, true), std::string{"key3"});
+         EXPECT_EQ(pubkey3_sbd, pubkey3);
+         EXPECT_TRUE(pubkeySet.find(pubkey3) != pubkeySet.end());
+         EXPECT_EQ(clientPeers->getLabel(pubkey3, true), std::string{"key3"});
       }
    }
 
    {
       //check peer object has expected values
-      auto& peerMap = authPeers->getPeerNameMap(false);
-      auto& pubkeySet = authPeers->getPublicKeyMap(false);
+      auto& peerMap = clientPeers->getPeerNameMap(false);
+      auto& pubkeySet = clientPeers->getPublicKeyMap(false);
 
       {
          //4th peer
@@ -9364,10 +9326,10 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
          EXPECT_EQ(iter1, peerMap.end());
          EXPECT_EQ(iter2, peerMap.end());
-         EXPECT_TRUE(pubkeySet.find(pubkey4_compressed) == pubkeySet.end());
+         EXPECT_TRUE(pubkeySet.find(pubkey4) == pubkeySet.end());
 
          try {
-            authPeers->getLabel(pubkey4_compressed, false);
+            clientPeers->getLabel(pubkey4, false);
             ASSERT_TRUE(false);
          } catch (const std::exception& e) {
             EXPECT_EQ(e.what(), std::string{"unknown peer key"});
@@ -9382,19 +9344,18 @@ TEST_F(WalletMetaDataTest, AuthPeers)
          EXPECT_EQ(iter1, peerMap.end());
 
          EXPECT_EQ(memcmp(iter2->second.pubkey, btckey5.pubkey, BIP151PUBKEYSIZE), 0);
-         EXPECT_TRUE(pubkeySet.find(pubkey5_compressed) != pubkeySet.end());
-
-         EXPECT_EQ(authPeers->getLabel(pubkey5_compressed, false), std::string{"55key"});
+         EXPECT_TRUE(pubkeySet.find(pubkey5) != pubkeySet.end());
+         EXPECT_EQ(clientPeers->getLabel(pubkey5, false), std::string{"55key"});
       }
    }
 
    //remove last name of 5th peer, check keySet entry is gone too
-   authPeers->eraseName("newdomain.com", false);
+   clientPeers->eraseName("newdomain.com", false);
 
    {
       //check peer object has expected values
-      auto& peerMap = authPeers->getPeerNameMap(true);
-      auto& pubkeySet = authPeers->getPublicKeyMap(true);
+      auto& peerMap = clientPeers->getPeerNameMap(true);
+      auto& pubkeySet = clientPeers->getPublicKeyMap(true);
 
       {
          //first peer
@@ -9407,11 +9368,9 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
          //convert btc_pubkey to sbd
          SecureBinaryData pubkey1_sbd(iter1->second.pubkey, BIP151PUBKEYSIZE);
-         EXPECT_EQ(pubkey1_sbd, pubkey1_compressed);
-         EXPECT_NE(pubkey1_sbd, pubkey1);
+         EXPECT_EQ(pubkey1_sbd, pubkey1);
          EXPECT_TRUE(pubkeySet.find(pubkey1_sbd) != pubkeySet.end());
-
-         EXPECT_EQ(authPeers->getLabel(pubkey1_compressed, true), std::string{"updated key1"});
+         EXPECT_EQ(clientPeers->getLabel(pubkey1, true), std::string{"updated key1"});
       }
 
       {
@@ -9421,10 +9380,10 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
          EXPECT_TRUE(iter1 == peerMap.end());
          EXPECT_TRUE(iter2 == peerMap.end());
-         EXPECT_TRUE(pubkeySet.find(pubkey2_compressed) == pubkeySet.end());
+         EXPECT_TRUE(pubkeySet.find(pubkey2) == pubkeySet.end());
 
          try {
-            authPeers->getLabel(pubkey2_compressed, true);
+            clientPeers->getLabel(pubkey2, true);
             ASSERT_TRUE(false);
          } catch (const std::exception& e) {
             EXPECT_EQ(e.what(), std::string{"unknown peer key"});
@@ -9442,18 +9401,16 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
          //convert btc_pubkey to sbd
          SecureBinaryData pubkey3_sbd(iter1->second.pubkey, BIP151PUBKEYSIZE);
-         EXPECT_EQ(pubkey3_sbd, pubkey3_compressed);
-         EXPECT_NE(pubkey3_sbd, pubkey3);
+         EXPECT_EQ(pubkey3_sbd, pubkey3);
          EXPECT_TRUE(pubkeySet.find(pubkey3_sbd) != pubkeySet.end());
-
-         EXPECT_EQ(authPeers->getLabel(pubkey3_compressed, true), std::string{"key3"});
+         EXPECT_EQ(clientPeers->getLabel(pubkey3, true), std::string{"key3"});
       }
    }
 
    {
       //check peer object has expected values
-      auto& peerMap = authPeers->getPeerNameMap(false);
-      auto& pubkeySet = authPeers->getPublicKeyMap(false);
+      auto& peerMap = clientPeers->getPeerNameMap(false);
+      auto& pubkeySet = clientPeers->getPublicKeyMap(false);
 
       {
          //4th peer
@@ -9462,10 +9419,10 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
          EXPECT_EQ(iter1, peerMap.end());
          EXPECT_EQ(iter2, peerMap.end());
-         EXPECT_TRUE(pubkeySet.find(pubkey4_compressed) == pubkeySet.end());
+         EXPECT_TRUE(pubkeySet.find(pubkey4) == pubkeySet.end());
 
          try {
-            authPeers->getLabel(pubkey4_compressed, false);
+            clientPeers->getLabel(pubkey4, false);
             ASSERT_TRUE(false);
          } catch (const std::exception& e) {
             EXPECT_EQ(e.what(), std::string{"unknown peer key"});
@@ -9479,148 +9436,184 @@ TEST_F(WalletMetaDataTest, AuthPeers)
 
          EXPECT_EQ(iter1, peerMap.end());
          EXPECT_EQ(iter2, peerMap.end());
-         EXPECT_TRUE(pubkeySet.find(pubkey5_compressed) == pubkeySet.end());
+         EXPECT_TRUE(pubkeySet.find(pubkey5) == pubkeySet.end());
 
          try {
-            authPeers->getLabel(pubkey5_compressed, false);
+            clientPeers->getLabel(pubkey5, false);
             ASSERT_TRUE(false);
          } catch (const std::exception& e) {
             EXPECT_EQ(e.what(), std::string{"unknown peer key"});
          }
       }
    }
+}
 
-   /* master key checks */
+TEST_F(WalletMetaDataTest, PeerStoreMasterKey)
+{
+   using namespace NetworkPeers;
+   auto peersWalletPass = SecureBinaryData::fromString("authpeerpass");
+   auto peerPassLbd = [&peersWalletPass]()->std::unique_ptr<Passphrase::Params>
+   {
+      return std::make_unique<Passphrase::Params>(
+         100ms, 0, peersWalletPass);
+   };
+   IO::CreateFileParams createFileParams{homedir_ / "test.peers", {peerPassLbd}};
+   IO::ReadOnlyFileParams roFileParams{
+      homedir_ / "test.peers",
+      [&peersWalletPass](const std::set<EncryptionKeyId>&)
+      ->Passphrase::Result
+      { return { peersWalletPass, true }; }
+   };
+   PeerStore::initOnDisk(createFileParams);
+   auto serverPeers = std::make_unique<ServerStore>(roFileParams);
 
-   //set an invalid key
+   auto privKey1 = Cryptography::PRNG::generateRandomStrong(32);
+   auto pubkey1 = Cryptography::ECDSA::computePublicKey(privKey1, true);
+   serverPeers->addPeer(
+      PeerKey{pubkey1, PeerType::Client},
+      {"1.1.1.1", "0123::4567::89ab::cdef::", "test.com"}, "key1");
+
+   auto privKey2 = Cryptography::PRNG::generateRandomStrong(32);
+   auto pubkey2 = Cryptography::ECDSA::computePublicKey(privKey2, true);
+   serverPeers->addPeer(
+      PeerKey{pubkey2, PeerType::Client},
+      {"2.2.2.2", "domain.com"}, "key2");
+
+   auto privKey3 = Cryptography::PRNG::generateRandomStrong(32);
+   auto pubkey3 = Cryptography::ECDSA::computePublicKey(privKey3, true);
+   std::string domain_name("anotherdomain.com");
+   serverPeers->addPeer(
+      PeerKey{pubkey3, PeerType::Client},
+      {"3.3.3.3", "test.com", domain_name}, "key3");
+
    auto privKey6 = Cryptography::PRNG::generateRandomStrong(32);
-   auto pubkey6 = Cryptography::ECDSA::computePublicKey(privKey6);
-   auto pubkey6_compressed = Cryptography::ECDSA::compressPoint(pubkey6);
-
+   auto pubkey6 = Cryptography::ECDSA::computePublicKey(privKey6, true);
    btc_pubkey btckey6;
    btc_pubkey_init(&btckey6);
-   std::memcpy(btckey6.pubkey, pubkey6_compressed.getPtr(), 33);
+   std::memcpy(btckey6.pubkey, pubkey6.getPtr(), 33);
    btckey6.compressed = true;
+   PeerKey masterKey6{btckey6, PeerType::Client};
 
-   ASSERT_FALSE(authPeers->setMasterKey(btckey6));
-   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
-   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
-   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+   ASSERT_FALSE(serverPeers->setMasterKey(masterKey6));
+   ASSERT_FALSE(serverPeers->isMasterKey(pubkey1));
+   ASSERT_FALSE(serverPeers->isMasterKey(pubkey3));
+   ASSERT_FALSE(serverPeers->isMasterKey(btckey6));
 
    //set key1 as master key
-   ASSERT_TRUE(authPeers->setMasterKey(pubkey1_compressed));
-   ASSERT_TRUE(authPeers->isMasterKey(pubkey1_compressed));
-   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
-   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+   PeerKey masterKey1{pubkey1, PeerType::Client};
+   ASSERT_TRUE(serverPeers->setMasterKey(masterKey1));
+   ASSERT_TRUE(serverPeers->isMasterKey(pubkey1));
+   ASSERT_FALSE(serverPeers->isMasterKey(pubkey3));
+   ASSERT_FALSE(serverPeers->isMasterKey(btckey6));
 
    //set key3 as master key
-   ASSERT_TRUE(authPeers->setMasterKey(pubkey3_compressed));
-   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
-   ASSERT_TRUE(authPeers->isMasterKey(pubkey3_compressed));
-   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+   PeerKey masterKey3{pubkey3, PeerType::Client};
+   ASSERT_TRUE(serverPeers->setMasterKey(masterKey3));
+   ASSERT_FALSE(serverPeers->isMasterKey(pubkey1));
+   ASSERT_TRUE(serverPeers->isMasterKey(pubkey3));
+   ASSERT_FALSE(serverPeers->isMasterKey(btckey6));
 
    //reload wallet, check persistence
-   authPeers.reset();
-   authPeers = std::make_unique<AuthorizedPeers>(roFileParams);
-   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
-   ASSERT_TRUE(authPeers->isMasterKey(pubkey3_compressed));
-   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+   serverPeers.reset();
+   serverPeers = std::make_unique<ServerStore>(roFileParams);
+   ASSERT_FALSE(serverPeers->isMasterKey(pubkey1));
+   ASSERT_TRUE(serverPeers->isMasterKey(pubkey3));
+   ASSERT_FALSE(serverPeers->isMasterKey(btckey6));
 
    //change master key, reload peers wallet and check again
-   ASSERT_TRUE(authPeers->setMasterKey(pubkey1_compressed));
-   ASSERT_TRUE(authPeers->isMasterKey(pubkey1_compressed));
-   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
-   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+   ASSERT_TRUE(serverPeers->setMasterKey(masterKey1));
+   ASSERT_TRUE(serverPeers->isMasterKey(pubkey1));
+   ASSERT_FALSE(serverPeers->isMasterKey(pubkey3));
+   ASSERT_FALSE(serverPeers->isMasterKey(btckey6));
 
-   authPeers.reset();
-   authPeers = std::make_unique<AuthorizedPeers>(roFileParams);
-   ASSERT_TRUE(authPeers->isMasterKey(pubkey1_compressed));
-   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
-   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+   serverPeers.reset();
+   serverPeers = std::make_unique<ServerStore>(roFileParams);
+   ASSERT_TRUE(serverPeers->isMasterKey(pubkey1));
+   ASSERT_FALSE(serverPeers->isMasterKey(pubkey3));
+   ASSERT_FALSE(serverPeers->isMasterKey(btckey6));
 
    //delete key1, check it's not master key anymore
-   authPeers->eraseKey(pubkey1_compressed, true);
-   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
-   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
-   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+   serverPeers->eraseKey(pubkey1, true);
+   ASSERT_FALSE(serverPeers->isMasterKey(pubkey1));
+   ASSERT_FALSE(serverPeers->isMasterKey(pubkey3));
+   ASSERT_FALSE(serverPeers->isMasterKey(btckey6));
 
    //reload wallet, check key1 isnt master key
-   authPeers.reset();
-   authPeers = std::make_unique<AuthorizedPeers>(roFileParams);
-   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
-   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
-   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+   serverPeers.reset();
+   serverPeers = std::make_unique<ServerStore>(roFileParams);
+   ASSERT_FALSE(serverPeers->isMasterKey(pubkey1));
+   ASSERT_FALSE(serverPeers->isMasterKey(pubkey3));
+   ASSERT_FALSE(serverPeers->isMasterKey(btckey6));
 
    //TODO: re-add key1, check it isnt master key
-   authPeers->addPeer(pubkey1,
-      {"1.1.1.1", "0123::4567::89ab::cdef::", "test.com"}, {}, true);
-   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
-   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
-   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+   serverPeers->addPeer(
+      PeerKey{pubkey1, PeerType::Client},
+      {"1.1.1.1", "0123::4567::89ab::cdef::", "test.com"}, {});
+   ASSERT_FALSE(serverPeers->isMasterKey(pubkey1));
+   ASSERT_FALSE(serverPeers->isMasterKey(pubkey3));
+   ASSERT_FALSE(serverPeers->isMasterKey(btckey6));
 
    //reload, check key1 isnt master key
-   authPeers.reset();
-   authPeers = std::make_unique<AuthorizedPeers>(roFileParams);
-   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
-   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
-   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+   serverPeers.reset();
+   serverPeers = std::make_unique<ServerStore>(roFileParams);
+   ASSERT_FALSE(serverPeers->isMasterKey(pubkey1));
+   ASSERT_FALSE(serverPeers->isMasterKey(pubkey3));
+   ASSERT_FALSE(serverPeers->isMasterKey(btckey6));
 
    //set key3 as master
-   ASSERT_TRUE(authPeers->setMasterKey(pubkey3_compressed));
-   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
-   ASSERT_TRUE(authPeers->isMasterKey(pubkey3_compressed));
-   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+   ASSERT_TRUE(serverPeers->setMasterKey(masterKey3));
+   ASSERT_FALSE(serverPeers->isMasterKey(pubkey1));
+   ASSERT_TRUE(serverPeers->isMasterKey(pubkey3));
+   ASSERT_FALSE(serverPeers->isMasterKey(btckey6));
 
    //reload & check
-   authPeers.reset();
-   authPeers = std::make_unique<AuthorizedPeers>(roFileParams);
-   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
-   ASSERT_TRUE(authPeers->isMasterKey(pubkey3_compressed));
-   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+   serverPeers.reset();
+   serverPeers = std::make_unique<ServerStore>(roFileParams);
+   ASSERT_FALSE(serverPeers->isMasterKey(pubkey1));
+   ASSERT_TRUE(serverPeers->isMasterKey(pubkey3));
+   ASSERT_FALSE(serverPeers->isMasterKey(btckey6));
 
    //erase master key
-   authPeers->eraseMasterKey();
-   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
-   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
-   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+   serverPeers->eraseMasterKey();
+   ASSERT_FALSE(serverPeers->isMasterKey(pubkey1));
+   ASSERT_FALSE(serverPeers->isMasterKey(pubkey3));
+   ASSERT_FALSE(serverPeers->isMasterKey(btckey6));
 
    //reload & check
-   authPeers.reset();
-   authPeers = std::make_unique<AuthorizedPeers>(roFileParams);
-   ASSERT_FALSE(authPeers->isMasterKey(pubkey1_compressed));
-   ASSERT_FALSE(authPeers->isMasterKey(pubkey3_compressed));
-   ASSERT_FALSE(authPeers->isMasterKey(btckey6));
+   serverPeers.reset();
+   serverPeers = std::make_unique<ServerStore>(roFileParams);
+   ASSERT_FALSE(serverPeers->isMasterKey(pubkey1));
+   ASSERT_FALSE(serverPeers->isMasterKey(pubkey3));
+   ASSERT_FALSE(serverPeers->isMasterKey(btckey6));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(WalletMetaDataTest, AuthPeers_Ephemeral)
 {
-   auto authPeers = std::make_unique<AuthorizedPeers>();
+   using namespace NetworkPeers;
+   auto peers = std::make_unique<ClientStore>();
 
    //auth meta account expects valid pubkeys
    auto privKey1 = Cryptography::PRNG::generateRandomStrong(32);
-   auto pubkey1 = Cryptography::ECDSA::computePublicKey(privKey1);
-   auto pubkey1_compressed = Cryptography::ECDSA::compressPoint(pubkey1);
-   authPeers->addPeer(pubkey1,
-      {"1.1.1.1", "0123::4567::89ab::cdef::", "test.com"}, {}, false);
+   auto pubkey1 = Cryptography::ECDSA::computePublicKey(privKey1, true);
+   peers->addPeer(PeerKey{pubkey1, PeerType::ServerTwoWay},
+      {"1.1.1.1", "0123::4567::89ab::cdef::", "test.com"}, {});
 
    auto privKey2 = Cryptography::PRNG::generateRandomStrong(32);
-   auto pubkey2 = Cryptography::ECDSA::computePublicKey(privKey2);
-   auto pubkey2_compressed = Cryptography::ECDSA::compressPoint(pubkey2);
-   authPeers->addPeer(pubkey2_compressed,
-      {"2.2.2.2", "domain.com"}, {}, false);
+   auto pubkey2 = Cryptography::ECDSA::computePublicKey(privKey2, true);
+   peers->addPeer(PeerKey{pubkey2, PeerType::ServerTwoWay},
+      {"2.2.2.2", "domain.com"}, {});
 
    auto privKey3 = Cryptography::PRNG::generateRandomStrong(32);
-   auto pubkey3 = Cryptography::ECDSA::computePublicKey(privKey3);
-   auto pubkey3_compressed = Cryptography::ECDSA::compressPoint(pubkey3);
+   auto pubkey3 = Cryptography::ECDSA::computePublicKey(privKey3, true);
    std::string domain_name{"anotherdomain.com"};
-   authPeers->addPeer(pubkey3_compressed,
-      {"3.3.3.3", "test.com", domain_name}, {}, false);
+   peers->addPeer(PeerKey{pubkey3, PeerType::ServerTwoWay},
+      {"3.3.3.3", "test.com", domain_name}, {});
 
    {
       //check peer object has expected values
-      auto& peerMap = authPeers->getPeerNameMap(false);
-      auto& pubkeySet = authPeers->getPublicKeyMap(false);
+      auto& peerMap = peers->getPeerNameMap(false);
+      auto& pubkeySet = peers->getPublicKeyMap(false);
 
       {
          //first peer
@@ -9633,9 +9626,8 @@ TEST_F(WalletMetaDataTest, AuthPeers_Ephemeral)
 
          //convert btc_pubkey to sbd
          SecureBinaryData pubkey1_sbd(iter1->second.pubkey, BIP151PUBKEYSIZE);
-         EXPECT_EQ(pubkey1_sbd, pubkey1_compressed);
-         EXPECT_NE(pubkey1_sbd, pubkey1);
-         EXPECT_TRUE(pubkeySet.find(pubkey1_compressed) != pubkeySet.end());
+         EXPECT_EQ(pubkey1_sbd, pubkey1);
+         EXPECT_TRUE(pubkeySet.find(pubkey1) != pubkeySet.end());
       }
 
       {
@@ -9647,9 +9639,8 @@ TEST_F(WalletMetaDataTest, AuthPeers_Ephemeral)
 
          //convert btc_pubkey to sbd
          SecureBinaryData pubkey2_sbd(iter1->second.pubkey, BIP151PUBKEYSIZE);
-         EXPECT_EQ(pubkey2_sbd, pubkey2_compressed);
-         EXPECT_NE(pubkey2_sbd, pubkey2);
-         EXPECT_TRUE(pubkeySet.find(pubkey2_compressed) != pubkeySet.end());
+         EXPECT_EQ(pubkey2_sbd, pubkey2);
+         EXPECT_TRUE(pubkeySet.find(pubkey2) != pubkeySet.end());
       }
 
       {
@@ -9663,35 +9654,34 @@ TEST_F(WalletMetaDataTest, AuthPeers_Ephemeral)
 
          //convert btc_pubkey to sbd
          SecureBinaryData pubkey3_sbd(iter1->second.pubkey, BIP151PUBKEYSIZE);
-         EXPECT_EQ(pubkey3_sbd, pubkey3_compressed);
-         EXPECT_NE(pubkey3_sbd, pubkey3);
-         EXPECT_TRUE(pubkeySet.find(pubkey3_compressed) != pubkeySet.end());
+         EXPECT_EQ(pubkey3_sbd, pubkey3);
+         EXPECT_TRUE(pubkeySet.find(pubkey3) != pubkeySet.end());
       }
    }
 
    //add more keys
    auto privKey4 = Cryptography::PRNG::generateRandomStrong(32);
-   auto pubkey4 = Cryptography::ECDSA::computePublicKey(privKey4);
-   auto pubkey4_compressed = Cryptography::ECDSA::compressPoint(pubkey4);
+   auto pubkey4 = Cryptography::ECDSA::computePublicKey(privKey4, true);
    btc_pubkey btckey4;
    btc_pubkey_init(&btckey4);
-   std::memcpy(btckey4.pubkey, pubkey4.getPtr(), 65);
-   btc_pubkey btckey4_cmp = Cryptography::ECDSA::compressPoint(btckey4);
-   authPeers->addPeer(btckey4, {"4.4.4.4", "more.com"}, {}, false);
+   std::memcpy(btckey4.pubkey, pubkey4.getPtr(), 33);
+   btckey4.compressed = true;
+   peers->addPeer(PeerKey{btckey4, PeerType::ServerTwoWay},
+      {"4.4.4.4", "more.com"}, {});
 
    auto privKey5 = Cryptography::PRNG::generateRandomStrong(32);
-   auto pubkey5 = Cryptography::ECDSA::computePublicKey(privKey5);
-   auto pubkey5_compressed = Cryptography::ECDSA::compressPoint(pubkey5);
+   auto pubkey5 = Cryptography::ECDSA::computePublicKey(privKey5, true);
    btc_pubkey btckey5;
    btc_pubkey_init(&btckey5);
-   std::memcpy(btckey5.pubkey, pubkey5_compressed.getPtr(), 33);
+   std::memcpy(btckey5.pubkey, pubkey5.getPtr(), 33);
    btckey5.compressed = true;
-   authPeers->addPeer(btckey5, {"5.5.5.5", "newdomain.com"}, {}, false);
+   peers->addPeer(PeerKey{btckey5, PeerType::ServerTwoWay},
+      {"5.5.5.5", "newdomain.com"}, {});
 
    {
       //check peer object has expected values
-      auto& peerMap = authPeers->getPeerNameMap(false);
-      auto& pubkeySet = authPeers->getPublicKeyMap(false);
+      auto& peerMap = peers->getPeerNameMap(false);
+      auto& pubkeySet = peers->getPublicKeyMap(false);
 
       {
          //first peer
@@ -9704,9 +9694,8 @@ TEST_F(WalletMetaDataTest, AuthPeers_Ephemeral)
 
          //convert btc_pubkey to sbd
          SecureBinaryData pubkey1_sbd(iter1->second.pubkey, BIP151PUBKEYSIZE);
-         EXPECT_EQ(pubkey1_sbd, pubkey1_compressed);
-         EXPECT_NE(pubkey1_sbd, pubkey1);
-         EXPECT_TRUE(pubkeySet.find(pubkey1_compressed) != pubkeySet.end());
+         EXPECT_EQ(pubkey1_sbd, pubkey1);
+         EXPECT_TRUE(pubkeySet.find(pubkey1) != pubkeySet.end());
       }
 
       {
@@ -9718,9 +9707,8 @@ TEST_F(WalletMetaDataTest, AuthPeers_Ephemeral)
 
          //convert btc_pubkey to sbd
          SecureBinaryData pubkey2_sbd(iter1->second.pubkey, BIP151PUBKEYSIZE);
-         EXPECT_EQ(pubkey2_sbd, pubkey2_compressed);
-         EXPECT_NE(pubkey2_sbd, pubkey2);
-         EXPECT_TRUE(pubkeySet.find(pubkey2_compressed) != pubkeySet.end());
+         EXPECT_EQ(pubkey2_sbd, pubkey2);
+         EXPECT_TRUE(pubkeySet.find(pubkey2) != pubkeySet.end());
       }
 
       {
@@ -9734,9 +9722,8 @@ TEST_F(WalletMetaDataTest, AuthPeers_Ephemeral)
 
          //convert btc_pubkey to sbd
          SecureBinaryData pubkey3_sbd(iter1->second.pubkey, BIP151PUBKEYSIZE);
-         EXPECT_EQ(pubkey3_sbd, pubkey3_compressed);
-         EXPECT_NE(pubkey3_sbd, pubkey3);
-         EXPECT_TRUE(pubkeySet.find(pubkey3_compressed) != pubkeySet.end());
+         EXPECT_EQ(pubkey3_sbd, pubkey3);
+         EXPECT_TRUE(pubkeySet.find(pubkey3) != pubkeySet.end());
       }
 
       {
@@ -9748,9 +9735,8 @@ TEST_F(WalletMetaDataTest, AuthPeers_Ephemeral)
          EXPECT_EQ(memcmp(iter1->second.pubkey, iter2->second.pubkey, BIP151PUBKEYSIZE), 0);
 
          //convert btc_pubkey to sbd
-         EXPECT_NE(memcmp(iter1->second.pubkey, btckey4.pubkey, BIP151PUBKEYSIZE), 0);
-         EXPECT_EQ(memcmp(iter1->second.pubkey, btckey4_cmp.pubkey, BIP151PUBKEYSIZE), 0);
-         EXPECT_TRUE(pubkeySet.find(pubkey4_compressed) != pubkeySet.end());
+         EXPECT_EQ(memcmp(iter1->second.pubkey, btckey4.pubkey, BIP151PUBKEYSIZE), 0);
+         EXPECT_TRUE(pubkeySet.find(pubkey4) != pubkeySet.end());
       }
 
       {
@@ -9763,20 +9749,20 @@ TEST_F(WalletMetaDataTest, AuthPeers_Ephemeral)
 
          //convert btc_pubkey to sbd
          EXPECT_EQ(memcmp(iter1->second.pubkey, btckey5.pubkey, BIP151PUBKEYSIZE), 0);
-         EXPECT_TRUE(pubkeySet.find(pubkey5_compressed) != pubkeySet.end());
+         EXPECT_TRUE(pubkeySet.find(pubkey5) != pubkeySet.end());
       }
    }
 
    //remove entries, check again
-   authPeers->eraseName(domain_name, false);
-   authPeers->eraseKey(pubkey2, false);
-   authPeers->eraseName("5.5.5.5", false);
-   authPeers->eraseKey(btckey4, false);
+   peers->eraseName(domain_name, false);
+   peers->eraseKey(pubkey2, false);
+   peers->eraseName("5.5.5.5", false);
+   peers->eraseKey(btckey4, false);
 
    {
       //check peer object has expected values
-      auto& peerMap = authPeers->getPeerNameMap(false);
-      auto& pubkeySet = authPeers->getPublicKeyMap(false);
+      auto& peerMap = peers->getPeerNameMap(false);
+      auto& pubkeySet = peers->getPublicKeyMap(false);
 
       {
          //first peer
@@ -9789,9 +9775,8 @@ TEST_F(WalletMetaDataTest, AuthPeers_Ephemeral)
 
          //convert btc_pubkey to sbd
          SecureBinaryData pubkey1_sbd(iter1->second.pubkey, BIP151PUBKEYSIZE);
-         EXPECT_EQ(pubkey1_sbd, pubkey1_compressed);
-         EXPECT_NE(pubkey1_sbd, pubkey1);
-         EXPECT_TRUE(pubkeySet.find(pubkey1_compressed) != pubkeySet.end());
+         EXPECT_EQ(pubkey1_sbd, pubkey1);
+         EXPECT_TRUE(pubkeySet.find(pubkey1) != pubkeySet.end());
       }
 
       {
@@ -9801,7 +9786,7 @@ TEST_F(WalletMetaDataTest, AuthPeers_Ephemeral)
 
          EXPECT_TRUE(iter1 == peerMap.end());
          EXPECT_TRUE(iter2 == peerMap.end());
-         EXPECT_TRUE(pubkeySet.find(pubkey2_compressed) == pubkeySet.end());
+         EXPECT_TRUE(pubkeySet.find(pubkey2) == pubkeySet.end());
       }
 
       {
@@ -9815,9 +9800,8 @@ TEST_F(WalletMetaDataTest, AuthPeers_Ephemeral)
 
          //convert btc_pubkey to sbd
          SecureBinaryData pubkey3_sbd(iter1->second.pubkey, BIP151PUBKEYSIZE);
-         EXPECT_EQ(pubkey3_sbd, pubkey3_compressed);
-         EXPECT_NE(pubkey3_sbd, pubkey3);
-         EXPECT_TRUE(pubkeySet.find(pubkey3_compressed) != pubkeySet.end());
+         EXPECT_EQ(pubkey3_sbd, pubkey3);
+         EXPECT_TRUE(pubkeySet.find(pubkey3) != pubkeySet.end());
       }
 
       {
@@ -9827,7 +9811,7 @@ TEST_F(WalletMetaDataTest, AuthPeers_Ephemeral)
 
          EXPECT_EQ(iter1, peerMap.end());
          EXPECT_EQ(iter2, peerMap.end());
-         EXPECT_TRUE(pubkeySet.find(pubkey4_compressed) == pubkeySet.end());
+         EXPECT_TRUE(pubkeySet.find(pubkey4) == pubkeySet.end());
       }
 
       {
@@ -9838,7 +9822,7 @@ TEST_F(WalletMetaDataTest, AuthPeers_Ephemeral)
          EXPECT_EQ(iter1, peerMap.end());
 
          EXPECT_EQ(memcmp(iter2->second.pubkey, btckey5.pubkey, BIP151PUBKEYSIZE), 0);
-         EXPECT_TRUE(pubkeySet.find(pubkey5_compressed) != pubkeySet.end());
+         EXPECT_TRUE(pubkeySet.find(pubkey5) != pubkeySet.end());
       }
    }
 }
@@ -9846,21 +9830,22 @@ TEST_F(WalletMetaDataTest, AuthPeers_Ephemeral)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(WalletMetaDataTest, AuthPeers_Unlocked)
 {
+   using namespace NetworkPeers;
    auto path = homedir_ / "unlocked.peers";
    {
       //create auth peers db without a control pass
-      auto authPeers = AuthorizedPeers::createWallet(
+      auto peers = PeerStore::initOnDisk(
          IO::CreateFileParams{path, Passphrase::SetNew{}
       });
-      ASSERT_NE(authPeers, nullptr);
+      ASSERT_NE(peers, nullptr);
    }
 
    //try to load it
    try {
-      auto authPeers = std::make_shared<AuthorizedPeers>(
+      auto peers = std::make_shared<ClientStore>(
          IO::ReadOnlyFileParams{path, nullptr}
       );
-      ASSERT_NE(authPeers, nullptr);
+      ASSERT_NE(peers, nullptr);
    } catch (const std::exception&) {
       ASSERT_TRUE(false);
    }

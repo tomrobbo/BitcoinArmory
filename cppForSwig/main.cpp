@@ -68,7 +68,7 @@ int main(int argc, char* argv[])
       }
       //initAuthPeers will setup the ephemeral keys
       try {
-         WebSocketServer::initAuthPeers(
+         WebSocketServer::initPeerStore(
             Wallets::IO::ReadOnlyFileParams{{}, nullptr});
       } catch (const std::exception &e) {
          LOGERR << "ephemeral peer db setup failed with this error: "
@@ -82,14 +82,14 @@ int main(int argc, char* argv[])
       LOGENABLESTDOUT();
       LOGINFO << "logging in " << logFilePath;
 
-      auto serverPeersFile = Config::getDataDir() / SERVER_AUTH_PEER_FILENAME;
-      if (!FileUtils::pathExists(serverPeersFile, 0) &&
+      auto peerFilePath = Config::getDataDir() / SERVER_AUTH_PEER_FILENAME;
+      if (!FileUtils::pathExists(peerFilePath, 0) &&
          !Config::NetworkSettings::ephemeralPeers()) {
          LOGINFO << "no server peers store found, creating one...";
-         auto passWrapper = []()->std::unique_ptr<Passphrase::Params>
+         auto passLbd = TerminalPassphrasePrompt::getLambda(
+            "new server peers store");
+         auto passWrapper = [&passLbd]()->std::unique_ptr<Passphrase::Params>
          {
-            auto passLbd = TerminalPassphrasePrompt::getLambda(
-               "new server peers store");
             auto result = passLbd({});
             if (!result.success) {
                throw std::runtime_error("peers store init was rejected");
@@ -97,16 +97,17 @@ int main(int argc, char* argv[])
             return std::make_unique<Passphrase::Params>(
                250ms, 0, std::move(result.passphrase));
          };
-         auto peers = Wallets::AuthorizedPeers::createWallet(
-            {serverPeersFile, {passWrapper}});
-         WebSocketServer::initAuthPeers(peers);
+         NetworkPeers::PeerStore::initOnDisk({peerFilePath, {passWrapper}});
+         WebSocketServer::initPeerStore({peerFilePath, passLbd});
       } else {
          auto passLbd = TerminalPassphrasePrompt::getLambda(
             "server peers store");
-         WebSocketServer::initAuthPeers({serverPeersFile, passLbd});
+         WebSocketServer::initPeerStore({peerFilePath, passLbd});
       }
-      Wallets::PeerKey myKey{WebSocketServer::getPublicKey(),
-         Config::NetworkSettings::oneWayAuth(), true};
+      NetworkPeers::PeerKey myKey{WebSocketServer::getPublicKey(),
+         Config::NetworkSettings::oneWayAuth() ?
+         NetworkPeers::PeerType::ServerOneWay : NetworkPeers::PeerType::ServerTwoWay
+      };
       LOGINFO << "This is my key: " << myKey.toHumanReadable();
    }
 

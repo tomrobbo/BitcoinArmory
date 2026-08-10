@@ -168,7 +168,7 @@ namespace AsyncClient
       //setup
       static std::shared_ptr<BlockDataViewer> getNewBDV(
          const std::string& addr, const std::string& port,
-         std::shared_ptr<Armory::Wallets::AuthorizedPeers>, bool,
+         std::shared_ptr<Armory::NetworkPeers::ClientStore>, bool,
          std::shared_ptr<RemoteCallback>);
 
       void registerWithDB(const std::string&);

@@ -16,9 +16,9 @@ class AuthorizedPeers;
 
 namespace Armory
 {
-   namespace Wallets
+   namespace NetworkPeers
    {
-      class AuthorizedPeers;
+      class ClientStore;
    }
 
    namespace Bridge
@@ -47,7 +47,7 @@ namespace Armory
          const std::string serverName_;
 
          std::shared_ptr<BIP151Connection> bip151Connection_;
-         std::shared_ptr<Wallets::AuthorizedPeers> authPeers_;
+         std::shared_ptr<NetworkPeers::ClientStore> peers_;
          std::vector<uint8_t> leftOverData_;
 
          std::mutex writeMutex_;

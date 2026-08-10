@@ -170,6 +170,13 @@ bool BlockDataManager::waitOnStartSignal()
 ////////
 void BlockDataManager::shutdown()
 {
+   try {
+      if (startPromise_ != nullptr) {
+         startPromise_->set_value(false);
+      }
+   } catch (const std::future_error&) {
+      //promise already set, ignore
+   }
    disableZeroConf();
    notificationStack.terminate();
 

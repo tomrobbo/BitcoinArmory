@@ -408,7 +408,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 BdvPtr Armory::Bridge::setupClientConnection(
-   std::shared_ptr<Wallets::AuthorizedPeers> peers,
+   std::shared_ptr<NetworkPeers::ClientStore> peers,
    const std::string& ip, const std::string& port, bool oneWayAuth,
    const std::function<bool(const BinaryData&)>& presentPubKeyFunc,
    std::shared_ptr<RemoteCallback> cbPtr)
@@ -443,8 +443,8 @@ BdvPtr Armory::Bridge::setupClientConnection(
 }
 
 BdvPtr Armory::Bridge::setupClientConnection(
-   std::shared_ptr<Wallets::AuthorizedPeers> peers,
-   const Wallets::PeerKey& peerObj,
+   std::shared_ptr<NetworkPeers::ClientStore> peers,
+   const NetworkPeers::PeerKey& peerObj,
    std::shared_ptr<RemoteCallback> cbPtr)
 {
    LOGINFO << "connecting to ArmoryDB by peer";
@@ -645,7 +645,7 @@ uint32_t AutomationContext::getDbPort() const
    return dbPort_;
 }
 
-std::shared_ptr<Wallets::AuthorizedPeers> AutomationContext::getPeersDb() const
+std::shared_ptr<NetworkPeers::ClientStore> AutomationContext::getPeerStore() const
 {
    return peers_;
 }
@@ -758,9 +758,11 @@ void AutomationContext::automateDb()
    }
 
    //setup ephemeral authPeers
-   peers_ = std::make_shared<Wallets::AuthorizedPeers>();
-   const auto& pubkey = peers_->getOwnPublicKey();
-   BinaryDataRef keyRef{pubkey.pubkey, 33};
+   peers_ = std::make_shared<NetworkPeers::ClientStore>();
+   NetworkPeers::PeerKey myKey{
+      peers_->getOwnPublicKey(),
+      NetworkPeers::PeerType::Client
+   };
 
    //generate random db port & set it
    dbPort_ = (rand() % 10000) + 50000;
@@ -793,7 +795,7 @@ void AutomationContext::automateDb()
 
    //envvars
    std::map<std::string, std::string> envvars{
-      {"MASTER_PUBKEY", keyRef.toHexStr()}
+      {"MASTER_PUBKEY", myKey.toHumanReadable()}
    };
 
    //optionals
@@ -813,10 +815,8 @@ void AutomationContext::automateDb()
    }
 
    //set db pubkey
-   SecureBinaryData serverPubkey{READHEX(result.second)};
-   std::string addr{"127.0.0.1:" + portStr};
-   peers_->addPeer(serverPubkey, {std::format("127.0.0.1:{}", portStr)},
-      {}, false);
+   auto serverKey = NetworkPeers::PeerKey::fromHumanReadable(result.second);
+   peers_->addPeer(serverKey, {std::format("127.0.0.1:{}", portStr)}, {});
 }
 
 ////

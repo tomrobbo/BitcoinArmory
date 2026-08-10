@@ -228,7 +228,7 @@ void BlockDataViewer::addPublicKey(const SecureBinaryData& pubkey, bool oneWay)
 ///////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<BlockDataViewer> BlockDataViewer::getNewBDV(
    const std::string& addr, const std::string& port,
-   std::shared_ptr<Wallets::AuthorizedPeers> peers, bool oneWayAuth,
+   std::shared_ptr<NetworkPeers::ClientStore> peers, bool oneWayAuth,
    std::shared_ptr<RemoteCallback> callbackPtr)
 {
    //create socket object

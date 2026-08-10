@@ -215,12 +215,12 @@ int WebSocketServer::callback(struct lws *wsi,
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-void WebSocketServer::initAuthPeers(
+void WebSocketServer::initPeerStore(
    const Wallets::IO::ReadOnlyFileParams& params)
 {
    //init auth peer object
    if (!Config::NetworkSettings::ephemeralPeers()) {
-      initAuthPeers(std::make_shared<Wallets::AuthorizedPeers>(params));
+      initPeerStore(std::make_shared<NetworkPeers::ServerStore>(params));
    } else {
       if (Config::NetworkSettings::oneWayAuth()) {
          throw std::runtime_error(
@@ -229,39 +229,38 @@ void WebSocketServer::initAuthPeers(
 
       //setup server with an ephemeral key store
       auto instance = getInstance();
-      instance->authorizedPeers_ = std::make_shared<Wallets::AuthorizedPeers>();
+      instance->peerStore_ = std::make_shared<NetworkPeers::ServerStore>();
 
-      //grab caller pubkey
-      auto callerKeyPtr = std::getenv("MASTER_PUBKEY");
-      if (callerKeyPtr == nullptr) {
+      //grab master pubkey
+      auto keyPtr = std::getenv("MASTER_PUBKEY");
+      if (keyPtr == nullptr) {
          throw std::runtime_error("caller key is not set");
       }
-      std::string callerPubKeyStr{callerKeyPtr};
-      auto callerPubKey = SecureBinaryData::CreateFromHex(callerPubKeyStr);
+      auto masterKey = NetworkPeers::PeerKey::fromHumanReadable({keyPtr});
 
-      //inject caller pubkey in the store
-      std::string serverName{"127.0.0.1:" +
-         Config::NetworkSettings::dbPort()};
-      instance->authorizedPeers_->addPeer(
-         callerPubKey.getRef(), {serverName}, {}, false);
+      //inject master pubkey in the store
+      instance->peerStore_->addPeer(
+         masterKey,
+         {std::format("127.0.0.1:{}", Config::NetworkSettings::dbPort())}, 
+         {}
+      );
 
-      //set caller pubkey as master key
-      if (!instance->authorizedPeers_->setMasterKey(callerPubKey.getRef())) {
+      //set master key
+      if (!instance->peerStore_->setMasterKey(masterKey)) {
          throw std::runtime_error("ephemeral peers db setup snafu");
       }
-      const auto& ownKey = instance->authorizedPeers_->getOwnPublicKey();
    }
 }
 
 ////
-void WebSocketServer::initAuthPeers(
-   std::shared_ptr<Wallets::AuthorizedPeers> peers)
+void WebSocketServer::initPeerStore(
+   std::shared_ptr<NetworkPeers::ServerStore> peers)
 {
    if (Config::NetworkSettings::ephemeralPeers()) {
       throw std::runtime_error("no peers store loading on ephemeral peers");
    }
    auto instance = getInstance();
-   instance->authorizedPeers_ = peers;
+   instance->peerStore_ = peers;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -381,7 +380,7 @@ void WebSocketServer::shutdown()
 SecureBinaryData WebSocketServer::getPublicKey()
 {
    auto instance = getInstance();
-   const auto& pubkey = instance->authorizedPeers_->getOwnPublicKey();
+   const auto& pubkey = instance->peerStore_->getOwnPublicKey();
    SecureBinaryData keySbd{pubkey.pubkey, BIP151PUBKEYSIZE};
    return keySbd;
 }
@@ -432,7 +431,6 @@ void WebSocketServer::webSocketService(int port)
    pendingWritesIter_ = pendingWrites_.begin();
    run_.store(1, std::memory_order_relaxed);
 
-#ifndef _WIN32
    if (Config::NetworkSettings::ephemeralPeers()) {
       /*
       DB is automated by client, output pubkey to stdout to complete AEAD
@@ -440,15 +438,15 @@ void WebSocketServer::webSocketService(int port)
       We do this at this stage to make sure the server is ready and listening
       before the client tries to connect.
       */
-      const auto& ownKey = authorizedPeers_->getOwnPublicKey();
-      BinaryDataRef ownKeyRef(ownKey.pubkey, 33);
-      LOGINFO << "outputing ephemeral public key to stdout: " << ownKeyRef.toHexStr();
-      std::cout << ownKeyRef.toHexStr() << std::endl;
+      NetworkPeers::PeerKey myKey{
+         peerStore_->getOwnPublicKey(),
+         NetworkPeers::PeerType::ServerTwoWay
+      };
+      std::cout << myKey.toHumanReadable() << std::endl;
 
       //set stdout to nullptr to suppress any further cout
       std::cout.rdbuf(nullptr);
    }
-#endif
 
    try {
       while (run_.load(std::memory_order_relaxed) != 0 && n >= 0) {
@@ -664,22 +662,22 @@ void WebSocketServer::eraseId(const uint64_t& id, struct lws* ptr)
 ///////////////////////////////////////////////////////////////////////////////
 AuthPeersLambdas WebSocketServer::getAuthPeerLambda(bool oneWay) const
 {
-   auto authPeerPtr = authorizedPeers_;
-   auto getMap = [authPeerPtr, oneWay](void)->const std::map<std::string, btc_pubkey>&
+   auto storePtr = peerStore_;
+   auto getMap = [storePtr, oneWay](void)->const std::map<std::string, btc_pubkey>&
    {
-      return authPeerPtr->getPeerNameMap(oneWay);
+      return storePtr->getPeerNameMap(oneWay);
    };
 
-   auto getPrivKey = [authPeerPtr](
+   auto getPrivKey = [storePtr](
       const BinaryDataRef& pubkey)->const SecureBinaryData&
    {
-      return authPeerPtr->getPrivateKey(pubkey);
+      return storePtr->getPrivateKey(pubkey);
    };
 
-   auto getAuthMap = [authPeerPtr, oneWay](void)
+   auto getAuthMap = [storePtr, oneWay](void)
    ->const std::map<SecureBinaryData, std::string>&
    {
-      return authPeerPtr->getPublicKeyMap(oneWay);
+      return storePtr->getPublicKeyMap(oneWay);
    };
 
    return AuthPeersLambdas(getMap, getPrivKey, getAuthMap);
@@ -752,10 +750,10 @@ bool WebSocketServer::isMasterKey(const btc_pubkey& pubkey)
    if (instance == nullptr) {
       return false;
    }
-   if (instance->authorizedPeers_ == nullptr) {
+   if (instance->peerStore_ == nullptr) {
       return false;
    }
-   return instance->authorizedPeers_->isMasterKey(pubkey);
+   return instance->peerStore_->isMasterKey(pubkey);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

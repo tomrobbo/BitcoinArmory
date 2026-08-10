@@ -897,20 +897,25 @@ void CppBridge::loadPeersDb(const CallbackId& callbackId, MessageId refId)
          callbackId, [this](ServerPushWrapper wrapper) {
             this->callbackWriter(wrapper);
       });
-      peersDb_ = std::make_shared<Wallets::AuthorizedPeers>(
+      peersDb_ = std::make_shared<NetworkPeers::ClientStore>(
          Wallets::IO::ReadOnlyFileParams{
             path_ / CLIENT_AUTH_PEER_FILENAME,
             passPromptObj->getLambda()
       });
       reply.setSuccess(true);
-   } catch (const Wallets::PeerFileMissing&) {
-      //NOTE (SHORT TERM SOLUTION): auto generation of auth peer db
+   } catch (const NetworkPeers::FileMissing&) {
+      /***
+      NOTE:
+         short term solution: auto generate the auth peer db if its missing
+         long term soution: implement UI for user to boostrap/encrypt the store
+      ***/
       auto setCtrlPassFunc = getSetPassFunc(this, callbackId, false);
-      peersDb_ = Wallets::AuthorizedPeers::createWallet(
+      auto wlt = NetworkPeers::PeerStore::initOnDisk(
          Wallets::IO::CreateFileParams{
             path_ / CLIENT_AUTH_PEER_FILENAME,
             Passphrase::SetNew{setCtrlPassFunc}
       });
+      peersDb_ = std::make_shared<NetworkPeers::ClientStore>(wlt);
       reply.setSuccess(true);
    } catch (const std::exception& e) {
       reply.setError(
@@ -969,7 +974,7 @@ void CppBridge::listPeers(MessageId refId)
 
       //set own key
       auto ownKey = peersDb_->getOwnPublicKey();
-      Wallets::PeerKey ownPeer{ownKey, false, false};
+      NetworkPeers::PeerKey ownPeer{ownKey, NetworkPeers::PeerType::Client};
       auto ownKeyCapnp = peersCapnp[0];
       ownKeyCapnp.setOneWay(false);
       auto ownKeyDataCapnp = ownKeyCapnp.initPeer();
@@ -994,8 +999,8 @@ void CppBridge::listPeers(MessageId refId)
                namesCapnp.set(y++, name);
             }
 
-            //TODO: get mode from peer store instead of hardcoding it
-            Wallets::PeerKey peer{keyNames.first, oneWay, true};
+            NetworkPeers::PeerKey peer{keyNames.first, oneWay ?
+               NetworkPeers::PeerType::ServerOneWay : NetworkPeers::PeerType::ServerTwoWay};
             peerCapnp.setKey(peer.toHumanReadable());
             try {
                const auto& label = peersDb_->getLabel(keyNames.first, oneWay);
@@ -1034,7 +1039,7 @@ void CppBridge::addPeer(const std::string& peerKey,
       if (peersDb_ == nullptr) {
          throw std::runtime_error("have to load peers db before adding a peer");
       }
-      auto peer = Wallets::PeerKey::fromHumanReadable(peerKey);
+      auto peer = NetworkPeers::PeerKey::fromHumanReadable(peerKey);
       if (!peer.isServer()) {
          throw std::runtime_error("cannot add a client key to a client peer store");
       }
@@ -1062,7 +1067,7 @@ void CppBridge::removePeer(const std::string& peerKey, MessageId refId)
       if (peersDb_ == nullptr) {
          throw std::runtime_error("have to load peers db before adding a peer");
       }
-      auto peer = Wallets::PeerKey::fromHumanReadable(peerKey);
+      auto peer = NetworkPeers::PeerKey::fromHumanReadable(peerKey);
       if (!peer.isServer()) {
          throw std::runtime_error("cannot remove a client key from a client peer store");
       }
@@ -1089,7 +1094,7 @@ void CppBridge::setPeerLabel(
       if (peersDb_ == nullptr) {
          throw std::runtime_error("have to load peers db before updating labels");
       }
-      auto peer = Wallets::PeerKey::fromHumanReadable(peerKey);
+      auto peer = NetworkPeers::PeerKey::fromHumanReadable(peerKey);
       peersDb_->setLabel(peer, label);
       reply.setSuccess(true);
    } catch (const std::exception& e) {
@@ -1144,7 +1149,7 @@ void CppBridge::connectToIp(const std::string& ip, const std::string& port,
    {
       auto counterBd = fortuna.generateRandom(4);
       auto notifCounter = *(uint32_t*)counterBd.getPtr();
-      Wallets::PeerKey peerKey{key, true, true};
+      NetworkPeers::PeerKey peerKey{key, NetworkPeers::PeerType::ServerOneWay};
 
       //create present pubkey notif
       capnp::MallocMessageBuilder notifMessage;
@@ -1178,7 +1183,7 @@ void CppBridge::connectToIp(const std::string& ip, const std::string& port,
    //connect to db
    try {
       bdvPtr_ = setupClientConnection(
-         std::make_shared<Wallets::AuthorizedPeers>(),
+         std::make_shared<NetworkPeers::ClientStore>(),
          ip, port, true, presentServerKeyCallback,
          wltManager_->getBdvCallback());
       if (bdvPtr_ == nullptr) {
@@ -1238,7 +1243,7 @@ void CppBridge::connectToPeer(const std::string& peerKey, MessageId refId)
          throw std::runtime_error(
             "have to load peers db before attemping connection to a peer");
       }
-      auto peerObj = Wallets::PeerKey::fromHumanReadable(peerKey);
+      auto peerObj = NetworkPeers::PeerKey::fromHumanReadable(peerKey);
       auto peers = peersDb_->getNarrowSet(peerObj);
 
       bdvPtr_ = setupClientConnection(peers, peerObj,
@@ -1327,7 +1332,7 @@ void CppBridge::runAutomationContext(CallbackId cbId, MessageId refId)
 
          //connect to db
          notifyFunc(AutomationStep::ConnectToDb);
-         auto peers = automationContext_->getPeersDb();
+         auto peers = automationContext_->getPeerStore();
          auto port = std::to_string(automationContext_->getDbPort());
          bdvPtr_ = setupClientConnection(peers,
             "127.0.0.1", port,

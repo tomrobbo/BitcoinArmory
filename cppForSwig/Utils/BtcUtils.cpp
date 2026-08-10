@@ -1454,7 +1454,7 @@ std::string BtcUtils::base64_decode(const std::string& in)
          auto val8 = ptr[y];
          auto iter = base64Vals.find(val8);
          if (iter == base64Vals.end()) {
-            if (val8 == '=') {
+            if (val8 == '=' || val8 == '\n') {
                break;
             }
             throw std::runtime_error("invalid b64 character");

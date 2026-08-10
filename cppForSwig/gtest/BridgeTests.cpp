@@ -3860,22 +3860,22 @@ protected:
             1ms, 0, SecureBinaryData{});
       };
 
-      Wallets::AuthorizedPeers::createWallet({
+      auto serverPeersWlt = NetworkPeers::PeerStore::initOnDisk({
          homedir_ / SERVER_AUTH_PEER_FILENAME, {createWltLbd}});
-      Wallets::AuthorizedPeers serverPeers(
-         {homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+      NetworkPeers::ServerStore serverPeers(serverPeersWlt);
 
-      Wallets::AuthorizedPeers::createWallet({
+      auto clientPeersWlt = NetworkPeers::PeerStore::initOnDisk({
          homedir_ / CLIENT_AUTH_PEER_FILENAME, {createWltLbd}});
-      Wallets::AuthorizedPeers clientPeers(
-         {homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_});
+      NetworkPeers::ClientStore clientPeers(clientPeersWlt);
 
       //share public keys between client and server
       auto& serverPubkey = serverPeers.getOwnPublicKey();
 
       std::stringstream serverAddr;
       serverAddr << "127.0.0.1:" << Config::NetworkSettings::dbPort();
-      clientPeers.addPeer(serverPubkey, {serverAddr.str()}, {}, true);
+      clientPeers.addPeer(
+         NetworkPeers::PeerKey{serverPubkey, NetworkPeers::PeerType::ServerOneWay},
+         {serverAddr.str()}, {});
 
       serverPubkey_ = BinaryData(serverPubkey.pubkey, 33);
       serverAddr_ = serverAddr.str();
@@ -3936,12 +3936,12 @@ TEST_F(WalletManagerWebsocketsTests, Connect)
    auto wltId = theList.begin()->second->walletId();
    mgr->loadWallets();
 
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
    //create bdv ptr, connect to db
-   auto clientPeers = std::make_shared<Wallets::AuthorizedPeers>(
+   auto clientPeers = std::make_shared<NetworkPeers::ClientStore>(
       Wallets::IO::ReadOnlyFileParams{
          homedir_ / CLIENT_AUTH_PEER_FILENAME, authPeersPassLbd_});
    auto bdvPtr = Bridge::setupClientConnection(clientPeers,
@@ -6001,15 +6001,14 @@ protected:
             1ms, 0, SecureBinaryData{});
       };
 
-      Wallets::AuthorizedPeers::createWallet({
+      auto serverPeersWlt = NetworkPeers::PeerStore::initOnDisk({
          homedir_ / SERVER_AUTH_PEER_FILENAME, {createWltLbd}});
-      Wallets::AuthorizedPeers serverPeers(
-         {homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
+      NetworkPeers::ServerStore serverPeers(serverPeersWlt);
 
       //share public keys between client and server
       BinaryDataRef pubkeyref{
          serverPeers.getOwnPublicKey().pubkey, BIP151PUBKEYSIZE};
-      Wallets::PeerKey servPK{pubkeyref, true, true};
+      NetworkPeers::PeerKey servPK{pubkeyref, NetworkPeers::PeerType::ServerOneWay};
       serverPubkey_ = servPK.toHumanReadable();
 
       replyQueue.clear();
@@ -6074,7 +6073,7 @@ TEST_F(BridgeWalletsWithDBTests, Connect)
    auto accountId = wallets.begin()->second.accountId;
    ASSERT_FALSE(accountId.empty());
 
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -6116,7 +6115,7 @@ TEST_F(BridgeWalletsWithDBTests, CycleConnection)
    auto accountId = wallets.begin()->second.accountId;
    ASSERT_FALSE(accountId.empty());
 
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -6182,7 +6181,7 @@ TEST_F(BridgeWalletsWithDBTests, CycleConnection)
       nodePtr->setBDM(theBDMt_->bdm());
    }
 
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -6233,7 +6232,7 @@ TEST_F(BridgeWalletsWithDBTests, DeleteWallet)
       }
    }
 
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -6344,7 +6343,7 @@ TEST_F(BridgeWalletsWithDBTests, ExtendAddressChain)
       }
    }
 
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -6423,7 +6422,7 @@ TEST_F(BridgeWalletsWithDBTests, AddNewAddress)
       }
    }
 
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -6685,11 +6684,10 @@ protected:
             1ms, 0, SecureBinaryData{});
       };
 
-      Wallets::AuthorizedPeers::createWallet({
+      auto serverPeersWlt = NetworkPeers::PeerStore::initOnDisk({
          homedir_ / SERVER_AUTH_PEER_FILENAME, {createWltLbd}});
-      Wallets::AuthorizedPeers serverPeers(
-         {homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
-      Wallets::PeerKey servPK{serverPeers.getOwnPublicKey(), true, true};
+         NetworkPeers::ServerStore serverPeers(serverPeersWlt);
+      NetworkPeers::PeerKey servPK{serverPeers.getOwnPublicKey(), NetworkPeers::PeerType::ServerOneWay};
       serverPubkey_ = servPK.toHumanReadable();
 
       replyQueue.clear();
@@ -6758,7 +6756,7 @@ TEST_F(BridgeChainDataTests, Check5Blocks_BCDE)
    ASSERT_TRUE(checkHasImports(bridge_, walletId_BCDE_));
 
    TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -6803,7 +6801,7 @@ TEST_F(BridgeChainDataTests, ChangeFilters_ALFB_BCDE)
    loadWallets({walletId_BCDE_, walletId_AFLB_});
 
    TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -6886,7 +6884,7 @@ TEST_F(BridgeChainDataTests, BlocksOutOfOrder_BCDE)
    loadWallets({walletId_BCDE_});
 
    TestUtils::setBlocks({ "0", "1", "2", "4", "5", "4A" }, blk0dat_);
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -6958,7 +6956,7 @@ TEST_F(BridgeChainDataTests, AddBlocks_BCDE)
 {
    loadWallets({walletId_BCDE_});
 
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -7071,7 +7069,7 @@ TEST_F(BridgeChainDataTests, AddBlocks_BC_DE)
    loadWallets({walletId_BC_, walletId_DE_});
 
    //connect to db
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -7256,7 +7254,7 @@ TEST_F(BridgeChainDataTests, AddBlocks_BCDE_AFLB)
    loadWallets({walletId_BCDE_, walletId_AFLB_});
 
    //connect to db
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -7816,7 +7814,7 @@ TEST_F(BridgeChainDataTests, Reorg_BCDE)
    loadWallets({walletId_BCDE_});
 
    //connect to db
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -7958,7 +7956,7 @@ TEST_F(BridgeChainDataTests, Reorg_BCDE_DifferentOrder)
    loadWallets({walletId_BCDE_});
 
    //connect to db
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -8069,7 +8067,7 @@ TEST_F(BridgeChainDataTests, Reorg_BC_DE)
    loadWallets({walletId_BC_, walletId_DE_});
 
    //connect to db
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -8304,7 +8302,7 @@ TEST_F(BridgeChainDataTests, Reorg_BCDE_AFLB)
    loadWallets({walletId_BCDE_, walletId_AFLB_});
 
    //connect to db
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -9027,7 +9025,7 @@ TEST_F(BridgeChainDataTests, Reorg_SpendBeforeBranchPoint)
    loadWallets({walletId_BCDE_});
 
    TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -9309,7 +9307,7 @@ TEST_F(BridgeChainDataTests, AddressBook)
    loadWallets({walletId_BCDE_});
 
    TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -9389,7 +9387,7 @@ TEST_F(BridgeChainDataTests, getUTXOs)
    loadWallets({walletId_BCDE_, walletId_AFLB_});
 
    TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -9521,7 +9519,7 @@ TEST_F(BridgeChainDataTests, ZeroConf)
    loadWallets({walletId_BCDE_});
 
    TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -9755,7 +9753,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_Replace)
    loadWallets({walletId_BCDE_});
 
    TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -9955,7 +9953,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_Chain)
    loadWallets({walletId_BCDE_});
 
    TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -10180,7 +10178,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_StaggeredChain)
    loadWallets({walletId_BCDE_});
 
    TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -10695,7 +10693,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_ChainRBF)
    loadWallets({walletId_BCDE_});
 
    TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -11198,7 +11196,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_Reload)
    loadWallets({walletId_BCDE_});
 
    TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -11470,7 +11468,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_Reorg)
    loadWallets({walletId_BCDE_});
 
    TestUtils::setBlocks({ "0", "1", "2", "3", "4A" }, blk0dat_);
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -11801,7 +11799,7 @@ TEST_F(BridgeChainDataTests, DISABLED_ZeroConf_RegisterWallet)
    nodePtr_->setBDM(theBDMt_->bdm());
 
    TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -12036,7 +12034,7 @@ TEST_F(BridgeChainDataTests, RestoreSynchronize)
 
    //register wallets, go online
    TestUtils::setBlocks({ "0", "1", "2", "3", "4A", "4", "5" }, blk0dat_);
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -12317,7 +12315,7 @@ TEST_F(BridgeChainDataTests, ZeroConf_SpendNew)
    ASSERT_FALSE(legacyAccId.empty());
 
    TestUtils::setBlocks({ "0", "1", "2", "3", "4", "5" }, blk0dat_);
-   WebSocketServer::initAuthPeers({
+   WebSocketServer::initPeerStore({
       homedir_ / SERVER_AUTH_PEER_FILENAME, authPeersPassLbd_});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
@@ -13301,7 +13299,7 @@ protected:
       const std::vector<std::string>& names,
       const std::string& label)
    {
-      Wallets::PeerKey peer{key.getRef(), true, true};
+      NetworkPeers::PeerKey peer{key.getRef(), NetworkPeers::PeerType::ServerOneWay};
 
       uint64_t refId = rand();
       capnp::MallocMessageBuilder message;
@@ -13430,7 +13428,7 @@ protected:
          return { {}, true };
       };
 
-      Wallets::AuthorizedPeers::createWallet({
+      auto serverPeersWlt = NetworkPeers::PeerStore::initOnDisk({
          homedir_ / SERVER_AUTH_PEER_FILENAME, {
             []()->std::unique_ptr<Passphrase::Params>
             { return std::make_unique<Passphrase::Params>
@@ -13438,10 +13436,9 @@ protected:
             }
          }
       });
-      Wallets::AuthorizedPeers serverPeers(
-         {homedir_ / SERVER_AUTH_PEER_FILENAME, serverPeersPassLbd_});
+      NetworkPeers::ServerStore serverPeers(serverPeersWlt);
 
-      Wallets::AuthorizedPeers::createWallet({
+      auto clientPeersWlt = NetworkPeers::PeerStore::initOnDisk({
          homedir_ / CLIENT_AUTH_PEER_FILENAME, {
             [pass=clientPeersDbPass_]()->std::unique_ptr<Passphrase::Params>
             { return std::make_unique<Passphrase::Params>
@@ -13449,13 +13446,9 @@ protected:
             }
          }
       });
-      Wallets::AuthorizedPeers clientPeers(
-         {homedir_ / CLIENT_AUTH_PEER_FILENAME,
-         [pass=clientPeersDbPass_](const std::set<Wallets::EncryptionKeyId>&)
-         ->Passphrase::Result { return { SecureBinaryData::fromString(pass), true }; }
-      });
+      NetworkPeers::ClientStore clientPeers(clientPeersWlt);
 
-      //share public keys between client and server
+      //grab public keys for client and server
       auto btcServerKey = serverPeers.getOwnPublicKey();
       serverPubkey_ = BinaryData{btcServerKey.pubkey, BIP151PUBKEYSIZE};
       auto btcClientKey = clientPeers.getOwnPublicKey();
@@ -13511,11 +13504,11 @@ protected:
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BridgePeersManagement, ListAddConnect)
 {
-   WebSocketServer::initAuthPeers({homedir_ / SERVER_AUTH_PEER_FILENAME, {}});
+   WebSocketServer::initPeerStore({homedir_ / SERVER_AUTH_PEER_FILENAME, {}});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
-   Wallets::PeerKey clientPeer{clientPubKey_.getRef(), true, false};
-   Wallets::PeerKey serverPeer{serverPubkey_.getRef(), true, true};
+   NetworkPeers::PeerKey clientPeer{clientPubKey_.getRef(), NetworkPeers::PeerType::Client};
+   NetworkPeers::PeerKey serverPeer{serverPubkey_.getRef(), NetworkPeers::PeerType::ServerOneWay};
    auto clientKey = clientPeer.toHumanReadable();
    auto serverKey = serverPeer.toHumanReadable();
 
@@ -13558,9 +13551,9 @@ TEST_F(BridgePeersManagement, ListAddConnect)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BridgePeersManagement, LoadDeleteCreate)
 {
-   WebSocketServer::initAuthPeers({homedir_ / SERVER_AUTH_PEER_FILENAME, {}});
+   WebSocketServer::initPeerStore({homedir_ / SERVER_AUTH_PEER_FILENAME, {}});
    WebSocketServer::start(theBDMt_->bdm(), true);
-   Wallets::PeerKey serverPeer{serverPubkey_.getRef(), true, true};
+   NetworkPeers::PeerKey serverPeer{serverPubkey_.getRef(), NetworkPeers::PeerType::ServerOneWay};
    auto serverKey = serverPeer.toHumanReadable();
 
    //reject loading of peers db then delete it
@@ -13604,11 +13597,11 @@ TEST_F(BridgePeersManagement, LoadDeleteCreate)
 ////////////////////////////////////////////////////////////////////////////////
 TEST_F(BridgePeersManagement, Remove)
 {
-   WebSocketServer::initAuthPeers({homedir_ / SERVER_AUTH_PEER_FILENAME, {}});
+   WebSocketServer::initPeerStore({homedir_ / SERVER_AUTH_PEER_FILENAME, {}});
    WebSocketServer::start(theBDMt_->bdm(), true);
 
-   Wallets::PeerKey clientPeer{clientPubKey_.getRef(), true, false};
-   Wallets::PeerKey serverPeer{serverPubkey_.getRef(), true, true};
+   NetworkPeers::PeerKey clientPeer{clientPubKey_.getRef(), NetworkPeers::PeerType::Client};
+   NetworkPeers::PeerKey serverPeer{serverPubkey_.getRef(), NetworkPeers::PeerType::ServerOneWay};
    auto clientKey = clientPeer.toHumanReadable();
    auto serverKey = serverPeer.toHumanReadable();
 
@@ -13634,7 +13627,7 @@ TEST_F(BridgePeersManagement, Remove)
    auto newKey = Cryptography::ECDSA::createNewPrivateKey();
    auto pubkey = Cryptography::ECDSA::computePublicKey(newKey, true);
    addPeer(pubkey, {"1.1.1.1"}, "rando key");
-   Wallets::PeerKey newPeer{pubkey.getRef(), true, true};
+   NetworkPeers::PeerKey newPeer{pubkey.getRef(), NetworkPeers::PeerType::ServerOneWay};
    auto newPeerKey = newPeer.toHumanReadable();
 
    //list again, both keys should appear

@@ -1241,7 +1241,7 @@ uint32_t MetaData::getIndex() const
 ////////////////////////////////////////////////////////////////////////////////
 // PeerPublicData
 PeerPublicData::PeerPublicData(const BinaryData& accountID, uint32_t index) :
-   MetaData(MetaType::AuthorizedPeer, accountID, index)
+   MetaData(MetaType::Peer, accountID, index)
 {}
 
 ////////
@@ -1759,7 +1759,7 @@ std::shared_ptr<MetaData> PeerMasterKey::copy() const
 ////////////////////////////////////////////////////////////////////////////////
 // CommentData
 CommentData::CommentData(const BinaryData& accountID, uint32_t index) :
-   MetaData(MetaType::AuthorizedPeer, accountID, index)
+   MetaData(MetaType::Peer, accountID, index)
 {}
 
 ////////

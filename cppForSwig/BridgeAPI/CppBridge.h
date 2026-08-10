@@ -50,12 +50,16 @@ namespace Armory
       class WalletId;
       class AddressAccountId;
       class AssetWallet;
-      class AuthorizedPeers;
 
       namespace IO
       {
          struct CreateWalletParams;
       }
+   }
+
+   namespace NetworkPeers
+   {
+      class ClientStore;
    }
 
    namespace Bridge
@@ -100,7 +104,7 @@ namespace Armory
 
          //armorydb stuff
          const bool dbOffline_;
-         std::shared_ptr<Wallets::AuthorizedPeers> peersDb_;
+         std::shared_ptr<NetworkPeers::ClientStore> peersDb_;
 
          //to write to the bridge client
          std::function<void(std::unique_ptr<WritePayload_Bridge>)> writeLambda_;
@@ -123,7 +127,6 @@ namespace Armory
          std::unique_ptr<AutomationContext> automationContext_;
 
       private:
-         std::shared_ptr<Wallets::AuthorizedPeers> getPeersDb(void);
          void reset(void);
 
       public:
