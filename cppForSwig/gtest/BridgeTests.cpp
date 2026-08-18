@@ -1169,7 +1169,28 @@ namespace {
       std::string addressString;
       uint32_t addrType = 0;
       int32_t index = 0;
+      std::string accountId;
+      bool isUsed = false;
+      std::string chainRole;
    };
+
+   std::string chainRoleForAssetAccount(
+      const std::shared_ptr<Accounts::AddressAccount>& accPtr,
+      const Wallets::AssetAccountId& assetAccId)
+   {
+      const auto& outerId = accPtr->getOuterAccountID();
+      const auto& innerId = accPtr->getInnerAccountID();
+      if (outerId == innerId) {
+         return {};
+      }
+      if (assetAccId == outerId) {
+         return "Receive";
+      }
+      if (assetAccId == innerId) {
+         return "Change";
+      }
+      return {};
+   }
 
    struct ExportResult {
       bool success = false;
@@ -1194,6 +1215,9 @@ namespace {
       key.addressString = std::string(k.getAddressString());
       key.addrType = k.getAddrType();
       key.index = k.getIndex();
+      key.accountId = std::string(k.getAccountId());
+      key.isUsed = k.getIsUsed();
+      key.chainRole = std::string(k.getChainRole());
       return key;
    }
 
@@ -1266,6 +1290,7 @@ namespace {
                expected.assetId = assetID.getSerializedKey(
                   PROTO_ASSETID_PREFIX);
                expected.index = assetSingle->getIndex();
+               expected.chainRole = chainRoleForAssetAccount(accPtr, assetAccId);
                fillExpectedExportMetadata(expected, accPtr, assetID);
                expectedKeys.emplace(expected.assetId, std::move(expected));
             }
@@ -1327,6 +1352,7 @@ namespace {
       EXPECT_EQ(exported.addressString, expected.addressString);
       EXPECT_EQ(exported.addrType, expected.addrType);
       EXPECT_EQ(exported.pubKey, expected.pubKey);
+      EXPECT_EQ(exported.chainRole, expected.chainRole);
    }
 
    void verifyExportSetMatchesExpected(
@@ -1364,7 +1390,8 @@ namespace {
       const std::string& walletId,
       bool publicOnly,
       const std::string& passphrase = {},
-      bool provideCorrectPass = true)
+      bool provideCorrectPass = true,
+      const std::string& accountId = {})
    {
       ExportResult out;
       auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
@@ -1376,6 +1403,9 @@ namespace {
          toBridge.setReferenceId(refId);
          auto request = toBridge.initWallet();
          request.setWalletId(walletId);
+         if (!accountId.empty()) {
+            request.setAccountId(accountId);
+         }
 
          auto exportReq = request.initExportKeys();
          if (publicOnly) {
@@ -1480,16 +1510,19 @@ namespace {
       std::shared_ptr<Bridge::CppBridge> bridge,
       const std::string& walletId,
       const std::string& passphrase,
-      bool provideCorrectPass = true)
+      bool provideCorrectPass = true,
+      const std::string& accountId = {})
    {
-      return exportKeys(bridge, walletId, false, passphrase, provideCorrectPass);
+      return exportKeys(bridge, walletId, false, passphrase,
+         provideCorrectPass, accountId);
    }
 
    ExportResult exportPublicKeys(
       std::shared_ptr<Bridge::CppBridge> bridge,
-      const std::string& walletId)
+      const std::string& walletId,
+      const std::string& accountId = {})
    {
-      return exportKeys(bridge, walletId, true);
+      return exportKeys(bridge, walletId, true, {}, true, accountId);
    }
 
    WalletData extendAddressPool(
@@ -6141,6 +6174,92 @@ TEST_F(BridgeWalletTests, ExportPublicKeysLegacy)
       EXPECT_FALSE(exported.addressString.empty());
    }
    EXPECT_TRUE(foundUncompressed);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(BridgeWalletTests, ExportPublicKeysScopedToAccount)
+{
+   const std::string wltId = createAWallet(bridge_, 1ms, 4, true);
+   ASSERT_FALSE(wltId.empty());
+
+   auto wallets = loadWallets(bridge_);
+   ASSERT_GE(wallets.size(), 1ULL);
+
+   auto accIds = getWalletAccountIds(bridge_, wltId);
+   ASSERT_GE(accIds.size(), 2u);
+
+   auto allResult = exportPublicKeys(bridge_, wltId);
+   ASSERT_TRUE(allResult.success) << allResult.error;
+   ASSERT_GT(allResult.keys.size(), 0u);
+
+   const std::string accId = *accIds.begin();
+   auto scopedResult = exportPublicKeys(bridge_, wltId, accId);
+   ASSERT_TRUE(scopedResult.success) << scopedResult.error;
+   ASSERT_LT(scopedResult.keys.size(), allResult.keys.size());
+
+   for (const auto& key : scopedResult.keys) {
+      EXPECT_EQ(key.accountId, accId);
+      EXPECT_TRUE(key.privKey.empty());
+   }
+
+   bool hasReceive = false;
+   bool hasChange = false;
+   for (const auto& key : scopedResult.keys) {
+      if (key.chainRole == "Receive") {
+         hasReceive = true;
+      } else if (key.chainRole == "Change") {
+         hasChange = true;
+      }
+   }
+   EXPECT_TRUE(hasReceive);
+   EXPECT_TRUE(hasChange);
+
+   size_t scopedTotal = 0;
+   for (const auto& id : accIds) {
+      auto result = exportPublicKeys(bridge_, wltId, id);
+      ASSERT_TRUE(result.success) << result.error;
+      scopedTotal += result.keys.size();
+      for (const auto& key : result.keys) {
+         EXPECT_EQ(key.accountId, id);
+      }
+   }
+   EXPECT_EQ(scopedTotal, allResult.keys.size());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(BridgeWalletTests, ExportPrivateKeysScopedToAccount)
+{
+   const std::string wltId = createAWallet(bridge_, 1ms, 4, true);
+   ASSERT_FALSE(wltId.empty());
+
+   auto accIds = getWalletAccountIds(bridge_, wltId);
+   ASSERT_GE(accIds.size(), 2u);
+
+   auto allResult = exportPrivateKeys(bridge_, wltId, "pass1");
+   ASSERT_TRUE(allResult.success) << allResult.error;
+   ASSERT_GT(allResult.keys.size(), 0u);
+
+   const std::string accId = *accIds.begin();
+   auto scopedResult = exportPrivateKeys(bridge_, wltId, "pass1", true, accId);
+   ASSERT_TRUE(scopedResult.success) << scopedResult.error;
+   ASSERT_LT(scopedResult.keys.size(), allResult.keys.size());
+
+   for (const auto& key : scopedResult.keys) {
+      EXPECT_EQ(key.accountId, accId);
+      EXPECT_FALSE(key.privKey.empty());
+   }
+
+   size_t scopedTotal = 0;
+   for (const auto& id : accIds) {
+      auto result = exportPrivateKeys(bridge_, wltId, "pass1", true, id);
+      ASSERT_TRUE(result.success) << result.error;
+      scopedTotal += result.keys.size();
+      for (const auto& key : result.keys) {
+         EXPECT_EQ(key.accountId, id);
+         EXPECT_FALSE(key.privKey.empty());
+      }
+   }
+   EXPECT_EQ(scopedTotal, allResult.keys.size());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

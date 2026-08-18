@@ -311,10 +311,10 @@ class DlgUnlockWallet(ArmoryDialog):
          self.encryptionKeyIds = ids
 
       if self.encryptionKeyIds == ids:
-         #success
+         #success — matching encryption key set; run the modal unlock dialog
          self.exec_()
       else:
-         #failure
+         #failure — unexpected encryption key set; clear passphrase and re-show
          self.recycle()
          self.show()
 

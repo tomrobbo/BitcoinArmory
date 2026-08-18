@@ -12,7 +12,7 @@
 
 from html import escape
 
-from qtpy import QtCore, QtWidgets
+from qtpy import QtCore, QtGui, QtWidgets
 
 from qtdialogs.ArmoryDialog import ArmoryDialog
 from qtdialogs.MsgBoxWithDNAA import MsgBoxWithDNAA
@@ -26,6 +26,43 @@ from armoryengine.ArmoryUtils import (
    unixTimeToFormatStr, LOGERROR,
 )
 from armoryengine.Settings import TheSettings
+
+
+################################################################################
+class _ExportScopeDialog(ArmoryDialog):
+   """Ask whether to export one account or all accounts in a wallet file."""
+   EXPORT_ALL = 2
+
+   def __init__(self, parent, title, msg, thisAccountStr, allAccountsStr):
+      super(_ExportScopeDialog, self).__init__(parent)
+
+      msgIcon = QtWidgets.QLabel()
+      msgIcon.setPixmap(QtGui.QPixmap('./img/MsgBox_question64.png'))
+      msgIcon.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignTop)
+
+      lblMsg = QtWidgets.QLabel(msg)
+      lblMsg.setTextFormat(QtCore.Qt.RichText)
+      lblMsg.setWordWrap(True)
+      lblMsg.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+      lblMsg.setOpenExternalLinks(True)
+      w, h = tightSizeNChar(lblMsg, 70)
+      lblMsg.setMinimumSize(w, int(3.2 * h))
+
+      buttonbox = QtWidgets.QDialogButtonBox()
+      btnThis = QtWidgets.QPushButton(thisAccountStr)
+      btnAll = QtWidgets.QPushButton(allAccountsStr)
+      btnThis.clicked.connect(self.accept)
+      btnAll.clicked.connect(lambda: self.done(self.EXPORT_ALL))
+      buttonbox.addButton(btnThis, QtWidgets.QDialogButtonBox.AcceptRole)
+      buttonbox.addButton(btnAll, QtWidgets.QDialogButtonBox.ActionRole)
+
+      layout = QtWidgets.QGridLayout()
+      layout.addWidget(msgIcon, 0, 0, 1, 1)
+      layout.addWidget(lblMsg, 0, 1, 1, 1)
+      layout.addWidget(buttonbox, 1, 0, 1, 2)
+      layout.setSpacing(20)
+      self.setLayout(layout)
+      self.setWindowTitle(title)
 
 
 ################################################################################
@@ -50,12 +87,20 @@ class DlgShowKeyList(ArmoryDialog):
       self._unlockHandler = None
       self._privKeysLoaded = False
       self._privateExportInProgress = False
+      self._omitAccountId = False
+      self._accountDisplayNames = self._buildAccountDisplayNames()
+      self._exportCancelled = False
 
       self.strDescrReg = (self.tr(
          'The textbox below shows all keys that are part of this wallet, '
          'which includes both permanent keys and imported keys.  If you '
          'simply want to backup your wallet and you have no imported keys '
          'then all data below is reproducible from a plain paper backup.'))
+      if self.watchingOnly:
+         self.strDescrReg += (
+            '<br><br><i>' +
+            self.tr('This is a watch-only wallet: it holds no private keys.') +
+            '</i>')
       self.strDescrWarn = (self.tr(
          '<br><br>'
          '<font color="red">Warning:</font> The text box below contains '
@@ -96,6 +141,10 @@ class DlgShowKeyList(ArmoryDialog):
       self.chkList['PubKey'    ].setChecked(True)
       self.chkList['ChainIndex'].setChecked(False)
 
+      if self.watchingOnly:
+         for name in ('PrivB58', 'PrivHexBE'):
+            self.chkList[name].setEnabled(False)
+
       namelist = ['AddrStr', 'AddrType', 'PubKeyHash', 'PrivB58',
                   'PrivHexBE', 'PubKey', 'ChainIndex']
 
@@ -107,6 +156,9 @@ class DlgShowKeyList(ArmoryDialog):
 
       self.chkOmitSpaces = QtWidgets.QCheckBox(self.tr('Omit spaces in key data'))
       self.chkOmitSpaces.toggled.connect(self.rewriteList)
+
+      self.chkHideUnused = QtWidgets.QCheckBox(self.tr('Hide unused addresses'))
+      self.chkHideUnused.toggled.connect(self.rewriteList)
 
       std = (self.main.usermode == USERMODE.Standard)
       adv = (self.main.usermode == USERMODE.Advanced)
@@ -132,6 +184,7 @@ class DlgShowKeyList(ArmoryDialog):
          btnGoBack,
          STRETCH,
          self.chkOmitSpaces,
+         self.chkHideUnused,
          STRETCH,
          self.lblCopied,
          btnCopyClip,
@@ -153,11 +206,56 @@ class DlgShowKeyList(ArmoryDialog):
       self.rewriteList()
       self.setWindowTitle(self.tr('All Wallet Keys'))
 
-      if self.watchingOnly:
-         self.txtBox.setText(self.tr(
-            'This is a watch-only wallet: it holds no private keys.'))
+      scope = self._promptExportScope()
+      if scope is None:
+         self._exportCancelled = True
+         QtCore.QTimer.singleShot(0, self.reject)
       else:
+         self._omitAccountId = scope
          self._startPublicExport()
+
+   #############################################################################
+   def _buildAccountDisplayNames(self):
+      names = {}
+      if self.main is None:
+         return names
+      for accId, siblingWlt in self.main.wallets.getAccountsForWallet(
+            self.wlt.walletId).items():
+         names[accId] = getattr(siblingWlt, 'accountName', '') or accId
+      return names
+
+   #############################################################################
+   def _accountLabel(self, accountId):
+      return self._accountDisplayNames.get(accountId, accountId)
+
+   #############################################################################
+   def _promptExportScope(self):
+      """
+      Return True to omit accountId (export all accounts), False for this
+      account only, or None if the user cancelled.
+      """
+      if self.main is None:
+         return False
+      siblingMap = self.main.wallets.getAccountsForWallet(self.wlt.walletId)
+      if len(siblingMap) <= 1:
+         return False
+
+      msg = self.tr(
+         'This wallet file contains <b>{0}</b> accounts.<br><br>'
+         'Export keys from this account only, or from all accounts in the '
+         'wallet file?').format(len(siblingMap))
+      dlg = _ExportScopeDialog(
+         self,
+         self.tr('Multiple Accounts'),
+         msg,
+         self.tr('Export this account only'),
+         self.tr('Export all accounts'))
+      result = dlg.exec_()
+      if result == QtWidgets.QDialog.Accepted:
+         return False
+      if result == _ExportScopeDialog.EXPORT_ALL:
+         return True
+      return None
 
    #############################################################################
    def _parseExportItems(self, items):
@@ -170,6 +268,9 @@ class DlgShowKeyList(ArmoryDialog):
             'address': item.addressString,
             'index':   item.index,
             'addrType': item.addrType,
+            'accountId': item.accountId,
+            'isUsed': item.isUsed,
+            'chainRole': getattr(item, 'chainRole', '') or '',
          })
       return entries
 
@@ -184,7 +285,8 @@ class DlgShowKeyList(ArmoryDialog):
             LOGERROR('exportPublicKeys failed: %s', err)
             self.executeMethod(self._onPublicExportFailed, str(err))
 
-      self.wlt.exportPublicKeys(onKeysReceived)
+      self.wlt.exportPublicKeys(onKeysReceived,
+         omitAccountId=self._omitAccountId)
 
    #############################################################################
    def _startPrivateExport(self):
@@ -203,7 +305,8 @@ class DlgShowKeyList(ArmoryDialog):
             LOGERROR('exportPrivateKeys failed: %s', err)
             self.executeMethod(self._onPrivateExportFailed, str(err))
 
-      self.wlt.exportPrivateKeys(onKeysReceived, self._unlockHandler)
+      self.wlt.exportPrivateKeys(onKeysReceived, self._unlockHandler,
+         omitAccountId=self._omitAccountId)
 
    #############################################################################
    def _mergePrivateKeys(self, items):
@@ -287,17 +390,52 @@ class DlgShowKeyList(ArmoryDialog):
          RightNow(), self.main.getPreferredDateFormat()))
       L.append('Wallet ID:     ' + self.wlt.walletId)
       L.append('Wallet Name:   ' + self.wlt.labelName)
+      seedType = getattr(self.wlt, 'seedTypeName', '') or ''
+      if seedType:
+         L.append('Seed type:     ' + seedType)
+      derivation = getattr(self.wlt, 'derivationScheme', '') or ''
+      if derivation:
+         L.append('Derivation:    ' + derivation)
+      acctName = getattr(self.wlt, 'accountName', '') or ''
+      if acctName and not self._omitAccountId:
+         L.append('Account type:  ' + acctName)
+      elif self._omitAccountId:
+         L.append('Account type:  ' + self.tr('(all accounts)'))
       addrTypes = self.wlt.getAddressTypes()
       if addrTypes:
          typeNames = [getNameForAddrType(t) for t in addrTypes]
-         L.append('Eligible types:' + ' ' + ', '.join(typeNames))
+         L.append('Eligible address type:' + ' ' + ', '.join(typeNames))
       defaultType = self.wlt.getDefaultAddressType()
       if defaultType:
-         L.append('Default type:  ' + getNameForAddrType(defaultType))
+         L.append('Default address types: ' + getNameForAddrType(defaultType))
       L.append('')
 
+      hideUnused = self.chkHideUnused.isChecked()
+      lastAccountId = None
+      lastChainRole = None
       self.havePriv = False
       for entry in self._entries:
+         if hideUnused and not entry.get('isUsed', False):
+            continue
+
+         entryAccountId = entry.get('accountId', '')
+         if self._omitAccountId and entryAccountId and \
+               entryAccountId != lastAccountId:
+            if lastAccountId is not None:
+               L.append('')
+            L.append('--- Account: ' + self._accountLabel(entryAccountId) +
+               ' ---')
+            lastAccountId = entryAccountId
+            lastChainRole = None
+
+         chainRole = entry.get('chainRole', '')
+         if chainRole and chainRole != lastChainRole:
+            if lastChainRole is not None or \
+                  (self._omitAccountId and entryAccountId):
+               L.append('')
+            L.append('--- ' + chainRole + ' ---')
+            lastChainRole = chainRole
+
          privKey = entry['privKey']
          pubKey  = entry['pubKey']
          addrType = entry.get('addrType', 0)
@@ -324,10 +462,17 @@ class DlgShowKeyList(ArmoryDialog):
             L.append('   ChainIndex: ' + str(entry['index']))
 
       self.txtBox.setText('\n'.join(L))
+      desc = self.strDescrReg
+      if len(self._entries) >= 500:
+         desc = (
+            '<font color="red"><b>' +
+            self.tr('Warning: this export contains {0} addresses. '
+                    'Display may be slow.').format(len(self._entries)) +
+            '</b></font><br><br>' + desc)
       if self.havePriv:
-         self.lblDescr.setText(self.strDescrReg + self.strDescrWarn)
+         self.lblDescr.setText(desc + self.strDescrWarn)
       else:
-         self.lblDescr.setText(self.strDescrReg)
+         self.lblDescr.setText(desc)
 
    #############################################################################
    def saveToFile(self):
@@ -361,8 +506,11 @@ class DlgShowKeyList(ArmoryDialog):
 
    #############################################################################
    def cleanup(self):
-      # Drop the plaintext private keys held in the entry cache.
+      for entry in self._entries:
+         if entry.get('privKey'):
+            entry['privKey'] = b''
       self._entries = []
+      self.txtBox.clear()
       self._privateExportInProgress = False
 
    #############################################################################

@@ -342,6 +342,7 @@ namespace Armory
             const AssetId&) const;
 
          bool isWatchingOnly(void) const;
+         std::string getSeedTypeDisplayName(void) const;
          std::shared_ptr<Seeds::EncryptedSeed> getEncryptedSeed(void) const;
 
          //bip32 primitives

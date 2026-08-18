@@ -23,6 +23,7 @@
 #include <BlockchainDatabase/txio.h>
 
 #include <Wallets/Seeds/Backups.h>
+#include <Wallets/Seeds/Seeds.h>
 #include <Wallets/IOHeader.h>
 #include <Wallets/WalletIdTypes.h>
 #include <Wallets/KDF.h>
@@ -69,6 +70,10 @@ namespace
       auto bytes = flat.asBytes();
       return BinaryData(bytes.begin(), bytes.end());
    }
+
+   std::string chainRoleForAssetAccount(
+      const std::shared_ptr<Accounts::AddressAccount>& accPtr,
+      const Wallets::AssetAccountId& assetAccId);
 
    void addressToCapnp(WalletData::AddressData::Builder& capnAddress,
       std::shared_ptr<AddressEntry> addrPtr,
@@ -211,6 +216,10 @@ namespace
       }
       capnWallet.setDefaultAddressType(
          (uint32_t)accPtr->getDefaultAddressType());
+
+      capnWallet.setAccountName(accPtr->getDisplayName());
+      capnWallet.setSeedTypeName(wltSingle->getSeedTypeDisplayName());
+      capnWallet.setDerivationScheme(accPtr->getDerivationSchemeDisplay());
 
       //address use count
       auto assetAccountPtr = accPtr->getOuterAccount();
@@ -640,7 +649,7 @@ void CppBridge::unlockControlHeader(const std::string& path,
       };
 
       try {
-         wltManager_->unlockControlHeader(path, lbd);
+         wltManager_->unlockControlHeader(std::filesystem::path(path), lbd);
          notifySuccess(true, {});
       } catch (const std::exception& e) {
          notifySuccess(false, e.what());
@@ -759,12 +768,33 @@ namespace {
    struct ExportedKeyData
    {
       BinaryData assetId;
-      SecureBinaryData privKey;
+      BinaryDataRef privKeyRef;
       BinaryData pubKey;
       std::string addressString;
       uint32_t addrType = 0;
       int32_t index = 0;
+      std::string accountId;
+      bool isUsed = false;
+      std::string chainRole;
    };
+
+   std::string chainRoleForAssetAccount(
+      const std::shared_ptr<Accounts::AddressAccount>& accPtr,
+      const Wallets::AssetAccountId& assetAccId)
+   {
+      const auto& outerId = accPtr->getOuterAccountID();
+      const auto& innerId = accPtr->getInnerAccountID();
+      if (outerId == innerId) {
+         return {};
+      }
+      if (assetAccId == outerId) {
+         return "Receive";
+      }
+      if (assetAccId == innerId) {
+         return "Change";
+      }
+      return {};
+   }
 
    void fillExportedKeyMetadata(ExportedKeyData& entry,
       const std::shared_ptr<Accounts::AddressAccount>& accPtr,
@@ -804,17 +834,24 @@ namespace {
       }
    }
 
-   std::vector<ExportedKeyData> collectExportedKeys(
+   void collectExportedKeys(
       const std::shared_ptr<Wallets::AssetWallet_Single>& wltSingle,
+      const Wallets::AddressAccountId& scopeAccId,
       bool includePrivateKeys,
-      const std::function<Passphrase::Result(
-         const std::set<Wallets::EncryptionKeyId>&)>& decryptLbd)
+      std::vector<ExportedKeyData>& exportedKeys)
    {
-      std::vector<ExportedKeyData> exportedKeys;
+      std::vector<Wallets::AddressAccountId> accountIdsToWalk;
+      if (scopeAccId.isValid()) {
+         accountIdsToWalk.push_back(scopeAccId);
+      } else {
+         for (const auto& addrAccId : wltSingle->getAccountIDs()) {
+            accountIdsToWalk.push_back(addrAccId);
+         }
+      }
 
       auto walkWallet = [&]()
       {
-         for (const auto& addrAccId : wltSingle->getAccountIDs()) {
+         for (const auto& addrAccId : accountIdsToWalk) {
             auto accPtr = wltSingle->getAccountForID(addrAccId);
             if (!accPtr) {
                continue;
@@ -841,6 +878,10 @@ namespace {
                      continue;
                }
 
+               //getDecryptedPrivateKeyForAsset will fill missing private keys
+               //run backwards the assets to compute missing keys in batch
+               //rather than sequentially
+               //TODO: add progressCallback logic to extend/fillPrivateKey
                auto lastIdx = assetAcc->getLastComputedIndex();
                for (int32_t i = lastIdx; i >= 0; i--) {
                   auto assetPtr = assetAcc->getAssetForKey(i);
@@ -855,11 +896,13 @@ namespace {
                   ExportedKeyData entry;
                   entry.assetId = assetID.getSerializedKey(PROTO_ASSETID_PREFIX);
                   entry.index = assetSingle->getIndex();
+                  entry.accountId = addrAccId.toHexStr();
+                  entry.isUsed = accPtr->isAssetInUse(assetID);
+                  entry.chainRole = chainRoleForAssetAccount(accPtr, assetAccId);
 
                   if (includePrivateKeys) {
-                     const auto& privKey =
+                     entry.privKeyRef =
                         wltSingle->getDecryptedPrivateKeyForAsset(assetSingle);
-                     entry.privKey = SecureBinaryData(privKey);
                   }
 
                   fillExportedKeyMetadata(entry, accPtr, assetID);
@@ -869,14 +912,7 @@ namespace {
          }
       };
 
-      if (includePrivateKeys) {
-         auto lock = wltSingle->lockDecryptedContainer(decryptLbd);
-         walkWallet();
-      } else {
-         walkWallet();
-      }
-
-      return exportedKeys;
+      walkWallet();
    }
 
    void populateExportedKey(WalletReply::ExportedPrivateKey::Builder& capnKey,
@@ -884,9 +920,9 @@ namespace {
    {
       capnKey.setAssetId(capnp::Data::Builder(
          (uint8_t*)entry.assetId.getPtr(), entry.assetId.getSize()));
-      if (!entry.privKey.empty()) {
+      if (!entry.privKeyRef.empty()) {
          capnKey.setPrivKey(capnp::Data::Builder(
-            (uint8_t*)entry.privKey.getPtr(), entry.privKey.getSize()));
+            (uint8_t*)entry.privKeyRef.getPtr(), entry.privKeyRef.getSize()));
       }
       if (!entry.pubKey.empty()) {
          capnKey.setPublicKey(capnp::Data::Builder(
@@ -895,6 +931,9 @@ namespace {
       capnKey.setAddressString(entry.addressString);
       capnKey.setAddrType(entry.addrType);
       capnKey.setIndex(entry.index);
+      capnKey.setAccountId(entry.accountId);
+      capnKey.setIsUsed(entry.isUsed);
+      capnKey.setChainRole(entry.chainRole);
    }
 
    BinaryData buildExportedKeysReply(MessageId msgId,
@@ -925,12 +964,13 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 void CppBridge::exportKeys(const Wallets::WalletId& wltId,
+   const Wallets::AddressAccountId& accId,
    bool includePrivateKeys, const CallbackId& callbackId, MessageId msgId)
 {
-   auto func = [this, wltId, includePrivateKeys, callbackId, msgId]()
+   auto func = [this, wltId, accId, includePrivateKeys, callbackId, msgId]()
    {
       std::vector<ExportedKeyData> exportedKeys;
-      std::string error;
+      BinaryData serialized;
 
       std::shared_ptr<BridgePassphrasePrompt> passPromptObj;
 
@@ -966,20 +1006,18 @@ void CppBridge::exportKeys(const Wallets::WalletId& wltId,
                });
             auto lbd = passPromptObj->getLambda();
             ExportKeysCleanup cleanupGuard{passPromptObj};
-
-            exportedKeys = collectExportedKeys(wltSingle, true, lbd);
+            auto lock = wltSingle->lockDecryptedContainer(lbd);
+            collectExportedKeys(wltSingle, accId, true, exportedKeys);
+            serialized = buildExportedKeysReply(msgId, exportedKeys, "");
          } else {
-            exportedKeys = collectExportedKeys(wltSingle, false,
-               [](const std::set<Wallets::EncryptionKeyId>&)->Passphrase::Result{
-                  return {{}, false};
-               });
+            collectExportedKeys(wltSingle, accId, false, exportedKeys);
+            serialized = buildExportedKeysReply(msgId, exportedKeys, "");
          }
 
       } catch (const std::exception& e) {
-         error = e.what();
+         serialized = buildExportedKeysReply(msgId, {}, e.what());
       }
 
-      auto serialized = buildExportedKeysReply(msgId, exportedKeys, error);
       this->writeToClient(serialized);
    };
 

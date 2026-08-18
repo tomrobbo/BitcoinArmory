@@ -687,7 +687,7 @@ namespace
             if (includePrivateKeys) {
                callbackId = exportRequest.getWithPrivateKeys();
             }
-            bridge->exportKeys(walletId, includePrivateKeys,
+            bridge->exportKeys(walletId, accountId, includePrivateKeys,
                callbackId, referenceId);
             break;
          }

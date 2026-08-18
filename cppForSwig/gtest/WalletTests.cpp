@@ -7061,6 +7061,117 @@ TEST_F(WalletsTest, MultiplePassphrase)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+TEST_F(WalletsTest, BIP32Name_HardenedAccountIndex)
+{
+   using namespace Armory::Accounts;
+   const auto coinType = Armory::Config::BitcoinSettings::getCoinType();
+
+   {
+      std::vector<unsigned> path = { 0x8000002C, coinType, 0x80000000 };
+      auto account = AccountType_BIP32::makeFromDerPaths(0x12345678, {path});
+      EXPECT_EQ(account->name(), "BIP44");
+   }
+
+   {
+      std::vector<unsigned> path = { 0x8000002C, coinType, 0x80000001 };
+      auto account = AccountType_BIP32::makeFromDerPaths(0x12345678, {path});
+      EXPECT_EQ(account->name(), "BIP44");
+   }
+
+   {
+      std::vector<unsigned> path = { 0x80000031, coinType, 0x80000001 };
+      auto account = AccountType_BIP32::makeFromDerPaths(0x12345678, {path});
+      EXPECT_EQ(account->name(), "BIP49");
+   }
+
+   {
+      std::vector<unsigned> path = { 0x80000054, coinType, 0x80000002 };
+      auto account = AccountType_BIP32::makeFromDerPaths(0x12345678, {path});
+      EXPECT_EQ(account->name(), "BIP84");
+   }
+
+   {
+      std::vector<unsigned> path = { 0x8000002C, coinType, 1 };
+      auto account = AccountType_BIP32::makeFromDerPaths(0x12345678, {path});
+      EXPECT_EQ(account->name(), "BIP32");
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(WalletsTest, WalletDisplayNames)
+{
+   using namespace Armory::Accounts;
+   const auto coinType = Armory::Config::BitcoinSettings::getCoinType();
+
+   EXPECT_EQ(Assets::bip32PurposeDisplayName(
+      {0x8000002C, coinType, 0x80000001}), "BIP44");
+   EXPECT_EQ(Assets::formatBip32DerivationPath(
+      {0x8000002C, 0x80000000, 0x80000000, 0}),
+      "m/44'/0'/0'/0");
+
+   auto legacyDir = homedir_ / "display_legacy";
+   std::filesystem::create_directories(legacyDir);
+   IO::CreateWalletParams legacyParams{
+      legacyDir,
+      Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("test")},
+      Passphrase::SetNew{1ms, 0, controlPass_},
+      nullptr, 4
+   };
+
+   std::unique_ptr<Seeds::ClearTextSeed> legacySeed(
+      new Seeds::ClearTextSeed_Armory());
+   auto legacyWlt = AssetWallet_Single::createFromSeed(
+      std::move(legacySeed), legacyParams);
+   auto legacyAcc = legacyWlt->getAccountForID(legacyWlt->getMainAccountID());
+   EXPECT_EQ(legacyAcc->getDisplayName(), "Armory Legacy");
+   EXPECT_EQ(legacyAcc->getDerivationSchemeDisplay(), "Armory Legacy");
+   auto legacyRoot = std::dynamic_pointer_cast<Assets::AssetEntry_ArmoryLegacyRoot>(
+      legacyWlt->getRoot());
+   ASSERT_NE(legacyRoot, nullptr);
+   EXPECT_EQ(legacyRoot->getDisplayName(), "Armory Legacy (2.00)");
+   EXPECT_EQ(legacyWlt->getSeedTypeDisplayName(), "Armory Legacy (2.00)");
+
+   auto importAccId = legacyWlt->setupImportAccount();
+   auto importAcc = legacyWlt->getAccountForID(importAccId);
+   ASSERT_NE(importAcc, nullptr);
+   EXPECT_EQ(importAcc->getDerivationSchemeDisplay(), "N/A");
+
+   SecureBinaryData bip32Seed = READHEX("000102030405060708090a0b0c0d0e0f");
+   auto bip32Dir = homedir_ / "display_bip32";
+   std::filesystem::create_directories(bip32Dir);
+   IO::CreateWalletParams bip32Params{
+      bip32Dir,
+      Passphrase::SetNew{1ms, 0, SecureBinaryData::fromString("test")},
+      Passphrase::SetNew{1ms, 0, controlPass_},
+      nullptr, 4
+   };
+   std::unique_ptr<Seeds::ClearTextSeed> bip32SeedObj(
+      new Seeds::ClearTextSeed_BIP32(
+         bip32Seed, Seeds::SeedType::BIP32_Structured));
+   auto bip32Wlt = AssetWallet_Single::createFromSeed(
+      std::move(bip32SeedObj), bip32Params);
+
+   std::set<std::string> accountNames;
+   for (const auto& accId : bip32Wlt->getAccountIDs()) {
+      auto accPtr = bip32Wlt->getAccountForID(accId);
+      if (accPtr->isLegacy()) {
+         continue;
+      }
+      accountNames.insert(accPtr->getDisplayName());
+      EXPECT_FALSE(accPtr->getDerivationSchemeDisplay().empty());
+   }
+   EXPECT_EQ(accountNames, (std::set<std::string>{"BIP44", "BIP49", "BIP84"}));
+   EXPECT_EQ(bip32Wlt->getSeedTypeDisplayName(), "BIP32");
+
+   auto passthroughKdf =
+      std::make_shared<Encryption::KeyDerivationFunction_Passthrough>();
+   EXPECT_EQ(passthroughKdf->getDisplayName(), "Passthrough");
+   auto romixKdf = std::make_shared<Encryption::KeyDerivationFunction_Romix>(
+      1ms, 0);
+   EXPECT_EQ(romixKdf->getDisplayName(), "ROMIX");
+}
+
+////////////////////////////////////////////////////////////////////////////////
 TEST_F(WalletsTest, BIP32_Chain)
 {
    //BIP32 test 1 seed
