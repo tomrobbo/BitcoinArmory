@@ -116,7 +116,7 @@ namespace Armory
          std::shared_ptr<IO::WalletDBInterface> iface_;
          const std::string dbName_;
 
-         std::shared_ptr<Encryption::DecryptedDataContainer> decryptedData_;
+         mutable std::shared_ptr<Encryption::DecryptedDataContainer> decryptedData_;
          std::map<AddressAccountId,
             std::shared_ptr<Accounts::AddressAccount>> accounts_;
          std::map<Accounts::MetaAccountType, std::shared_ptr<
@@ -172,8 +172,8 @@ namespace Armory
          void updateAddressEntryType(const AssetId&,
             AddressEntryType);
 
-         virtual SingleLock lockDecryptedContainer(
-            const Passphrase::UnlockFunc&);
+         SingleLock lockDecryptedContainer(
+            const Passphrase::UnlockFunc&) const;
 
          const WalletId& getID(void) const;
          const WalletId& getMasterID(void) const;
@@ -257,7 +257,7 @@ namespace Armory
          //virtual
          virtual std::set<BinaryData> getAddrHashSet(void) const;
          virtual const SecureBinaryData& getDecryptedValue(
-            std::shared_ptr<Encryption::EncryptedAssetData>) = 0;
+            std::shared_ptr<Encryption::EncryptedAssetData>) const = 0;
          virtual std::shared_ptr<Assets::AssetEntry> getRoot(void) const = 0;
 
          //static
@@ -363,7 +363,7 @@ namespace Armory
 
          //virtual
          const SecureBinaryData& getDecryptedValue(
-            std::shared_ptr<Encryption::EncryptedAssetData>);
+            std::shared_ptr<Encryption::EncryptedAssetData>) const override;
 
          //static
          static std::shared_ptr<AssetWallet_Single> createFromSeed(
@@ -398,7 +398,7 @@ namespace Armory
          //virtual
          void readFromFile(void);
          const SecureBinaryData& getDecryptedValue(
-            std::shared_ptr<Encryption::EncryptedAssetData>);
+            std::shared_ptr<Encryption::EncryptedAssetData>) const override;
 
       public:
          //tors

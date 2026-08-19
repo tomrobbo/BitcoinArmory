@@ -22,6 +22,7 @@
 #define CLIENT_AUTH_PEER_FILENAME "client.peers"
 
 class RemoteCallback;
+class SecureBinaryData;
 
 namespace Armory
 {

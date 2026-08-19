@@ -48,9 +48,14 @@ BinaryData::BinaryData(const BinaryData& bd)
    copyFrom(bd);
 }
 
-BinaryData::BinaryData(BinaryData&& copy)
+BinaryData::BinaryData(BinaryData&& move)
 {
-   data_ = move(copy.data_);
+   data_ = std::move(move.data_);
+}
+
+BinaryData::BinaryData(std::vector<uint8_t>&& move)
+{
+   data_ = std::move(move);
 }
 
 BinaryData::~BinaryData()

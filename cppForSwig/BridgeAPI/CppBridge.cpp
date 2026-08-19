@@ -15,6 +15,7 @@
 #include <Utils/ArmoryConfig.h>
 #include <Utils/BtcUtils.h>
 #include <Utils/FileUtils.h>
+#include <Utils/Cryptography.h>
 #include <Signer/Signer.h>
 #include <Signer/ResolverFeed_Wallets.h>
 #include <Signer/CoinSelection.h>
@@ -910,7 +911,7 @@ void CppBridge::loadPeersDb(const CallbackId& callbackId, MessageId refId)
          long term soution: implement UI for user to boostrap/encrypt the store
       ***/
       auto setCtrlPassFunc = getSetPassFunc(this, callbackId, false);
-      auto wlt = NetworkPeers::PeerStore::initOnDisk(
+      auto wlt = NetworkPeers::PeerStore::bootstrapWallet(
          Wallets::IO::CreateFileParams{
             path_ / CLIENT_AUTH_PEER_FILENAME,
             Passphrase::SetNew{setCtrlPassFunc}
@@ -939,33 +940,43 @@ void CppBridge::listPeers(MessageId refId)
          throw std::runtime_error("have to load peers db before listing peers");
       }
 
-      //grab 1way peers, sort by key
-      std::map<BinaryDataRef, std::set<std::string>> keysOneWay;
-      for (const auto& namePair : peersDb_->getPeerNameMap(true)) {
-         if (namePair.first == "own") {
-            continue;
-         }
-         BinaryDataRef keyRef{namePair.second.pubkey, BIP151PUBKEYSIZE};
-         auto iter = keysOneWay.find(keyRef);
-         if (iter == keysOneWay.end()) {
-            iter = keysOneWay.emplace(keyRef, std::set<std::string>{}).first;
-         }
-         iter->second.emplace(namePair.first);
-      }
+      struct KeyData
+      {
+         std::set<std::string> names;
+         std::string label;
+      };
 
-      //same with 2way peers
-      std::map<BinaryDataRef, std::set<std::string>> keysTwoWay;
-      for (const auto& namePair : peersDb_->getPeerNameMap(false)) {
-         if (namePair.first == "own") {
-            continue;
+      auto getKeyData = []
+      (std::unique_ptr<NetworkPeers::PeerStoreView> view)
+      ->std::map<BinaryDataRef, KeyData>
+      {
+         std::map<BinaryDataRef, KeyData> result;
+         for (const auto& namePair : view->getPeerNameMap()) {
+            if (namePair.first == "own") {
+               continue;
+            }
+            auto iter = result.find(namePair.second.getRef());
+            if (iter == result.end()) {
+               iter = result.emplace(namePair.second.getRef(), KeyData{}).first;
+            }
+            iter->second.names.emplace(namePair.first);
          }
-         BinaryDataRef keyRef{namePair.second.pubkey, BIP151PUBKEYSIZE};
-         auto iter = keysTwoWay.find(keyRef);
-         if (iter == keysTwoWay.end()) {
-            iter = keysTwoWay.emplace(keyRef, std::set<std::string>{}).first;
+
+         for (const auto& label : view->getPublicKeyMap()) {
+            auto iter = result.find(label.first.getRef());
+            if (iter == result.end()) {
+               continue;
+            }
+            iter->second.label = label.second;
          }
-         iter->second.emplace(namePair.first);
-      }
+         return result;
+      };
+
+      //grab 1way peers, sort by key
+      auto keysOneWay = getKeyData(
+         peersDb_->getView(NetworkPeers::PeerType::ServerOneWay));
+      auto keysTwoWay = getKeyData(
+         peersDb_->getView(NetworkPeers::PeerType::ServerTwoWay));
 
       //prepare capnp reply list
       auto setupReply = reply.initSetup();
@@ -986,27 +997,26 @@ void CppBridge::listPeers(MessageId refId)
       //function to populate the capnp peer list
       size_t counter = 1;
       auto addKeys = [this, &counter, &peersCapnp]
-      (std::map<BinaryDataRef, std::set<std::string>> keyMap, bool oneWay)
+      (std::map<BinaryDataRef, KeyData> keyMap, bool oneWay)
       {
-         for (const auto& keyNames : keyMap) {
+         for (const auto& keyData : keyMap) {
             auto peerDataCapnp = peersCapnp[counter++];
             peerDataCapnp.setOneWay(oneWay);
 
             auto peerCapnp = peerDataCapnp.initPeer();
-            auto namesCapnp = peerCapnp.initNames(keyNames.second.size());
+            auto namesCapnp = peerCapnp.initNames(keyData.second.names.size());
             unsigned y = 0;
-            for (const auto& name : keyNames.second) {
+            for (const auto& name : keyData.second.names) {
                namesCapnp.set(y++, name);
             }
 
-            NetworkPeers::PeerKey peer{keyNames.first, oneWay ?
+            NetworkPeers::PeerKey peer{keyData.first, oneWay ?
                NetworkPeers::PeerType::ServerOneWay : NetworkPeers::PeerType::ServerTwoWay};
             peerCapnp.setKey(peer.toHumanReadable());
-            try {
-               const auto& label = peersDb_->getLabel(keyNames.first, oneWay);
-               peerCapnp.setLabel(label);
-            } catch (const std::exception&) {
+            if (keyData.second.label.empty()) {
                peerCapnp.setLabel("N/A");
+            } else {
+               peerCapnp.setLabel(keyData.second.label);
             }
          }
       };

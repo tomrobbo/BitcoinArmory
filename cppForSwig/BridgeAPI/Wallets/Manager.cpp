@@ -15,6 +15,7 @@
 #include "Manager.h"
 #include <Utils/BtcUtils.h>
 #include <Utils/FileUtils.h>
+#include <Utils/Cryptography.h>
 #include <Ledgers/LedgerEntry.h>
 #include <Ledgers/Context.h>
 #include <AsyncClient.h>

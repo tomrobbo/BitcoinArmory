@@ -916,10 +916,8 @@ namespace DBTestUtils
       auto bdRef = bdVec[0].getSliceRef(
          LWS_PRE, bdVec[0].getSize() - LWS_PRE);
 
-      btc_pubkey key;
       auto payload = std::make_shared<BDV_Payload>(
-         bdRef, clients->get(bdvId), bdvId, key
-      );
+         bdRef, clients->get(bdvId), bdvId, BinaryDataRef{});
 
       auto reply = clients->processCommand(payload);
       if (reply == nullptr) {

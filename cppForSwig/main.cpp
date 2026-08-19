@@ -97,16 +97,19 @@ int main(int argc, char* argv[])
             return std::make_unique<Passphrase::Params>(
                250ms, 0, std::move(result.passphrase));
          };
-         NetworkPeers::PeerStore::initOnDisk({peerFilePath, {passWrapper}});
-         WebSocketServer::initPeerStore({peerFilePath, passLbd});
+         NetworkPeers::PeerStore::bootstrapWallet(
+            {peerFilePath, {passWrapper}});
+         WebSocketServer::initPeerStore(
+            {peerFilePath, passLbd});
       } else {
          auto passLbd = TerminalPassphrasePrompt::getLambda(
             "server peers store");
          WebSocketServer::initPeerStore({peerFilePath, passLbd});
       }
-      NetworkPeers::PeerKey myKey{WebSocketServer::getPublicKey(),
+      NetworkPeers::PeerKey myKey{WebSocketServer::getOwnPublicKey(),
          Config::NetworkSettings::oneWayAuth() ?
-         NetworkPeers::PeerType::ServerOneWay : NetworkPeers::PeerType::ServerTwoWay
+         NetworkPeers::PeerType::ServerOneWay :
+         NetworkPeers::PeerType::ServerTwoWay
       };
       LOGINFO << "This is my key: " << myKey.toHumanReadable();
    }

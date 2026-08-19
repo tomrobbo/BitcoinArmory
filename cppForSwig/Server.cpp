@@ -377,12 +377,13 @@ void WebSocketServer::shutdown()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-SecureBinaryData WebSocketServer::getPublicKey()
+const SecureBinaryData& WebSocketServer::getOwnPublicKey()
 {
    auto instance = getInstance();
-   const auto& pubkey = instance->peerStore_->getOwnPublicKey();
-   SecureBinaryData keySbd{pubkey.pubkey, BIP151PUBKEYSIZE};
-   return keySbd;
+   if (instance == nullptr || instance->peerStore_ == nullptr) {
+      throw std::runtime_error("null instance/store");
+   }
+   return instance->peerStore_->getOwnPublicKey();
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -645,9 +646,8 @@ WebSocketServer::getConnectionStateMap() const
 ///////////////////////////////////////////////////////////////////////////////
 void WebSocketServer::addId(const uint64_t& id, struct lws* ptr)
 {
-   auto lbds = getAuthPeerLambda(oneWayAuth_);
    auto write_pair = std::make_pair(
-      id, ClientConnection(ptr, id, lbds, oneWayAuth_));
+      id, ClientConnection(ptr, id, peerStore_->getView(), oneWayAuth_));
    clientStateMap_.insert(std::move(write_pair));
    writeMap_.emplace(ptr, std::list<std::list<BinaryData>>());
 }
@@ -657,30 +657,6 @@ void WebSocketServer::eraseId(const uint64_t& id, struct lws* ptr)
 {
    closeClientConnection(id);
    writeMap_.erase(ptr);
-}
-
-///////////////////////////////////////////////////////////////////////////////
-AuthPeersLambdas WebSocketServer::getAuthPeerLambda(bool oneWay) const
-{
-   auto storePtr = peerStore_;
-   auto getMap = [storePtr, oneWay](void)->const std::map<std::string, btc_pubkey>&
-   {
-      return storePtr->getPeerNameMap(oneWay);
-   };
-
-   auto getPrivKey = [storePtr](
-      const BinaryDataRef& pubkey)->const SecureBinaryData&
-   {
-      return storePtr->getPrivateKey(pubkey);
-   };
-
-   auto getAuthMap = [storePtr, oneWay](void)
-   ->const std::map<SecureBinaryData, std::string>&
-   {
-      return storePtr->getPublicKeyMap(oneWay);
-   };
-
-   return AuthPeersLambdas(getMap, getPrivKey, getAuthMap);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -744,7 +720,7 @@ void WebSocketServer::updateWriteMap()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-bool WebSocketServer::isMasterKey(const btc_pubkey& pubkey)
+bool WebSocketServer::isMasterKey(BinaryDataRef pubkey)
 {
    auto instance = getInstance();
    if (instance == nullptr) {
@@ -761,11 +737,12 @@ bool WebSocketServer::isMasterKey(const btc_pubkey& pubkey)
 // ClientConnection
 //
 ///////////////////////////////////////////////////////////////////////////////
-ClientConnection::ClientConnection(
-   struct lws *wsi, uint64_t id, AuthPeersLambdas& lbds, bool isOneWayAuth) :
+ClientConnection::ClientConnection(struct lws *wsi, uint64_t id,
+   std::unique_ptr<NetworkPeers::PeerStoreView> view, bool isOneWayAuth) :
    wsiPtr_(wsi), id_(id)
 {
-   bip151Connection_ = std::make_shared<BIP151Connection>(lbds, isOneWayAuth);
+   bip151Connection_ = std::make_shared<BIP151Connection>(
+      std::move(view), isOneWayAuth);
 
    writeLock_ = std::make_shared<std::atomic<unsigned>>();
    writeLock_->store(0);
@@ -813,8 +790,7 @@ void ClientConnection::processReadQueue(std::shared_ptr<Clients> clients)
          //decrypt packet
          size_t plainTextSize = packetData.getSize() - POLY1305MACLEN;
          auto result = bip151Connection_->decryptPacket(
-            packetData.getPtr(), packetData.getSize(),
-            (uint8_t*)packetData.getPtr(), packetData.getSize());
+            packetData.getRef(), packetData);
 
          if (result != 0) {
             if (result <= 1048576 && result > -1) {
@@ -870,14 +846,14 @@ void ClientConnection::processReadQueue(std::shared_ptr<Clients> clients)
 
       //create payload
       auto bdvPtr = clients->get(id_);
-      auto bdv_payload = std::make_shared<BDV_Payload>(
+      auto payloadPtr = std::make_shared<BDV_Payload>(
          std::move(packetData),
          bdvPtr, //can be nullptr
          id_, bip151Connection_->getChosenAuthPeerKey()
       );
 
       //queue for clients thread pool to process
-      clients->queuePayload(bdv_payload);
+      clients->queuePayload(payloadPtr);
    }
 }
 

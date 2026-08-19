@@ -10,6 +10,7 @@
 
 #include <Utils/log.h>
 #include <Utils/BtcUtils.h>
+#include <Utils/Cryptography.h>
 
 #include <Wallets/IOHeader.h>
 #include <Wallets/WalletIdTypes.h>

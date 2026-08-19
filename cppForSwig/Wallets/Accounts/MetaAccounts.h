@@ -104,7 +104,7 @@ namespace Armory
       };
 
       //////////////////////////////////////////////////////////////////////////
-      struct PeerAssetConversion
+      struct PeerAccountHelper
       {
          static PeerAssetMap getAssetMap(
             const MetaDataAccount*);
@@ -130,7 +130,7 @@ namespace Armory
       };
 
       //////////////////////////////////////////////////////////////////////////
-      struct CommentAssetConversion
+      struct CommentAccountHelper
       {
          static std::shared_ptr<Assets::CommentData> getByKey(MetaDataAccount*,
             const BinaryData&);

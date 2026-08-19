@@ -48,7 +48,7 @@ namespace Armory
 
          std::shared_ptr<BIP151Connection> bip151Connection_;
          std::shared_ptr<NetworkPeers::ClientStore> peers_;
-         std::vector<uint8_t> leftOverData_;
+         BinaryData leftOverData_;
 
          std::mutex writeMutex_;
          std::chrono::time_point<std::chrono::system_clock> outKeyTimePoint_;

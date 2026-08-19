@@ -3860,25 +3860,20 @@ protected:
             1ms, 0, SecureBinaryData{});
       };
 
-      auto serverPeersWlt = NetworkPeers::PeerStore::initOnDisk({
+      auto serverPeersWlt = NetworkPeers::PeerStore::bootstrapWallet({
          homedir_ / SERVER_AUTH_PEER_FILENAME, {createWltLbd}});
       NetworkPeers::ServerStore serverPeers(serverPeersWlt);
 
-      auto clientPeersWlt = NetworkPeers::PeerStore::initOnDisk({
+      auto clientPeersWlt = NetworkPeers::PeerStore::bootstrapWallet({
          homedir_ / CLIENT_AUTH_PEER_FILENAME, {createWltLbd}});
       NetworkPeers::ClientStore clientPeers(clientPeersWlt);
 
       //share public keys between client and server
-      auto& serverPubkey = serverPeers.getOwnPublicKey();
-
-      std::stringstream serverAddr;
-      serverAddr << "127.0.0.1:" << Config::NetworkSettings::dbPort();
+      serverPubkey_ = serverPeers.getOwnPublicKey();
+      serverAddr_ = std::format("127.0.0.1:{}", Config::NetworkSettings::dbPort());
       clientPeers.addPeer(
-         NetworkPeers::PeerKey{serverPubkey, NetworkPeers::PeerType::ServerOneWay},
-         {serverAddr.str()}, {});
-
-      serverPubkey_ = BinaryData(serverPubkey.pubkey, 33);
-      serverAddr_ = serverAddr.str();
+         NetworkPeers::PeerKey{serverPubkey_, NetworkPeers::PeerType::ServerOneWay},
+         {serverAddr_}, {});
 
       createWallet();
       initBDM();
@@ -6001,14 +5996,14 @@ protected:
             1ms, 0, SecureBinaryData{});
       };
 
-      auto serverPeersWlt = NetworkPeers::PeerStore::initOnDisk({
+      auto serverPeersWlt = NetworkPeers::PeerStore::bootstrapWallet({
          homedir_ / SERVER_AUTH_PEER_FILENAME, {createWltLbd}});
       NetworkPeers::ServerStore serverPeers(serverPeersWlt);
 
       //share public keys between client and server
-      BinaryDataRef pubkeyref{
-         serverPeers.getOwnPublicKey().pubkey, BIP151PUBKEYSIZE};
-      NetworkPeers::PeerKey servPK{pubkeyref, NetworkPeers::PeerType::ServerOneWay};
+      NetworkPeers::PeerKey servPK{
+         serverPeers.getOwnPublicKey(),
+         NetworkPeers::PeerType::ServerOneWay};
       serverPubkey_ = servPK.toHumanReadable();
 
       replyQueue.clear();
@@ -6684,7 +6679,7 @@ protected:
             1ms, 0, SecureBinaryData{});
       };
 
-      auto serverPeersWlt = NetworkPeers::PeerStore::initOnDisk({
+      auto serverPeersWlt = NetworkPeers::PeerStore::bootstrapWallet({
          homedir_ / SERVER_AUTH_PEER_FILENAME, {createWltLbd}});
          NetworkPeers::ServerStore serverPeers(serverPeersWlt);
       NetworkPeers::PeerKey servPK{serverPeers.getOwnPublicKey(), NetworkPeers::PeerType::ServerOneWay};
@@ -13428,7 +13423,7 @@ protected:
          return { {}, true };
       };
 
-      auto serverPeersWlt = NetworkPeers::PeerStore::initOnDisk({
+      auto serverPeersWlt = NetworkPeers::PeerStore::bootstrapWallet({
          homedir_ / SERVER_AUTH_PEER_FILENAME, {
             []()->std::unique_ptr<Passphrase::Params>
             { return std::make_unique<Passphrase::Params>
@@ -13438,7 +13433,7 @@ protected:
       });
       NetworkPeers::ServerStore serverPeers(serverPeersWlt);
 
-      auto clientPeersWlt = NetworkPeers::PeerStore::initOnDisk({
+      auto clientPeersWlt = NetworkPeers::PeerStore::bootstrapWallet({
          homedir_ / CLIENT_AUTH_PEER_FILENAME, {
             [pass=clientPeersDbPass_]()->std::unique_ptr<Passphrase::Params>
             { return std::make_unique<Passphrase::Params>
@@ -13449,10 +13444,8 @@ protected:
       NetworkPeers::ClientStore clientPeers(clientPeersWlt);
 
       //grab public keys for client and server
-      auto btcServerKey = serverPeers.getOwnPublicKey();
-      serverPubkey_ = BinaryData{btcServerKey.pubkey, BIP151PUBKEYSIZE};
-      auto btcClientKey = clientPeers.getOwnPublicKey();
-      clientPubKey_ = BinaryData{btcClientKey.pubkey, BIP151PUBKEYSIZE};
+      serverPubkey_ = serverPeers.getOwnPublicKey();
+      clientPubKey_ = clientPeers.getOwnPublicKey();
 
       replyQueue.clear();
       bridge_ = std::make_shared<Bridge::CppBridge>();

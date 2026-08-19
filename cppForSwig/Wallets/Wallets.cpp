@@ -667,7 +667,7 @@ const WalletId& AssetWallet::getMasterID() const
 
 ////////////////////////////////////////////////////////////////////////////////
 SingleLock AssetWallet::lockDecryptedContainer(
-   const Passphrase::UnlockFunc& func)
+   const Passphrase::UnlockFunc& func) const
 {
    return decryptedData_->lockContainer(func);
 }
@@ -961,14 +961,14 @@ void AssetWallet::setComment(const BinaryData& key, const std::string& comment)
    auto accPtr = getMetaAccount(MetaAccountType::Comments);
    auto uniqueTx = iface_->beginWriteTransaction(dbName_);
    std::shared_ptr<IO::DBIfaceTransaction> sharedTx(move(uniqueTx));
-   CommentAssetConversion::setAsset(accPtr.get(), key, comment, sharedTx);
+   CommentAccountHelper::setAsset(accPtr.get(), key, comment, sharedTx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 const std::string& AssetWallet::getComment(const BinaryData& key) const
 {
    auto accPtr = getMetaAccount(MetaAccountType::Comments);
-   auto assetPtr = CommentAssetConversion::getByKey(accPtr.get(), key);
+   auto assetPtr = CommentAccountHelper::getByKey(accPtr.get(), key);
 
    if (assetPtr == nullptr) {
       throw WalletException("no comment for key");
@@ -982,14 +982,14 @@ void AssetWallet::deleteComment(const BinaryData& key)
    auto accPtr = getMetaAccount(MetaAccountType::Comments);
    auto uniqueTx = iface_->beginWriteTransaction(dbName_);
    std::shared_ptr<IO::DBIfaceTransaction> sharedTx(std::move(uniqueTx));
-   CommentAssetConversion::deleteAsset(accPtr.get(), key, sharedTx);
+   CommentAccountHelper::deleteAsset(accPtr.get(), key, sharedTx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 std::map<BinaryData, std::string> AssetWallet::getCommentMap() const
 {
    auto accPtr = getMetaAccount(MetaAccountType::Comments);
-   return CommentAssetConversion::getCommentMap(accPtr.get());
+   return CommentAccountHelper::getCommentMap(accPtr.get());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1629,7 +1629,7 @@ std::shared_ptr<AssetWallet_Single> AssetWallet_Single::initWalletDbWithPubRoot(
 
 //////////////// -- decrypt private key methods -- /////////////////////////////
 const SecureBinaryData& AssetWallet_Single::getDecryptedValue(
-   std::shared_ptr<Encryption::EncryptedAssetData> assetPtr)
+   std::shared_ptr<Encryption::EncryptedAssetData> assetPtr) const
 {
    //have to lock the decryptedData object before calling this method
    return decryptedData_->getClearTextAssetData(assetPtr);
@@ -2427,7 +2427,7 @@ void AssetWallet_Multisig::readFromFile()
 
 ////////////////////////////////////////////////////////////////////////////////
 const SecureBinaryData& AssetWallet_Multisig::getDecryptedValue(
-   std::shared_ptr<Encryption::EncryptedAssetData> assetPtr)
+   std::shared_ptr<Encryption::EncryptedAssetData> assetPtr) const
 {
    return decryptedData_->getClearTextAssetData(assetPtr);
 }

@@ -349,7 +349,7 @@ namespace {
    ////
    std::unique_ptr<capnp::MessageBuilder> parseStaticRequest(
       StaticRequest::Reader& request, unsigned msgId, Clients* clients,
-      Types::BdvId bdvId, const btc_pubkey_& pubkey)
+      Types::BdvId bdvId, BinaryDataRef pubkey)
    {
       auto result = std::make_unique<capnp::MallocMessageBuilder>();
       auto reply = result->initRoot<Codec::BDV::Reply>();
@@ -592,7 +592,7 @@ namespace {
 ///////////////////////////////////////////////////////////////////////////////
 //BDV_Payload
 BDV_Payload::BDV_Payload(BinaryData packet, BdvPtr bdv,
-   Types::BdvId id, const btc_pubkey_& key) :
+   Types::BdvId id, const BinaryDataRef& key) :
    packetData_(std::move(packet)), bdvPtr_(bdv), bdvID_(id), pubkey_(key)
 {}
 
@@ -621,7 +621,7 @@ uint64_t BDV_Payload::getBdvID() const
 }
 
 ////
-const btc_pubkey_& BDV_Payload::getPubkey() const
+const BinaryDataRef& BDV_Payload::getPubkey() const
 {
    return pubkey_;
 }

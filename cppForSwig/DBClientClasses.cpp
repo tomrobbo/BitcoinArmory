@@ -9,7 +9,7 @@
 #include "DBClientClasses.h"
 #include <Utils/BtcUtils.h>
 #include <Utils/varint.h>
-#include <btc/ecc.h>
+#include <Utils/Cryptography.h>
 #include <Network/WebSocketClient.h>
 
 #include <capnp/message.h>

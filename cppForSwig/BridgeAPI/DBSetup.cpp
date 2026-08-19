@@ -449,11 +449,12 @@ BdvPtr Armory::Bridge::setupClientConnection(
 {
    LOGINFO << "connecting to ArmoryDB by peer";
 
-   auto peerNames = peers->getPeerNameMap(peerObj.isOneWay());
+   auto view = peers->getView(peerObj.isOneWay() ?
+      NetworkPeers::PeerType::ServerOneWay :
+      NetworkPeers::PeerType::ServerTwoWay);
+   auto peerNames = view->getPeerNameMap();
    for (const auto& peerName : peerNames) {
-      if (std::memcmp(peerObj.getKey().getPtr(),
-         peerName.second.pubkey,
-         BIP151PUBKEYSIZE) != 0) {
+      if (peerObj.getKey() != peerName.second) {
          continue;
       }
 

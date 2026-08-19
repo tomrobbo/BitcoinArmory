@@ -47,6 +47,7 @@ namespace Armory
    namespace NetworkPeers
    {
       class ServerStore;
+      class PeerStoreView;
    }
 }
 
@@ -117,7 +118,8 @@ private:
    void processAEADHandshake(BinaryData);
 
 public:
-   ClientConnection(struct lws*, uint64_t, AuthPeersLambdas&, bool);
+   ClientConnection(struct lws*, uint64_t,
+      std::unique_ptr<Armory::NetworkPeers::PeerStoreView>, bool);
 
    void closeConnection(void);
    void processReadQueue(std::shared_ptr<Clients>);
@@ -166,11 +168,8 @@ private:
    void setIsReady(void);
 
    void prepareWriteThread(void);
-
-   AuthPeersLambdas getAuthPeerLambda(bool) const;
    void closeClientConnection(uint64_t);
    void clientInterruptThread(void);
-
    void updateWriteMap(void);
 
 public:
@@ -187,8 +186,8 @@ public:
    static void start(std::shared_ptr<BlockDataManager>, bool);
    static void shutdown(void);
    static void waitOnShutdown(void);
-   static SecureBinaryData getPublicKey(void);
-   static bool isMasterKey(const btc_pubkey_&);
+   static const SecureBinaryData& getOwnPublicKey(void);
+   static bool isMasterKey(BinaryDataRef);
 
    static void write(const uint64_t&, const uint32_t&,
       std::unique_ptr<Armory::Network::Socket_WritePayload>);

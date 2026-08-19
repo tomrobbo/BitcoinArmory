@@ -95,8 +95,8 @@ LIBTREZORCRYPTO_SOURCE_FILES = $(LIBBTC_LIBDIR)/src/trezor-crypto/bip39.c \
 ARMORYUTILS_SOURCE_FILES = Utils/ArmoryConfig.cpp \
 	Utils/BinaryData.cpp \
 	Utils/Types.cpp \
-	Utils/BIP15x_Handshake.cpp \
 	Utils/BIP150_151.cpp \
+	Utils/BIP15x_Handshake.cpp \
 	Utils/BitcoinSettings.cpp \
 	Utils/OpCodes.cpp \
 	Utils/BCTX.cpp \

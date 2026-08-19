@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2018-2024, goatpig.                                         //
+//  Copyright (C) 2018-2026, goatpig.                                         //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -50,8 +50,14 @@ WebSocketClient::WebSocketClient(const std::string& addr,
    requestID_.store(0, std::memory_order_relaxed);
    contextPtr_.store(0, std::memory_order_release);
 
-   auto lbds = NetworkPeers::PeerStore::getAuthPeersLambdas(peerStore_, oneWayAuth);
-   bip151Connection_ = std::make_shared<BIP151Connection>(lbds, oneWayAuth);
+   if (peerStore_ == nullptr) {
+      throw std::runtime_error("null peer store");
+   }
+   auto view = peerStore_->getView(oneWayAuth ?
+      NetworkPeers::PeerType::ServerOneWay :
+      NetworkPeers::PeerType::ServerTwoWay);
+   bip151Connection_ = std::make_shared<BIP151Connection>(
+      std::move(view), oneWayAuth);
 }
 
 WebSocketClient::~WebSocketClient()
@@ -451,20 +457,16 @@ void WebSocketClient::readService()
       if (bip151Connection_->connectionComplete()) {
          //decrypt packet
          auto result = bip151Connection_->decryptPacket(
-            payload.getPtr(), payload.getSize(),
-            payload.getPtr(), payload.getSize());
-
+            payload.getRef(), payload);
          if (result != 0) {
             //see WebSocketServer::processReadQueue for the explaination
             if (result <= 1048576 && result > -1) {
                leftOverData_ = std::move(payload);
                continue;
             }
-
             shutdown();
             return;
          }
-
          payload.resize(payload.getSize() - POLY1305MACLEN);
       }
 

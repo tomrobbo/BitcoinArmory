@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2017-2025, goatpig                                          //
+//  Copyright (C) 2017-2026, goatpig                                          //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -283,10 +283,10 @@ std::shared_ptr<MetaDataAccount> MetaDataAccount::copy(
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-//// PeerAssetConversion
+//// PeerAccountHelper
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-PeerAssetMap PeerAssetConversion::getAssetMap(
+PeerAssetMap PeerAccountHelper::getAssetMap(
    const MetaDataAccount* account)
 {
    if (account == nullptr || account->getType() != MetaAccountType::Peers) {
@@ -362,7 +362,7 @@ PeerAssetMap PeerAssetConversion::getAssetMap(
 
 ////////////////////////////////////////////////////////////////////////////////
 std::map<SecureBinaryData, std::set<uint32_t>>
-PeerAssetConversion::getKeyIndexMap(
+PeerAccountHelper::getKeyIndexMap(
    const MetaDataAccount* account, bool oneWay)
 {
    if (account == nullptr || account->getType() != MetaAccountType::Peers) {
@@ -393,7 +393,7 @@ PeerAssetConversion::getKeyIndexMap(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-int PeerAssetConversion::addAsset(
+int PeerAccountHelper::addAsset(
    MetaDataAccount* account, const SecureBinaryData& pubkey,
    const std::vector<std::string>& names,
    const std::string& label, bool oneWay,
@@ -421,7 +421,7 @@ int PeerAssetConversion::addAsset(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void PeerAssetConversion::addRootSignature(MetaDataAccount* account,
+void PeerAccountHelper::addRootSignature(MetaDataAccount* account,
    const SecureBinaryData& key, const SecureBinaryData& sig,
    std::shared_ptr<IO::DBIfaceTransaction> txPtr)
 {
@@ -441,7 +441,7 @@ void PeerAssetConversion::addRootSignature(MetaDataAccount* account,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-unsigned PeerAssetConversion::addRootPeer(MetaDataAccount* account,
+unsigned PeerAccountHelper::addRootPeer(MetaDataAccount* account,
    const SecureBinaryData& key, const std::string& desc,
    std::shared_ptr<IO::DBIfaceTransaction> txPtr)
 {
@@ -462,7 +462,7 @@ unsigned PeerAssetConversion::addRootPeer(MetaDataAccount* account,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void PeerAssetConversion::addMasterKey(MetaDataAccount* account,
+void PeerAccountHelper::addMasterKey(MetaDataAccount* account,
    const SecureBinaryData& key, std::shared_ptr<IO::DBIfaceTransaction> txPtr)
 {
    ReentrantLock lock(account);
@@ -483,7 +483,7 @@ void PeerAssetConversion::addMasterKey(MetaDataAccount* account,
 }
 
 ////////
-void PeerAssetConversion::clearMasterKeyAssets(MetaDataAccount* account)
+void PeerAccountHelper::clearMasterKeyAssets(MetaDataAccount* account)
 {
    ReentrantLock lock(account);
 
@@ -501,10 +501,10 @@ void PeerAssetConversion::clearMasterKeyAssets(MetaDataAccount* account)
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-//// CommentAssetConversion
+//// CommentAccountHelper
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-std::shared_ptr<CommentData> CommentAssetConversion::getByKey(
+std::shared_ptr<CommentData> CommentAccountHelper::getByKey(
    MetaDataAccount* account, const BinaryData& key)
 {
    ReentrantLock lock(account);
@@ -527,7 +527,7 @@ std::shared_ptr<CommentData> CommentAssetConversion::getByKey(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-int CommentAssetConversion::setAsset(MetaDataAccount* account,
+int CommentAccountHelper::setAsset(MetaDataAccount* account,
    const BinaryData& key, const std::string& comment,
    std::shared_ptr<IO::DBIfaceTransaction> txPtr)
 {
@@ -556,7 +556,7 @@ int CommentAssetConversion::setAsset(MetaDataAccount* account,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-int CommentAssetConversion::deleteAsset(
+int CommentAccountHelper::deleteAsset(
    MetaDataAccount* account, const BinaryData& key,
    std::shared_ptr<IO::DBIfaceTransaction> txPtr)
 {
@@ -570,7 +570,7 @@ int CommentAssetConversion::deleteAsset(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-std::map<BinaryData, std::string> CommentAssetConversion::getCommentMap(
+std::map<BinaryData, std::string> CommentAccountHelper::getCommentMap(
    MetaDataAccount* account)
 {
    ReentrantLock lock(account);
