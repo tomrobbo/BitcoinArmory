@@ -745,7 +745,8 @@ void BDV_Server_Object::init()
       auto flat = capnp::messageToFlatArray(message);
       auto bytes = flat.asBytes();
       std::vector<uint8_t> replyRaw(bytes.begin(), bytes.end());
-      notifications_->push(std::make_unique<Network::WritePayload_Raw>(replyRaw));
+      notifications_->push(std::make_unique<Network::WritePayload_Raw>(
+         WEBSOCKET_CALLBACK_ID, replyRaw));
    };
 
    //grab all pending wallet registration requests

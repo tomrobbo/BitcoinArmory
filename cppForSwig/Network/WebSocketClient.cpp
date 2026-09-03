@@ -24,7 +24,7 @@ using namespace Armory::Network;
 static struct lws_protocols protocols[] = {
    {
       "armory-bdm-protocol",
-      WebSocketClient::lwsServiveHandler,
+      WebSocketClient::lwsServiceHandler,
       sizeof(struct per_session_data__client),
       per_session_data__client::rcv_size,
       1,
@@ -340,8 +340,8 @@ void WebSocketClient::cleanup()
 }
 
 ////////
-int WebSocketClient::lwsServiveHandler(struct lws *wsi,
-   enum lws_callback_reasons reason, void *user, void *in, size_t len)
+int WebSocketClient::lwsServiceHandler(struct lws* wsi,
+   enum lws_callback_reasons reason, void* user, void* in, size_t len)
 {
    auto instance = (WebSocketClient*)user;
    switch (reason)
