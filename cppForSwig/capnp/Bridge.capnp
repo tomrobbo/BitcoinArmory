@@ -74,6 +74,10 @@ struct WalletData {
 
    addressData          @12: List(AddressData);
    comments             @13: List(Comment);
+
+   accountName          @16: Text;
+   seedTypeName         @17: Text;
+   derivationScheme     @18: Text;
 }
 
 struct WalletImportPreview {
@@ -529,6 +533,13 @@ struct WalletRequest {
       description    @1 : Text;
    }
 
+   struct ExportKeyRequest {
+      union {
+         publicDataOnly @0 : Void;
+         withPrivateKeys @1 : Types.CallbackId;
+      }
+   }
+
    walletId                         @0 : Types.WalletId;
    accountId                        @1 : Types.AccountId;
    union {
@@ -559,6 +570,7 @@ struct WalletRequest {
       getUnlockTime                 @19: Void;
       forkWatchingOnly              @20: Types.CallbackId;
       hasImports                    @21: Void;
+      exportKeys                    @22: ExportKeyRequest;
    }
 }
 
@@ -572,6 +584,18 @@ struct WalletReply {
    struct AddressAndBalanceData {
       balances       @0 : List(AddressBalanceData);
       updatedAssets  @1 : List(WalletData.AddressData);
+   }
+
+   struct ExportedPrivateKey {
+      assetId        @0 : Data;
+      privKey        @1 : Data;
+      publicKey      @2 : Data;
+      addressString  @3 : Text;
+      addrType       @4 : UInt32;
+      index          @5 : Int32;
+      accountId      @6 : Text;
+      isUsed         @7 : Bool;
+      chainRole      @8 : Text;
    }
 
    # reply
@@ -599,6 +623,8 @@ struct WalletReply {
       getUnlockTime                 @14: UInt32; #unlock time in ms
       forkWatchingOnly              @15: Text; #path to new WO wallet
       hasImports                    @16: Bool;
+      # privKey is empty for public-only export.
+      exportKeys                    @17: List(ExportedPrivateKey);
    }
 }
 

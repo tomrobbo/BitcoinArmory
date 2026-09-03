@@ -23,8 +23,10 @@ from ui.QrCodeMatrix import CreateQRMatrix
 from ui.QtExecuteSignal import TheSignalExecution
 
 from qtdialogs.qtdefines import makeHorizFrame, QRichLabel, \
-   makeVertFrame, QImageLabel, HLINE, GETFONT, STYLE_RAISED, tightSizeStr, \
-   setLayoutStretch, STRETCH, createToolTipWidget, MSGBOX
+   makeVertFrame, QImageLabel, HLINE, GETFONT, STYLE_PLAIN, STYLE_RAISED, \
+   STYLE_STYLED, STYLE_SUNKEN, tightSizeStr, setLayoutStretch, \
+   setLayoutStretchRows, setLayoutStretchCols, STRETCH, createToolTipWidget, \
+   MSGBOX
 from qtdialogs.ArmoryDialog import ArmoryDialog
 from qtdialogs.DlgUnlockWallet import UnlockWalletHandler, AutoUnlockHandler
 from qtdialogs.DlgRestore import getBackupTypeString, \
@@ -97,9 +99,9 @@ class DlgSimpleBackup(ArmoryDialog):
          self.accept()
          DlgBackupCenter(self, self.main, self.wlt).exec_()
 
-      btnPaper.connect.clicked(backupPaper)
-      btnDigital.connect.clicked(backupDigital)
-      btnOther.connect.clicked(backupOther)
+      btnPaper.clicked.connect(backupPaper)
+      btnDigital.clicked.connect(backupDigital)
+      btnOther.clicked.connect(backupOther)
 
       layout = QtWidgets.QGridLayout()
       layout.addWidget(lblPaper, 0, 0)
@@ -120,7 +122,7 @@ class DlgSimpleBackup(ArmoryDialog):
       frmGrid.setLayout(layout)
 
       btnClose = QtWidgets.QPushButton(self.tr('Done'))
-      btnClose.connect.clicked(self.accept)
+      btnClose.clicked.connect(self.accept)
       frmClose = makeHorizFrame([STRETCH, btnClose])
 
       frmAll = makeVertFrame([lblDescrTitle, lblDescr, frmGrid, frmClose])
@@ -1107,7 +1109,7 @@ class DlgFragBackup(ArmoryDialog):
       frmComboN = makeHorizFrame([STRETCH, QtWidgets.QLabel('N:'), self.comboN, STRETCH])
 
       btnPrintAll = QtWidgets.QPushButton(self.tr('Print All Fragments'))
-      btnPrintAll.connect.clicked(self.clickPrintAll)
+      btnPrintAll.clicked.connect(self.clickPrintAll)
       leftFrame = makeVertFrame([
          STRETCH,
          lblAboveM, frmComboM,

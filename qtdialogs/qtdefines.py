@@ -24,7 +24,8 @@ from armorycolors import htmlColor
 USERMODE        = enum('Standard', 'Advanced', 'Expert')
 NETWORKMODE     = enum('Offline', 'Full', 'Disconnected')
 WLTFIELDS       = enum('Name', 'Descr', 'WltID', 'NumAddr', 'Secure',
-   'BelongsTo', 'Crypto', 'Time', 'Mem', 'Version')
+   'BelongsTo', 'Crypto', 'Time', 'Mem', 'Version',
+   'AccountName', 'AddressTypes', 'DefaultAddrType')
 MSGBOX          = enum('Good','Info', 'Question', 'Warning',
    'Critical', 'Error')
 DASHBTNS        = enum('Close', 'Browse', 'Settings')

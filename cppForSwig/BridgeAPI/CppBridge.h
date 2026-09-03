@@ -206,6 +206,9 @@ namespace Armory
          void importWallet(const std::filesystem::path&, MessageId);
          void forkWatchingOnly(const Wallets::WalletId&,
             const CallbackId&, MessageId);
+         void exportKeys(const Wallets::WalletId&,
+            const Wallets::AddressAccountId&, bool includePrivateKeys,
+            const CallbackId& callbackId, MessageId);
 
          //ledgers
          const std::string& getLedgerDelegateId(void);

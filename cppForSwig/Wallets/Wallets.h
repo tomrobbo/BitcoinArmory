@@ -184,9 +184,9 @@ namespace Armory
 
          void extendPublicChain(int32_t);
          void extendPublicChain(const AddressAccountId&, int32_t,
-            const ProgressFunc& progFunc=nullptr);
+            const ProgressFunc& = nullptr);
          void extendPublicChainToIndex(const AddressAccountId&, int32_t,
-            const ProgressFunc& progFunc=nullptr);
+            const ProgressFunc& = nullptr);
          void extendPrivateChain(int32_t);
          void extendPrivateChainToIndex(int32_t);
          void extendPrivateChainToIndex(const AddressAccountId&, int32_t);
@@ -342,6 +342,7 @@ namespace Armory
             const AssetId&) const;
 
          bool isWatchingOnly(void) const;
+         std::string getSeedTypeDisplayName(void) const;
          std::shared_ptr<Seeds::EncryptedSeed> getEncryptedSeed(void) const;
 
          //bip32 primitives

@@ -8,6 +8,7 @@
 
 #include <cstdlib>
 #include <queue>
+#include <set>
 #include <algorithm>
 
 #include "TestUtils.h"
@@ -18,6 +19,7 @@
 
 #include <Wallets/Accounts/AddressAccounts.h>
 #include <Wallets/Accounts/AccountTypes.h>
+#include <Wallets/Addresses.h>
 #include <Wallets/WalletFileInterface.h>
 #include <Wallets/Seeds/Seeds.h>
 #include <Wallets/AuthorizedPeers.h>
@@ -1152,6 +1154,375 @@ namespace {
       }
 
       return true;
+   }
+
+
+   //-----------------------------------------------------------------------
+   // exportKeys helpers
+   //-----------------------------------------------------------------------
+   constexpr uint8_t PROTO_ASSETID_PREFIX = 0xAF;
+
+   struct ExportedKey {
+      BinaryData assetId;
+      BinaryData privKey;
+      BinaryData pubKey;
+      std::string addressString;
+      uint32_t addrType = 0;
+      int32_t index = 0;
+      std::string accountId;
+      bool isUsed = false;
+      std::string chainRole;
+   };
+
+   std::string chainRoleForAssetAccount(
+      const std::shared_ptr<Accounts::AddressAccount>& accPtr,
+      const Wallets::AssetAccountId& assetAccId)
+   {
+      const auto& outerId = accPtr->getOuterAccountID();
+      const auto& innerId = accPtr->getInnerAccountID();
+      if (outerId == innerId) {
+         return {};
+      }
+      if (assetAccId == outerId) {
+         return "Receive";
+      }
+      if (assetAccId == innerId) {
+         return "Change";
+      }
+      return {};
+   }
+
+   struct ExportResult {
+      bool success = false;
+      std::string error;
+      std::vector<ExportedKey> keys;
+   };
+
+   ExportedKey parseCapnExportedKey(
+      const Codec::Bridge::WalletReply::ExportedPrivateKey::Reader& k)
+   {
+      ExportedKey key;
+      auto capnId = k.getAssetId();
+      key.assetId = BinaryData(capnId.begin(), capnId.size());
+      auto capnPriv = k.getPrivKey();
+      if (capnPriv.size() > 0) {
+         key.privKey = BinaryData(capnPriv.begin(), capnPriv.size());
+      }
+      auto capnPub = k.getPublicKey();
+      if (capnPub.size() > 0) {
+         key.pubKey = BinaryData(capnPub.begin(), capnPub.size());
+      }
+      key.addressString = std::string(k.getAddressString());
+      key.addrType = k.getAddrType();
+      key.index = k.getIndex();
+      key.accountId = std::string(k.getAccountId());
+      key.isUsed = k.getIsUsed();
+      key.chainRole = std::string(k.getChainRole());
+      return key;
+   }
+
+   void fillExpectedExportMetadata(ExportedKey& key,
+      const std::shared_ptr<Accounts::AddressAccount>& accPtr,
+      const Wallets::AssetId& assetID)
+   {
+      try {
+         auto addrEntry = accPtr->getAddressEntryForID(assetID);
+         if (addrEntry == nullptr) {
+            return;
+         }
+
+         uint32_t addrType = (uint32_t)addrEntry->getType();
+         auto addrNested = std::dynamic_pointer_cast<
+            AddressEntry_Nested>(addrEntry);
+         if (addrNested != nullptr) {
+            addrType |= (uint32_t)addrNested->getPredecessor()->getType();
+         }
+         key.addrType = addrType;
+
+         try {
+            if (addrNested != nullptr) {
+               key.pubKey = addrNested->getPredecessor()->getPreimage();
+            } else {
+               key.pubKey = addrEntry->getPreimage();
+            }
+         } catch (const AddressException&) {
+         }
+
+         try {
+            key.addressString = addrEntry->getAddress();
+         } catch (const AddressException&) {
+         }
+      } catch (const std::exception&) {
+      }
+   }
+
+   std::pair<size_t, std::map<BinaryData, ExportedKey>> buildExpectedExportKeys(
+      const Wallets::AssetWallet_Single& assetWlt)
+   {
+      size_t expectedKeyCount = 0;
+      std::map<BinaryData, ExportedKey> expectedKeys;
+
+      for (const auto& addrAccId : assetWlt.getAccountIDs()) {
+         auto accPtr = assetWlt.getAccountForID(addrAccId);
+         if (!accPtr) {
+            continue;
+         }
+         for (const auto& assetAccId : accPtr->getAccountIdSet()) {
+            auto assetAcc = accPtr->getAccountForID(assetAccId);
+            if (!assetAcc) {
+               continue;
+            }
+            auto lastIdx = assetAcc->getLastComputedIndex();
+            for (int32_t i = 0; i <= lastIdx; i++) {
+               auto assetPtr = assetAcc->getAssetForKey(i);
+               if (!assetPtr || !assetPtr->hasPrivateKey()) {
+                  continue;
+               }
+               auto assetSingle = std::dynamic_pointer_cast<
+                  Assets::AssetEntry_Single>(assetPtr);
+               if (!assetSingle) {
+                  continue;
+               }
+               ++expectedKeyCount;
+               const auto& assetID = assetPtr->getID();
+
+               ExportedKey expected;
+               expected.assetId = assetID.getSerializedKey(
+                  PROTO_ASSETID_PREFIX);
+               expected.index = assetSingle->getIndex();
+               expected.chainRole = chainRoleForAssetAccount(accPtr, assetAccId);
+               fillExpectedExportMetadata(expected, accPtr, assetID);
+               expectedKeys.emplace(expected.assetId, std::move(expected));
+            }
+         }
+      }
+
+      return {expectedKeyCount, std::move(expectedKeys)};
+   }
+
+   void fillExpectedPrivateKeys(
+      Wallets::AssetWallet_Single& assetWlt,
+      const SecureBinaryData& privPass,
+      std::map<BinaryData, ExportedKey>& expectedKeys)
+   {
+      auto lock = assetWlt.lockDecryptedContainer(
+         [&privPass](const std::set<Wallets::EncryptionKeyId>&)->Passphrase::Result
+         { return {privPass, true}; }
+      );
+
+      for (const auto& addrAccId : assetWlt.getAccountIDs()) {
+         auto accPtr = assetWlt.getAccountForID(addrAccId);
+         if (!accPtr) {
+            continue;
+         }
+         for (const auto& assetAccId : accPtr->getAccountIdSet()) {
+            auto assetAcc = accPtr->getAccountForID(assetAccId);
+            if (!assetAcc) {
+               continue;
+            }
+            auto lastIdx = assetAcc->getLastComputedIndex();
+            for (int32_t i = 0; i <= lastIdx; i++) {
+               auto assetPtr = assetAcc->getAssetForKey(i);
+               if (!assetPtr || !assetPtr->hasPrivateKey()) {
+                  continue;
+               }
+               auto assetSingle = std::dynamic_pointer_cast<
+                  Assets::AssetEntry_Single>(assetPtr);
+               if (!assetSingle) {
+                  continue;
+               }
+               const auto& assetID = assetPtr->getID();
+               auto serId = assetID.getSerializedKey(PROTO_ASSETID_PREFIX);
+               auto it = expectedKeys.find(serId);
+               if (it == expectedKeys.end()) {
+                  continue;
+               }
+               it->second.privKey = assetWlt.getDecryptedPrivateKeyForAsset(
+                  assetSingle);
+            }
+         }
+      }
+   }
+
+   void expectExportedKeyMatchesExpected(const ExportedKey& exported,
+      const ExportedKey& expected)
+   {
+      EXPECT_EQ(exported.assetId, expected.assetId);
+      EXPECT_EQ(exported.index, expected.index);
+      EXPECT_EQ(exported.addressString, expected.addressString);
+      EXPECT_EQ(exported.addrType, expected.addrType);
+      EXPECT_EQ(exported.pubKey, expected.pubKey);
+      EXPECT_EQ(exported.chainRole, expected.chainRole);
+   }
+
+   void verifyExportSetMatchesExpected(
+      const std::vector<ExportedKey>& exported,
+      const std::map<BinaryData, ExportedKey>& expected,
+      bool requirePrivateKeys = false)
+   {
+      ASSERT_EQ(exported.size(), expected.size());
+      std::set<BinaryData> seenIds;
+      for (const auto& key : exported) {
+         EXPECT_GE(key.assetId.getSize(), 1ULL);
+
+         auto it = expected.find(key.assetId);
+         ASSERT_NE(it, expected.end())
+            << "unexpected asset id: " << key.assetId.toHexStr();
+
+         if (requirePrivateKeys) {
+            EXPECT_GE(key.privKey.getSize(), 32ULL);
+            ASSERT_FALSE(it->second.privKey.empty())
+               << "expected private key missing for asset "
+               << key.assetId.toHexStr();
+            EXPECT_EQ(key.privKey, it->second.privKey);
+         } else {
+            EXPECT_TRUE(key.privKey.empty());
+         }
+
+         expectExportedKeyMatchesExpected(key, it->second);
+         seenIds.insert(key.assetId);
+      }
+      EXPECT_EQ(seenIds.size(), expected.size());
+   }
+
+   ExportResult exportKeys(
+      std::shared_ptr<Bridge::CppBridge> bridge,
+      const std::string& walletId,
+      bool publicOnly,
+      const std::string& passphrase = {},
+      bool provideCorrectPass = true,
+      const std::string& accountId = {})
+   {
+      ExportResult out;
+      auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
+      uint64_t refId = rand();
+
+      {
+         capnp::MallocMessageBuilder message;
+         auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+         toBridge.setReferenceId(refId);
+         auto request = toBridge.initWallet();
+         request.setWalletId(walletId);
+         if (!accountId.empty()) {
+            request.setAccountId(accountId);
+         }
+
+         auto exportReq = request.initExportKeys();
+         if (publicOnly) {
+            exportReq.setPublicDataOnly();
+         } else {
+            exportReq.setWithPrivateKeys(callbackId);
+         }
+
+         auto rawReq = serializeCapnp(message);
+         pushRequest(bridge, rawReq);
+      }
+
+      if (publicOnly) {
+         auto result = waitOnReply();
+         kj::ArrayPtr<const capnp::word> words(
+            reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+            result->data.getSize() / sizeof(capnp::word));
+         capnp::FlatArrayMessageReader reader(words);
+         auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+
+         if (fromBridge.which() != Codec::Bridge::FromBridge::REPLY) {
+            out.error = "unexpected message type";
+            return out;
+         }
+
+         auto reply = fromBridge.getReply();
+         out.success = reply.getSuccess();
+         if (!out.success) {
+            out.error = reply.getError();
+            return out;
+         }
+
+         auto walletReply = reply.getWallet();
+         auto capnKeys = walletReply.getExportKeys();
+         for (auto k : capnKeys) {
+            out.keys.emplace_back(parseCapnExportedKey(k));
+         }
+         return out;
+      }
+
+      while (true) {
+         auto result = waitOnReply();
+         kj::ArrayPtr<const capnp::word> words(
+            reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+            result->data.getSize() / sizeof(capnp::word));
+         capnp::FlatArrayMessageReader reader(words);
+
+         auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+
+         if (fromBridge.which() == Codec::Bridge::FromBridge::REPLY) {
+            auto reply = fromBridge.getReply();
+            out.success = reply.getSuccess();
+            if (!out.success) {
+               out.error = reply.getError();
+            } else {
+               auto walletReply = reply.getWallet();
+               auto capnKeys = walletReply.getExportKeys();
+               for (auto k : capnKeys) {
+                  out.keys.emplace_back(parseCapnExportedKey(k));
+               }
+            }
+            break;
+         }
+
+         if (fromBridge.which() != Codec::Bridge::FromBridge::NOTIFICATION) {
+            out.error = "unexpected message type";
+            break;
+         }
+
+         auto notif = fromBridge.getNotification();
+         if (notif.getCallbackId() != callbackId) {
+            out.error = "callback id mismatch";
+            break;
+         }
+
+         auto notifType = notif.which();
+         if (notifType == Codec::Bridge::Notification::UNLOCK_REQUEST) {
+            capnp::MallocMessageBuilder notifMsg;
+            auto notifBridge = notifMsg.initRoot<Codec::Bridge::ToBridge>();
+            auto notifReply = notifBridge.initNotification();
+            notifReply.setCounter(notif.getCounter());
+            if (provideCorrectPass) {
+               notifReply.setSuccess(true);
+               notifReply.setUnlockRequest(passphrase);
+            } else {
+               notifReply.setSuccess(false);
+            }
+            auto rawNotif = serializeCapnp(notifMsg);
+            pushRequest(bridge, rawNotif);
+         } else if (notifType == Codec::Bridge::Notification::CLEANUP) {
+            continue;
+         } else {
+            out.error = "unexpected notification type";
+            break;
+         }
+      }
+
+      return out;
+   }
+
+   ExportResult exportPrivateKeys(
+      std::shared_ptr<Bridge::CppBridge> bridge,
+      const std::string& walletId,
+      const std::string& passphrase,
+      bool provideCorrectPass = true,
+      const std::string& accountId = {})
+   {
+      return exportKeys(bridge, walletId, false, passphrase,
+         provideCorrectPass, accountId);
+   }
+
+   ExportResult exportPublicKeys(
+      std::shared_ptr<Bridge::CppBridge> bridge,
+      const std::string& walletId,
+      const std::string& accountId = {})
+   {
+      return exportKeys(bridge, walletId, true, {}, true, accountId);
    }
 
    WalletData extendAddressPool(
@@ -4932,7 +5303,7 @@ TEST_F(BridgeWalletTests, RestoreWallet_Legacy)
    EXPECT_TRUE(wltData.encrypted);
    EXPECT_FALSE(wltData.watchingOnly);
    EXPECT_EQ(wltData.addresses.size(), 1);
-   EXPECT_EQ(wltData.lookup, 500);
+   EXPECT_EQ(wltData.lookup, 501);
    EXPECT_EQ(wltData.kdfMemReq, 32);
 
    //request KDF unlock time
@@ -5041,9 +5412,10 @@ TEST_F(BridgeWalletTests, RestoreWallet_BIP32)
    const std::string passphrase{"privPassTest"};
 
    //restore the wallet
+   unsigned restoreLookup = 500;
    auto restoreData = restoreWallet(bridge_, lines, walletId,
       Codec::Bridge::WalletBackup::Type::ARMORY200_B,
-      passphrase, 0ms, 32, false, 500);
+      passphrase, 0ms, 32, false, restoreLookup);
 
    //get the wallet data & validate it
    auto wltData = getWalletData(bridge_, walletId, {});
@@ -5055,8 +5427,40 @@ TEST_F(BridgeWalletTests, RestoreWallet_BIP32)
    EXPECT_TRUE(wltData.encrypted);
    EXPECT_FALSE(wltData.watchingOnly);
    EXPECT_EQ(wltData.addresses.size(), 1);
-   EXPECT_EQ(wltData.lookup, 499);
+   EXPECT_EQ(wltData.lookup, restoreLookup);
    EXPECT_EQ(wltData.kdfMemReq, 32);
+
+   //open and inspect the wallet
+   {
+      auto restoredWlt = Wallets::AssetWallet::loadMainWalletFromFile(
+         Wallets::IO::ReadOnlyFileParams{wltData.path, nullptr});
+      ASSERT_NE(restoredWlt, nullptr);
+
+      //iterate through address accounts
+      for (const auto& addrAccId : restoredWlt->getAccountIDs()) {
+         auto addrAccPtr = restoredWlt->getAccountForID(addrAccId);
+         ASSERT_NE(addrAccPtr, nullptr);
+
+         //sanity checks
+         ASSERT_GE(addrAccPtr->getAccountIdSet().size(), 2);
+         auto outerAccId = addrAccPtr->getOuterAccountID();
+         auto innerAccId = addrAccPtr->getInnerAccountID();
+         ASSERT_TRUE(outerAccId.isValid());
+         ASSERT_TRUE(innerAccId.isValid());
+         ASSERT_NE(outerAccId, innerAccId);
+
+         auto outerAcc = addrAccPtr->getAccountForID(outerAccId);
+         ASSERT_NE(outerAcc, nullptr);
+         auto innerAcc = addrAccPtr->getAccountForID(innerAccId);
+         ASSERT_NE(innerAcc, nullptr);
+
+         //both main and change asset accounts should be extended on restore
+         EXPECT_EQ(outerAcc->getAssetCount(), restoreLookup);
+         EXPECT_EQ(innerAcc->getAssetCount(), restoreLookup);
+         EXPECT_EQ(outerAcc->getLastComputedIndex(), restoreLookup - 1);
+         EXPECT_EQ(innerAcc->getLastComputedIndex(), restoreLookup - 1);
+      }
+   }
 
    //grab backup strings via passphrase
    try {
@@ -5099,7 +5503,7 @@ TEST_F(BridgeWalletTests, RestoreWallet_LegacyWO)
    EXPECT_FALSE(wltData.encrypted);
    EXPECT_TRUE(wltData.watchingOnly);
    EXPECT_EQ(wltData.addresses.size(), 1);
-   EXPECT_EQ(wltData.lookup, 500);
+   EXPECT_EQ(wltData.lookup, 501);
    EXPECT_EQ(wltData.kdfMemReq, 0);
 
    //grab backup strings
@@ -5666,6 +6070,333 @@ TEST_F(BridgeWalletTests, ChangeWalletPassphrase)
    } catch (const std::exception& e) {
       ASSERT_TRUE(false);
    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(BridgeWalletTests, ExportPrivateKeysEncrypted)
+{
+   /* 1. create an encrypted wallet and count its full set of private keys. */
+   std::string walletId;
+   std::string privPass{"privPass1"};
+   unsigned lookup = 4;
+   size_t expectedKeyCount = 0;
+   std::map<BinaryData, ExportedKey> expectedKeys;
+
+   {
+      Wallets::IO::CreateWalletParams params{
+         homedir,
+         {500ms, 0, SecureBinaryData::fromString(privPass)},
+         {1ms, 0, {}},
+         nullptr, lookup
+      };
+
+      std::unique_ptr<Seeds::ClearTextSeed> seed(
+         new Seeds::ClearTextSeed_Armory());
+      auto assetWlt = Wallets::AssetWallet_Single::createFromSeed(
+         std::move(seed), params);
+      walletId = assetWlt->getID();
+      std::tie(expectedKeyCount, expectedKeys) = buildExpectedExportKeys(*assetWlt);
+      fillExpectedPrivateKeys(*assetWlt,
+         SecureBinaryData::fromString(privPass), expectedKeys);
+   }
+   ASSERT_FALSE(walletId.empty());
+   ASSERT_EQ(expectedKeyCount, static_cast<size_t>(lookup));
+
+   /* 2. load into bridge */
+   auto wltList = listWallets(bridge_);
+   ASSERT_EQ(wltList.size(), 1ULL);
+
+   auto wallets = loadWallets(bridge_);
+   ASSERT_EQ(wallets.size(), 1ULL);
+   ASSERT_EQ(wallets.begin()->first, walletId);
+
+   /* 3. export with correct passphrase: every private key must come back */
+   std::map<BinaryData, BinaryData> originalKeys;
+   {
+      auto result = exportPrivateKeys(bridge_, walletId, privPass, true);
+      ASSERT_TRUE(result.success) << "export failed: " << result.error;
+      verifyExportSetMatchesExpected(result.keys, expectedKeys, true);
+
+      for (const auto& exported : result.keys) {
+         originalKeys.emplace(exported.assetId, exported.privKey);
+      }
+   }
+
+   /* 4. export with wrong passphrase: unlock is rejected */
+   {
+      auto result = exportPrivateKeys(bridge_, walletId, "wrongPass", false);
+      EXPECT_FALSE(result.success);
+   }
+
+   /* 5. restore the wallet from its backup, then export again and check the
+      keys against the original export list. NOTE: restoring may recompute a
+      different portion of the address chain than the original lookahead pool,
+      which can legitimately surface fewer keys here. */
+   std::vector<std::string> lines;
+   try {
+      lines = getWalletBackup(bridge_, walletId, privPass,
+         Codec::Bridge::WalletBackup::Type::ARMORY200_A);
+   } catch (const std::exception& e) {
+      ASSERT_TRUE(false) << e.what();
+   }
+   ASSERT_EQ(lines.size(), 2);
+
+   restoreWallet(bridge_, lines, walletId,
+      Codec::Bridge::WalletBackup::Type::ARMORY200_A,
+      privPass, 1ms, 0, true,
+      //the legacy armory account always starts with asset 0
+      lookup - 1);
+
+   {
+      auto result = exportPrivateKeys(bridge_, walletId, privPass, true);
+      ASSERT_TRUE(result.success) << "export failed: " << result.error;
+      verifyExportSetMatchesExpected(result.keys, expectedKeys, true);
+
+      std::map<BinaryData, BinaryData> restoredKeys;
+      for (const auto& exported : result.keys) {
+         restoredKeys.emplace(exported.assetId, exported.privKey);
+      }
+
+      //every key the restored wallet did recompute must match the original
+      //export exactly (same asset id -> same private key)
+      for (const auto& kp : restoredKeys) {
+         auto it = originalKeys.find(kp.first);
+         ASSERT_NE(it, originalKeys.end())
+            << "restored an unexpected asset id: " << kp.first.toHexStr();
+         EXPECT_EQ(kp.second.toHexStr(), it->second.toHexStr())
+            << "private key mismatch for asset " << kp.first.toHexStr();
+      }
+
+      //the restored export must cover the full original set. Restoring may
+      //recompute fewer keys than the original lookahead pool, which surfaces
+      //the known "uncomputed private key" edge case rather than a defect in
+      //the export path itself.
+      EXPECT_EQ(restoredKeys.size(), originalKeys.size())
+         << "restored " << restoredKeys.size() << " keys, expected "
+         << originalKeys.size();
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(BridgeWalletTests, ExportPublicKeysNoUnlock)
+{
+   std::string walletId;
+   std::string privPass{"privPass1"};
+   unsigned lookup = 4;
+   size_t expectedKeyCount = 0;
+   std::map<BinaryData, ExportedKey> expectedKeys;
+
+   {
+      Wallets::IO::CreateWalletParams params{
+         homedir,
+         {500ms, 0, SecureBinaryData::fromString(privPass)},
+         {1ms, 0, {}},
+         nullptr, lookup
+      };
+
+      std::unique_ptr<Seeds::ClearTextSeed> seed(
+         new Seeds::ClearTextSeed_Armory());
+      auto assetWlt = Wallets::AssetWallet_Single::createFromSeed(
+         std::move(seed), params);
+      walletId = assetWlt->getID();
+      std::tie(expectedKeyCount, expectedKeys) = buildExpectedExportKeys(*assetWlt);
+   }
+   ASSERT_EQ(expectedKeyCount, static_cast<size_t>(lookup));
+
+   auto wltList = listWallets(bridge_);
+   ASSERT_EQ(wltList.size(), 1ULL);
+   auto wallets = loadWallets(bridge_);
+   ASSERT_EQ(wallets.size(), 1ULL);
+
+   auto result = exportPublicKeys(bridge_, walletId);
+   ASSERT_TRUE(result.success) << "export failed: " << result.error;
+   verifyExportSetMatchesExpected(result.keys, expectedKeys, false);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(BridgeWalletTests, ExportPublicKeysLegacy)
+{
+   std::filesystem::path legacyWalletFile{"input_files/legacy.wallet"sv};
+   const std::string walletId{"28m472Xbm"sv};
+   std::string fileName = std::string{"armory_"} + walletId + "_.wallet";
+   const std::filesystem::path wltPath{fileName};
+   std::filesystem::copy(legacyWalletFile, homedir / wltPath);
+
+   uint64_t refId = rand();
+   {
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto request = toBridge.initUtils();
+      request.setImportWallet((homedir / wltPath).string());
+      pushRequest(bridge_, serializeCapnp(message));
+   }
+
+   auto result = waitOnReply();
+   kj::ArrayPtr<const capnp::word> words(
+      reinterpret_cast<const capnp::word*>(result->data.getPtr()),
+      result->data.getSize() / sizeof(capnp::word));
+   capnp::FlatArrayMessageReader reader(words);
+   auto fromBridge = reader.getRoot<Codec::Bridge::FromBridge>();
+   auto reply = fromBridge.getReply();
+   ASSERT_TRUE(reply.getSuccess());
+
+   auto callbackId = Cryptography::PRNG::fortuna.generateRandom(10).toHexStr();
+   refId = rand();
+   {
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      toBridge.setReferenceId(refId);
+      auto mgrRequest = toBridge.initWalletManager();
+      auto migrationRequest = mgrRequest.initMigrateWallet();
+      migrationRequest.setWalletPath(wltPath.filename().string());
+      migrationRequest.setCallbackId(callbackId);
+      pushRequest(bridge_, serializeCapnp(message));
+   }
+
+   {
+      auto unlockReply = waitOnReply();
+      kj::ArrayPtr<const capnp::word> unlockWords(
+         reinterpret_cast<const capnp::word*>(unlockReply->data.getPtr()),
+         unlockReply->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader unlockReader(unlockWords);
+      auto unlockBridge = unlockReader.getRoot<Codec::Bridge::FromBridge>();
+      ASSERT_EQ(unlockBridge.which(), Codec::Bridge::FromBridge::NOTIFICATION);
+      auto notif = unlockBridge.getNotification();
+      ASSERT_EQ(notif.which(), Codec::Bridge::Notification::UNLOCK_REQUEST);
+
+      capnp::MallocMessageBuilder message;
+      auto toBridge = message.initRoot<Codec::Bridge::ToBridge>();
+      auto notifReply = toBridge.initNotification();
+      notifReply.setSuccess(true);
+      notifReply.setCounter(notif.getCounter());
+      notifReply.setUnlockRequest("testnet");
+      pushRequest(bridge_, serializeCapnp(message));
+   }
+
+   progressWalletCreation(bridge_, callbackId, "newpass", 250ms, 32, 104);
+
+   {
+      auto migResult = waitOnReply();
+      kj::ArrayPtr<const capnp::word> migWords(
+         reinterpret_cast<const capnp::word*>(migResult->data.getPtr()),
+         migResult->data.getSize() / sizeof(capnp::word));
+      capnp::FlatArrayMessageReader migReader(migWords);
+      auto migBridge = migReader.getRoot<Codec::Bridge::FromBridge>();
+      ASSERT_EQ(migBridge.which(), Codec::Bridge::FromBridge::REPLY);
+      auto migReply = migBridge.getReply();
+      ASSERT_TRUE(migReply.getSuccess());
+   }
+
+   auto wallets = loadWallets(bridge_);
+   ASSERT_EQ(wallets.size(), 1ULL);
+   ASSERT_EQ(wallets.begin()->first, walletId);
+
+   auto exportResult = exportPublicKeys(bridge_, walletId);
+   ASSERT_TRUE(exportResult.success) << exportResult.error;
+   ASSERT_GT(exportResult.keys.size(), 0ULL);
+
+   const uint32_t legacyUncompressedP2PKH = uint32_t(
+      AddressEntryType::P2PKH | AddressEntryType::Uncompressed);
+
+   bool foundUncompressed = false;
+   for (const auto& exported : exportResult.keys) {
+      EXPECT_TRUE(exported.privKey.empty());
+      EXPECT_NE(exported.addrType, 0u);
+      if (!exported.pubKey.empty()) {
+         EXPECT_EQ(exported.pubKey.getSize(), 65ULL);
+         EXPECT_EQ(exported.addrType, legacyUncompressedP2PKH);
+         foundUncompressed = true;
+      }
+      EXPECT_FALSE(exported.addressString.empty());
+   }
+   EXPECT_TRUE(foundUncompressed);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(BridgeWalletTests, ExportPublicKeysScopedToAccount)
+{
+   const std::string wltId = createAWallet(bridge_, 1ms, 4, true);
+   ASSERT_FALSE(wltId.empty());
+
+   auto wallets = loadWallets(bridge_);
+   ASSERT_GE(wallets.size(), 1ULL);
+
+   auto accIds = getWalletAccountIds(bridge_, wltId);
+   ASSERT_GE(accIds.size(), 2u);
+
+   auto allResult = exportPublicKeys(bridge_, wltId);
+   ASSERT_TRUE(allResult.success) << allResult.error;
+   ASSERT_GT(allResult.keys.size(), 0u);
+
+   const std::string accId = *accIds.begin();
+   auto scopedResult = exportPublicKeys(bridge_, wltId, accId);
+   ASSERT_TRUE(scopedResult.success) << scopedResult.error;
+   ASSERT_LT(scopedResult.keys.size(), allResult.keys.size());
+
+   for (const auto& key : scopedResult.keys) {
+      EXPECT_EQ(key.accountId, accId);
+      EXPECT_TRUE(key.privKey.empty());
+   }
+
+   bool hasReceive = false;
+   bool hasChange = false;
+   for (const auto& key : scopedResult.keys) {
+      if (key.chainRole == "Receive") {
+         hasReceive = true;
+      } else if (key.chainRole == "Change") {
+         hasChange = true;
+      }
+   }
+   EXPECT_TRUE(hasReceive);
+   EXPECT_TRUE(hasChange);
+
+   size_t scopedTotal = 0;
+   for (const auto& id : accIds) {
+      auto result = exportPublicKeys(bridge_, wltId, id);
+      ASSERT_TRUE(result.success) << result.error;
+      scopedTotal += result.keys.size();
+      for (const auto& key : result.keys) {
+         EXPECT_EQ(key.accountId, id);
+      }
+   }
+   EXPECT_EQ(scopedTotal, allResult.keys.size());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+TEST_F(BridgeWalletTests, ExportPrivateKeysScopedToAccount)
+{
+   const std::string wltId = createAWallet(bridge_, 1ms, 4, true);
+   ASSERT_FALSE(wltId.empty());
+
+   auto accIds = getWalletAccountIds(bridge_, wltId);
+   ASSERT_GE(accIds.size(), 2u);
+
+   auto allResult = exportPrivateKeys(bridge_, wltId, "pass1");
+   ASSERT_TRUE(allResult.success) << allResult.error;
+   ASSERT_GT(allResult.keys.size(), 0u);
+
+   const std::string accId = *accIds.begin();
+   auto scopedResult = exportPrivateKeys(bridge_, wltId, "pass1", true, accId);
+   ASSERT_TRUE(scopedResult.success) << scopedResult.error;
+   ASSERT_LT(scopedResult.keys.size(), allResult.keys.size());
+
+   for (const auto& key : scopedResult.keys) {
+      EXPECT_EQ(key.accountId, accId);
+      EXPECT_FALSE(key.privKey.empty());
+   }
+
+   size_t scopedTotal = 0;
+   for (const auto& id : accIds) {
+      auto result = exportPrivateKeys(bridge_, wltId, "pass1", true, id);
+      ASSERT_TRUE(result.success) << result.error;
+      scopedTotal += result.keys.size();
+      for (const auto& key : result.keys) {
+         EXPECT_EQ(key.accountId, id);
+         EXPECT_FALSE(key.privKey.empty());
+      }
+   }
+   EXPECT_EQ(scopedTotal, allResult.keys.size());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -12204,34 +12935,35 @@ TEST_F(BridgeChainDataTests, RestoreSynchronize)
    });
 
    //restore bip32 wlt
+   unsigned restoreLookup = 500;
    restoreWallet(bridge_, bip32Backup, bip32WltId,
       Codec::Bridge::WalletBackup::Type::ARMORY200_B,
-      "pass2", 50ms, 0, false, 500);
+      "pass2", 50ms, 0, false, restoreLookup);
 
    {
       bip32AccIdIter = bip32AccIds.begin();
       auto wltData1 = getWalletData(bridge_, bip32WltId, *bip32AccIdIter++);
       EXPECT_EQ(wltData1.useCount, 0);
-      EXPECT_EQ(wltData1.lookup, 499);
+      EXPECT_EQ(wltData1.lookup, restoreLookup);
 
       auto wltData2 = getWalletData(bridge_, bip32WltId, *bip32AccIdIter++);
       EXPECT_EQ(wltData2.useCount, -1);
-      EXPECT_EQ(wltData2.lookup, 499);
+      EXPECT_EQ(wltData2.lookup, restoreLookup);
 
       auto wltData3 = getWalletData(bridge_, bip32WltId, *bip32AccIdIter);
       EXPECT_EQ(wltData3.useCount, -1);
-      EXPECT_EQ(wltData3.lookup, 499);
+      EXPECT_EQ(wltData3.lookup, restoreLookup);
    }
 
    //restore legacy wlt
    restoreWallet(bridge_, legacyBackup, legacyWltId,
       Codec::Bridge::WalletBackup::Type::ARMORY200_A,
-      "pass3", 50ms, 0, false, 500);
+      "pass3", 50ms, 0, false, restoreLookup);
 
    {
       auto wltData4 = getWalletData(bridge_, legacyWltId, *legacyAccIds.begin());
       EXPECT_EQ(wltData4.useCount, 0);
-      EXPECT_EQ(wltData4.lookup, 500);
+      EXPECT_EQ(wltData4.lookup, restoreLookup + 1);
    }
 
    //go online
@@ -12251,7 +12983,7 @@ TEST_F(BridgeChainDataTests, RestoreSynchronize)
       EXPECT_EQ(wltBal[2], 1 * COIN);
       EXPECT_EQ(wltBal[3], 1);
       EXPECT_EQ(wltData1.useCount, 5);
-      EXPECT_EQ(wltData1.lookup, 499);
+      EXPECT_EQ(wltData1.lookup, restoreLookup);
       EXPECT_EQ(nextAddr1.addrStr, addrBip32Acc1Next.addrStr);
 
       wltBal = getWalletBalance(bridge_, bip32WltId, *bip32AccIdIter);
@@ -12263,7 +12995,7 @@ TEST_F(BridgeChainDataTests, RestoreSynchronize)
       EXPECT_EQ(wltBal[2], 2 * COIN);
       EXPECT_EQ(wltBal[3], 1);
       EXPECT_EQ(wltData2.useCount, 3);
-      EXPECT_EQ(wltData2.lookup, 499);
+      EXPECT_EQ(wltData2.lookup, restoreLookup);
       EXPECT_EQ(nextAddr2.addrStr, addrBip32Acc2Next.addrStr);
 
       wltBal = getWalletBalance(bridge_, bip32WltId, *bip32AccIdIter);
@@ -12275,7 +13007,7 @@ TEST_F(BridgeChainDataTests, RestoreSynchronize)
       EXPECT_EQ(wltBal[2], 3 * COIN);
       EXPECT_EQ(wltBal[3], 1);
       EXPECT_EQ(wltData3.useCount, 7);
-      EXPECT_EQ(wltData3.lookup, 499);
+      EXPECT_EQ(wltData3.lookup, restoreLookup);
       EXPECT_EQ(nextAddr3.addrStr, addrBip32Acc3Next.addrStr);
 
       wltBal = getWalletBalance(bridge_, legacyWltId, *legacyAccIds.begin());
@@ -12287,7 +13019,7 @@ TEST_F(BridgeChainDataTests, RestoreSynchronize)
       EXPECT_EQ(wltBal[2], 4 * COIN);
       EXPECT_EQ(wltBal[3], 1);
       EXPECT_EQ(wltData4.useCount, 4);
-      EXPECT_EQ(wltData4.lookup, 500);
+      EXPECT_EQ(wltData4.lookup, restoreLookup + 1);
       EXPECT_EQ(nextAddr4.addrStr, addrLegacyNext.addrStr);
 
       //check legacy wallet address type

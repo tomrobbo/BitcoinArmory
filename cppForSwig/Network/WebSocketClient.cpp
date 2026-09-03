@@ -21,9 +21,7 @@ using namespace Armory;
 using namespace Armory::Network;
 
 ////////////////////////////////////////////////////////////////////////////////
-static struct lws_protocols protocols[] =
-{
-   /* first protocol must always be HTTP handler */
+static struct lws_protocols protocols[] = {
    {
       "armory-bdm-protocol",
       WebSocketClient::lwsServiveHandler,
@@ -33,8 +31,8 @@ static struct lws_protocols protocols[] =
       NULL,
       0
    },
-
-   { NULL, NULL, 0, 0, 0, NULL, 0 } /* terminator */
+   /* terminator */
+   { NULL, NULL, 0, 0, 0, NULL, 0 }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -47,7 +45,6 @@ WebSocketClient::WebSocketClient(const std::string& addr,
    servName_(addr_ + ":" + port_), callbackPtr_(cbPtr), peerStore_(peers)
 {
    count_.store(0, std::memory_order_relaxed);
-   requestID_.store(0, std::memory_order_relaxed);
    contextPtr_.store(0, std::memory_order_release);
 
    if (peerStore_ == nullptr) {
@@ -97,17 +94,18 @@ void WebSocketClient::pushPayload(
    if (!running()) {
       throw LWS_Error("lws client down");
    }
-
-   unsigned id = requestID_.fetch_add(1, std::memory_order_relaxed);
-   if (read_payload != nullptr) {
-      //create response object
-      auto response = std::make_shared<WriteAndReadPacket>(id, read_payload);
-
-      //set response id
-      readPackets_.insert(make_pair(id, move(response)));
+   if (write_payload == nullptr) {
+      return;
    }
 
-   write_payload->id_ = id;
+   if (read_payload != nullptr) {
+      //create response object
+      auto response = std::make_shared<WriteAndReadPacket>(
+         write_payload->id, read_payload);
+
+      //set response id
+      readPackets_.insert(make_pair(write_payload->id, move(response)));
+   }
    writeSerializationQueue_.push_back(move(write_payload));
 }
 
@@ -160,9 +158,7 @@ void WebSocketClient::writeService()
       }
 
       SerializedMessage ws_msg;
-      ws_msg.construct(std::move(message),
-         bip151Connection_.get(),
-         message->id_);
+      ws_msg.construct(std::move(message), bip151Connection_.get());
       writeQueue_->push_back(ws_msg);
    }
 }

@@ -405,6 +405,14 @@ namespace DBTestUtils
       return total;
    }
 
+   Tx getTx(const Types::TxHash& txHash, std::shared_ptr<BlockDataManager> bdm)
+   {
+      auto db = bdm->getIFace();
+      auto blockchainData = bdm->blockchainData();
+      auto txKey = db->getDBKeyForHash(txHash);
+      return blockchainData->getTx(txKey);
+   }
+
    std::vector<UTXO> getUTXOsForScrAddrs(std::shared_ptr<BlockDataManager> bdm,
       const std::set<Types::ScrAddr>& addrSet)
    {

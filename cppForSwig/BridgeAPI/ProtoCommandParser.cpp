@@ -824,6 +824,20 @@ namespace
             break;
          }
 
+         case WalletRequest::EXPORT_KEYS:
+         {
+            auto exportRequest = request.getExportKeys();
+            const bool includePrivateKeys = exportRequest.which() ==
+               WalletRequest::ExportKeyRequest::WITH_PRIVATE_KEYS;
+            std::string callbackId;
+            if (includePrivateKeys) {
+               callbackId = exportRequest.getWithPrivateKeys();
+            }
+            bridge->exportKeys(walletId, accountId, includePrivateKeys,
+               callbackId, referenceId);
+            break;
+         }
+
          default:
             capnp::MallocMessageBuilder message;
             auto fromBridge = message.initRoot<FromBridge>();

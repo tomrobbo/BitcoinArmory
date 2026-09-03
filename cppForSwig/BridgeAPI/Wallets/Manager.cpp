@@ -672,7 +672,7 @@ std::shared_ptr<WalletFileInfo> WalletManager::importFile(
 }
 
 /////////
-void WalletManager::unlockControlHeader(const std::string& path,
+void WalletManager::unlockControlHeader(const std::filesystem::path& path,
    const Passphrase::UnlockFunc& lbd)
 {
    //sanity checks
@@ -680,9 +680,9 @@ void WalletManager::unlockControlHeader(const std::string& path,
       throw std::runtime_error("tried to unlock control header with empty id/lambda");
    }
 
-   auto iter = walletFiles_.find(path);
+   auto iter = walletFiles_.find(path.filename().string());
    if (iter == walletFiles_.end()) {
-      throw std::runtime_error("this file is not a known wallet: " + path);
+      throw std::runtime_error("this file is not a known wallet: " + path.string());
    }
 
    auto infoObj = std::dynamic_pointer_cast<LMDBWalletInfo>(iter->second);

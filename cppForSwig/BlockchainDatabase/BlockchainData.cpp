@@ -56,8 +56,9 @@ namespace {
             header->getBlockSize() + prepad);
 
          auto xorkey = Config::DBSettings::getXorKey();
-         for (auto& chunk : xoredData) {
-            chunk ^= xorkey;
+         auto data64Ptr = (uint64_t*)&xoredData[0];
+         for (int i = 0; i < count; i++) {
+            data64Ptr[i] ^= xorkey;
          }
          return { std::move(xoredData), prepad };
       }

@@ -97,7 +97,8 @@ namespace Armory
 
          /* pre wallets loading calls */
          std::map<std::string, std::shared_ptr<WalletFileInfo>> listWallets(void);
-         void unlockControlHeader(const std::string&, const Passphrase::UnlockFunc&);
+         void unlockControlHeader(const std::filesystem::path&,
+            const Passphrase::UnlockFunc&);
          const Wallets::WalletId& migrateWallet(const std::filesystem::path&,
             const Passphrase::UnlockFunc&,
             const Wallets::IO::CreateWalletParams&

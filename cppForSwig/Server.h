@@ -40,7 +40,7 @@ namespace Armory
 
    namespace Network
    {
-      struct Socket_WritePayload;
+      class Socket_WritePayload;
       class SerializedMessage;
    }
 
@@ -89,11 +89,10 @@ struct BDV_packet
 struct PendingMessage
 {
    const uint64_t id;
-   const uint32_t msgid;
    std::unique_ptr<Armory::Network::Socket_WritePayload> payload;
 
-   PendingMessage(uint64_t, uint32_t, std::unique_ptr<
-      Armory::Network::Socket_WritePayload>);
+   PendingMessage(uint64_t,
+      std::unique_ptr<Armory::Network::Socket_WritePayload>);
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -163,7 +162,7 @@ public:
    void writeToSocket(struct lws*, Armory::Network::SerializedMessage&);
 
 private:
-   void webSocketService(int port);
+   void webSocketService(int);
    void commandThread(void);
    void setIsReady(void);
 
@@ -176,9 +175,9 @@ public:
    WebSocketServer(void);
 
    static WebSocketServer* getInstance(void);
-   static int callback(
-      struct lws *wsi, enum lws_callback_reasons reason,
-      void *user, void *in, size_t len);
+   static int lwsServiceHandler(
+      struct lws*, enum lws_callback_reasons,
+      void*, void*, size_t);
 
    static void init(void);
    static void initPeerStore(const Armory::Wallets::IO::ReadOnlyFileParams&);
@@ -189,11 +188,11 @@ public:
    static const SecureBinaryData& getOwnPublicKey(void);
    static bool isMasterKey(BinaryDataRef);
 
-   static void write(const uint64_t&, const uint32_t&,
+   static void write(const uint64_t&,
       std::unique_ptr<Armory::Network::Socket_WritePayload>);
 
    std::shared_ptr<const std::map<uint64_t, ClientConnection>>
       getConnectionStateMap(void) const;
-   void addId(const uint64_t&, struct lws* ptr);
-   void eraseId(const uint64_t&, struct lws* ptr);
+   void addId(const uint64_t&, struct lws*);
+   void eraseId(const uint64_t&, struct lws*);
 };

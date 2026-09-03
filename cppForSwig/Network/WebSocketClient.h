@@ -92,8 +92,6 @@ namespace Armory
          std::atomic<void*> wsiPtr_;
          std::atomic<void*> contextPtr_;
          const std::string servName_;
-
-         std::atomic<unsigned> requestID_;
          std::atomic<bool> connected_ = { false };
 
          std::unique_ptr<WSClientWriteQueue> writeQueue_;
@@ -161,9 +159,9 @@ namespace Armory
             std::shared_ptr<Socket_ReadPayload>) override;
          bool connectToRemote(void) override;
 
-         static int lwsServiveHandler(
-            struct lws *wsi, enum lws_callback_reasons reason,
-            void *user, void *in, size_t len);
+         static int lwsServiceHandler(
+            struct lws*, enum lws_callback_reasons,
+            void*, void*, size_t);
       };
    } //namespace Network
 } //namespace Armory

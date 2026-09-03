@@ -369,9 +369,9 @@ class ArmoryMainWindow(QtWidgets.QMainWindow):
 
       self.walletsView.hideColumn(0)
       if self.usermode == USERMODE.Standard:
-         initialColResize(self.walletsView, [20, 0, 0.35, 0.2, 0.2])
+         initialColResize(self.walletsView, [20, 0, 0.28, 0.16, 0.16, 0.18])
       else:
-         initialColResize(self.walletsView, [20, 0.15, 0.30, 0.2, 0.20])
+         initialColResize(self.walletsView, [20, 0.12, 0.22, 0.10, 0.14, 90])
 
 
       if TheSettings.hasSetting('LastFilterState'):

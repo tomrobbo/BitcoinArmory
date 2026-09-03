@@ -24,6 +24,7 @@
 #include <BlockchainDatabase/txio.h>
 
 #include <Wallets/Seeds/Backups.h>
+#include <Wallets/Seeds/Seeds.h>
 #include <Wallets/IOHeader.h>
 #include <Wallets/WalletIdTypes.h>
 #include <Wallets/KDF.h>
@@ -69,6 +70,10 @@ namespace
       auto bytes = flat.asBytes();
       return BinaryData(bytes.begin(), bytes.end());
    }
+
+   std::string chainRoleForAssetAccount(
+      const std::shared_ptr<Accounts::AddressAccount>& accPtr,
+      const Wallets::AssetAccountId& assetAccId);
 
    void addressToCapnp(WalletData::AddressData::Builder& capnAddress,
       std::shared_ptr<AddressEntry> addrPtr,
@@ -211,6 +216,10 @@ namespace
       }
       capnWallet.setDefaultAddressType(
          (uint32_t)accPtr->getDefaultAddressType());
+
+      capnWallet.setAccountName(accPtr->getDisplayName());
+      capnWallet.setSeedTypeName(wltSingle->getSeedTypeDisplayName());
+      capnWallet.setDerivationScheme(accPtr->getDerivationSchemeDisplay());
 
       //address use count
       auto assetAccountPtr = accPtr->getOuterAccount();
@@ -697,7 +706,7 @@ void CppBridge::unlockControlHeader(const std::string& path,
       };
 
       try {
-         wltManager_->unlockControlHeader(path, lbd);
+         wltManager_->unlockControlHeader(std::filesystem::path(path), lbd);
          notifySuccess(true, {});
       } catch (const std::exception& e) {
          notifySuccess(false, e.what());
@@ -806,6 +815,270 @@ void CppBridge::forkWatchingOnly(const Wallets::WalletId& wltId,
    };
 
    std::thread thr(forkLbd, wltId, callbackId, refId);
+   if (thr.joinable()) {
+      thr.detach();
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+namespace {
+   struct ExportedKeyData
+   {
+      BinaryData assetId;
+      BinaryDataRef privKeyRef;
+      BinaryData pubKey;
+      std::string addressString;
+      uint32_t addrType = 0;
+      int32_t index = 0;
+      std::string accountId;
+      bool isUsed = false;
+      std::string chainRole;
+   };
+
+   std::string chainRoleForAssetAccount(
+      const std::shared_ptr<Accounts::AddressAccount>& accPtr,
+      const Wallets::AssetAccountId& assetAccId)
+   {
+      const auto& outerId = accPtr->getOuterAccountID();
+      const auto& innerId = accPtr->getInnerAccountID();
+      if (outerId == innerId) {
+         return {};
+      }
+      if (assetAccId == outerId) {
+         return "Receive";
+      }
+      if (assetAccId == innerId) {
+         return "Change";
+      }
+      return {};
+   }
+
+   void fillExportedKeyMetadata(ExportedKeyData& entry,
+      const std::shared_ptr<Accounts::AddressAccount>& accPtr,
+      const Wallets::AssetId& assetID)
+   {
+      try {
+         auto addrEntry = accPtr->getAddressEntryForID(assetID);
+         if (addrEntry == nullptr) {
+            return;
+         }
+
+         uint32_t addrType = (uint32_t)addrEntry->getType();
+         auto addrNested = std::dynamic_pointer_cast<
+            AddressEntry_Nested>(addrEntry);
+         if (addrNested != nullptr) {
+            addrType |= (uint32_t)addrNested->getPredecessor()->getType();
+         }
+         entry.addrType = addrType;
+
+         try {
+            if (addrNested != nullptr) {
+               entry.pubKey = addrNested->getPredecessor()->getPreimage();
+            } else {
+               entry.pubKey = addrEntry->getPreimage();
+            }
+         } catch (const AddressException&) {
+            //no public key for this address type, leave empty
+         }
+
+         try {
+            entry.addressString = addrEntry->getAddress();
+         } catch (const AddressException&) {
+            //address type yields no human readable string
+         }
+      } catch (const std::exception&) {
+         //asset has no instantiable address, leave blank
+      }
+   }
+
+   void collectExportedKeys(
+      const std::shared_ptr<Wallets::AssetWallet_Single>& wltSingle,
+      const Wallets::AddressAccountId& scopeAccId,
+      bool includePrivateKeys,
+      std::vector<ExportedKeyData>& exportedKeys)
+   {
+      std::vector<Wallets::AddressAccountId> accountIdsToWalk;
+      if (scopeAccId.isValid()) {
+         accountIdsToWalk.push_back(scopeAccId);
+      } else {
+         for (const auto& addrAccId : wltSingle->getAccountIDs()) {
+            accountIdsToWalk.push_back(addrAccId);
+         }
+      }
+
+      auto walkWallet = [&]()
+      {
+         for (const auto& addrAccId : accountIdsToWalk) {
+            auto accPtr = wltSingle->getAccountForID(addrAccId);
+            if (!accPtr) {
+               continue;
+            }
+
+            for (const auto& assetAccId : accPtr->getAccountIdSet()) {
+               auto assetAcc = accPtr->getAccountForID(assetAccId);
+               if (!assetAcc) {
+                  continue;
+               }
+
+               switch (assetAcc->type()) {
+                  case Accounts::AssetAccountType::Plain:
+                  case Accounts::AssetAccountType::Imports:
+                     break;
+
+                  case Accounts::AssetAccountType::ECDH:
+                  case Accounts::AssetAccountType::ImportsWO:
+                     continue;
+
+                  default:
+                     LOGWARN << "trying to export keys" <<
+                        " from unsupported account type";
+                     continue;
+               }
+
+               //getDecryptedPrivateKeyForAsset will fill missing private keys
+               //run backwards the assets to compute missing keys in batch
+               //rather than sequentially
+               //TODO: add progressCallback logic to extend/fillPrivateKey
+               auto lastIdx = assetAcc->getLastComputedIndex();
+               for (int32_t i = lastIdx; i >= 0; i--) {
+                  auto assetPtr = assetAcc->getAssetForKey(i);
+                  auto assetSingle = std::dynamic_pointer_cast<
+                     Assets::AssetEntry_Single>(assetPtr);
+                  if (!assetSingle) {
+                     continue;
+                  }
+
+                  const auto& assetID = assetPtr->getID();
+
+                  ExportedKeyData entry;
+                  entry.assetId = assetID.getSerializedKey(PROTO_ASSETID_PREFIX);
+                  entry.index = assetSingle->getIndex();
+                  entry.accountId = addrAccId.toHexStr();
+                  entry.isUsed = accPtr->isAssetInUse(assetID);
+                  entry.chainRole = chainRoleForAssetAccount(accPtr, assetAccId);
+
+                  if (includePrivateKeys) {
+                     entry.privKeyRef =
+                        wltSingle->getDecryptedPrivateKeyForAsset(assetSingle);
+                  }
+
+                  fillExportedKeyMetadata(entry, accPtr, assetID);
+                  exportedKeys.emplace_back(std::move(entry));
+               }
+            }
+         }
+      };
+
+      walkWallet();
+   }
+
+   void populateExportedKey(WalletReply::ExportedPrivateKey::Builder& capnKey,
+      const ExportedKeyData& entry)
+   {
+      capnKey.setAssetId(capnp::Data::Builder(
+         (uint8_t*)entry.assetId.getPtr(), entry.assetId.getSize()));
+      if (!entry.privKeyRef.empty()) {
+         capnKey.setPrivKey(capnp::Data::Builder(
+            (uint8_t*)entry.privKeyRef.getPtr(), entry.privKeyRef.getSize()));
+      }
+      if (!entry.pubKey.empty()) {
+         capnKey.setPublicKey(capnp::Data::Builder(
+            (uint8_t*)entry.pubKey.getPtr(), entry.pubKey.getSize()));
+      }
+      capnKey.setAddressString(entry.addressString);
+      capnKey.setAddrType(entry.addrType);
+      capnKey.setIndex(entry.index);
+      capnKey.setAccountId(entry.accountId);
+      capnKey.setIsUsed(entry.isUsed);
+      capnKey.setChainRole(entry.chainRole);
+   }
+
+   BinaryData buildExportedKeysReply(MessageId msgId,
+      const std::vector<ExportedKeyData>& exportedKeys,
+      const std::string& error)
+   {
+      capnp::MallocMessageBuilder message;
+      auto fromBridge = message.initRoot<FromBridge>();
+      auto reply = fromBridge.initReply();
+      reply.setReferenceId(msgId);
+
+      if (!error.empty()) {
+         reply.setSuccess(false);
+         reply.setError(error);
+      } else {
+         reply.setSuccess(true);
+         auto walletReply = reply.initWallet();
+         auto capnKeys = walletReply.initExportKeys(exportedKeys.size());
+         for (size_t i = 0; i < exportedKeys.size(); i++) {
+            auto capnKey = capnKeys[i];
+            populateExportedKey(capnKey, exportedKeys[i]);
+         }
+      }
+
+      return serializeCapnp(message);
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void CppBridge::exportKeys(const Wallets::WalletId& wltId,
+   const Wallets::AddressAccountId& accId,
+   bool includePrivateKeys, const CallbackId& callbackId, MessageId msgId)
+{
+   auto func = [this, wltId, accId, includePrivateKeys, callbackId, msgId]()
+   {
+      std::vector<ExportedKeyData> exportedKeys;
+      BinaryData serialized;
+
+      std::shared_ptr<BridgePassphrasePrompt> passPromptObj;
+
+      struct ExportKeysCleanup
+      {
+         std::shared_ptr<BridgePassphrasePrompt> prompt;
+
+         ~ExportKeysCleanup()
+         {
+            if (prompt) {
+               prompt->cleanup();
+            }
+         }
+      };
+
+      try {
+         auto wltContainer = wltManager_->getWalletContainer(wltId);
+         auto wltPtr = wltContainer->getWalletPtr();
+         auto wltSingle = std::dynamic_pointer_cast<
+            Wallets::AssetWallet_Single>(wltPtr);
+         if (!wltSingle) {
+            throw std::runtime_error("wallet is not an AssetWallet_Single");
+         }
+
+         if (includePrivateKeys) {
+            if (!wltSingle->getRoot()->hasPrivateKey()) {
+               throw std::runtime_error("this is a WO wallet");
+            }
+
+            passPromptObj = std::make_shared<BridgePassphrasePrompt>(
+               callbackId, [this](ServerPushWrapper wrapper){
+                  this->callbackWriter(wrapper);
+               });
+            auto lbd = passPromptObj->getLambda();
+            ExportKeysCleanup cleanupGuard{passPromptObj};
+            auto lock = wltSingle->lockDecryptedContainer(lbd);
+            collectExportedKeys(wltSingle, accId, true, exportedKeys);
+            serialized = buildExportedKeysReply(msgId, exportedKeys, "");
+         } else {
+            collectExportedKeys(wltSingle, accId, false, exportedKeys);
+            serialized = buildExportedKeysReply(msgId, exportedKeys, "");
+         }
+
+      } catch (const std::exception& e) {
+         serialized = buildExportedKeysReply(msgId, {}, e.what());
+      }
+
+      this->writeToClient(serialized);
+   };
+
+   std::thread thr(func);
    if (thr.joinable()) {
       thr.detach();
    }
@@ -1827,13 +2100,14 @@ void CppBridge::restoreWallet(
          } else {
             //we dont have an existing wallet to merge into the new one,
             //extend the address chain for some baseline count
-            progFunc(std::make_unique<Wallets::Progress::ExtendChain>(500));
+            unsigned lookup = 500;
+            progFunc(std::make_unique<Wallets::Progress::ExtendChain>(lookup));
             if (isWO) {
-               restoreResult.wltPtr->extendPublicChain(499);
+               restoreResult.wltPtr->extendPublicChain(lookup);
             } else {
                auto lock = restoreResult.wltPtr->lockDecryptedContainer(
                   params.setPrivPassObj.getUnlockFunc());
-               restoreResult.wltPtr->extendPrivateChainToIndex(499);
+               restoreResult.wltPtr->extendPrivateChain(lookup);
             }
             restoreResult.wltPtr.reset();
          }

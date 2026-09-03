@@ -945,11 +945,11 @@ class BridgeWalletWrapper(ProtoWrapper):
       self.accountId = accountId
 
    ####
-   def _getPacket(self):
+   def _getPacket(self, omitAccountId=False):
       packet = Bridge.ToBridge.new_message()
       wltCapn = packet.init("wallet")
       wltCapn.walletId  = self.walletId
-      if self.accountId:
+      if self.accountId and not omitAccountId:
          wltCapn.accountId = self.accountId
       return packet
 
@@ -1135,6 +1135,27 @@ class BridgeWalletWrapper(ProtoWrapper):
       fut = self.send(packet)
       reply = fut.getVal()
       return reply.wallet.hasImports
+
+   ####
+   def exportKeys(self, callback: callable, publicOnly=False, unlockHandler=None,
+      omitAccountId=False):
+      packet = self._getPacket(omitAccountId=omitAccountId)
+      exportReq = packet.wallet.init('exportKeys')
+      if publicOnly:
+         exportReq.publicDataOnly = None
+      else:
+         exportReq.withPrivateKeys = unlockHandler.callbackId
+      self.send(packet, callback=callback)
+
+   ####
+   def exportPrivateKeys(self, callback: callable, unlockHandler,
+      omitAccountId=False):
+      self.exportKeys(callback, publicOnly=False, unlockHandler=unlockHandler,
+         omitAccountId=omitAccountId)
+
+   ####
+   def exportPublicKeys(self, callback: callable, omitAccountId=False):
+      self.exportKeys(callback, publicOnly=True, omitAccountId=omitAccountId)
 
 ################################################################################
 class BridgeCoinSelectionWrapper(ProtoWrapper):
