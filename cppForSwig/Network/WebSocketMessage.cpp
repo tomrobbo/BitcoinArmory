@@ -133,10 +133,8 @@ std::vector<BinaryData> WebSocketMessageCodec::serializePacketWithoutId(
    std::vector<BinaryData> result(1);
    if (connPtr != nullptr) {
       connPtr->assemblePacket(
-         plainText.getPtr() + LWS_PRE,
-         payload.getSize() + PAYLOAD_HEADER,
-         plainText.getPtr() + LWS_PRE,
-         plainText.getSize() - LWS_PRE);
+         plainText.getSliceRef(LWS_PRE, payload.getSize() + PAYLOAD_HEADER),
+         plainText.getPtr() + LWS_PRE, plainText.getSize() - LWS_PRE);
    } else {
       plainText.resize(payload.getSize() + PAYLOAD_HEADER + LWS_PRE);
    }
@@ -206,7 +204,7 @@ std::vector<BinaryData> WebSocketMessageCodec::serialize(
 
       if (connPtr != nullptr) {
          if (connPtr->assemblePacket(
-            data.getPtr() + LWS_PRE, plainTextLen,
+            data.getSliceRef(LWS_PRE, plainTextLen),
             data.getPtr() + LWS_PRE, cipherTextLen) != 0) {
             //failed to encrypt, abort
             throw std::runtime_error("failed to encrypt packet, aborting");
@@ -379,7 +377,7 @@ void SerializedMessage::construct(std::unique_ptr<Socket_WritePayload> payload,
 
          if (connPtr != nullptr) {
             if (connPtr->assemblePacket(
-               encryptedSegment.getPtr() + LWS_PRE, segmentSize + PAYLOAD_HEADER,
+               encryptedSegment.getSliceRef(LWS_PRE, segmentSize + PAYLOAD_HEADER),
                encryptedSegment.getPtr() + LWS_PRE, encryptedSegment.getSize() - LWS_PRE) != 0) {
                //failed to encrypt, abort
                throw std::runtime_error("failed to encrypt packet, aborting");

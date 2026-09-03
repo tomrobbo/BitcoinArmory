@@ -4,7 +4,7 @@
 # Distributed under the GNU Affero General Public License (AGPL v3)            #
 # See LICENSE or http://www.gnu.org/licenses/agpl.html                         #
 #                                                                              #
-# Copyright (C) 2016-2025, goatpig                                             #
+# Copyright (C) 2016-2026, goatpig                                             #
 #  Distributed under the MIT license                                           #
 #  See LICENSE-MIT or https://opensource.org/licenses/MIT                      #
 #                                                                              #
@@ -13,7 +13,7 @@
 from qtpy import QtCore, QtGui, QtWidgets
 
 from armoryengine.ArmoryUtils import toUnicode, USE_TESTNET, \
-   USE_REGTEST, LOGEXCEPT, LOGINFO, LOGERROR
+   USE_REGTEST, LOGEXCEPT, LOGINFO, LOGERROR, LOGWARN
 from armoryengine.AddressUtils import binary_to_base58, \
    encodePrivKeyBase58, hash160_to_addrStr
 from armorycolors import htmlColor, Colors
@@ -28,7 +28,7 @@ from qtdialogs.qtdefines import makeHorizFrame, QRichLabel, \
    setLayoutStretchRows, setLayoutStretchCols, STRETCH, createToolTipWidget, \
    MSGBOX
 from qtdialogs.ArmoryDialog import ArmoryDialog
-from qtdialogs.DlgUnlockWallet import UnlockWalletHandler
+from qtdialogs.DlgUnlockWallet import UnlockWalletHandler, AutoUnlockHandler
 from qtdialogs.DlgRestore import getBackupTypeString, \
    DlgRestoreSingle, DlgRestoreFragged
 from qtdialogs.MsgBoxCustom import MsgBoxCustom
@@ -391,16 +391,19 @@ class DlgPrintBackup(ArmoryDialog):
          self.backupData = None
          if reply.success:
             self.backupData = reply.wallet.createBackupString
+         else:
+            LOGWARN(f"backup failed with error: {reply.error}")
          self.executeMethod(self.setup)
 
       if passphrase:
+         unlockHandler = AutoUnlockHandler(passphrase)
          self.wlt.createBackupString(
-            resumeSetup, passphrase=passphrase)
+            callback=resumeSetup, unlockHandler=unlockHandler)
       else:
          unlockHandler = UnlockWalletHandler(
             self.wlt.walletId, "Create Backup", self)
          self.wlt.createBackupString(
-            resumeSetup, unlockHandler=unlockHandler)
+            callback=resumeSetup, unlockHandler=unlockHandler)
 
    ###
    def setup(self):

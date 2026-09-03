@@ -148,7 +148,6 @@ namespace {
             break;
          }
 
-
          case BdvRequest::Which::GET_TXS_BY_HASH:
          {
             auto db = bdv->getDB();
@@ -358,7 +357,7 @@ namespace {
    ////
    std::unique_ptr<capnp::MessageBuilder> parseStaticRequest(
       StaticRequest::Reader& request, unsigned msgId, Clients* clients,
-      Types::BdvId bdvId, const btc_pubkey_& pubkey)
+      Types::BdvId bdvId, BinaryDataRef pubkey)
    {
       auto result = std::make_unique<capnp::MallocMessageBuilder>();
       auto reply = result->initRoot<Codec::BDV::Reply>();
@@ -368,6 +367,17 @@ namespace {
 
       switch (request.which())
       {
+         case StaticRequest::Which::START:
+         {
+            if (!WebSocketServer::isMasterKey(pubkey)) {
+               //only a client that completed a 2-way AEAD handshake with
+               //the peers db master key can call this method
+               break;
+            }
+            clients->bdm()->signalStart(true);
+            break;
+         }
+
          case StaticRequest::Which::SHUTDOWN:
          {
             if (!WebSocketServer::isMasterKey(pubkey)) {
@@ -382,21 +392,8 @@ namespace {
             if (shutdownThr.joinable()) {
                shutdownThr.detach();
             }
+            clients->bdm()->signalStart(false);
             return nullptr;
-         }
-
-         case StaticRequest::Which::SHUTDOWN_NODE:
-         {
-            if (!WebSocketServer::isMasterKey(pubkey)) {
-               //only a client that completed a 2-way AEAD handshake with
-               //the peers db master key can call this method
-               break;
-            }
-
-            if (clients->bdm()->nodeRPC_ != nullptr) {
-               clients->bdm()->nodeRPC_->shutdown();
-            }
-            break;
          }
 
          case StaticRequest::Which::REGISTER:
@@ -475,7 +472,7 @@ namespace {
          {
             try {
                std::string strat = request.getGetFeeSchedule();
-               auto nodePtr = clients->bdm()->nodeRPC_;
+               auto nodePtr = clients->bdm()->nodeRPC;
                auto feeSchedule = nodePtr->getFeeSchedule(strat);
                auto capnFeeSchedule = staticReply.initGetFeeSchedule(feeSchedule.size());
 
@@ -603,7 +600,7 @@ namespace {
 ///////////////////////////////////////////////////////////////////////////////
 // BDV_Payload
 BDV_Payload::BDV_Payload(BinaryData packet, BdvPtr bdv,
-   Types::BdvId id, const btc_pubkey_& key) :
+   Types::BdvId id, const BinaryDataRef& key) :
    messageId_{readMessageId(packet)}, packetData_(std::move(packet)),
    bdvPtr_(bdv), bdvID_(id), pubkey_(key)
 {}
@@ -619,7 +616,7 @@ uint64_t BDV_Payload::getBdvID() const
 }
 
 ////
-const btc_pubkey_& BDV_Payload::getPubkey() const
+const BinaryDataRef& BDV_Payload::getPubkey() const
 {
    return pubkey_;
 }
@@ -656,17 +653,6 @@ void BDV_Server_Object::setup()
 
    isReadyPromise_ = std::make_shared<std::promise<bool>>();
    isReadyFuture_ = isReadyPromise_->get_future();
-   auto lbdFut = isReadyFuture_;
-
-   //unsafe, should consider creating the blockchain object as a shared_ptr
-   auto bc = &blockchain();
-   auto isReadyLambda = [lbdFut, bc]()->unsigned
-   {
-      if (lbdFut.wait_for(0s) == std::future_status::ready) {
-         return bc->top()->getBlockHeight();
-      }
-      return UINT32_MAX;
-   };
 
    switch (Armory::Config::DBSettings::getServiceType())
    {
@@ -721,7 +707,6 @@ void BDV_Server_Object::startThreads()
    initT_ = std::thread([this]{ this->init(); });
 }
 
-///////////////////////////////////////////////////////////////////////////////
 void BDV_Server_Object::haltThreads()
 {
    if(notifications_ != nullptr) {
@@ -735,15 +720,40 @@ void BDV_Server_Object::haltThreads()
 ///////////////////////////////////////////////////////////////////////////////
 void BDV_Server_Object::init()
 {
-   bdm_->blockUntilReady();
-   while (true) {
-      //grab all pending wallet registration requests
-      std::unique_lock<std::mutex> lock(registerWalletMutex_);
-      if (walletRegistrationQueue_.empty()) {
-         break;
+   auto notifyBdv = [this](bool ready)
+   {
+      auto& scratchPad = getScratchPad();
+      kj::ArrayPtr<capnp::word> arrayPtr(
+         reinterpret_cast<capnp::word*>(scratchPad.data()),
+         SCRATCHPAD_SIZE / sizeof(capnp::word)
+      );
+      capnp::MallocMessageBuilder message(arrayPtr,
+         capnp::AllocationStrategy::FIXED_SIZE);
+
+      auto notifs = message.initRoot<Codec::BDV::Notifications>();
+      auto notifList = notifs.initNotifs(1);
+      auto notif = notifList[0];
+      if (ready) {
+         auto readyNotif = notif.initReady();
+         readyNotif.setHeight(blockchain().top()->getBlockHeight());
+         readyNotif.setBranchHeight(UINT32_MAX);
+      } else {
+         notif.setRegistered();
       }
+
+      //we expect this message to be smaller than our scratchpad
+      auto flat = capnp::messageToFlatArray(message);
+      auto bytes = flat.asBytes();
+      std::vector<uint8_t> replyRaw(bytes.begin(), bytes.end());
+      notifications_->push(std::make_unique<Network::WritePayload_Raw>(
+         WEBSOCKET_CALLBACK_ID, replyRaw));
+   };
+
+   //grab all pending wallet registration requests
+   std::unique_lock<std::mutex> lock(registerWalletMutex_);
+   if (!walletRegistrationQueue_.empty()) {
       auto regQueue = std::move(walletRegistrationQueue_);
-      lock.unlock();
+      LOGINFO << "registering " << regQueue.size() << " wallets";
 
       //gather all addresses across each request
       std::vector<Types::ScrAddr> addresses;
@@ -757,10 +767,10 @@ void BDV_Server_Object::init()
       }
 
       //finality callback
-      auto prom = std::make_shared<std::promise<bool>>();
-      auto fut = prom->get_future();
-      auto callback = [promPtr=prom] (bool success)
-      { promPtr->set_value(success); };
+      auto promRegister = std::make_shared<std::promise<bool>>();
+      auto futRegister = promRegister->get_future();
+      auto callback = [promRegister] (bool success)
+      { promRegister->set_value(success); };
 
       //push one big batch to scraddr filter
       auto batch = std::make_shared<RegistrationBatch>(
@@ -768,8 +778,24 @@ void BDV_Server_Object::init()
       saf_->pushAddressBatch(batch);
 
       //wait on registration callback
-      auto result = fut.get();
-      if (!result) {
+      bool registrationSuccess = false;
+      if (!bdm_->isRunning()) {
+         /*
+         BDM isn't running, signal caller registration is done.
+         We have to do it in this order because address registration
+         cannot complete until the BDM is running.
+         In automated DB operations, the caller will not start the
+         BDM until it receives the registration signal.
+         */
+         notifyBdv(false);
+         registrationSuccess = futRegister.get();
+      } else {
+         //BDM is running, wait on registration to complete before
+         //signaling the caller
+         registrationSuccess = futRegister.get();
+         notifyBdv(false);
+      }
+      if (!registrationSuccess) {
          //TODO: should notify client and disconnect it
          LOGERR << "failed to register addresses for bdv!";
          isReadyPromise_->set_value(false);
@@ -777,14 +803,14 @@ void BDV_Server_Object::init()
       }
 
       //addresses are now registered, populate the wallet maps
-      auto prom2 = std::make_shared<std::promise<bool>>();
-      auto fut2 = prom2->get_future();
+      auto promMerge = std::make_shared<std::promise<bool>>();
+      auto futMerge = promMerge->get_future();
       size_t count = 0; bool success = true;
-      auto regCallback = [prom2, &count, &success, total=regQueue.size()](bool s)
+      auto regCallback = [promMerge, &count, &success, total=regQueue.size()](bool s)
       {
          success |= s;
          if (++count == total) {
-            prom2->set_value(success);
+            promMerge->set_value(success);
          }
       };
       for (const auto& regRequest : regQueue) {
@@ -793,34 +819,18 @@ void BDV_Server_Object::init()
 
       //wait on address population process
       //TODO: notify on failure
-      fut2.get();
+      futMerge.get();
+   } else {
+      //nothing to register, signal registration to progress the flow
+      notifyBdv(false);
    }
 
-   //mark bdv object as ready
+   //signal bdv that registration is done, then wait on bdm ready
+   bdm_->blockUntilReady();
+
+   //mark bdv object as ready and send ready notif
    isReadyPromise_->set_value(true);
-
-   //callback client with BDM_Ready packet
-   auto& scratchPad = getScratchPad();
-   kj::ArrayPtr<capnp::word> arrayPtr(
-      reinterpret_cast<capnp::word*>(scratchPad.data()),
-      SCRATCHPAD_SIZE / sizeof(capnp::word)
-   );
-   capnp::MallocMessageBuilder message(arrayPtr,
-      capnp::AllocationStrategy::FIXED_SIZE);
-
-   auto notifs = message.initRoot<Codec::BDV::Notifications>();
-   auto notifList = notifs.initNotifs(1);
-   auto notif = notifList[0];
-   auto readyNotif = notif.initReady();
-   readyNotif.setHeight(blockchain().top()->getBlockHeight());
-   readyNotif.setBranchHeight(UINT32_MAX);
-
-   //we expect this message to be smaller than our scratchpad
-   auto flat = capnp::messageToFlatArray(message);
-   auto bytes = flat.asBytes();
-   std::vector<uint8_t> replyRaw(bytes.begin(), bytes.end());
-   notifications_->push(std::make_unique<Network::WritePayload_Raw>(
-      WEBSOCKET_CALLBACK_ID, replyRaw));
+   notifyBdv(true);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1042,9 +1052,9 @@ void BDV_Server_Object::processNotification(
 ///////////////////////////////////////////////////////////////////////////////
 void BDV_Server_Object::registerWallet(WalletRegistrationRequest& regReq)
 {
+   std::unique_lock<std::mutex> lock(registerWalletMutex_);
    if (isReadyFuture_.wait_for(0s) != std::future_status::ready) {
       //the bdv maintenance thread hasn't started yet, queue the request
-      std::unique_lock<std::mutex> lock(registerWalletMutex_);
       walletRegistrationQueue_.emplace_back(std::move(regReq));
       return;
    }
@@ -1394,7 +1404,7 @@ bool Clients::registerBDV(const std::string& magicWord, Types::BdvId bdvId)
 
    //add to BDVs map
    BDVs_.add(newBDV);
-   LOGINFO << "registered bdv: " << bdvId;
+   LOGINFO << std::format("registered bdv: {:x}", bdvId);
    return true;
 }
 
@@ -1440,7 +1450,7 @@ void Clients::unregisterBDVThread()
 
       //done
       bdvPtr.reset();
-      LOGINFO << "unregistered bdv: " << bdvId;
+      LOGINFO << std::format("unregistered bdv: {:x}", bdvId);
    }
 }
 
@@ -1455,7 +1465,7 @@ void Clients::notificationThread()
       bool timedout = true;
       std::shared_ptr<BDV_Notification> notifPtr;
       try {
-         notifPtr = std::move(bdm_->notificationStack_.pop_front(60s));
+         notifPtr = std::move(bdm_->notificationStack.pop_front(60s));
          timedout = false;
       } catch (const Threading::StackTimedOutException&) {
          //nothing to do
@@ -1664,7 +1674,7 @@ void Clients::broadcastThroughRPC()
 
       //push to rpc
       std::string verbose;
-      auto result = bdm_->nodeRPC_->broadcastTx(
+      auto result = bdm_->nodeRPC->broadcastTx(
          packet.rawTx_->getRef(), verbose);
       switch (ArmoryErrorCodes(result))
       {
@@ -1905,7 +1915,7 @@ void Clients::p2pBroadcast(Types::BdvId bdvId, std::vector<BinaryDataRef>& rawZC
    };
 
    //broadcast
-   bdm_->zeroConfCont_->broadcastZC(
+   bdm_->zeroConfCont()->broadcastZC(
       rawZCs, 5000, errorCallback, bdvId);
 }
 

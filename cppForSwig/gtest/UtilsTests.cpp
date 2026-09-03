@@ -1997,6 +1997,16 @@ TEST_F(BtcUtilsTest, ScriptToOpCodes)
       EXPECT_EQ(output[i], opstr[i]);
 }
 
+TEST_F(BtcUtilsTest, RpcAuthString)
+{
+   std::string pass{"Ksahl_4ahyDnoaD83Um2Lcdst3QHN6O_04awLyatMkI"};
+   std::string salt{"7dcceaa76f9c1e1795cc8cbc83153f40"};
+   std::string saltedPass{"c1b469f5f1deeb0b0c4755a70a8c81f621058c6af32ee7380d0fb65a98e4b795"};
+
+   auto hmac = BtcUtils::getSaltedRpcPass(salt, pass);
+   EXPECT_EQ(hmac.toHexStr(), saltedPass);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 class BlockObjTest : public ::testing::Test
@@ -4569,6 +4579,8 @@ protected:
 
 TEST_F(TestPeerKey, HumanReadable)
 {
+   using namespace NetworkPeers;
+
    auto key1 = Cryptography::ECDSA::createNewPrivateKey();
    auto key2 = Cryptography::ECDSA::createNewPrivateKey();
    auto key3 = Cryptography::ECDSA::createNewPrivateKey();
@@ -4577,9 +4589,9 @@ TEST_F(TestPeerKey, HumanReadable)
    auto pubkey2 = Cryptography::ECDSA::computePublicKey(key2, true);
    auto pubkey3 = Cryptography::ECDSA::computePublicKey(key3, true);
 
-   auto peer1 = Wallets::PeerKey{pubkey1, true, true};  //1 way server
-   auto peer2 = Wallets::PeerKey{pubkey2, false, true}; //2 way server
-   auto peer3 = Wallets::PeerKey{pubkey3, true, false}; //client
+   auto peer1 = PeerKey{pubkey1, PeerType::ServerOneWay};
+   auto peer2 = PeerKey{pubkey2, PeerType::ServerTwoWay};
+   auto peer3 = PeerKey{pubkey3, PeerType::Client};
 
    //convert
    auto str1 = peer1.toHumanReadable();
@@ -4591,9 +4603,9 @@ TEST_F(TestPeerKey, HumanReadable)
    ASSERT_EQ(std::memcmp(str3.c_str(), "ARc", 3), 0);
 
    //revert
-   auto readPeer1 = Wallets::PeerKey::fromHumanReadable(str1);
-   auto readPeer2 = Wallets::PeerKey::fromHumanReadable(str2);
-   auto readPeer3 = Wallets::PeerKey::fromHumanReadable(str3);
+   auto readPeer1 = PeerKey::fromHumanReadable(str1);
+   auto readPeer2 = PeerKey::fromHumanReadable(str2);
+   auto readPeer3 = PeerKey::fromHumanReadable(str3);
 
    ASSERT_EQ(readPeer1.getKey(), pubkey1);
    ASSERT_EQ(readPeer1.isOneWay(), true);

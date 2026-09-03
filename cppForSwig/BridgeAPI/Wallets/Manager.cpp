@@ -15,6 +15,7 @@
 #include "Manager.h"
 #include <Utils/BtcUtils.h>
 #include <Utils/FileUtils.h>
+#include <Utils/Cryptography.h>
 #include <Ledgers/LedgerEntry.h>
 #include <Ledgers/Context.h>
 #include <AsyncClient.h>
@@ -109,7 +110,7 @@ namespace
 WalletManager::WalletManager(const std::filesystem::path& path) :
    path_(path)
 {
-   if (!FileUtils::isDir(path_)) {
+   if (!FileUtils::isDir(path_, 2)) {
       std::string err{path_.string() + std::string{"is not a valid datadir"sv}};
       LOGERR << err;
       throw std::runtime_error(err);
@@ -248,6 +249,15 @@ void WalletManager::setBdvCallback(
    {
       switch (notif->type)
       {
+         case NotifType::REGISTERED:
+         {
+            if (automatesDB_) {
+               //if we automate the db, we have to tell it to start scanning
+               bdvPtr_->start();
+            }
+            return;
+         }
+
          case NotifType::PUSH:
          {
             auto pushPtr = std::dynamic_pointer_cast<NotifStruct_Push>(notif);
@@ -293,8 +303,10 @@ std::shared_ptr<Callback> WalletManager::getBdvCallback() const
 
 ////
 void WalletManager::setBdvPtr(
-   std::shared_ptr<AsyncClient::BlockDataViewer> bdvPtr)
+   std::shared_ptr<AsyncClient::BlockDataViewer> bdvPtr,
+   bool autoDB)
 {
+   automatesDB_ = autoDB;
    bdvPtr_ = bdvPtr;
    for (auto& wltIt : wallets_) {
       for (auto& accIt : wltIt.second) {
@@ -549,7 +561,7 @@ WalletManager::listWallets()
       const auto& path = dirEntry.path();
 
       //ignore folders
-      if (FileUtils::isDir(path)) {
+      if (FileUtils::isDir(path, 2)) {
          continue;
       }
 

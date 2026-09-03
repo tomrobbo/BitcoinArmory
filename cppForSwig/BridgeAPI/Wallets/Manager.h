@@ -76,6 +76,7 @@ namespace Armory
          std::shared_ptr<Callback> callbackPtr_;
          std::function<void(void)> cleanupCallback_;
          std::shared_ptr<AsyncClient::BlockDataViewer> bdvPtr_;
+         bool automatesDB_ = false;
 
          //history
          std::shared_ptr<TxIOCache> txioCache_;
@@ -112,7 +113,7 @@ namespace Armory
          void setCleanupCallback(
             const std::function<void(void)>&);
          std::shared_ptr<Callback> getBdvCallback(void) const;
-         void setBdvPtr(std::shared_ptr<AsyncClient::BlockDataViewer>);
+         void setBdvPtr(std::shared_ptr<AsyncClient::BlockDataViewer>, bool=false);
          void cleanupBDV(void);
 
          /* utils */

@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
-//  Copyright (C) 2018-2024, goatpig.                                         //
+//  Copyright (C) 2018-2026, goatpig.                                         //
 //  Distributed under the MIT license                                         //
 //  See LICENSE-MIT or https://opensource.org/licenses/MIT                    //
 //                                                                            //
@@ -39,24 +39,35 @@ static struct lws_protocols protocols[] = {
 // WebSocketClient
 WebSocketClient::WebSocketClient(const std::string& addr,
    const std::string& port,
-   std::shared_ptr<Wallets::AuthorizedPeers> peers, bool oneWayAuth,
+   std::shared_ptr<NetworkPeers::ClientStore> peers, bool oneWayAuth,
    std::shared_ptr<RemoteCallback> cbPtr) :
    SocketPrototype(addr, port, false),
-   servName_(addr_ + ":" + port_), callbackPtr_(cbPtr), authPeers_(peers)
+   servName_(addr_ + ":" + port_), callbackPtr_(cbPtr), peerStore_(peers)
 {
    count_.store(0, std::memory_order_relaxed);
    contextPtr_.store(0, std::memory_order_release);
 
-   auto lbds = Wallets::AuthorizedPeers::getAuthPeersLambdas(authPeers_, oneWayAuth);
-   bip151Connection_ = std::make_shared<BIP151Connection>(lbds, oneWayAuth);
+   if (peerStore_ == nullptr) {
+      throw std::runtime_error("null peer store");
+   }
+   auto view = peerStore_->getView(oneWayAuth ?
+      NetworkPeers::PeerType::ServerOneWay :
+      NetworkPeers::PeerType::ServerTwoWay);
+   bip151Connection_ = std::make_shared<BIP151Connection>(
+      std::move(view), oneWayAuth);
 }
 
 WebSocketClient::~WebSocketClient()
 {
+   //shutdown and wait on service thread
    shutdown();
    if (serviceThr_.joinable()) {
       serviceThr_.join();
    }
+
+   //cleanup read and write queues
+   //push error message to all outstanding callbacks
+   cleanup();
 }
 
 ////////
@@ -234,7 +245,6 @@ void WebSocketClient::service(lws_context* contextPtr)
 {
    int n = 0;
    auto wsiPtr = (struct lws*)wsiPtr_.load(std::memory_order_acquire);
-
    while (run_.load(std::memory_order_relaxed) != 0 && n >= 0) {
       n = lws_service(contextPtr, 500);
       if (!currentWriteMessage_.isDone() || !writeQueue_->empty()) {
@@ -242,9 +252,8 @@ void WebSocketClient::service(lws_context* contextPtr)
       }
    }
 
+   contextPtr_.store(nullptr, std::memory_order_release);
    lws_context_destroy(contextPtr);
-   contextPtr_.store(0, std::memory_order_release);
-   cleanup();
 }
 
 ////////
@@ -253,7 +262,6 @@ void WebSocketClient::shutdown()
    if (run_.exchange(0, std::memory_order_relaxed) == 0) {
       return;
    }
-
    auto context = (struct lws_context*)contextPtr_.load(std::memory_order_acquire);
    if (context == nullptr) {
       return;
@@ -332,8 +340,8 @@ void WebSocketClient::cleanup()
 }
 
 ////////
-int WebSocketClient::lwsServiceHandler(struct lws *wsi,
-   enum lws_callback_reasons reason, void *user, void *in, size_t len)
+int WebSocketClient::lwsServiceHandler(struct lws* wsi,
+   enum lws_callback_reasons reason, void* user, void* in, size_t len)
 {
    auto instance = (WebSocketClient*)user;
    switch (reason)
@@ -366,9 +374,11 @@ int WebSocketClient::lwsServiceHandler(struct lws *wsi,
             instance->connected_.store(false, std::memory_order_release);
             if (instance->callbackPtr_ != nullptr) {
                instance->callbackPtr_->disconnected();
-               try {
-                  instance->connectionReadyProm_.set_value(false);
-               } catch (const std::future_error&) {}
+            }
+            try {
+               instance->connectionReadyProm_.set_value(false);
+            } catch (const std::future_error&) {
+               //promise already set, nothing to do
             }
             instance->shutdown();
          } catch (const LWS_Error&) {}
@@ -443,20 +453,16 @@ void WebSocketClient::readService()
       if (bip151Connection_->connectionComplete()) {
          //decrypt packet
          auto result = bip151Connection_->decryptPacket(
-            payload.getPtr(), payload.getSize(),
-            payload.getPtr(), payload.getSize());
-
+            payload.getRef(), payload);
          if (result != 0) {
             //see WebSocketServer::processReadQueue for the explaination
             if (result <= 1048576 && result > -1) {
                leftOverData_ = std::move(payload);
                continue;
             }
-
             shutdown();
             return;
          }
-
          payload.resize(payload.getSize() - POLY1305MACLEN);
       }
 
@@ -619,8 +625,12 @@ bool WebSocketClient::processAEADHandshake(const WebSocketMessagePartial& msgObj
 ////////
 void WebSocketClient::addPublicKey(const SecureBinaryData& pubkey, bool oneWay)
 {
+   NetworkPeers::PeerKey serverKey{pubkey, oneWay ?
+      NetworkPeers::PeerType::ServerOneWay :
+      NetworkPeers::PeerType::ServerTwoWay
+   };
    const std::string addrPort{ addr_ + ":" + port_ };
-   authPeers_->addPeer(pubkey, {addrPort}, {}, oneWay);
+   peerStore_->addPeer(serverKey, {addrPort}, {});
 }
 
 void WebSocketClient::setPubkeyPromptLambda(
@@ -643,7 +653,7 @@ void WebSocketClient::promptUser(
    {
       if (this->userPromptLambda_(key_copy)) {
          //the lambda returns true, the user accepted the key, add it to peers
-         this->authPeers_->addPeer(key_copy, {name}, {}, true);
+         this->addPublicKey(key_copy, true);
          serverPubkeyProm_->set_value(true);
       } else {
          //otherwise, we still have to set the promise so that the auth

@@ -50,7 +50,6 @@ namespace Armory
       class WalletId;
       class AddressAccountId;
       class AssetWallet;
-      class AuthorizedPeers;
 
       namespace IO
       {
@@ -58,11 +57,17 @@ namespace Armory
       }
    }
 
+   namespace NetworkPeers
+   {
+      class ClientStore;
+   }
+
    namespace Bridge
    {
       struct ServerPushWrapper;
       struct WritePayload_Bridge;
       class WalletManager;
+      class AutomationContext;
 
       ////
       using MessageId = uint64_t;
@@ -99,7 +104,7 @@ namespace Armory
 
          //armorydb stuff
          const bool dbOffline_;
-         std::shared_ptr<Wallets::AuthorizedPeers> peersDb_;
+         std::shared_ptr<NetworkPeers::ClientStore> peersDb_;
 
          //to write to the bridge client
          std::function<void(std::unique_ptr<WritePayload_Bridge>)> writeLambda_;
@@ -118,8 +123,10 @@ namespace Armory
          std::mutex callbackHandlerMu_;
          std::map<uint32_t, CallbackHandler> callbackHandlers_;
 
+         //binary automation
+         std::unique_ptr<AutomationContext> automationContext_;
+
       private:
-         std::shared_ptr<Wallets::AuthorizedPeers> getPeersDb(void);
          void reset(void);
 
       public:
@@ -143,17 +150,19 @@ namespace Armory
          BinaryData getWalletPacket(const Wallets::WalletId&,
             Wallets::AddressAccountId, MessageId) const;
 
+         //binary automation
+         void setAutomationContext(std::unique_ptr<AutomationContext>);
+         void runAutomationContext(CallbackId, MessageId);
+         void cleanupAutomationContext(CallbackId, MessageId);
+
          //db setup
          void connectToIp(const std::string&, const std::string&,
             const CallbackId&, MessageId);
          void connectToPeer(const std::string&, MessageId);
-         void automateDb(
-            const std::filesystem::path&,
-            const std::filesystem::path&,
-            MessageId);
-         void cleanupDb(MessageId);
-         void goOnline(void);
+         void beginDbSession(void);
+         bool isDbRunning(void);
 
+         //peers db
          void loadPeersDb(const CallbackId&, MessageId);
          void listPeers(MessageId);
          void addPeer(const std::string&,

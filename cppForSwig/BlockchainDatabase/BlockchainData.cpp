@@ -27,7 +27,7 @@ namespace {
    {
       //open block file
       auto path = FileUtils::getBlkFilename(
-         Config::Pathing::blkFilePath(), header->getBlockFileNum());
+         Config::Pathing::blkFilePath(), header->getBlockFileId());
       auto fileMap = FileUtils::FileMap(path, false);
 
       if (!Config::DBSettings::isXored()) {

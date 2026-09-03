@@ -6,8 +6,7 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifndef _SERVER_H_
-#define _SERVER_H_
+#pragma once
 
 #include <string>
 #include <memory>
@@ -33,8 +32,6 @@ namespace Armory
 {
    namespace Wallets
    {
-      class AuthorizedPeers;
-
       namespace IO
       {
          struct ReadOnlyFileParams;
@@ -45,6 +42,12 @@ namespace Armory
    {
       class Socket_WritePayload;
       class SerializedMessage;
+   }
+
+   namespace NetworkPeers
+   {
+      class ServerStore;
+      class PeerStoreView;
    }
 }
 
@@ -114,7 +117,8 @@ private:
    void processAEADHandshake(BinaryData);
 
 public:
-   ClientConnection(struct lws*, uint64_t, AuthPeersLambdas&, bool);
+   ClientConnection(struct lws*, uint64_t,
+      std::unique_ptr<Armory::NetworkPeers::PeerStoreView>, bool);
 
    void closeConnection(void);
    void processReadQueue(std::shared_ptr<Clients>);
@@ -142,7 +146,7 @@ private:
    Armory::Threading::BlockingQueue<std::unique_ptr<PendingMessage>> msgQueue_;
    Armory::Threading::BlockingQueue<uint64_t> clientConnectionInterruptQueue_;
 
-   std::shared_ptr<Armory::Wallets::AuthorizedPeers> authorizedPeers_;
+   std::shared_ptr<Armory::NetworkPeers::ServerStore> peerStore_;
    std::map<struct lws*, std::list<std::list<BinaryData>>> writeMap_;
    lws_context* contextPtr_;
    Armory::Threading::Queue<std::pair<struct lws*, std::list<BinaryData>>> writeQueue_;
@@ -152,6 +156,7 @@ private:
 
    //default to 2-way auth
    bool oneWayAuth_ = false;
+   bool async_ = false;
 
 public:
    void writeToSocket(struct lws*, Armory::Network::SerializedMessage&);
@@ -162,11 +167,8 @@ private:
    void setIsReady(void);
 
    void prepareWriteThread(void);
-
-   AuthPeersLambdas getAuthPeerLambda(bool) const;
    void closeClientConnection(uint64_t);
    void clientInterruptThread(void);
-
    void updateWriteMap(void);
 
 public:
@@ -178,13 +180,13 @@ public:
       void*, void*, size_t);
 
    static void init(void);
-   static void initAuthPeers(const Armory::Wallets::IO::ReadOnlyFileParams&);
-   static void initAuthPeers(std::shared_ptr<Armory::Wallets::AuthorizedPeers>);
+   static void initPeerStore(const Armory::Wallets::IO::ReadOnlyFileParams&);
+   static void initPeerStore(std::shared_ptr<Armory::NetworkPeers::ServerStore>);
    static void start(std::shared_ptr<BlockDataManager>, bool);
    static void shutdown(void);
    static void waitOnShutdown(void);
-   static SecureBinaryData getPublicKey(void);
-   static bool isMasterKey(const btc_pubkey_&);
+   static const SecureBinaryData& getOwnPublicKey(void);
+   static bool isMasterKey(BinaryDataRef);
 
    static void write(const uint64_t&,
       std::unique_ptr<Armory::Network::Socket_WritePayload>);
@@ -194,5 +196,3 @@ public:
    void addId(const uint64_t&, struct lws*);
    void eraseId(const uint64_t&, struct lws*);
 };
-
-#endif

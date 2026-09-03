@@ -71,7 +71,7 @@ namespace Armory
       enum class MetaType : int
       {
          Comment,
-         AuthorizedPeer,
+         Peer,
          PeerRootKey,
          PeerRootSig,
          PeerMasterKey
